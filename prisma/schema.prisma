@@ -1,0 +1,302 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// Admin da Plataforma (gerencia todos os escritórios)
+model PlatformUser {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Escritório (Tenant)
+model Office {
+  id                 String   @id @default(uuid())
+  name               String   // Nome do escritório
+  tradeName          String?  // Nome fantasia
+  cpfCnpj            String   // CPF ou CNPJ
+  oabNumber          String?  // Número da OAB
+  phone              String
+  whatsapp           String?
+  email              String
+  website            String?
+  logoUrl            String?
+  primaryColor       String   @default("#0B1D3D")
+  secondaryColor     String   @default("#D4AF37")
+  welcomeMessage     String?
+  defaultFooter      String?
+  clientEmailMessage String?
+  address            String?
+  active             Boolean  @default(true)
+  
+  // Planos e Limites (Fase 5)
+  plan               String   @default("SOLO") // SOLO, PROFISSIONAL, ESCRITORIO
+  planStatus         String   @default("ACTIVE") // ACTIVE, SUSPENDED, TRIAL, CANCELED
+  monthlyDocLimit    Int      @default(30)
+  maxUsersLimit      Int      @default(1)
+  additionalCredits  Int      @default(0)
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  users        User[]
+  clients      Client[]
+  storageFiles StorageFile[]
+  auditLogs    AuditLog[]
+  documents    Document[]
+  templates    Template[]
+  legalKits    LegalKit[]
+}
+
+// Usuário do Escritório
+// role values: 'OFFICE_ADMIN' | 'LAWYER' | 'STAFF' | 'VIEWER'
+model User {
+  id               String   @id @default(uuid())
+  officeId         String
+  office           Office   @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  name             String
+  email            String   @unique
+  passwordHash     String
+  oabNumber        String?
+  phone            String?
+  role             String   @default("LAWYER")
+  active           Boolean  @default(true)
+  twoFactorEnabled Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  permissions UserPermission[]
+  auditLogs   AuditLog[]
+  clientsAssigned Client[] @relation("LawyerClients")
+  createdDocuments Document[] @relation("UserCreatedDocuments")
+}
+
+// Permissões Granulares
+model UserPermission {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission String
+  createdAt  DateTime @default(now())
+}
+
+// Cadastro Completo do Cliente Jurídico
+model Client {
+  id                  String   @id @default(uuid())
+  officeId            String
+  office              Office   @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  
+  name                String
+  cpfCnpj             String
+  rg                  String?
+  issuingOrgan        String?
+  birthDate           String?
+  nationality         String?  @default("Brasileira")
+  maritalStatus       String?
+  profession          String?
+  phone               String
+  whatsapp            String?
+  email               String?
+  
+  cep                 String?
+  address             String?
+  number              String?
+  complement          String?
+  neighborhood        String?
+  city                String?
+  state               String?
+  
+  legalRepresentative String?
+  financialResponsible String?
+  notes               String?
+  legalArea           String?
+  
+  lawyerInChargeId    String?
+  lawyerInCharge      User?    @relation("LawyerClients", fields: [lawyerInChargeId], references: [id], onDelete: SetNull)
+  processNumber       String?
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  documents           Document[]
+
+  @@unique([officeId, cpfCnpj])
+}
+
+// Arquivos em Armazenamento Seguro
+model StorageFile {
+  id           String   @id @default(uuid())
+  officeId     String
+  office       Office   @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  storageKey   String
+  uploadedBy   String?
+  createdAt    DateTime @default(now())
+
+  originalDocuments Document[] @relation("OriginalFile")
+  signedDocuments   Document[] @relation("SignedFile")
+}
+
+// Modelos Jurídicos Próprios (Fase 4)
+model Template {
+  id           String   @id @default(uuid())
+  officeId     String
+  office       Office   @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  title        String
+  category     String   @default("Previdenciário")
+  documentType String   @default("CONTRATO")
+  contentHtml  String
+  description  String?
+  version      Int      @default(1)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  kitItems     KitItem[]
+  documents    Document[]
+}
+
+// Kits de Contratação Jurídica (Fase 4)
+model LegalKit {
+  id          String   @id @default(uuid())
+  officeId    String
+  office      Office   @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  name        String
+  category    String   @default("Previdenciário")
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items       KitItem[]
+  documents   Document[]
+}
+
+// Itens/Modelos do Kit
+model KitItem {
+  id           String   @id @default(uuid())
+  kitId        String
+  kit          LegalKit @relation(fields: [kitId], references: [id], onDelete: Cascade)
+  templateId   String
+  template     Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  displayOrder Int      @default(1)
+  isOptional   Boolean  @default(false)
+}
+
+// Documentos e Envio para Assinatura (Fases 2, 3 e 4)
+model Document {
+  id               String   @id @default(uuid())
+  officeId         String
+  office           Office   @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  
+  clientId         String?
+  client           Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  
+  templateId       String?
+  template         Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  kitId            String?
+  kit              LegalKit? @relation(fields: [kitId], references: [id], onDelete: SetNull)
+
+  title            String
+  documentType     String   @default("DOCUMENTO")
+  
+  originalFileId   String
+  originalFile     StorageFile @relation("OriginalFile", fields: [originalFileId], references: [id])
+  
+  signedFileId     String?
+  signedFile       StorageFile? @relation("SignedFile", fields: [signedFileId], references: [id])
+  
+  originalHash     String
+  signedHash       String?
+  verificationCode String?  @unique
+  
+  status           String   @default("RASCUNHO")
+  expirationDate   DateTime?
+  customMessage    String?
+  
+  createdById      String?
+  createdBy        User?    @relation("UserCreatedDocuments", fields: [createdById], references: [id], onDelete: SetNull)
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  completedAt      DateTime?
+
+  signers          Signer[]
+  events           DocumentEvent[]
+}
+
+// Signatários do Documento
+model Signer {
+  id               String   @id @default(uuid())
+  documentId       String
+  document         Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  
+  token            String   @unique @default(uuid())
+  name             String
+  cpf              String
+  email            String?
+  phone            String?
+  role             String   @default("CLIENTE")
+  signatureOrder   Int      @default(1)
+  
+  status           String   @default("PENDENTE")
+  authMethod       String   @default("EMAIL_OTP_CPF")
+  
+  otpCode          String?
+  otpExpiresAt     DateTime?
+  
+  signatureType    String?
+  signatureImage   String?
+  signedConsentText String?
+  
+  signedAt         DateTime?
+  ipAddress        String?
+  userAgent        String?
+
+  events           DocumentEvent[]
+}
+
+// Trilha de Eventos do Documento (Auditoria Imodificável)
+model DocumentEvent {
+  id          String   @id @default(uuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  
+  signerId    String?
+  signer      Signer?  @relation(fields: [signerId], references: [id], onDelete: SetNull)
+  
+  userId      String?
+  eventType   String
+  description String
+  ipAddress   String?
+  userAgent   String?
+  metadata    String?
+  createdAt   DateTime @default(now())
+}
+
+// Trilha de Auditoria Geral por Escritório
+model AuditLog {
+  id          String   @id @default(uuid())
+  officeId    String
+  office      Office   @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  eventType   String
+  description String
+  ipAddress   String?
+  userAgent   String?
+  metadata    String?
+  createdAt   DateTime @default(now())
+}

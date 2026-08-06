@@ -1,0 +1,307 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { FileText, Plus, Search, Edit3, Copy, X, CheckCircle, AlertCircle, Loader2, Code } from 'lucide-react';
+
+interface Template {
+  id: string;
+  title: string;
+  category: string;
+  documentType: string;
+  contentHtml: string;
+  description?: string;
+  version: number;
+}
+
+export default function TemplatesPage() {
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [showModal, setShowModal] = useState(false);
+
+  const [formData, setFormData] = useState({
+    title: '',
+    category: 'Previdenciário',
+    documentType: 'CONTRATO',
+    contentHtml: '',
+    description: '',
+  });
+
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetchTemplates();
+  }, []);
+
+  const fetchTemplates = async () => {
+    setLoading(true);
+    try {
+      const url = new URL('/api/templates', window.location.origin);
+      if (categoryFilter) url.searchParams.set('category', categoryFilter);
+
+      const res = await fetch(url.toString());
+      const data = await res.json();
+      if (data.templates) setTemplates(data.templates);
+    } catch (err) {
+      console.error('Erro ao carregar modelos:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleInsertTag = (tag: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      contentHtml: prev.contentHtml + ` {{${tag}}} `,
+    }));
+  };
+
+  const handleCreateTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao cadastrar modelo.');
+
+      setShowModal(false);
+      setFormData({
+        title: '',
+        category: 'Previdenciário',
+        documentType: 'CONTRATO',
+        contentHtml: '',
+        description: '',
+      });
+      fetchTemplates();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const standardTags = [
+    'cliente_nome',
+    'cliente_cpf',
+    'cliente_rg',
+    'cliente_endereco',
+    'cliente_estado_civil',
+    'cliente_profissao',
+    'advogado_nome',
+    'advogado_oab',
+    'escritorio_nome',
+    'valor_honorarios',
+    'percentual_exito',
+    'cidade',
+    'data_atual',
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-[#0B1D3D] tracking-tight">Modelos Jurídicos Próprios</h1>
+          <p className="text-sm text-slate-500 mt-1">Cadastre minutas com tags de preenchimento automático para reutilização em contratos e procurações.</p>
+        </div>
+
+        <button
+          onClick={() => setShowModal(true)}
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gold-500 hover:bg-gold-400 text-[#0B1D3D] font-bold rounded-xl shadow-sm text-sm transition-all"
+        >
+          <Plus className="w-4 h-4" />
+          Novo Modelo Jurídico
+        </button>
+      </div>
+
+      {/* Tabela de Modelos */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        {loading ? (
+          <div className="p-12 text-center text-slate-400 text-sm flex items-center justify-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin text-gold-500" />
+            Carregando modelos...
+          </div>
+        ) : templates.length === 0 ? (
+          <div className="p-12 text-center">
+            <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <p className="text-slate-700 font-bold text-base">Nenhum modelo cadastrado.</p>
+            <p className="text-xs text-slate-400 mt-1 mb-4">Crie modelos para automatizar o preenchimento dos contratos do escritório.</p>
+            <button
+              onClick={() => setShowModal(true)}
+              className="px-4 py-2 bg-gold-500 text-[#0B1D3D] font-bold rounded-xl text-xs inline-flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Cadastrar Primeiro Modelo
+            </button>
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 gap-4 p-6">
+            {templates.map((tpl) => (
+              <div key={tpl.id} className="p-5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-colors flex flex-col justify-between space-y-4">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold text-[10px] uppercase">
+                      {tpl.category}
+                    </span>
+                    <span className="text-[10px] text-slate-400">v{tpl.version}</span>
+                  </div>
+                  <h2 className="text-base font-bold text-[#0B1D3D] mt-2">{tpl.title}</h2>
+                  <p className="text-xs text-slate-600 line-clamp-3 mt-1 font-serif">
+                    {tpl.contentHtml.replace(/<[^>]*>/g, '')}
+                  </p>
+                </div>
+
+                <div className="pt-3 border-t border-slate-200 flex items-center justify-between text-xs">
+                  <span className="text-slate-400 font-medium">{tpl.documentType}</span>
+                  <button
+                    onClick={() => {
+                      setFormData({
+                        title: `${tpl.title} (Cópia)`,
+                        category: tpl.category,
+                        documentType: tpl.documentType,
+                        contentHtml: tpl.contentHtml,
+                        description: tpl.description || '',
+                      });
+                      setShowModal(true);
+                    }}
+                    className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 font-bold rounded-lg hover:bg-slate-100 flex items-center gap-1"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-gold-600" /> Duplicar Modelo
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Modal: Cadastro de Modelo */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-slate-200 relative my-8 overflow-y-auto max-h-[90vh]">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-gold-500" />
+                <h2 className="text-lg font-bold text-[#0B1D3D]">Novo Modelo Jurídico</h2>
+              </div>
+              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {error && (
+              <div className="mt-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateTemplate} className="mt-4 space-y-4 text-sm">
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Título do Modelo *</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    placeholder="Contrato de Honorários Previdenciário"
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-slate-800 focus:border-gold-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Área Jurídica *</label>
+                    <select
+                      value={formData.category}
+                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                      className="w-full p-2.5 border border-slate-300 rounded-xl text-slate-800 text-xs"
+                    >
+                      <option value="Previdenciário">Previdenciário</option>
+                      <option value="Trabalhista">Trabalhista</option>
+                      <option value="Família">Família</option>
+                      <option value="Cível">Cível</option>
+                      <option value="Empresarial">Empresarial</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Tipo de Doc. *</label>
+                    <select
+                      value={formData.documentType}
+                      onChange={(e) => setFormData({ ...formData, documentType: e.target.value })}
+                      className="w-full p-2.5 border border-slate-300 rounded-xl text-slate-800 text-xs"
+                    >
+                      <option value="CONTRATO">Contrato</option>
+                      <option value="PROCURACAO">Procuração</option>
+                      <option value="DECLARACAO">Declaração</option>
+                      <option value="TERMO">Termo</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Barra de Inserção de Tags Variáveis */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                  <Code className="w-4 h-4 text-gold-500" /> Inserir Tags Variáveis de Preenchimento Automático
+                </label>
+                <div className="flex flex-wrap gap-1.5 bg-slate-100 p-2.5 rounded-xl border border-slate-200">
+                  {standardTags.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => handleInsertTag(tag)}
+                      className="px-2.5 py-1 bg-white border border-slate-300 hover:border-gold-500 hover:text-gold-600 rounded-lg text-[11px] font-mono text-slate-700 font-semibold transition-colors"
+                    >
+                      {`{{${tag}}}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Texto do Modelo *</label>
+                <textarea
+                  rows={10}
+                  required
+                  value={formData.contentHtml}
+                  onChange={(e) => setFormData({ ...formData, contentHtml: e.target.value })}
+                  placeholder="Escreva a minuta usando as tags variáveis acima. Ex: Pelo presente instrumento, {{cliente_nome}}, CPF {{cliente_cpf}}..."
+                  className="w-full p-3 border border-slate-300 rounded-xl text-slate-800 font-serif text-sm focus:border-gold-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2.5 text-slate-600 font-semibold text-xs"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-6 py-2.5 bg-gold-500 hover:bg-gold-400 text-[#0B1D3D] font-bold rounded-xl shadow-sm text-xs transition-all flex items-center gap-2"
+                >
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                  Salvar Modelo Jurídico
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

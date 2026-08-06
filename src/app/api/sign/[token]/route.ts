@@ -1,0 +1,114 @@
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+
+export const dynamic = 'force-dynamic';
+
+export async function GET(
+  req: Request,
+  { params }: { params: { token: string } }
+) {
+  try {
+    const signer = await prisma.signer.findUnique({
+      where: { token: params.token },
+      include: {
+        document: {
+          include: {
+            office: {
+              select: {
+                id: true,
+                name: true,
+                tradeName: true,
+                logoUrl: true,
+                primaryColor: true,
+                secondaryColor: true,
+                phone: true,
+                email: true,
+                welcomeMessage: true,
+              },
+            },
+            signers: {
+              select: {
+                id: true,
+                name: true,
+                role: true,
+                status: true,
+                signatureOrder: true,
+              },
+              orderBy: { signatureOrder: 'asc' },
+            },
+          },
+        },
+      },
+    });
+
+    if (!signer || !signer.document) {
+      return NextResponse.json({ error: 'Link de assinatura inválido ou não encontrado.' }, { status: 404 });
+    }
+
+    const { document } = signer;
+
+    if (document.status === 'CANCELADO') {
+      return NextResponse.json({ error: 'Este documento foi cancelado pelo escritório responsável.' }, { status: 400 });
+    }
+
+    if (document.status === 'EXPIRADO') {
+      return NextResponse.json({ error: 'O prazo de validade deste link de assinatura expirou.' }, { status: 400 });
+    }
+
+    // Registrar evento de abertura do link (primeira visualização)
+    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '127.0.0.1';
+    const userAgent = req.headers.get('user-agent') || 'Mobile Browser';
+
+    if (signer.status === 'PENDENTE') {
+      await prisma.signer.update({
+        where: { id: signer.id },
+        data: { status: 'VISUALIZADO' },
+      });
+
+      if (document.status === 'ENVIADO') {
+        await prisma.document.update({
+          where: { id: document.id },
+          data: { status: 'VISUALIZADO' },
+        });
+      }
+
+      await prisma.documentEvent.create({
+        data: {
+          documentId: document.id,
+          signerId: signer.id,
+          eventType: 'LINK_OPENED',
+          description: `Link seguro aberto pelo signatário ${signer.name} (${signer.role}).`,
+          ipAddress: clientIp,
+          userAgent,
+        },
+      });
+    }
+
+    // Retorna payload público seguro (sem segredos de autenticação)
+    return NextResponse.json({
+      signer: {
+        id: signer.id,
+        name: signer.name,
+        cpf: signer.cpf,
+        email: signer.email,
+        phone: signer.phone,
+        role: signer.role,
+        status: signer.status,
+        signatureOrder: signer.signatureOrder,
+      },
+      office: document.office,
+      document: {
+        id: document.id,
+        title: document.title,
+        documentType: document.documentType,
+        customMessage: document.customMessage,
+        status: document.status,
+        originalHash: document.originalHash,
+        signers: document.signers,
+      },
+    });
+  } catch (error: any) {
+    console.error('Erro na rota pública de assinatura:', error);
+    return NextResponse.json({ error: 'Erro ao carregar documento para assinatura.' }, { status: 500 });
+  }
+}
