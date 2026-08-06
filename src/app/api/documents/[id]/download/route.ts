@@ -41,7 +41,9 @@ export async function GET(
       return NextResponse.json({ error: 'Arquivo não encontrado no armazenamento.' }, { status: 404 });
     }
 
-    return new NextResponse(fileBuffer, {
+    // Convertido para Uint8Array puro: o tipo Buffer<ArrayBufferLike> do Node
+    // não é aceito pelo tipo BodyInit do TypeScript ao rodar o build da Vercel.
+    return new NextResponse(new Uint8Array(fileBuffer), {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${encodeURIComponent(fileToServe.originalName)}"`,
