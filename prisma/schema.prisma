@@ -265,7 +265,19 @@ model Signer {
   signatureType    String?
   signatureImage   String?
   signedConsentText String?
-  
+
+  // Prova de presença ao vivo (3 selfies: centro, vira para um lado, vira para o outro)
+  selfieCenterImage String?
+  selfieLeftImage   String?
+  selfieRightImage  String?
+
+  // Geolocalização (best-effort, obtida no navegador do signatário)
+  geoLat           Float?
+  geoLng           Float?
+  geoAccuracy      Float?
+  geoCity          String?
+  geoState         String?
+
   signedAt         DateTime?
   ipAddress        String?
   userAgent        String?

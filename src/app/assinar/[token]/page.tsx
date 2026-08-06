@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ShieldCheck,
   Smartphone,
@@ -12,7 +12,10 @@ import {
   ArrowRight,
   Check,
   Edit3,
-  PenTool
+  PenTool,
+  Camera,
+  RotateCcw,
+  Eye
 } from 'lucide-react';
 
 interface SignerInfo {
@@ -35,8 +38,52 @@ interface DocumentInfo {
   signers: Array<{ name: string; role: string; status: string }>;
 }
 
+type SelfieKey = 'center' | 'left' | 'right';
+
+const LIVENESS_STEPS: Array<{ key: SelfieKey; label: string; instruction: string }> = [
+  { key: 'center', label: 'Centro', instruction: '👁️ Olhe para a câmera, de frente, sem se mexer…' },
+  { key: 'left', label: 'Lado 1', instruction: '↔️ Agora vire o rosto lentamente para um lado…' },
+  { key: 'right', label: 'Lado 2', instruction: '↔️ Agora vire para o lado oposto…' },
+];
+
+const NOSE_TIP_IDX = 1;
+const FACE_EDGE_A_IDX = 234;
+const FACE_EDGE_B_IDX = 454;
+const YAW_CENTER_MIN = 0.32;
+const YAW_CENTER_MAX = 0.68;
+const YAW_TURN_THRESHOLD = 0.065;
+const STEP_INITIAL_DELAY_CENTER_MS = 2200;
+const STEP_INITIAL_DELAY_TURN_MS = 4200;
+const STEP_RETRY_MS = 1500;
+const MAX_AUTO_RETRIES = 20;
+
+function computeYawRatio(landmarks: any[]): number | null {
+  const nose = landmarks[NOSE_TIP_IDX];
+  const edgeA = landmarks[FACE_EDGE_A_IDX];
+  const edgeB = landmarks[FACE_EDGE_B_IDX];
+  if (!nose || !edgeA || !edgeB) return null;
+  const span = edgeB.x - edgeA.x;
+  if (!span) return null;
+  return (nose.x - edgeA.x) / span;
+}
+
+function loadScriptOnce(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) {
+      resolve();
+      return;
+    }
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Falha ao carregar script de reconhecimento facial.'));
+    document.head.appendChild(s);
+  });
+}
+
 export default function MobileSignaturePage({ params }: { params: { token: string } }) {
-  const [step, setStep] = useState<'IDENTIFY' | 'OTP' | 'SIGN' | 'SUCCESS'>('IDENTIFY');
+  const [step, setStep] = useState<'IDENTIFY' | 'OTP' | 'SELFIE' | 'SIGN' | 'SUCCESS'>('IDENTIFY');
   const [signer, setSigner] = useState<SignerInfo | null>(null);
   const [document, setDocument] = useState<DocumentInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,14 +100,54 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [agreedConsent, setAgreedConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Canvas
+  // Canvas de assinatura
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
 
+  // Prova de presença ao vivo (3 selfies)
+  const [selfieImages, setSelfieImages] = useState<Record<SelfieKey, string | null>>({
+    center: null,
+    left: null,
+    right: null,
+  });
+  const [selfieStepIndex, setSelfieStepIndex] = useState(0);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [selfieStatus, setSelfieStatus] = useState(LIVENESS_STEPS[0].instruction);
+  const [capturingSelfie, setCapturingSelfie] = useState(false);
+  const [geo, setGeo] = useState<{ lat: number | null; lng: number | null; accuracy: number | null; city: string | null; state: string | null }>({
+    lat: null,
+    lng: null,
+    accuracy: null,
+    city: null,
+    state: null,
+  });
+
+  const selfieVideoRef = useRef<HTMLVideoElement | null>(null);
+  const selfieCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const faceMeshRef = useRef<any>(null);
+  const baselineYawRef = useRef<number | null>(null);
+  const centerSamplesRef = useRef<number[]>([]);
+  const turnSignRef = useRef<number>(0);
+  const stepIndexRef = useRef(0);
+  const capturingRef = useRef(false);
+  const stepTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const livenessLoopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoRetryRef = useRef(0);
+
   useEffect(() => {
     fetchSignatureData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.token]);
+
+  useEffect(() => {
+    // Garante que a câmera é liberada ao sair da etapa de selfies ou ao desmontar
+    return () => {
+      stopSelfieCamera();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchSignatureData = async () => {
     setLoading(true);
@@ -119,10 +206,262 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
     setError('');
-    setStep('SIGN');
+    setStep('SELFIE');
   };
 
-  // Funções do Canvas de Desenho
+  // ─────────────────────────────────────────────────────────────
+  // PROVA DE PRESENÇA AO VIVO — 3 SELFIES (CENTRO, LADO 1, LADO 2)
+  // ─────────────────────────────────────────────────────────────
+
+  const clearStepTimeout = () => {
+    if (stepTimeoutRef.current) {
+      clearTimeout(stepTimeoutRef.current);
+      stepTimeoutRef.current = null;
+    }
+  };
+
+  const scheduleStepTimeout = useCallback((source: string, delayMs: number) => {
+    clearStepTimeout();
+    stepTimeoutRef.current = setTimeout(async () => {
+      if (capturingRef.current || stepIndexRef.current >= LIVENESS_STEPS.length || !streamRef.current) return;
+      const success = await performCapture(source);
+      if (!success && stepIndexRef.current < LIVENESS_STEPS.length && streamRef.current) {
+        autoRetryRef.current += 1;
+        if (autoRetryRef.current <= MAX_AUTO_RETRIES) {
+          scheduleStepTimeout(source, STEP_RETRY_MS);
+        } else {
+          setSelfieStatus('Não conseguimos capturar automaticamente — use o botão abaixo para continuar manualmente.');
+        }
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, delayMs);
+  }, []);
+
+  const initFaceMesh = async () => {
+    if (faceMeshRef.current) return faceMeshRef.current;
+    try {
+      await loadScriptOnce('https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js');
+      const w = window as any;
+      if (!w.FaceMesh) return null;
+      const fm = new w.FaceMesh({
+        locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
+      });
+      fm.setOptions({ maxNumFaces: 1, refineLandmarks: false, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+      faceMeshRef.current = fm;
+      return fm;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleFaceMeshResults = (results: any) => {
+    if (capturingRef.current || stepIndexRef.current >= LIVENESS_STEPS.length) return;
+    const landmarks = results?.multiFaceLandmarks?.[0];
+    if (!landmarks) return;
+    const yaw = computeYawRatio(landmarks);
+    if (yaw === null) return;
+
+    if (stepIndexRef.current === 0) {
+      if (yaw >= YAW_CENTER_MIN && yaw <= YAW_CENTER_MAX) {
+        centerSamplesRef.current.push(yaw);
+        if (centerSamplesRef.current.length >= 3) {
+          baselineYawRef.current =
+            centerSamplesRef.current.reduce((a, b) => a + b, 0) / centerSamplesRef.current.length;
+          performCapture('centro-detectado');
+        }
+      } else {
+        centerSamplesRef.current = [];
+      }
+      return;
+    }
+
+    if (baselineYawRef.current === null) return;
+    const delta = yaw - baselineYawRef.current;
+
+    if (stepIndexRef.current === 1) {
+      if (Math.abs(delta) > YAW_TURN_THRESHOLD) {
+        turnSignRef.current = delta > 0 ? 1 : -1;
+        performCapture('virou-lado1');
+      }
+      return;
+    }
+
+    if (stepIndexRef.current === 2) {
+      if (turnSignRef.current !== 0 && delta * -turnSignRef.current > YAW_TURN_THRESHOLD) {
+        performCapture('virou-lado2');
+      }
+    }
+  };
+
+  const livenessLoop = async () => {
+    if (!streamRef.current || stepIndexRef.current >= LIVENESS_STEPS.length || capturingRef.current) return;
+    const video = selfieVideoRef.current;
+    const fm = faceMeshRef.current;
+    if (video && video.videoWidth && fm) {
+      try {
+        await fm.send({ image: video });
+      } catch {
+        /* ignora falha pontual de um frame */
+      }
+    }
+    if (streamRef.current && stepIndexRef.current < LIVENESS_STEPS.length && !capturingRef.current) {
+      livenessLoopRef.current = setTimeout(livenessLoop, 150);
+    }
+  };
+
+  const performCapture = async (source: string): Promise<boolean> => {
+    if (capturingRef.current || stepIndexRef.current >= LIVENESS_STEPS.length) return false;
+    const isManual = source === 'manual';
+    const video = selfieVideoRef.current;
+    const canvas = selfieCanvasRef.current;
+    if (!video || !canvas || !video.videoWidth) {
+      if (isManual) setError('Aguarde a câmera carregar.');
+      return false;
+    }
+
+    capturingRef.current = true;
+    setCapturingSelfie(true);
+    clearStepTimeout();
+
+    try {
+      const maxW = 640;
+      const scale = Math.min(1, maxW / video.videoWidth);
+      canvas.width = Math.round(video.videoWidth * scale);
+      canvas.height = Math.round(video.videoHeight * scale);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return false;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const pixels = imgData.data;
+      let totalBrightness = 0;
+      for (let i = 0; i < pixels.length; i += 16) {
+        totalBrightness += (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
+      }
+      const avgBrightness = totalBrightness / (pixels.length / 16);
+
+      if (avgBrightness < 28) {
+        setSelfieStatus('🔴 Foto muito escura. Acenda a luz e tente novamente.');
+        if (isManual) setError('Foto muito escura. Acenda a luz!');
+        return false;
+      }
+      if (avgBrightness > 245) {
+        setSelfieStatus('🔴 Excesso de luz. Afaste-se da lâmpada e tente novamente.');
+        if (isManual) setError('Excesso de luz direta. Afaste-se da lâmpada!');
+        return false;
+      }
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      const stepKey = LIVENESS_STEPS[stepIndexRef.current].key;
+      setSelfieImages((prev) => ({ ...prev, [stepKey]: dataUrl }));
+
+      stepIndexRef.current += 1;
+      setSelfieStepIndex(stepIndexRef.current);
+      autoRetryRef.current = 0;
+
+      if (stepIndexRef.current >= LIVENESS_STEPS.length) {
+        setSelfieStatus('✅ Prova de presença concluída! Confira as fotos abaixo.');
+        stopSelfieCamera();
+      } else {
+        setSelfieStatus(LIVENESS_STEPS[stepIndexRef.current].instruction);
+        scheduleStepTimeout(
+          stepIndexRef.current === 1 ? 'lado1-tempo' : 'lado2-tempo',
+          STEP_INITIAL_DELAY_TURN_MS
+        );
+      }
+      return true;
+    } finally {
+      capturingRef.current = false;
+      setCapturingSelfie(false);
+    }
+  };
+
+  const requestGeolocation = () => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude, accuracy } = pos.coords;
+        setGeo((prev) => ({ ...prev, lat: latitude, lng: longitude, accuracy }));
+        try {
+          const res = await fetch(
+            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=pt`
+          );
+          const data = await res.json();
+          setGeo((prev) => ({
+            ...prev,
+            city: data.city || data.locality || null,
+            state: data.principalSubdivision || null,
+          }));
+        } catch {
+          /* geocodificação é apenas complementar, segue sem cidade/estado */
+        }
+      },
+      () => {
+        /* usuário negou permissão ou localização indisponível — segue sem geolocalização */
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
+
+  const startSelfieCamera = async () => {
+    setError('');
+    try {
+      stopSelfieCamera();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (selfieVideoRef.current) {
+        selfieVideoRef.current.srcObject = stream;
+        await selfieVideoRef.current.play();
+      }
+      setCameraActive(true);
+
+      stepIndexRef.current = 0;
+      setSelfieStepIndex(0);
+      baselineYawRef.current = null;
+      centerSamplesRef.current = [];
+      turnSignRef.current = 0;
+      autoRetryRef.current = 0;
+      setSelfieImages({ center: null, left: null, right: null });
+      setSelfieStatus(LIVENESS_STEPS[0].instruction);
+
+      const fm = await initFaceMesh();
+      if (fm) {
+        fm.onResults(handleFaceMeshResults);
+        livenessLoop();
+      }
+      scheduleStepTimeout('centro-tempo', STEP_INITIAL_DELAY_CENTER_MS);
+
+      requestGeolocation();
+    } catch {
+      setError('Não foi possível acessar a câmera frontal. Verifique a permissão do navegador.');
+    }
+  };
+
+  const stopSelfieCamera = () => {
+    clearStepTimeout();
+    if (livenessLoopRef.current) {
+      clearTimeout(livenessLoopRef.current);
+      livenessLoopRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setCameraActive(false);
+  };
+
+  const retakeSelfies = () => {
+    startSelfieCamera();
+  };
+
+  const selfieComplete = Boolean(selfieImages.center && selfieImages.left && selfieImages.right);
+
+  // ─────────────────────────────────────────────────────────────
+  // Funções do Canvas de Desenho (assinatura)
+  // ─────────────────────────────────────────────────────────────
   const startDrawing = (e: any) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -173,6 +512,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const handleSubmitSignature = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!selfieComplete) {
+      setError('Conclua a prova de presença com as 3 fotos antes de assinar.');
+      return;
+    }
+
     if (signatureMode === 'DESENHADA' && !hasDrawn) {
       setError('Por favor, desenhe sua assinatura no quadro.');
       return;
@@ -205,7 +549,15 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           otpCode,
           signatureType: signatureMode,
           signatureImage,
-          signedConsentText: `Declaro que li e concordo com os termos de ${document?.title || 'documento'}.`,
+          signedConsentText: `Declaro que li e concordo com os termos do documento ${document?.title || 'documento'}, autorizo minha assinatura eletrônica e a captura das fotos de prova de presença ao vivo, nos termos da MP 2.200-2/2001 e Lei 14.063/2020.`,
+          selfieCenterImage: selfieImages.center,
+          selfieLeftImage: selfieImages.left,
+          selfieRightImage: selfieImages.right,
+          geoLat: geo.lat,
+          geoLng: geo.lng,
+          geoAccuracy: geo.accuracy,
+          geoCity: geo.city,
+          geoState: geo.state,
         }),
       });
 
@@ -359,13 +711,124 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           </div>
         )}
 
-        {/* PASSO 3: Quadro de Assinatura (Desenho ou Nome Digitado) */}
+        {/* PASSO 3: Prova de Presença ao Vivo (3 Selfies) */}
+        {step === 'SELFIE' && (
+          <div className="bg-[#132A54]/90 p-6 rounded-2xl border border-emerald-500/30 shadow-2xl space-y-5">
+            <div className="text-center space-y-1">
+              <div className="w-12 h-12 bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto">
+                <Eye className="w-6 h-6" />
+              </div>
+              <h2 className="text-base font-extrabold text-white">🤳 Prova de Presença ao Vivo</h2>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Olhe para a câmera e, quando indicado, vire o rosto lentamente para um lado e depois para o
+                outro — o sistema captura 3 fotos sozinho, acompanhando o movimento.
+              </p>
+            </div>
+
+            {!cameraActive && !selfieComplete && (
+              <button
+                type="button"
+                onClick={startSelfieCamera}
+                className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-[#0B1D3D] font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm"
+              >
+                <Camera className="w-4 h-4" /> Abrir Câmera
+              </button>
+            )}
+
+            {cameraActive && (
+              <div className="space-y-3">
+                <div className="relative rounded-xl overflow-hidden border-2 border-emerald-500 bg-black aspect-[4/3]">
+                  <video
+                    ref={selfieVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover"
+                    style={{ transform: 'scaleX(-1)' }}
+                  />
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-emerald-300 text-[11px] font-semibold text-center py-2 px-3">
+                    {selfieStatus}
+                  </div>
+                </div>
+
+                <div className="flex justify-center gap-2">
+                  {LIVENESS_STEPS.map((s, idx) => (
+                    <span
+                      key={s.key}
+                      className={`w-2.5 h-2.5 rounded-full ${
+                        idx < selfieStepIndex ? 'bg-emerald-400' : 'bg-slate-600'
+                      }`}
+                    />
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => performCapture('manual')}
+                  disabled={capturingSelfie}
+                  className="w-full py-2.5 bg-[#0B1D3D] border border-emerald-500/40 text-emerald-300 font-bold rounded-xl text-xs flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  📸 Capturar etapa atual (manual)
+                </button>
+              </div>
+            )}
+
+            {selfieComplete && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-2">
+                  {LIVENESS_STEPS.map((s) => (
+                    <div key={s.key} className="space-y-1">
+                      <div className="rounded-lg overflow-hidden border border-emerald-500/40 aspect-square bg-black">
+                        {selfieImages[s.key] && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={selfieImages[s.key] as string}
+                            alt={s.label}
+                            className="w-full h-full object-cover"
+                            style={{ transform: 'scaleX(-1)' }}
+                          />
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-400 text-center">{s.label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={retakeSelfies}
+                  className="w-full py-2 text-slate-400 hover:text-white font-semibold text-xs flex items-center justify-center gap-2"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> Tirar outra foto
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStep('SIGN')}
+                  className="w-full py-3.5 bg-gold-500 hover:bg-gold-400 text-[#0B1D3D] font-extrabold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm"
+                >
+                  Continuar para Assinatura <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            <canvas ref={selfieCanvasRef} className="hidden" />
+          </div>
+        )}
+
+        {/* PASSO 4: Quadro de Assinatura (Desenho ou Nome Digitado) */}
         {step === 'SIGN' && (
           <form onSubmit={handleSubmitSignature} className="bg-[#132A54]/90 p-6 rounded-2xl border border-white/10 shadow-2xl space-y-5">
             <div className="text-center space-y-1">
               <h2 className="text-base font-extrabold text-white">Sua Assinatura Eletrônica</h2>
               <p className="text-xs text-slate-300">Escolha o formato e assine no quadro abaixo.</p>
             </div>
+
+            {selfieComplete && (
+              <div className="flex items-center gap-2 justify-center text-[11px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-lg py-2 px-3">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Prova de presença ao vivo registrada
+              </div>
+            )}
 
             <div className="flex bg-[#0B1D3D] p-1 rounded-xl border border-slate-700 text-xs">
               <button
@@ -431,7 +894,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 className="w-4 h-4 text-gold-500 rounded border-slate-600 mt-0.5"
               />
               <span className="leading-snug">
-                Declaro que li e concordo com os termos do documento <strong>{document?.title}</strong> e autorizo minha assinatura eletrônica nos termos da MP 2.200-2/2001 e Lei 14.063/2020.
+                Declaro que li e concordo com os termos do documento <strong>{document?.title}</strong>, autorizo
+                minha assinatura eletrônica e a captura das fotos de prova de presença ao vivo, nos termos da MP
+                2.200-2/2001 e Lei 14.063/2020.
               </span>
             </label>
 

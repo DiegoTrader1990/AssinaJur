@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { maskCpf } from '@/lib/pdfCertificate';
+import { maskCpf, maskPhone } from '@/lib/pdfCertificate';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,12 +25,20 @@ export async function GET(
             id: true,
             name: true,
             cpf: true,
+            phone: true,
             role: true,
             status: true,
             signedAt: true,
             signatureType: true,
+            selfieCenterImage: true,
+            geoCity: true,
+            geoState: true,
           },
           orderBy: { signatureOrder: 'asc' },
+        },
+        events: {
+          select: { eventType: true, description: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
         },
       },
     });
@@ -39,14 +47,29 @@ export async function GET(
       return NextResponse.json({ error: 'Código de verificação de autenticidade não encontrado.' }, { status: 404 });
     }
 
-    // Mascaramento de dados em conformidade com a LGPD
+    // Mascaramento de dados em conformidade com a LGPD — a página pública nunca expõe
+    // CPF completo, telefone completo, fotos de selfie ou coordenadas exatas de
+    // geolocalização (isso fica reservado ao certificado em PDF, de posse do escritório
+    // e do próprio signatário).
     const maskedSigners = document.signers.map((s) => ({
       name: s.name,
       role: s.role,
       maskedCpf: maskCpf(s.cpf),
+      maskedPhone: maskPhone(s.phone),
       status: s.status,
       signedAt: s.signedAt,
       signatureType: s.signatureType,
+      livenessVerified: Boolean(s.selfieCenterImage),
+      approximateLocation:
+        s.geoCity || s.geoState
+          ? `${s.geoCity || ''}${s.geoCity && s.geoState ? '/' : ''}${s.geoState || ''}`
+          : null,
+    }));
+
+    const auditTrail = document.events.map((ev) => ({
+      eventType: ev.eventType,
+      description: ev.description,
+      createdAt: ev.createdAt,
     }));
 
     return NextResponse.json({
@@ -61,6 +84,7 @@ export async function GET(
       signedHash: document.signedHash,
       office: document.office,
       signers: maskedSigners,
+      auditTrail,
     });
   } catch (error: any) {
     console.error('Erro na verificação pública de autenticidade:', error);

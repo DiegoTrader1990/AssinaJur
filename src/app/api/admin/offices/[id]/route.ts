@@ -1,12 +1,30 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import { verifyToken } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
+
+const ADMIN_COOKIE_NAME = 'assinajur_admin_token';
+
+function verifyAdminSession() {
+  const cookieStore = cookies();
+  const token = cookieStore.get(ADMIN_COOKIE_NAME)?.value;
+  if (!token) return null;
+  const payload = verifyToken(token);
+  if (!payload || payload.officeId !== 'PLATFORM_SUPER_ADMIN') return null;
+  return payload;
+}
 
 export async function PUT(
   req: Request,
   { params }: { params: { id: string } }
 ) {
+  const admin = verifyAdminSession();
+  if (!admin) {
+    return NextResponse.json({ error: 'Acesso não autorizado.' }, { status: 401 });
+  }
+
   try {
     const body = await req.json();
     const { plan, planStatus, monthlyDocLimit, maxUsersLimit, additionalCredits } = body;

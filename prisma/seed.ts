@@ -11,14 +11,14 @@ async function main() {
 
   // 1. Criar ou Atualizar Super Admin da Plataforma AssinaJur
   const platformAdmin = await prisma.platformUser.upsert({
-    where: { email: 'admin@assinajur.com.br' },
+    where: { email: 'diegocrs.adv@gmail.com' },
     update: {
       name: 'Diego - Super Admin AssinaJur',
       passwordHash: userPasswordHash,
     },
     create: {
       name: 'Diego - Super Admin AssinaJur',
-      email: 'admin@assinajur.com.br',
+      email: 'diegocrs.adv@gmail.com',
       passwordHash: userPasswordHash,
     },
   });
@@ -60,7 +60,7 @@ async function main() {
 
   // 3. Atualizar ou Criar Usuário Advogado (Diego)
   const adminUser = await prisma.user.upsert({
-    where: { email: 'diego@rodriguessoares.adv.br' },
+    where: { email: 'diegocrs.adv@gmail.com' },
     update: {
       name: 'Diego Rodrigues',
       passwordHash: userPasswordHash,
@@ -69,7 +69,7 @@ async function main() {
     create: {
       officeId: office.id,
       name: 'Diego Rodrigues',
-      email: 'diego@rodriguessoares.adv.br',
+      email: 'diegocrs.adv@gmail.com',
       passwordHash: userPasswordHash,
       role: 'OFFICE_ADMIN',
       oabNumber: 'OAB/SP 123.456',
@@ -171,8 +171,8 @@ async function main() {
   }
 
   console.log('✅ Atualização de Senhas Concluída!');
-  console.log(`- Usuário Escritório: diego@rodriguessoares.adv.br / Senha: Cemav@123`);
-  console.log(`- Super Admin: admin@assinajur.com.br / Senha: Cemav@123`);
+  console.log(`- Usuário Escritório: diegocrs.adv@gmail.com / Senha: Cemav@123`);
+  console.log(`- Super Admin: diegocrs.adv@gmail.com / Senha: Cemav@123`);
 }
 
 main()

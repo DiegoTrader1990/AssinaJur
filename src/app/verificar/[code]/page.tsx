@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ShieldCheck, CheckCircle2, AlertCircle, FileText, Building2, Lock, ArrowLeft, Loader2, Award } from 'lucide-react';
+import { ShieldCheck, CheckCircle2, AlertCircle, FileText, Building2, Lock, ArrowLeft, Loader2, Award, MapPin, Eye, Clock } from 'lucide-react';
 
 interface VerificationResult {
   valid: boolean;
@@ -24,11 +24,30 @@ interface VerificationResult {
     name: string;
     role: string;
     maskedCpf: string;
+    maskedPhone?: string | null;
     status: string;
     signedAt?: string;
     signatureType?: string;
+    livenessVerified?: boolean;
+    approximateLocation?: string | null;
+  }>;
+  auditTrail: Array<{
+    eventType: string;
+    description: string;
+    createdAt: string;
   }>;
 }
+
+const EVENT_LABELS: Record<string, string> = {
+  DOCUMENT_CREATED: 'Documento criado',
+  LINK_SENT: 'Link enviado',
+  LINK_OPENED: 'Link acessado',
+  OTP_SENT: 'Código OTP enviado',
+  LIVENESS_CAPTURED: 'Prova de presença capturada',
+  SIGNATURE_SUBMITTED: 'Assinatura concluída',
+  DOCUMENT_COMPLETED: 'Documento finalizado',
+  DOCUMENT_CANCELLED: 'Documento cancelado',
+};
 
 export default function VerificationResultPage({ params }: { params: { code: string } }) {
   const [data, setData] = useState<VerificationResult | null>(null);
@@ -173,9 +192,20 @@ export default function VerificationResultPage({ params }: { params: { code: str
           <div className="space-y-3">
             {data.signers.map((s, idx) => (
               <div key={idx} className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <div>
+                <div className="space-y-1">
                   <div className="font-bold text-slate-900 text-sm">{s.name} <span className="text-slate-500 font-normal">({s.role})</span></div>
-                  <div className="text-slate-500 font-mono mt-0.5">CPF: {s.maskedCpf}</div>
+                  <div className="text-slate-500 font-mono">CPF: {s.maskedCpf}</div>
+                  {s.maskedPhone && <div className="text-slate-500 font-mono">Telefone: {s.maskedPhone}</div>}
+                  {s.approximateLocation && (
+                    <div className="text-slate-500 flex items-center gap-1">
+                      <MapPin className="w-3 h-3" /> {s.approximateLocation}
+                    </div>
+                  )}
+                  {s.livenessVerified && (
+                    <div className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
+                      <Eye className="w-3 h-3" /> Prova de presença ao vivo registrada (3 selfies)
+                    </div>
+                  )}
                   {s.signedAt && (
                     <div className="text-[11px] text-emerald-600 font-semibold mt-1">
                       Assinado em {new Date(s.signedAt).toLocaleString('pt-BR')} (UTC)
@@ -210,6 +240,56 @@ export default function VerificationResultPage({ params }: { params: { code: str
             )}
           </div>
         </div>
+
+        {/* Verificações Realizadas Agora */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+          <h3 className="text-xs font-bold text-[#0B1D3D] uppercase tracking-wider">Verificações Realizadas Agora</h3>
+          <ul className="space-y-2 text-xs text-slate-700">
+            <li className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" /> Código de autenticidade localizado no banco de dados
+            </li>
+            <li className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" /> Hash SHA-256 do documento original conferido
+            </li>
+            <li className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" /> Assinaturas de todos os signatários registradas e íntegras
+            </li>
+          </ul>
+        </div>
+
+        {/* Trilha de Eventos */}
+        {data.auditTrail?.length > 0 && (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+            <div className="flex items-center gap-2 text-[#0B1D3D] font-bold text-sm border-b border-slate-100 pb-3">
+              <Clock className="w-5 h-5 text-gold-500" />
+              <span>Trilha de Eventos do Documento</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-slate-400 uppercase text-[10px] border-b border-slate-100">
+                    <th className="py-2 pr-3 font-semibold">Data e Hora (UTC)</th>
+                    <th className="py-2 pr-3 font-semibold">Evento</th>
+                    <th className="py-2 font-semibold">Descrição</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.auditTrail.map((ev, idx) => (
+                    <tr key={idx} className="border-b border-slate-50 last:border-0">
+                      <td className="py-2 pr-3 font-mono text-slate-600 whitespace-nowrap">
+                        {new Date(ev.createdAt).toLocaleString('pt-BR')}
+                      </td>
+                      <td className="py-2 pr-3 font-bold text-[#0B1D3D] whitespace-nowrap">
+                        {EVENT_LABELS[ev.eventType] || ev.eventType}
+                      </td>
+                      <td className="py-2 text-slate-600">{ev.description}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Selo de Conformidade Normativa */}
         <div className="p-4 bg-navy-50 border border-gold-500/30 rounded-2xl text-xs text-[#0B1D3D] flex items-center gap-3">

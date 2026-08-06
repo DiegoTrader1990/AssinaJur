@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Building2,
   Users,
@@ -38,8 +39,10 @@ interface OfficeAdminItem {
 }
 
 export default function SuperAdminDashboardPage() {
+  const router = useRouter();
   const [offices, setOffices] = useState<OfficeAdminItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedOffice, setSelectedOffice] = useState<OfficeAdminItem | null>(null);
 
@@ -62,8 +65,13 @@ export default function SuperAdminDashboardPage() {
     setLoading(true);
     try {
       const res = await fetch('/api/admin/offices');
+      if (res.status === 401) {
+        router.push('/admin/login');
+        return;
+      }
       const data = await res.json();
       if (data.offices) setOffices(data.offices);
+      setAuthenticated(true);
     } catch (err) {
       console.error('Erro ao carregar escritórios:', err);
     } finally {

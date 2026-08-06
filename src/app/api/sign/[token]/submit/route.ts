@@ -11,7 +11,21 @@ export async function POST(
 ) {
   try {
     const body = await req.json();
-    const { confirmCpf, otpCode, signatureType, signatureImage, signedConsentText } = body;
+    const {
+      confirmCpf,
+      otpCode,
+      signatureType,
+      signatureImage,
+      signedConsentText,
+      selfieCenterImage,
+      selfieLeftImage,
+      selfieRightImage,
+      geoLat,
+      geoLng,
+      geoAccuracy,
+      geoCity,
+      geoState,
+    } = body;
 
     const signer = await prisma.signer.findUnique({
       where: { token: params.token },
@@ -56,6 +70,14 @@ export async function POST(
       );
     }
 
+    // 2.1 Validação da Prova de Presença ao Vivo (3 selfies obrigatórias)
+    if (!selfieCenterImage || !selfieLeftImage || !selfieRightImage) {
+      return NextResponse.json(
+        { error: 'É necessário concluir a prova de presença ao vivo (3 fotos) antes de assinar.' },
+        { status: 400 }
+      );
+    }
+
     // 3. Captura do Endereço IP e Dispositivo
     const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '127.0.0.1';
     const userAgent = req.headers.get('user-agent') || 'Mobile Browser';
@@ -68,6 +90,14 @@ export async function POST(
         signatureType: signatureType || 'DESENHADA',
         signatureImage: signatureImage || null,
         signedConsentText: signedConsentText || 'Declaro que li os documentos, concordo com seu conteúdo e reconheço esta manifestação como minha assinatura eletrônica.',
+        selfieCenterImage,
+        selfieLeftImage,
+        selfieRightImage,
+        geoLat: typeof geoLat === 'number' ? geoLat : null,
+        geoLng: typeof geoLng === 'number' ? geoLng : null,
+        geoAccuracy: typeof geoAccuracy === 'number' ? geoAccuracy : null,
+        geoCity: geoCity || null,
+        geoState: geoState || null,
         signedAt: new Date(),
         ipAddress: clientIp,
         userAgent,
@@ -94,6 +124,23 @@ export async function POST(
     });
 
     // 6. Registros de Trilha de Auditoria
+    await prisma.documentEvent.create({
+      data: {
+        documentId: signer.document.id,
+        signerId: signer.id,
+        eventType: 'LIVENESS_CAPTURED',
+        description: `Prova de presença ao vivo capturada (3 fotos: centro, lado 1 e lado 2) para ${signer.name}.`,
+        ipAddress: clientIp,
+        userAgent,
+        metadata: JSON.stringify({
+          geoLat: typeof geoLat === 'number' ? geoLat : null,
+          geoLng: typeof geoLng === 'number' ? geoLng : null,
+          geoCity: geoCity || null,
+          geoState: geoState || null,
+        }),
+      },
+    });
+
     await prisma.documentEvent.create({
       data: {
         documentId: signer.document.id,
