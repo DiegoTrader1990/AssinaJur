@@ -735,43 +735,45 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </button>
             )}
 
-            {cameraActive && (
-              <div className="space-y-3">
-                <div className="relative rounded-xl overflow-hidden border-2 border-emerald-500 bg-black aspect-[4/3]">
-                  <video
-                    ref={selfieVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full h-full object-cover"
-                    style={{ transform: 'scaleX(-1)' }}
-                  />
-                  <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-emerald-300 text-[11px] font-semibold text-center py-2 px-3">
-                    {selfieStatus}
-                  </div>
+            {/* O <video> fica sempre montado no DOM (mesmo antes de abrir a câmera) para que
+                a ref já exista quando startSelfieCamera() tenta atribuir o stream — se ele só
+                fosse montado depois de cameraActive virar true, o stream não teria onde ser
+                anexado e a prévia ficaria preta mesmo com a permissão concedida. */}
+            <div className={cameraActive ? 'space-y-3' : 'hidden'}>
+              <div className="relative rounded-xl overflow-hidden border-2 border-emerald-500 bg-black aspect-[4/3]">
+                <video
+                  ref={selfieVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                  style={{ transform: 'scaleX(-1)' }}
+                />
+                <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-emerald-300 text-[11px] font-semibold text-center py-2 px-3">
+                  {selfieStatus}
                 </div>
-
-                <div className="flex justify-center gap-2">
-                  {LIVENESS_STEPS.map((s, idx) => (
-                    <span
-                      key={s.key}
-                      className={`w-2.5 h-2.5 rounded-full ${
-                        idx < selfieStepIndex ? 'bg-emerald-400' : 'bg-slate-600'
-                      }`}
-                    />
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => performCapture('manual')}
-                  disabled={capturingSelfie}
-                  className="w-full py-2.5 bg-[#0B1D3D] border border-emerald-500/40 text-emerald-300 font-bold rounded-xl text-xs flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  📸 Capturar etapa atual (manual)
-                </button>
               </div>
-            )}
+
+              <div className="flex justify-center gap-2">
+                {LIVENESS_STEPS.map((s, idx) => (
+                  <span
+                    key={s.key}
+                    className={`w-2.5 h-2.5 rounded-full ${
+                      idx < selfieStepIndex ? 'bg-emerald-400' : 'bg-slate-600'
+                    }`}
+                  />
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => performCapture('manual')}
+                disabled={capturingSelfie}
+                className="w-full py-2.5 bg-[#0B1D3D] border border-emerald-500/40 text-emerald-300 font-bold rounded-xl text-xs flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                📸 Capturar etapa atual (manual)
+              </button>
+            </div>
 
             {selfieComplete && (
               <div className="space-y-4">
