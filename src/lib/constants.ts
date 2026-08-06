@@ -14,6 +14,12 @@ export const DEFAULT_WHATSAPP_MESSAGE =
 export const SOLO_PLAN_WHATSAPP_MESSAGE =
   'Olá! Quero contratar o Plano Solo do AssinaJur por R$ 39,90 mensais.';
 
+export const PRO_PLAN_WHATSAPP_MESSAGE =
+  'Olá! Quero conhecer o Plano Profissional do AssinaJur por R$ 69,90 mensais.';
+
+export const OFFICE_PLAN_WHATSAPP_MESSAGE =
+  'Olá! Quero conhecer o Plano Escritório do AssinaJur por R$ 99,90 mensais.';
+
 export const ENTERPRISE_WHATSAPP_MESSAGE =
   'Olá! Gostaria de conhecer as opções do AssinaJur para um escritório com mais usuários ou maior volume de pacotes.';
 
@@ -28,7 +34,7 @@ export function getWhatsAppLink(message: string = DEFAULT_WHATSAPP_MESSAGE): str
 /**
  * Controle de exibição dos planos na landing page.
  * 
- * false = Exibe os planos oficiais vigentes (Teste Gratuito R$ 0 + Plano Solo R$ 39,90/mês)
+ * false = Exibe os planos oficiais vigentes (4 planos: Teste + Solo + Profissional + Escritório)
  * true  = Exibe os planos legados (R$ 59 / R$ 149 / R$ 299)
  */
 export const SHOW_LEGACY_PLANS = false;
