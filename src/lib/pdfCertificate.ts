@@ -114,7 +114,7 @@ const EVENT_LABELS: Record<string, string> = {
   DOCUMENT_CREATED: 'Documento criado e enviado para assinatura',
   LINK_SENT: 'Link de assinatura enviado',
   LINK_OPENED: 'Link de assinatura acessado pelo signatário',
-  OTP_SENT: 'Código de verificação (OTP) enviado',
+  IDENTITY_CONFIRMED: 'CPF confirmado pelo signatário',
   LIVENESS_CAPTURED: 'Prova de presença ao vivo capturada (3 selfies)',
   SIGNATURE_SUBMITTED: 'Assinatura eletrônica concluída',
   DOCUMENT_COMPLETED: 'Todas as assinaturas concluídas — documento finalizado',
@@ -400,7 +400,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     }
 
     fieldLabel(col2X, pTop - 118, 'Método de autenticação');
-    fieldValue(col2X, pTop - 129, 'CPF + código OTP + prova de presença ao vivo (3 selfies)', { size: 7.6, max: 46 });
+    fieldValue(col2X, pTop - 129, 'CPF + prova de presença ao vivo (3 selfies) + geolocalização', { size: 7.6, max: 46 });
 
     // Assinatura gráfica (se desenhada)
     if (signer.signatureImage && signer.signatureImage.startsWith('data:image/png;base64,')) {

@@ -3,6 +3,11 @@ import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
+// Confirma que o CPF informado corresponde ao signatário do link, antes de liberar a
+// etapa de prova de presença (selfies). Não envolve mais código OTP: o link já é
+// individual e único por signatário, e a prova de presença com 3 selfies + geolocalização
+// + IP é um fator de autenticação mais forte do que um código que, no fluxo anterior,
+// nunca chegava a ser efetivamente entregue ao signatário por e-mail/SMS.
 export async function POST(
   req: Request,
   { params }: { params: { token: string } }
@@ -35,18 +40,6 @@ export async function POST(
       return NextResponse.json({ error: 'O CPF informado não corresponde ao cadastrado para este signatário.' }, { status: 400 });
     }
 
-    // Gerar código OTP numérico real de 6 dígitos
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos de validade
-
-    await prisma.signer.update({
-      where: { id: signer.id },
-      data: {
-        otpCode,
-        otpExpiresAt,
-      },
-    });
-
     const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '127.0.0.1';
     const userAgent = req.headers.get('user-agent') || 'Navegador Mobile';
 
@@ -54,20 +47,16 @@ export async function POST(
       data: {
         documentId: signer.document.id,
         signerId: signer.id,
-        eventType: 'OTP_SENT',
-        description: `Código de verificação OTP gerado e enviado para o signatário ${signer.name}.`,
+        eventType: 'IDENTITY_CONFIRMED',
+        description: `CPF confirmado pelo signatário ${signer.name}. Liberada a etapa de prova de presença.`,
         ipAddress: clientIp,
         userAgent,
       },
     });
 
-    return NextResponse.json({
-      success: true,
-      message: 'Código de verificação de 6 dígitos gerado e enviado com sucesso.',
-      otpCodeSent: true,
-    });
+    return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error('Erro ao solicitar OTP:', error);
-    return NextResponse.json({ error: 'Erro ao gerar código de verificação OTP.' }, { status: 500 });
+    console.error('Erro ao confirmar identidade:', error);
+    return NextResponse.json({ error: 'Erro ao confirmar identidade.' }, { status: 500 });
   }
 }

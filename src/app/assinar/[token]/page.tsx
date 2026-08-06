@@ -3,14 +3,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ShieldCheck,
-  Smartphone,
   Lock,
   CheckCircle2,
   FileText,
   AlertCircle,
   Loader2,
   ArrowRight,
-  Check,
   Edit3,
   PenTool,
   Camera,
@@ -83,16 +81,15 @@ function loadScriptOnce(src: string): Promise<void> {
 }
 
 export default function MobileSignaturePage({ params }: { params: { token: string } }) {
-  const [step, setStep] = useState<'IDENTIFY' | 'OTP' | 'SELFIE' | 'SIGN' | 'SUCCESS'>('IDENTIFY');
+  const [step, setStep] = useState<'IDENTIFY' | 'SELFIE' | 'SIGN' | 'SUCCESS'>('IDENTIFY');
   const [signer, setSigner] = useState<SignerInfo | null>(null);
   const [document, setDocument] = useState<DocumentInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Formulário de CPF e OTP
+  // Formulário de CPF
   const [cpf, setCpf] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [requestingOtp, setRequestingOtp] = useState(false);
+  const [confirmingCpf, setConfirmingCpf] = useState(false);
 
   // Termos e Assinatura
   const [signatureMode, setSignatureMode] = useState<'DESENHADA' | 'DIGITADA'>('DESENHADA');
@@ -174,15 +171,15 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
   };
 
-  const handleRequestOtp = async (e: React.FormEvent) => {
+  const handleConfirmCpf = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cpf) return;
 
-    setRequestingOtp(true);
+    setConfirmingCpf(true);
     setError('');
 
     try {
-      const res = await fetch(`/api/sign/${params.token}/request-otp`, {
+      const res = await fetch(`/api/sign/${params.token}/confirm-identity`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cpf }),
@@ -191,22 +188,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao autenticar CPF.');
 
-      setStep('OTP');
+      setStep('SELFIE');
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setRequestingOtp(false);
+      setConfirmingCpf(false);
     }
-  };
-
-  const handleVerifyOtp = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otpCode) {
-      setError('Digite o código de verificação recebido.');
-      return;
-    }
-    setError('');
-    setStep('SELFIE');
   };
 
   // ─────────────────────────────────────────────────────────────
@@ -546,7 +533,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           confirmCpf: cpf || signer?.cpf,
-          otpCode,
           signatureType: signatureMode,
           signatureImage,
           signedConsentText: `Declaro que li e concordo com os termos do documento ${document?.title || 'documento'}, autorizo minha assinatura eletrônica e a captura das fotos de prova de presença ao vivo, nos termos da MP 2.200-2/2001 e Lei 14.063/2020.`,
@@ -641,7 +627,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </p>
             </div>
 
-            <form onSubmit={handleRequestOtp} className="space-y-4">
+            <form onSubmit={handleConfirmCpf} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">Seu CPF *</label>
                 <input
@@ -656,56 +642,19 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
               <button
                 type="submit"
-                disabled={requestingOtp}
+                disabled={confirmingCpf}
                 className="w-full py-3.5 bg-gold-500 hover:bg-gold-400 text-[#0B1D3D] font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50"
               >
-                {requestingOtp ? (
+                {confirmingCpf ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" /> Confirmando CPF...
                   </>
                 ) : (
                   <>
-                    Continuar para Código de Verificação
+                    Continuar para Prova de Presença
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* PASSO 2: Código OTP */}
-        {step === 'OTP' && (
-          <div className="bg-[#132A54]/90 p-6 rounded-2xl border border-white/10 shadow-2xl space-y-6">
-            <div className="text-center space-y-2">
-              <div className="w-12 h-12 bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto">
-                <Smartphone className="w-6 h-6" />
-              </div>
-              <h2 className="text-lg font-extrabold text-white">Código de Verificação OTP</h2>
-              <p className="text-xs text-slate-300">
-                Digite o código de 6 dígitos para liberar a assinatura do documento.
-              </p>
-            </div>
-
-            <form onSubmit={handleVerifyOtp} className="space-y-4">
-              <div>
-                <input
-                  type="text"
-                  maxLength={6}
-                  required
-                  value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value)}
-                  placeholder="Código de 6 dígitos"
-                  className="w-full bg-[#0B1D3D] border border-slate-600 focus:border-gold-500 rounded-xl py-3 px-4 text-center font-mono text-2xl tracking-widest text-white placeholder-slate-500 focus:outline-none"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-3.5 bg-gold-500 hover:bg-gold-400 text-[#0B1D3D] font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm"
-              >
-                Validar Código
-                <Check className="w-4 h-4" />
               </button>
             </form>
           </div>

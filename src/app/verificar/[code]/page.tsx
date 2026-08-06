@@ -42,7 +42,7 @@ const EVENT_LABELS: Record<string, string> = {
   DOCUMENT_CREATED: 'Documento criado',
   LINK_SENT: 'Link enviado',
   LINK_OPENED: 'Link acessado',
-  OTP_SENT: 'Código OTP enviado',
+  IDENTITY_CONFIRMED: 'CPF confirmado',
   LIVENESS_CAPTURED: 'Prova de presença capturada',
   SIGNATURE_SUBMITTED: 'Assinatura concluída',
   DOCUMENT_COMPLETED: 'Documento finalizado',

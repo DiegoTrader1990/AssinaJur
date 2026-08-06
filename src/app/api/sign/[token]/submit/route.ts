@@ -13,7 +13,6 @@ export async function POST(
     const body = await req.json();
     const {
       confirmCpf,
-      otpCode,
       signatureType,
       signatureImage,
       signedConsentText,
@@ -55,22 +54,7 @@ export async function POST(
       );
     }
 
-    // 2. Validação do Código OTP
-    if (!otpCode || signer.otpCode !== otpCode) {
-      return NextResponse.json(
-        { error: 'Código de verificação OTP incorreto.' },
-        { status: 400 }
-      );
-    }
-
-    if (signer.otpExpiresAt && new Date() > new Date(signer.otpExpiresAt)) {
-      return NextResponse.json(
-        { error: 'O código de verificação expirou. Por favor, solicite um novo código.' },
-        { status: 400 }
-      );
-    }
-
-    // 2.1 Validação da Prova de Presença ao Vivo (3 selfies obrigatórias)
+    // 2. Validação da Prova de Presença ao Vivo (3 selfies obrigatórias)
     if (!selfieCenterImage || !selfieLeftImage || !selfieRightImage) {
       return NextResponse.json(
         { error: 'É necessário concluir a prova de presença ao vivo (3 fotos) antes de assinar.' },
@@ -101,7 +85,6 @@ export async function POST(
         signedAt: new Date(),
         ipAddress: clientIp,
         userAgent,
-        otpCode: null, // Limpa o código de uso único
       },
     });
 
@@ -151,7 +134,7 @@ export async function POST(
         userAgent,
         metadata: JSON.stringify({
           signatureType,
-          authMethod: 'EMAIL_OTP_CPF',
+          authMethod: 'CPF_LIVENESS_3SELFIES',
           cpfConfirmed: true,
         }),
       },
