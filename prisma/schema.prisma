@@ -4,8 +4,13 @@ generator client {
 
 datasource db {
   provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  // Nomes usados pela integração Vercel + Neon (Storage -> Neon):
+  // POSTGRES_PRISMA_URL = conexão via pooler (pgbouncer), usada em runtime.
+  // POSTGRES_URL_NON_POOLING = conexão direta, usada por "prisma migrate"/"prisma db push".
+  // Em desenvolvimento local, o .env define essas mesmas variáveis (ou DATABASE_URL/DIRECT_URL
+  // como fallback, conforme comentário no .env.example).
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
 }
 
 // Admin da Plataforma (gerencia todos os escritórios)
