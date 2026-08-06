@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
-import { getFilePath } from '@/lib/storage';
+import { getFileBuffer } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,12 +36,10 @@ export async function GET(
       return NextResponse.json({ error: 'Arquivo do documento não encontrado.' }, { status: 404 });
     }
 
-    const filePath = await getFilePath(user.officeId, fileToServe.storageKey);
-    if (!filePath || !fs.existsSync(filePath)) {
-      return NextResponse.json({ error: 'Arquivo físico não encontrado.' }, { status: 404 });
+    const fileBuffer = await getFileBuffer(user.officeId, fileToServe.storageKey);
+    if (!fileBuffer) {
+      return NextResponse.json({ error: 'Arquivo não encontrado no armazenamento.' }, { status: 404 });
     }
-
-    const fileBuffer = await fs.promises.readFile(filePath);
 
     return new NextResponse(fileBuffer, {
       headers: {

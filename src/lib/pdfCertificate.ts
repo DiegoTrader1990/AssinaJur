@@ -1,8 +1,7 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import QRCode from 'qrcode';
-import fs from 'fs';
 import { prisma } from '@/lib/prisma';
-import { getFilePath, saveFile } from './storage';
+import { getFileBuffer, saveFile } from './storage';
 import { calculateHash } from './pdfHash';
 
 export function maskCpf(cpf: string): string {
@@ -37,12 +36,11 @@ export async function generateFinalPdfCertificate(documentId: string) {
     throw new Error('Documento ou arquivo original não encontrado.');
   }
 
-  const originalPath = await getFilePath(doc.officeId, doc.originalFile.storageKey);
-  if (!originalPath || !fs.existsSync(originalPath)) {
-    throw new Error('Arquivo original físico não encontrado.');
+  const originalBytes = await getFileBuffer(doc.officeId, doc.originalFile.storageKey);
+  if (!originalBytes) {
+    throw new Error('Arquivo original não encontrado no armazenamento.');
   }
 
-  const originalBytes = await fs.promises.readFile(originalPath);
   const pdfDoc = await PDFDocument.load(originalBytes);
 
   // Garantir código de autenticação imutável (ex: AJ-8F92-K3D1)
