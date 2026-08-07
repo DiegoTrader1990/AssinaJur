@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Users,
   FileCheck2,
@@ -20,10 +21,12 @@ import {
   ChevronRight,
   TrendingUp,
   AlertCircle,
-  Scale
+  Scale,
+  Loader2
 } from 'lucide-react';
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [stats, setStats] = useState({
     clientsCount: 0,
     pendingDocs: 0,
@@ -35,6 +38,7 @@ export default function DashboardPage() {
   const [recentDocuments, setRecentDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dragActive, setDragActive] = useState(false);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -76,13 +80,40 @@ export default function DashboardPage() {
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const processDashboardFile = async (file: File) => {
+    setUploadingPdf(true);
+    try {
+      const data = new FormData();
+      data.append('file', file);
+      const res = await fetch('/api/documents/upload', {
+        method: 'POST',
+        body: data,
+      });
+      const result = await res.json();
+      if (res.ok && result.file?.id) {
+        router.push(`/documentos/novo?docId=${result.file.id}`);
+      } else {
+        router.push('/documentos/novo');
+      }
+    } catch {
+      router.push('/documentos/novo');
+    } finally {
+      setUploadingPdf(false);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      window.location.href = '/documentos/novo';
+      await processDashboardFile(e.dataTransfer.files[0]);
     }
+  };
+
+  const handleDashboardFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) await processDashboardFile(file);
   };
 
   return (
@@ -129,7 +160,7 @@ export default function DashboardPage() {
 
       {/* Grid Principal — Upload Rápido + Resumo de Envio */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Card 1: Zona de Drag & Drop */}
+        {/* Card 1: Zona de Drag & Drop Inteligente */}
         <div
           onDragEnter={handleDrag}
           onDragLeave={handleDrag}
@@ -142,21 +173,21 @@ export default function DashboardPage() {
           }`}
         >
           <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-xs">
-            <Upload className="w-7 h-7" />
+            {uploadingPdf ? <Loader2 className="w-7 h-7 animate-spin text-blue-600" /> : <Upload className="w-7 h-7" />}
           </div>
 
-          <h3 className="font-heading text-base font-extrabold text-[#071B3A]">Adicionar documentos</h3>
+          <h3 className="font-heading text-base font-extrabold text-[#071B3A]">
+            {uploadingPdf ? 'Enviando PDF...' : dragActive ? 'Solte o PDF para enviar!' : 'Adicionar documentos'}
+          </h3>
           <p className="text-xs text-slate-500 mt-1 mb-4 font-medium">
             Clique aqui ou arraste os arquivos PDF do contrato, procuração ou petição
           </p>
 
-          <Link
-            href="/documentos/novo"
-            className="px-5 py-2.5 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-bold rounded-xl text-xs shadow-md transition-all flex items-center gap-2 font-heading"
-          >
+          <label className="px-5 py-2.5 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-bold rounded-xl text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer font-heading">
             <Plus className="w-4 h-4 text-blue-400 stroke-[3]" />
-            Selecionar Arquivos do Computador
-          </Link>
+            <span>Selecionar Arquivo PDF</span>
+            <input type="file" accept=".pdf,application/pdf" onChange={handleDashboardFileInput} className="hidden" />
+          </label>
         </div>
 
         {/* Card 2: Resumo de Envio */}

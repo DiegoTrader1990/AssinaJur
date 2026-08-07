@@ -76,6 +76,7 @@ export default function ClientsPage() {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrSuccess, setOcrSuccess] = useState(false);
   const [ocrDocPreview, setOcrDocPreview] = useState<string | null>(null);
+  const [ocrDragActive, setOcrDragActive] = useState(false);
   const [activeTab, setActiveTab] = useState<'resumo' | 'pessoais' | 'documentos' | 'historico'>('resumo');
 
   // Formulário do Cliente
@@ -144,10 +145,7 @@ export default function ClientsPage() {
     setFormData({ ...formData, [name]: value });
   };
 
-  const handleDocumentOcr = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const processOcrFile = async (file: File) => {
     setOcrLoading(true);
     setFormError('');
     setOcrSuccess(false);
@@ -182,6 +180,30 @@ export default function ClientsPage() {
       setFormError(err.message);
     } finally {
       setOcrLoading(false);
+    }
+  };
+
+  const handleDocumentOcr = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) await processOcrFile(file);
+  };
+
+  const handleOcrDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setOcrDragActive(true);
+    } else if (e.type === 'dragleave') {
+      setOcrDragActive(false);
+    }
+  };
+
+  const handleOcrDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setOcrDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      await processOcrFile(e.dataTransfer.files[0]);
     }
   };
 
@@ -376,7 +398,17 @@ export default function ClientsPage() {
             </div>
 
             {/* Zona de Leitura Inteligente de Documento (RG / CNH / CPF) */}
-            <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-blue-50/80 to-indigo-50/80 border border-blue-200/80 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div
+              onDragEnter={handleOcrDrag}
+              onDragLeave={handleOcrDrag}
+              onDragOver={handleOcrDrag}
+              onDrop={handleOcrDrop}
+              className={`mt-4 p-4 rounded-2xl transition-all border flex flex-col sm:flex-row items-center justify-between gap-4 ${
+                ocrDragActive
+                  ? 'bg-blue-100/90 border-blue-600 scale-[1.01]'
+                  : 'bg-gradient-to-r from-blue-50/80 to-indigo-50/80 border-blue-200/80'
+              }`}
+            >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm">
                   <Zap className="w-5 h-5 text-blue-200" />

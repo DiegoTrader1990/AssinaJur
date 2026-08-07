@@ -70,6 +70,7 @@ export default function NewDocumentPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [createdDocument, setCreatedDocument] = useState<any | null>(null);
+  const [dragActive, setDragActive] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
   useEffect(() => {
@@ -99,17 +100,13 @@ export default function NewDocumentPage() {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (!selectedFile) return;
-
-    setFile(selectedFile);
+  const processFile = async (file: File) => {
     setUploading(true);
     setError('');
 
     try {
       const formData = new FormData();
-      formData.append('file', selectedFile);
+      formData.append('file', file);
 
       const res = await fetch('/api/documents/upload', {
         method: 'POST',
@@ -121,12 +118,36 @@ export default function NewDocumentPage() {
 
       setUploadedFile(data.file);
       if (!title) {
-        setTitle(selectedFile.name.replace(/\.[^/.]+$/, ''));
+        setTitle(file.name.replace(/\.[^/.]+$/, ''));
       }
     } catch (err: any) {
       setError(err.message);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) await processFile(selectedFile);
+  };
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setDragActive(true);
+    } else if (e.type === 'dragleave') {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      await processFile(e.dataTransfer.files[0]);
     }
   };
 
@@ -301,9 +322,19 @@ export default function NewDocumentPage() {
         <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
           <h2 className="font-heading text-base font-extrabold text-[#071B3A]">Passo 1: Selecione o Arquivo PDF</h2>
 
-          <div className="border-2 border-dashed border-slate-300 rounded-3xl p-8 text-center hover:border-blue-600 transition-colors bg-slate-50/50">
-            <Upload className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-            <p className="text-sm font-bold text-slate-800 font-heading">Arraste o arquivo PDF aqui ou clique para selecionar</p>
+          <div
+            onDragEnter={handleDrag}
+            onDragLeave={handleDrag}
+            onDragOver={handleDrag}
+            onDrop={handleDrop}
+            className={`border-2 border-dashed rounded-3xl p-8 text-center transition-all bg-slate-50/50 ${
+              dragActive ? 'border-blue-600 bg-blue-50/40 scale-[1.01]' : 'border-slate-300 hover:border-blue-600'
+            }`}
+          >
+            <Upload className="w-12 h-12 text-blue-600 mx-auto mb-3" />
+            <p className="text-sm font-bold text-slate-800 font-heading">
+              {dragActive ? 'Solte o arquivo PDF para enviar!' : 'Arraste o arquivo PDF aqui ou clique para selecionar'}
+            </p>
             <p className="text-xs text-slate-500 mt-1 mb-4 font-medium">Formatos suportados: PDF (máximo 25MB)</p>
 
             <label className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#071B3A] text-white font-bold rounded-xl text-xs cursor-pointer hover:bg-[#0B1D3D] transition-all shadow-md font-heading">
