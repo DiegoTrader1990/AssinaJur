@@ -65,8 +65,6 @@ const FACE_EDGE_A_IDX = 234;
 const FACE_EDGE_B_IDX = 454;
 const CHIN_IDX = 152;
 const FOREHEAD_IDX = 10;
-const LEFT_EYE_IDX = 33;
-const RIGHT_EYE_IDX = 263;
 
 function computeFaceOrientation(landmarks: any[]) {
   const nose = landmarks[NOSE_TIP_IDX];
@@ -74,37 +72,21 @@ function computeFaceOrientation(landmarks: any[]) {
   const edgeB = landmarks[FACE_EDGE_B_IDX];
   const chin = landmarks[CHIN_IDX];
   const forehead = landmarks[FOREHEAD_IDX];
-  const leftEye = landmarks[LEFT_EYE_IDX];
-  const rightEye = landmarks[RIGHT_EYE_IDX];
 
-  if (!nose || !chin || !forehead) return null;
+  if (!nose || !edgeA || !edgeB || !chin || !forehead) return null;
 
-  const spanX = (edgeA && edgeB) ? (edgeB.x - edgeA.x) : 0;
-  const yawRatio = (spanX > 0 && edgeA) ? (nose.x - edgeA.x) / spanX : 0.5;
+  const spanX = edgeB.x - edgeA.x;
+  if (spanX <= 0) return null;
 
-  // Medição secundária usando distância do nariz para cada olho (imune a bochecha escondida)
-  let eyeYawDev = 0;
-  if (leftEye && rightEye) {
-    const distL = Math.hypot(nose.x - leftEye.x, nose.y - leftEye.y);
-    const distR = Math.hypot(nose.x - rightEye.x, nose.y - rightEye.y);
-    const sumDist = distL + distR;
-    if (sumDist > 0) {
-      eyeYawDev = Math.abs((distL / sumDist) - 0.50);
-    }
-  }
-
-  const rawYawDev = Math.abs(yawRatio - 0.50);
-  const yawDeviation = Math.max(rawYawDev, eyeYawDev * 2.2);
-
-  const faceWidthRatio = spanX > 0 ? spanX : 0.30;
+  const yawRatio = (nose.x - edgeA.x) / spanX;
+  const faceWidthRatio = spanX;
   const faceHeightRatio = Math.abs(chin.y - forehead.y);
 
   return {
     yawRatio,
-    yawDeviation,
     faceWidthRatio,
     faceHeightRatio,
-    centerX: edgeA && edgeB ? (edgeA.x + edgeB.x) / 2 : nose.x,
+    centerX: (edgeA.x + edgeB.x) / 2,
     centerY: (chin.y + forehead.y) / 2,
   };
 }
@@ -307,6 +289,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setSelfieInstruction('Posicione seu rosto dentro da moldura.');
       stabilityCounterRef.current = 0;
       setTurnProgress(0);
+      setCountdownSecs(null);
       return;
     }
 
@@ -316,90 +299,72 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setSelfieInstruction('Rosto dentro da moldura.');
       stabilityCounterRef.current = 0;
       setTurnProgress(0);
+      setCountdownSecs(null);
       return;
     }
 
-    const { yawRatio, yawDeviation, faceWidthRatio } = faceInfo;
+    const { yawRatio, faceWidthRatio } = faceInfo;
     const currentKey = activeKeyRef.current;
     setCurrentYaw(yawRatio);
 
-    // 1. SEMPRE calcula e atualiza o progresso do movimento do rosto em tempo real!
-    let currentProg = 0;
+    // ─────────────────────────────────────────────────────────────
+    // FOTO 1: FRONTAL (CONTAGEM DE 3s SOMENTE COM ROSTO CENTRALIZADO)
+    // ─────────────────────────────────────────────────────────────
     if (currentKey === 'center') {
-      currentProg = Math.min(100, Math.max(0, (1 - yawDeviation / 0.12) * 100));
-    } else {
-      // 0.04 de desvio (apenas ~4% de giro!) já é 100% de progresso
-      currentProg = Math.min(100, Math.max(0, (yawDeviation / 0.04) * 100));
-    }
-    setTurnProgress(currentProg);
+      const isCentered = yawRatio >= 0.36 && yawRatio <= 0.64 && faceWidthRatio >= 0.15 && faceWidthRatio <= 0.75;
 
-    // 2. Tempo de aquecimento / contagem regressiva de 3s no centro da tela
-    if (Date.now() < warmupUntilRef.current) {
-      setFrameState('YELLOW');
-      const secsLeft = Math.max(1, Math.ceil((warmupUntilRef.current - Date.now()) / 1000));
-      setCountdownSecs(secsLeft);
-
-      if (currentKey === 'center') {
-        setSelfieInstruction(`Prepare-se! Foto frontal em ${secsLeft}s...`);
-      } else {
-        const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
-        setSelfieInstruction(`Prepare-se! Vire para a ${dirLabel} (${secsLeft}s)...`);
-      }
-      stabilityCounterRef.current = 0;
-      return;
-    } else {
-      if (countdownSecs !== null) setCountdownSecs(null);
-    }
-
-    // 3. Checar distância do rosto (somente para a foto frontal)
-    if (currentKey === 'center') {
-      if (faceWidthRatio < 0.15) {
+      if (!isCentered) {
         setFrameState('YELLOW');
-        setSelfieInstruction('Aproxime um pouco mais o rosto.');
+        setSelfieInstruction('Olhe para a câmera e centralize o rosto.');
         stabilityCounterRef.current = 0;
+        setCountdownSecs(null);
+        setTurnProgress(0);
         return;
       }
-      if (faceWidthRatio > 0.75) {
-        setFrameState('YELLOW');
-        setSelfieInstruction('Afaste um pouco o rosto da câmera.');
-        stabilityCounterRef.current = 0;
-        return;
-      }
-    }
 
-    // 4. Avaliar se a pose é válida para a foto atual
-    let isAngleRecognized = false;
-
-    if (currentKey === 'center') {
-      if (yawDeviation <= 0.12) {
-        isAngleRecognized = true;
-        setSelfieInstruction('Perfeito! Mantenha o rosto parado...');
-      } else {
-        setFrameState('YELLOW');
-        setSelfieInstruction('Olhe diretamente para a câmera.');
-      }
-    } else {
-      // Para 'left' ou 'right': qualquer desvio do centro >= 0.04 (ultra sensível)
-      if (yawDeviation >= 0.04) {
-        isAngleRecognized = true;
-        setSelfieInstruction('Excelente! Mantenha a cabeça virada...');
-      } else {
-        setFrameState('YELLOW');
-        const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
-        setSelfieInstruction(`Vire o rosto para a ${dirLabel}`);
-      }
-    }
-
-    if (isAngleRecognized) {
+      // Rosto está no centro! Inicia contagem regressiva 3..2..1
       setFrameState('GREEN');
       stabilityCounterRef.current += 1;
 
-      // Exige 2 quadros (~0.4s) de confirmação estável
+      const count = Math.max(1, 3 - Math.floor(stabilityCounterRef.current / 3));
+      setCountdownSecs(count);
+      setSelfieInstruction(`Mantenha-se assim! Foto frontal em ${count}s...`);
+
+      // Após 9 quadros (~3 segundos) de permanência centralizado -> CAPTURA
+      if (stabilityCounterRef.current >= 9) {
+        setCountdownSecs(null);
+        triggerAutomaticCapture('center');
+      }
+      return;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (SETA MÓVEL 0% a 100%)
+    // ─────────────────────────────────────────────────────────────
+    setCountdownSecs(null);
+
+    // Desvio da cabeça em relação ao centro (0.50)
+    const dev = Math.abs(yawRatio - 0.50);
+
+    // Progresso vai de 0% (olhando pra frente) a 100% (rosto virado)
+    // Giro de apenas 0.07 (~7% de rotação) alcança 100% de progresso
+    const prog = Math.min(100, Math.max(0, (dev / 0.07) * 100));
+    setTurnProgress(prog);
+
+    if (dev >= 0.065) {
+      setFrameState('GREEN');
+      stabilityCounterRef.current += 1;
+      setSelfieInstruction('Excelente! Mantenha a cabeça virada...');
+
+      // Exige 2 quadros (~0.4s) com a cabeça virada -> CAPTURA
       if (stabilityCounterRef.current >= 2) {
         triggerAutomaticCapture(currentKey);
       }
     } else {
+      setFrameState('YELLOW');
       stabilityCounterRef.current = 0;
+      const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
+      setSelfieInstruction(`Vire o rosto para a ${dirLabel}`);
     }
   };
 
@@ -511,7 +476,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setCameraActive(true);
       setFrameState('GRAY');
       stabilityCounterRef.current = 0;
-      warmupUntilRef.current = Date.now() + 3000; // 3.0s de contagem regressiva inicial no centro
 
       const fm = await initFaceMesh();
       if (fm) {
