@@ -426,7 +426,7 @@ export default function ClientsPage() {
           onDragLeave={handleOcrDragLeave}
           onDragOver={handleOcrDragOver}
           onDrop={handleOcrDrop}
-          className="fixed inset-0 z-50 bg-slate-900/25 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto font-sans relative"
+          className="fixed inset-0 z-50 bg-slate-900/10 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-5 overflow-y-auto font-sans relative"
         >
           {ocrDragActive && (
             <div className="absolute inset-0 bg-blue-600/90 backdrop-blur-md z-50 flex flex-col items-center justify-center text-white p-8 border-4 border-dashed border-white/80 pointer-events-none">
@@ -439,69 +439,42 @@ export default function ClientsPage() {
           <div className={`bg-white rounded-3xl w-full p-5 sm:p-7 shadow-2xl border border-slate-200 relative my-auto max-h-[92vh] overflow-y-auto transition-all ${
             ocrDocPreview ? 'max-w-5xl' : 'max-w-3xl'
           }`}>
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+            {/* Cabeçalho Limpo com Ação Compacta de IA / OCR Integrada */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3.5 border-b border-slate-100 gap-3">
               <div className="flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-blue-600" />
-                <h2 className="font-heading text-lg font-extrabold text-[#071B3A]">Cadastrar Novo Cliente</h2>
-              </div>
-              <button onClick={() => {
-                setShowModal(false);
-                setOcrDocPreview(null);
-                setOcrSuccess(false);
-              }} className="text-slate-400 hover:text-slate-600 font-bold">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Zona de Leitura Inteligente de Documento (RG / CNH / CPF) */}
-            <div
-              onDragEnter={handleOcrDragEnter}
-              onDragLeave={handleOcrDragLeave}
-              onDragOver={handleOcrDragOver}
-              onDrop={handleOcrDrop}
-              className={`mt-4 p-4 rounded-2xl transition-all border flex flex-col sm:flex-row items-center justify-between gap-4 ${
-                ocrDragActive
-                  ? 'bg-blue-100/90 border-blue-600 scale-[1.01]'
-                  : 'bg-gradient-to-r from-blue-50/80 to-indigo-50/80 border-blue-200/80'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm">
-                  <Zap className="w-5 h-5 text-blue-200" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-heading font-extrabold text-[#071B3A] text-xs">Preenchimento por Foto (IA / OCR)</span>
-                    <span className="px-2 py-0.5 rounded-full bg-blue-600 text-white text-[9px] font-extrabold uppercase tracking-wider font-heading">
-                      Novo
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 font-medium">
-                    Envie a foto da CNH ou RG do cliente para preencher Nome, CPF, RG e Data de Nascimento automaticamente.
-                  </p>
-                </div>
+                <h2 className="font-heading text-base font-extrabold text-[#071B3A]">Cadastrar Novo Cliente</h2>
               </div>
 
-              <label className="cursor-pointer shrink-0">
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={handleDocumentOcr}
-                  disabled={ocrLoading}
-                  className="hidden"
-                />
-                <div className="px-4 py-2.5 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-xl text-xs flex items-center gap-2 transition-all shadow-md font-heading">
+              <div className="flex items-center gap-2.5">
+                <label className="cursor-pointer inline-flex items-center gap-2 px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-extrabold rounded-xl text-xs border border-blue-200/80 transition-all font-heading shadow-2xs">
                   {ocrLoading ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin text-blue-400" /> Lendo Documento...
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" /> Lendo Documento...
                     </>
                   ) : (
                     <>
-                      <Upload className="w-4 h-4 text-blue-400" /> Enviar RG ou CNH
+                      <Zap className="w-3.5 h-3.5 text-blue-600 fill-blue-600" /> 
+                      <span>Preencher por Foto/RG (IA)</span>
                     </>
                   )}
-                </div>
-              </label>
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    onChange={handleDocumentOcr}
+                    disabled={ocrLoading}
+                    className="hidden"
+                  />
+                </label>
+
+                <button onClick={() => {
+                  setShowModal(false);
+                  setOcrDocPreview(null);
+                  setOcrSuccess(false);
+                }} className="text-slate-400 hover:text-slate-600 font-bold p-1">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {ocrSuccess && (
