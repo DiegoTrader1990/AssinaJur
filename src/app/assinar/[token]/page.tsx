@@ -113,31 +113,7 @@ function loadScriptOnce(src: string): Promise<void> {
   });
 }
 
-let cachedVoice: SpeechSynthesisVoice | null = null;
-
-function getBestPortugueseVoice(): SpeechSynthesisVoice | null {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
-  if (cachedVoice) return cachedVoice;
-
-  const voices = window.speechSynthesis.getVoices();
-  if (!voices || voices.length === 0) return null;
-
-  const ptVoices = voices.filter(v => v.lang.toLowerCase().includes('pt'));
-  if (ptVoices.length === 0) return null;
-
-  const best = ptVoices.find(v => 
-    v.name.includes('Natural') || 
-    v.name.includes('Google') || 
-    v.name.includes('Neural') || 
-    v.name.includes('Luciana') || 
-    v.name.includes('Heloisa') ||
-    v.name.includes('Felipe') ||
-    v.name.includes('Francisca')
-  ) || ptVoices[0];
-
-  cachedVoice = best;
-  return best;
-}
+let currentAudio: HTMLAudioElement | null = null;
 
 function unlockAudioPermissions() {
   if (typeof window === 'undefined') return;
@@ -147,59 +123,25 @@ function unlockAudioPermissions() {
       const ctx = new AudioCtx();
       ctx.resume();
     }
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.getVoices();
-      const silentUtterance = new SpeechSynthesisUtterance('');
-      silentUtterance.volume = 0;
-      window.speechSynthesis.speak(silentUtterance);
-    }
   } catch {
     /* destravamento silencioso */
   }
 }
 
-let isSpeakingRef = false;
-const speechQueue: string[] = [];
-
-function processSpeechQueue() {
-  if (isSpeakingRef || speechQueue.length === 0 || typeof window === 'undefined' || !('speechSynthesis' in window)) {
-    return;
-  }
-  const text = speechQueue.shift();
-  if (!text) return;
-
-  isSpeakingRef = true;
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'pt-BR';
-  
-  const voice = getBestPortugueseVoice();
-  if (voice) {
-    utterance.voice = voice;
-  }
-
-  utterance.rate = 0.94; // Cadência humana suave e pausada
-  utterance.pitch = 1.0; // Tom natural sem efeito robótico
-
-  utterance.onend = () => {
-    isSpeakingRef = false;
-    setTimeout(processSpeechQueue, 350); // Pausa humana de 350ms entre frases
-  };
-
-  utterance.onerror = () => {
-    isSpeakingRef = false;
-    setTimeout(processSpeechQueue, 350);
-  };
-
-  window.speechSynthesis.speak(utterance);
-}
-
-function speakInstruction(text: string, enabled = true) {
-  if (!enabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+function playGoogleAudio(audioPath: string, enabled = true) {
+  if (!enabled || typeof window === 'undefined') return;
   try {
-    speechQueue.push(text);
-    processSpeechQueue();
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+    }
+    const audio = new Audio(audioPath);
+    currentAudio = audio;
+    audio.play().catch(() => {
+      /* reprodução tratada */
+    });
   } catch {
-    /* fala indisponível */
+    /* áudio indisponível */
   }
 }
 
@@ -607,17 +549,17 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         centeredStartTimeRef.current = null;
         warmupUntilRef.current = Date.now() + 2000;
         setSelfieInstruction('✓ Foto 1 Salva! Agora vire o rosto para a ESQUERDA ←');
-        speakInstruction('Foto 1 registrada com sucesso. Agora, vire o rosto para a esquerda.', audioEnabledRef.current);
+        playGoogleAudio('/audio/step1.mp3', audioEnabledRef.current);
       } else if (key === 'left') {
         activeKeyRef.current = 'right';
         setActiveSelfieKey('right');
         centeredStartTimeRef.current = null;
         warmupUntilRef.current = Date.now() + 2000;
         setSelfieInstruction('✓ Foto 2 Salva! Agora vire o rosto para a DIREITA →');
-        speakInstruction('Foto 2 registrada com sucesso. Agora, vire o rosto para a direita.', audioEnabledRef.current);
+        playGoogleAudio('/audio/step2.mp3', audioEnabledRef.current);
       } else if (key === 'right') {
         setSelfieInstruction('✓ Prova de presença concluída com 3 fotos! Confira o resultado.');
-        speakInstruction('Excelente! Prova de presença concluída com sucesso.', audioEnabledRef.current);
+        playGoogleAudio('/audio/step3.mp3', audioEnabledRef.current);
         stopSelfieCamera();
       }
     } finally {
@@ -659,7 +601,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setFrameState('GRAY');
       stabilityCounterRef.current = 0;
 
-      speakInstruction('Iniciando prova de presença. Olhe para a câmera e centralize o rosto.', audioEnabledRef.current);
+      playGoogleAudio('/audio/intro.mp3', audioEnabledRef.current);
 
       const fm = await initFaceMesh();
       if (fm) {
@@ -1018,9 +960,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                       setAudioEnabled(nextState);
                       audioEnabledRef.current = nextState;
                       if (nextState) {
-                        speakInstruction('Orientação por voz ativada.', true);
-                      } else if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-                        window.speechSynthesis.cancel();
+                        playGoogleAudio('/audio/intro.mp3', true);
                       }
                     }}
                     className="absolute top-3 right-3 z-40 bg-black/70 hover:bg-black/90 text-white p-2 rounded-full border border-white/20 backdrop-blur-md transition-all shadow-xl active:scale-95 flex items-center gap-1.5 px-3"
