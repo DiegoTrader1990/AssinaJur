@@ -61,32 +61,52 @@ const LIVENESS_STEPS: SelfieStepConfig[] = [
 ];
 
 const NOSE_TIP_IDX = 1;
-const FACE_EDGE_A_IDX = 234;
-const FACE_EDGE_B_IDX = 454;
 const CHIN_IDX = 152;
 const FOREHEAD_IDX = 10;
 
-function computeFaceOrientation(landmarks: any[]) {
-  const nose = landmarks[NOSE_TIP_IDX];
-  const edgeA = landmarks[FACE_EDGE_A_IDX];
-  const edgeB = landmarks[FACE_EDGE_B_IDX];
+function computeHeadRotation(landmarks: any[]) {
+  const nose = landmarks[1];
+  const leftEye = landmarks[133] || landmarks[33];
+  const rightEye = landmarks[362] || landmarks[263];
+  const edgeA = landmarks[234];
+  const edgeB = landmarks[454];
   const chin = landmarks[CHIN_IDX];
   const forehead = landmarks[FOREHEAD_IDX];
 
-  if (!nose || !chin || !forehead) return null;
+  if (!nose || !leftEye || !rightEye || !chin || !forehead) return null;
 
-  const spanX = (edgeA && edgeB) ? (edgeB.x - edgeA.x) : 0.3;
-  const faceWidthRatio = spanX > 0 ? spanX : 0.3;
-  const faceHeightRatio = Math.abs(chin.y - forehead.y);
+  // 1. Asimetria 2D entre o nariz e os olhos (indica giro do rosto)
+  const distL = Math.abs(nose.x - leftEye.x);
+  const distR = Math.abs(nose.x - rightEye.x);
+  const totalDist = distL + distR;
+
+  let eyeAsymmetry = 0;
+  if (totalDist > 0) {
+    eyeAsymmetry = Math.abs((distL / totalDist) - 0.50);
+  }
+
+  // 2. Diferença de profundidade 3D Z entre os olhos (MediaPipe Z-depth)
+  const zDiff = (leftEye.z !== undefined && rightEye.z !== undefined) 
+    ? Math.abs(leftEye.z - rightEye.z) 
+    : 0;
+
+  // 3. Asimetria das bochechas
+  let cheekAsymmetry = 0;
+  let spanX = 0.3;
+  if (edgeA && edgeB) {
+    spanX = Math.abs(edgeB.x - edgeA.x);
+    if (spanX > 0) {
+      cheekAsymmetry = Math.abs(((nose.x - edgeA.x) / spanX) - 0.50);
+    }
+  }
+
+  // Combina as 3 métricas 3D de rotação da cabeça
+  const turnScore = Math.max(eyeAsymmetry * 3.5, zDiff * 4.5, cheekAsymmetry * 3.0);
 
   return {
     noseX: nose.x,
-    noseY: nose.y,
-    foreheadX: forehead.x,
-    chinX: chin.x,
-    faceWidthRatio,
-    faceHeightRatio,
-    centerX: edgeA && edgeB ? (edgeA.x + edgeB.x) / 2 : nose.x,
+    faceWidthRatio: spanX,
+    turnScore: Math.min(1.0, turnScore),
   };
 }
 
@@ -295,7 +315,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
 
-    const faceInfo = computeFaceOrientation(landmarks);
+    const faceInfo = computeHeadRotation(landmarks);
     if (!faceInfo) {
       setFrameState('GRAY');
       setSelfieInstruction('Rosto dentro da moldura.');
@@ -306,7 +326,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
 
-    const { noseX, foreheadX, faceWidthRatio } = faceInfo;
+    const { noseX, faceWidthRatio, turnScore } = faceInfo;
     const currentKey = activeKeyRef.current;
     setCurrentYaw(noseX);
 
@@ -314,7 +334,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     // FOTO 1: FRONTAL (CONTAGEM REGRESSIVA REAL DE 3.0 SEGUNDOS)
     // ─────────────────────────────────────────────────────────────
     if (currentKey === 'center') {
-      const isCentered = noseX >= 0.32 && noseX <= 0.68 && faceWidthRatio >= 0.12 && faceWidthRatio <= 0.80;
+      const isCentered = noseX >= 0.30 && noseX <= 0.70 && faceWidthRatio >= 0.12 && faceWidthRatio <= 0.80;
 
       if (!isCentered) {
         setFrameState('YELLOW');
@@ -324,9 +344,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         setTurnProgress(0);
         return;
       }
-
-      // Guarda a posição frontal de referência do nariz
-      frontalNoseXRef.current = noseX;
 
       // Inicia o relógio de contagem real de 3000ms (3 segundos)
       if (!centeredStartTimeRef.current) {
@@ -340,7 +357,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setCountdownSecs(secsRemaining);
       setSelfieInstruction(`Mantenha-se assim! Foto em ${secsRemaining}s...`);
 
-      // Após 3000ms reais (3 segundos completos no centro) -> CAPTURA
+      // Após 3000ms reais (3 segundos completos no centro) -> CAPTURA FOTO FRONTAL
       if (elapsed >= 3000) {
         setCountdownSecs(null);
         centeredStartTimeRef.current = null;
@@ -350,29 +367,21 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     // ─────────────────────────────────────────────────────────────
-    // FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (DESLOCAMENTO DO NARIZ)
+    // FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (GIRO 3D DA CABEÇA)
     // ─────────────────────────────────────────────────────────────
     setCountdownSecs(null);
     centeredStartTimeRef.current = null;
 
-    // Mede a mudança horizontal que o nariz se moveu da posição frontal (ou do centro 0.50)
-    const refNose = frontalNoseXRef.current ?? 0.50;
-    const shiftFromFrontal = Math.abs(noseX - refNose);
-    const shiftFromCenter = Math.abs(noseX - 0.50);
-    const shiftFromForehead = Math.abs(noseX - foreheadX);
-
-    const maxDev = Math.max(shiftFromFrontal, shiftFromCenter, shiftFromForehead);
-
-    // Giro de apenas 0.04 (4% da tela) já é 100% de progresso
-    const prog = Math.min(100, Math.max(0, (maxDev / 0.04) * 100));
+    // turnScore vai de 0.0 (olhando pra frente) a 1.0 (rosto virado)
+    const prog = Math.min(100, Math.max(0, turnScore * 100));
     setTurnProgress(prog);
 
-    if (maxDev >= 0.04) {
+    if (turnScore >= 0.20) { // Apenas 20% do giro máximo necessário
       setFrameState('GREEN');
       stabilityCounterRef.current += 1;
       setSelfieInstruction('Excelente! Mantenha a cabeça virada...');
 
-      // Exige 2 quadros (~0.3s) com a cabeça virada -> CAPTURA
+      // Exige 2 quadros (~0.3s) com a cabeça virada -> CAPTURA FOTO PERFIL
       if (stabilityCounterRef.current >= 2) {
         triggerAutomaticCapture(currentKey);
       }
