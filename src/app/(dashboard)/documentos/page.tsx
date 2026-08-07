@@ -25,6 +25,7 @@ import {
   Award,
   Scale
 } from 'lucide-react';
+import { maskCpfCnpj } from '@/lib/formatters';
 
 interface Signer {
   id: string;
@@ -237,7 +238,7 @@ export default function DocumentsPage() {
                         {doc.client ? (
                           <div>
                             <div className="font-bold text-slate-800 text-xs font-heading">{doc.client.name}</div>
-                            <div className="text-[10px] text-slate-400 font-mono">CPF: {doc.client.cpfCnpj}</div>
+                            <div className="text-[10px] text-slate-400 font-mono">CPF/CNPJ: {maskCpfCnpj(doc.client.cpfCnpj)}</div>
                           </div>
                         ) : (
                           <span className="text-slate-400 text-xs italic font-medium">Avulso</span>

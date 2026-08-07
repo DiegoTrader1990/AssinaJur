@@ -21,6 +21,7 @@ import {
   Download
 } from 'lucide-react';
 import { formatBrasiliaDateTime } from '@/lib/dateUtils';
+import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
 
 interface VerificationResult {
   valid: boolean;
@@ -230,7 +231,7 @@ export default function VerificationResultPage({ params }: { params: { code: str
 
             <div>
               <span className="text-slate-400 font-bold block uppercase text-[10px]">CPF / CNPJ do Escritório</span>
-              <span className="font-mono font-bold text-slate-800">{data.office.cpfCnpj}</span>
+              <span className="font-mono font-bold text-slate-800">{maskCpfCnpj(data.office.cpfCnpj)}</span>
             </div>
 
             {data.office.oabNumber && (
@@ -268,8 +269,8 @@ export default function VerificationResultPage({ params }: { params: { code: str
                   <div className="font-extrabold text-slate-900 text-sm">
                     {s.name} <span className="text-slate-500 font-medium">({s.role})</span>
                   </div>
-                  <div className="text-slate-700 font-mono">CPF: <strong className="text-slate-900">{s.cpf}</strong></div>
-                  {s.phone && <div className="text-slate-700 font-mono">Telefone: <strong className="text-slate-900">{s.phone}</strong></div>}
+                  <div className="text-slate-700 font-mono">CPF: <strong className="text-slate-900">{maskCpfCnpj(s.cpf)}</strong></div>
+                  {s.phone && <div className="text-slate-700 font-mono">Telefone: <strong className="text-slate-900">{maskPhone(s.phone)}</strong></div>}
                   {s.approximateLocation && (
                     <div className="text-slate-600 font-medium flex items-center gap-1">
                       <MapPin className="w-3.5 h-3.5 text-blue-600" /> {s.approximateLocation}
