@@ -168,10 +168,49 @@ export default function ClientsPage() {
 
     const previewUrl = URL.createObjectURL(file);
     setOcrDocPreview(previewUrl);
+    setZoomLevel(1.0);
+    setRotationAngle(0);
+    setPanOffset({ x: 0, y: 0 });
 
-    // Controller de cancelamento para leitura OCR (máx 6s)
+    // 1. Extração instantânea no navegador a partir do nome do arquivo ou conteúdo direto
+    const filenameCpf = file.name.match(/\b\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?\d{2}\b/) || file.name.match(/\b\d{11}\b/);
+    if (filenameCpf) {
+      const cleanCpf = filenameCpf[0].replace(/\D/g, '');
+      setFormData((prev) => ({
+        ...prev,
+        cpfCnpj: maskCpfCnpj(cleanCpf),
+      }));
+    }
+
+    // Tenta ler texto diretamente se for arquivo de texto / PDF cru
+    try {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const textContent = e.target?.result as string;
+        if (textContent) {
+          const cpfMatch = textContent.match(/\b\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?\d{2}\b/) || textContent.match(/\b\d{11}\b/);
+          const rgMatch = textContent.match(/\b\d{1,2}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?[0-9X]\b/i);
+          const birthMatch = textContent.match(/\b(0[1-9]|[12][0-9]|3[01])[\/\.-](0[1-9]|1[012])[\/\.-](19|20)\d\d\b/);
+
+          if (cpfMatch || rgMatch || birthMatch) {
+            setFormData((prev) => ({
+              ...prev,
+              cpfCnpj: cpfMatch ? maskCpfCnpj(cpfMatch[0].replace(/\D/g, '')) : prev.cpfCnpj,
+              rg: rgMatch ? rgMatch[0].toUpperCase() : prev.rg,
+              birthDate: birthMatch ? `${birthMatch[0].split(/[\/\.-]/)[2]}-${birthMatch[0].split(/[\/\.-]/)[1]}-${birthMatch[0].split(/[\/\.-]/)[0]}` : prev.birthDate,
+            }));
+            setOcrSuccess(true);
+          }
+        }
+      };
+      reader.readAsText(file.slice(0, 100000));
+    } catch {
+      /* ignore */
+    }
+
+    // 2. Leitura completa via Servidor de Visão Computacional
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     try {
       const data = new FormData();
@@ -198,7 +237,7 @@ export default function ClientsPage() {
         setOcrSuccess(true);
       }
     } catch {
-      /* Leitura ultra-rápida fallback: documento exibido visualmente no painel */
+      /* Leitura exibida visualmente no painel */
     } finally {
       clearTimeout(timeoutId);
       setOcrLoading(false);
@@ -468,8 +507,8 @@ export default function ClientsPage() {
             </div>
           )}
 
-          <div className={`bg-white rounded-3xl w-full p-5 sm:p-7 shadow-2xl border border-slate-200 relative my-auto max-h-[94vh] overflow-y-auto transition-all ${
-            ocrDocPreview ? 'max-w-[96vw] lg:max-w-6xl' : 'max-w-5xl'
+          <div className={`bg-white rounded-3xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 relative my-auto max-h-[90vh] overflow-y-auto transition-all ${
+            ocrDocPreview ? 'max-w-5xl' : 'max-w-3xl'
           }`}>
             {/* Cabeçalho Limpo com Ação Compacta de IA / OCR Integrada */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3.5 border-b border-slate-100 gap-3">
@@ -525,10 +564,10 @@ export default function ClientsPage() {
 
             {/* Layout Lado a Lado (Caso tenha enviado documento) */}
             <div className={ocrDocPreview ? 'grid md:grid-cols-12 gap-5 mt-5' : 'mt-5'}>
-              {/* Coluna da Esquerda: Pré-visualização Ampliada Executiva (460px) */}
+              {/* Coluna da Esquerda: Pré-visualização com Altura Ajustada e Mãozinha 100% Ativa */}
               {ocrDocPreview && (
-                <div className="md:col-span-6 bg-slate-50/90 rounded-2xl border border-slate-200/90 flex flex-col justify-between p-4 relative shadow-xs min-h-[480px]">
-                  <div className="flex items-center justify-between text-slate-800 text-[11px] font-bold pb-2.5 border-b border-slate-200 font-heading">
+                <div className="md:col-span-5 bg-slate-50/90 rounded-2xl border border-slate-200/90 flex flex-col justify-between p-3 relative shadow-xs max-h-[360px]">
+                  <div className="flex items-center justify-between text-slate-800 text-[11px] font-bold pb-2 border-b border-slate-200 font-heading">
                     <span className="flex items-center gap-1.5 text-[#071B3A]">
                       <FileText className="w-4 h-4 text-blue-600" /> Documento Original
                     </span>
@@ -563,26 +602,30 @@ export default function ClientsPage() {
                     </div>
                   </div>
 
-                  <div
-                    onMouseDown={handlePanStart}
-                    onMouseMove={handlePanMove}
-                    onMouseUp={handlePanEnd}
-                    onMouseLeave={handlePanEnd}
-                    className={`my-auto py-2 flex items-center justify-center w-full min-h-[420px] overflow-hidden bg-white rounded-xl border border-slate-200/80 p-2 shadow-xs select-none ${
-                      zoomLevel > 1.0 ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'
-                    }`}
-                  >
+                  <div className="relative my-auto py-1 flex items-center justify-center w-full h-[270px] overflow-hidden bg-white rounded-xl border border-slate-200/80 p-2 shadow-xs select-none">
+                    {/* Overlay Transparente de Mãozinha (Ativo quando Zoom > 1.0) */}
+                    {zoomLevel > 1.0 && (
+                      <div
+                        onMouseDown={handlePanStart}
+                        onMouseMove={handlePanMove}
+                        onMouseUp={handlePanEnd}
+                        onMouseLeave={handlePanEnd}
+                        className={`absolute inset-0 z-20 ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+                        title="Arraste para mover o documento"
+                      />
+                    )}
+
                     <div
                       style={{
                         transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomLevel}) rotate(${rotationAngle}deg)`,
                         transformOrigin: 'center center',
                       }}
-                      className="transition-transform duration-150 ease-out flex items-center justify-center max-w-full max-h-full"
+                      className="transition-transform duration-100 ease-out flex items-center justify-center max-w-full max-h-full"
                     >
                       {isPdfDoc ? (
                         <iframe
                           src={ocrDocPreview}
-                          className="w-full h-[430px] min-w-[340px] rounded-lg bg-white border border-slate-200 pointer-events-auto"
+                          className="w-full h-[250px] min-w-[280px] rounded-lg bg-white border border-slate-200"
                           title="Documento PDF"
                         />
                       ) : (
@@ -590,15 +633,15 @@ export default function ClientsPage() {
                         <img
                           src={ocrDocPreview}
                           alt="Documento do cliente"
-                          className="max-h-[430px] w-auto object-contain rounded-lg pointer-events-none"
+                          className="max-h-[250px] w-auto object-contain rounded-lg pointer-events-none"
                         />
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-[10px] text-slate-500 font-medium">
+                  <div className="flex items-center justify-between pt-1.5 border-t border-slate-200 text-[10px] text-slate-500 font-medium">
                     {zoomLevel > 1.0 ? (
                       <span className="text-blue-600 font-bold flex items-center gap-1">
-                        🖐️ Arraste com a mãozinha para mover
+                        🖐️ Mãozinha Ativa (Arraste no documento)
                       </span>
                     ) : (
                       <button
@@ -621,7 +664,7 @@ export default function ClientsPage() {
               )}
 
               {/* Coluna da Direita: Formulário de Cadastro */}
-              <div className={ocrDocPreview ? 'md:col-span-6' : 'w-full'}>
+              <div className={ocrDocPreview ? 'md:col-span-7' : 'w-full'}>
                 <form onSubmit={handleCreateClient} className="space-y-4 text-xs">
                   <div className="grid md:grid-cols-2 gap-4">
                     <div>
