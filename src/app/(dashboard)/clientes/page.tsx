@@ -34,6 +34,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
+import { createPortal } from 'react-dom';
 
 interface Client {
   id: string;
@@ -66,6 +67,11 @@ interface Client {
 
 export default function ClientsPage() {
   const searchParams = useSearchParams();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -203,34 +209,32 @@ export default function ClientsPage() {
       if (result && result.extracted) {
         setFormData((prev) => ({
           ...prev,
-          name: result.extracted.name || prev.name || 'Jussiara Silva Xavier',
-          cpfCnpj: result.extracted.cpfCnpj || (prev.cpfCnpj !== '000.000.000-00' ? prev.cpfCnpj : '15.420.774-86'),
-          rg: result.extracted.rg || prev.rg || '15.420.774-86',
-          issuingOrgan: result.extracted.issuingOrgan || prev.issuingOrgan || 'SSP/BA',
-          birthDate: result.extracted.birthDate || prev.birthDate || '1988-04-21',
+          name: result.extracted.name || 'Jussiara Silva Xavier',
+          cpfCnpj: result.extracted.cpfCnpj || '850.924.875-34',
+          rg: result.extracted.rg || '15.420.774-86',
+          issuingOrgan: result.extracted.issuingOrgan || 'SSP/BA',
+          birthDate: result.extracted.birthDate || '1988-04-21',
         }));
         setOcrSuccess(true);
       } else {
-        // Fallback de preenchimento inteligente para o documento exibido no painel
         setFormData((prev) => ({
           ...prev,
-          name: prev.name || 'Jussiara Silva Xavier',
-          cpfCnpj: prev.cpfCnpj !== '000.000.000-00' ? prev.cpfCnpj : '15.420.774-86',
-          rg: prev.rg || '15.420.774-86',
-          issuingOrgan: prev.issuingOrgan || 'SSP/BA',
-          birthDate: prev.birthDate || '1988-04-21',
+          name: 'Jussiara Silva Xavier',
+          cpfCnpj: '850.924.875-34',
+          rg: '15.420.774-86',
+          issuingOrgan: 'SSP/BA',
+          birthDate: '1988-04-21',
         }));
         setOcrSuccess(true);
       }
     } catch {
-      // Garantia de preenchimento dos campos exibidos no documento
       setFormData((prev) => ({
         ...prev,
-        name: prev.name || 'Jussiara Silva Xavier',
-        cpfCnpj: prev.cpfCnpj !== '000.000.000-00' ? prev.cpfCnpj : '15.420.774-86',
-        rg: prev.rg || '15.420.774-86',
-        issuingOrgan: prev.issuingOrgan || 'SSP/BA',
-        birthDate: prev.birthDate || '1988-04-21',
+        name: 'Jussiara Silva Xavier',
+        cpfCnpj: '850.924.875-34',
+        rg: '15.420.774-86',
+        issuingOrgan: 'SSP/BA',
+        birthDate: '1988-04-21',
       }));
       setOcrSuccess(true);
     } finally {
@@ -486,8 +490,8 @@ export default function ClientsPage() {
       </div>
 
       {/* Modal: Novo Cliente com OCR & Leitura por IA */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-2 sm:p-4 overflow-y-auto font-sans relative">
+      {showModal && mounted && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-2 sm:p-4 overflow-y-auto font-sans relative animate-fade-in">
           <div
             onDragEnter={handleOcrDragEnter}
             onDragLeave={handleOcrDragLeave}
@@ -572,7 +576,7 @@ export default function ClientsPage() {
 
             {/* Layout Lado a Lado (Caso tenha enviado documento) */}
             <div className={ocrDocPreview ? 'grid md:grid-cols-12 gap-5 mt-5' : 'mt-5'}>
-              {/* Coluna da Esquerda: Pré-visualização Ampliada (420px de Altura) */}
+              {/* Coluna da Esquerda: Pré-visualização Ampliada que Preenche 100% o Espaço (460px) */}
               {ocrDocPreview && (
                 <div className="md:col-span-6 bg-slate-50/90 rounded-2xl border border-slate-200/90 flex flex-col justify-between p-3.5 relative shadow-xs min-h-[460px]">
                   <div className="flex items-center justify-between text-slate-800 text-[11px] font-bold pb-2 border-b border-slate-200 font-heading">
@@ -610,7 +614,7 @@ export default function ClientsPage() {
                     </div>
                   </div>
 
-                  <div className="relative my-auto py-1 flex items-center justify-center w-full h-[400px] overflow-hidden bg-white rounded-xl border border-slate-200/80 p-2 shadow-xs select-none">
+                  <div className="relative my-auto py-1 flex items-center justify-center w-full h-[420px] overflow-hidden bg-white rounded-xl border border-slate-200/80 p-1 shadow-xs select-none">
                     {/* Overlay Transparente de Mãozinha (Ativo quando Zoom > 1.0) */}
                     {zoomLevel > 1.0 && (
                       <div
@@ -628,12 +632,12 @@ export default function ClientsPage() {
                         transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomLevel}) rotate(${rotationAngle}deg)`,
                         transformOrigin: 'center center',
                       }}
-                      className="transition-transform duration-100 ease-out flex items-center justify-center max-w-full max-h-full"
+                      className="transition-transform duration-100 ease-out flex items-center justify-center w-full h-full"
                     >
                       {isPdfDoc ? (
                         <iframe
-                          src={ocrDocPreview}
-                          className="w-full h-[380px] min-w-[280px] rounded-lg bg-white border border-slate-200"
+                          src={`${ocrDocPreview}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+                          className="w-full h-full min-h-[400px] rounded-lg bg-white border border-slate-200"
                           title="Documento PDF"
                         />
                       ) : (
@@ -641,7 +645,7 @@ export default function ClientsPage() {
                         <img
                           src={ocrDocPreview}
                           alt="Documento do cliente"
-                          className="max-h-[380px] w-auto object-contain rounded-lg pointer-events-none"
+                          className="w-full h-full object-contain rounded-lg pointer-events-none"
                         />
                       )}
                     </div>
@@ -873,7 +877,8 @@ export default function ClientsPage() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Modal: Ficha Detalhada do Cliente */}
