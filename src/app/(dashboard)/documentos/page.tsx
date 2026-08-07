@@ -37,7 +37,11 @@ import {
   CheckSquare,
   Square,
   MessageSquare,
-  Kanban
+  Kanban,
+  Calendar,
+  KeyRound,
+  User,
+  ShieldAlert
 } from 'lucide-react';
 import { maskCpfCnpj } from '@/lib/formatters';
 
@@ -361,44 +365,44 @@ export default function DocumentsPage() {
     switch (status) {
       case 'ENVIADO':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 font-extrabold text-[11px] border border-blue-200 font-heading">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-extrabold text-[10px] border border-blue-200 font-heading">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" /> Enviado
           </span>
         );
       case 'VISUALIZADO':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 font-extrabold text-[11px] border border-indigo-200 font-heading">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-extrabold text-[10px] border border-indigo-200 font-heading">
             <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" /> Visualizado
           </span>
         );
       case 'EM_ASSINATURA':
       case 'PARCIALMENTE_ASSINADO':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-800 font-extrabold text-[11px] border border-amber-200 font-heading">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" /> Parcialmente Assinado
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 font-extrabold text-[10px] border border-amber-200 font-heading">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" /> Em Assinatura
           </span>
         );
       case 'CONCLUIDO':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 font-extrabold text-[11px] border border-emerald-300 font-heading shadow-2xs">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" /> Concluído
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 font-extrabold text-[10px] border border-emerald-300 font-heading shadow-2xs">
+            <CheckCircle2 className="w-3 h-3 text-emerald-600 stroke-[2.5]" /> Concluído
           </span>
         );
       case 'RECUSADO':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 text-rose-700 font-extrabold text-[11px] border border-rose-200 font-heading">
-            <AlertCircle className="w-3.5 h-3.5 text-rose-600" /> Recusado
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 font-extrabold text-[10px] border border-rose-200 font-heading">
+            <AlertCircle className="w-3 h-3 text-rose-600" /> Recusado
           </span>
         );
       case 'CANCELADO':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-50 text-red-700 font-extrabold text-[11px] border border-red-200 font-heading">
-            <Ban className="w-3.5 h-3.5 text-red-500" /> Cancelado
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-50 text-red-700 font-extrabold text-[10px] border border-red-200 font-heading">
+            <Ban className="w-3 h-3 text-red-500" /> Cancelado
           </span>
         );
       case 'EXPIRADO':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-700 font-extrabold text-[11px] border border-slate-300 font-heading">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-extrabold text-[10px] border border-slate-300 font-heading">
             Expirado
           </span>
         );
@@ -406,14 +410,14 @@ export default function DocumentsPage() {
       case 'RASCUNHO':
       default:
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-700 font-extrabold text-[11px] border border-slate-200 font-heading">
-            <Clock className="w-3.5 h-3.5 text-slate-500" /> Pronto p/ Envio
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-extrabold text-[10px] border border-slate-200 font-heading">
+            <Clock className="w-3 h-3 text-slate-500" /> Pronto p/ Envio
           </span>
         );
     }
   };
 
-  /* Renderizador de Card Distinto para Documentos Assinados vs Pendentes */
+  /* Renderizador de Card COMPACTO E EXECUTIVO */
   const renderDocumentCard = (doc: DocumentItem) => {
     const signedCount = doc.signers.filter((s) => s.status === 'ASSINADO').length;
     const totalSigners = doc.signers.length;
@@ -422,67 +426,67 @@ export default function DocumentsPage() {
     const firstSigner = doc.signers[0];
 
     if (isCompleted) {
-      /* FORMATO 1: CERTIFICADO JURÍDICO AUTÊNTICO (DOCUMENTOS ASSINADOS) */
+      /* CARD COMPACTO: DOCUMENTOS ASSINADOS (CERTIFICADO VERDE ESMERALDA) */
       return (
         <div
           key={doc.id}
-          className={`bg-gradient-to-br from-emerald-50/80 via-white to-emerald-50/40 p-6 rounded-3xl border border-emerald-300/90 shadow-md hover:shadow-xl hover:border-emerald-400 transition-all flex flex-col justify-between space-y-5 relative overflow-hidden group ${
-            isSelected ? 'ring-2 ring-emerald-500' : ''
+          className={`bg-white p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 relative group ${
+            isSelected
+              ? 'border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
+              : 'border-emerald-200/90 hover:border-emerald-300 hover:shadow-md'
           }`}
         >
-          <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl pointer-events-none" />
-
-          <div className="space-y-4 relative z-10">
-            {/* Topo do Certificado */}
+          <div className="space-y-2.5">
+            {/* Header: Checkbox + Badge + Data */}
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <button onClick={() => toggleSelectDoc(doc.id)} className="text-slate-400 hover:text-emerald-600">
                   {isSelected ? <CheckSquare className="w-4 h-4 text-emerald-600" /> : <Square className="w-4 h-4" />}
                 </button>
-                <span className="px-3 py-0.5 rounded-full bg-emerald-100/90 text-emerald-800 font-black text-[10px] uppercase border border-emerald-300 font-heading tracking-wider flex items-center gap-1">
-                  <Award className="w-3 h-3 text-emerald-700" /> CERTIFICADO EMITIDO
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 font-extrabold text-[10px] uppercase border border-emerald-200 font-heading tracking-tight flex items-center gap-1">
+                  <Award className="w-3 h-3 text-emerald-600" /> CERTIFICADO EMITIDO
                 </span>
               </div>
-              <span className="px-2.5 py-0.5 rounded-full bg-white text-emerald-800 border border-emerald-200 text-[10px] font-mono font-bold">
-                MP 2.200-2
+              <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-slate-400" />
+                {new Date(doc.completedAt || doc.createdAt).toLocaleDateString('pt-BR')}
               </span>
             </div>
 
             {/* Título & Cliente */}
-            <div className="space-y-1">
-              <h3 className="font-heading text-base font-black text-emerald-950 line-clamp-2 leading-snug group-hover:text-emerald-700 transition-colors">
+            <div>
+              <h4 className="font-heading text-sm font-black text-slate-900 line-clamp-1 group-hover:text-emerald-700 transition-colors">
                 {doc.title}
-              </h3>
-              {doc.client && (
-                <div className="flex items-center gap-1.5 text-xs text-emerald-900 font-extrabold font-heading">
-                  <Folder className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-                  <span className="truncate">{doc.client.name}</span>
+              </h4>
+              {doc.client ? (
+                <div className="flex items-center justify-between text-[11px] text-slate-600 font-medium mt-0.5">
+                  <span className="truncate font-bold text-slate-700 flex items-center gap-1">
+                    <User className="w-3 h-3 text-emerald-600 shrink-0" /> {doc.client.name}
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                    {maskCpfCnpj(doc.client.cpfCnpj)}
+                  </span>
                 </div>
+              ) : (
+                <span className="text-[11px] text-slate-400 italic">Sem cliente vinculado</span>
               )}
             </div>
 
-            {/* Hash Jurídico de Autenticidade & Signatários */}
-            <div className="p-3 bg-white/90 rounded-2xl border border-emerald-200/80 space-y-1.5 shadow-2xs">
-              <div className="flex items-center justify-between text-[10px] text-emerald-800 font-bold font-heading">
-                <span className="flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Prova de Vida ao Vivo Validade
-                </span>
-                <span className="text-emerald-700 font-mono">100% ASSINADO</span>
-              </div>
-              {doc.verificationCode && (
-                <div className="text-[10px] font-mono text-slate-500 truncate bg-slate-50 p-1.5 rounded-lg border border-slate-200/60">
-                  CÓDIGO: {doc.verificationCode}
-                </div>
-              )}
+            {/* Selo Jurídico de Evidências */}
+            <div className="p-2 bg-emerald-50/60 rounded-xl border border-emerald-200/60 flex items-center justify-between text-[10px] text-emerald-900 font-bold font-heading">
+              <span className="flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Prova de Vida ao Vivo Validade
+              </span>
+              <span className="font-mono text-emerald-700">MP 2.200-2</span>
             </div>
 
             {/* Tags */}
             {doc.tags && doc.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-1 pt-0.5">
                 {doc.tags.map((t) => (
                   <span
                     key={t.id}
-                    className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold text-white font-heading"
+                    className="px-2 py-0.5 rounded-md text-[9px] font-extrabold text-white font-heading"
                     style={{ backgroundColor: t.color }}
                   >
                     {t.name}
@@ -492,20 +496,20 @@ export default function DocumentsPage() {
             )}
           </div>
 
-          {/* Footer do Certificado */}
-          <div className="pt-4 border-t border-emerald-200/60 flex items-center justify-between gap-2 relative z-10">
+          {/* Footer de Ações Compactas */}
+          <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-1.5">
             <a
               href={`/api/documents/${doc.id}/download`}
               download
               title="Baixar PDF Assinado com Certificado"
-              className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 shadow-md hover:shadow-emerald-900/30 transition-all font-heading"
+              className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-all font-heading"
             >
-              <Download className="w-4 h-4" /> PDF Assinado
+              <Download className="w-3.5 h-3.5" /> PDF Assinado
             </a>
 
             <button
               onClick={() => setSelectedDoc(doc)}
-              className="px-3.5 py-2.5 bg-white text-emerald-900 font-extrabold border border-emerald-300 rounded-xl text-xs hover:bg-emerald-50 transition-all font-heading"
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-lg text-xs transition-all font-heading"
             >
               Dossiê
             </button>
@@ -514,60 +518,63 @@ export default function DocumentsPage() {
       );
     }
 
-    /* FORMATO 2: CARD DE ACOMPANHAMENTO EM ANDAMENTO / RASCUNHO */
+    /* CARD COMPACTO: DOCUMENTOS EM ASSINATURA / RASCUNHOS */
     return (
       <div
         key={doc.id}
-        className={`bg-white p-6 rounded-3xl border transition-all flex flex-col justify-between space-y-5 group relative ${
-          isSelected ? 'border-blue-600 ring-2 ring-blue-500/20 shadow-md' : 'border-slate-200/80 hover:border-slate-300 hover:shadow-lg'
+        className={`bg-white p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 relative group ${
+          isSelected
+            ? 'border-blue-600 ring-2 ring-blue-500/20 shadow-md'
+            : 'border-slate-200 hover:border-slate-300 hover:shadow-md'
         }`}
       >
-        <div className="space-y-4">
-          {/* Topo do Card */}
+        <div className="space-y-2.5">
+          {/* Header: Checkbox + Badge + Data */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <button onClick={() => toggleSelectDoc(doc.id)} className="text-slate-400 hover:text-blue-600">
                 {isSelected ? <CheckSquare className="w-4 h-4 text-blue-600" /> : <Square className="w-4 h-4" />}
               </button>
-              <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 font-extrabold text-[10px] uppercase border border-blue-200 font-heading">
-                {doc.documentType || 'CONTRATO'}
-              </span>
+              {getStatusBadge(doc.status)}
             </div>
-            {getStatusBadge(doc.status)}
+            <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+              <Calendar className="w-3 h-3 text-slate-400" />
+              {new Date(doc.createdAt).toLocaleDateString('pt-BR')}
+            </span>
           </div>
 
           {/* Título & Cliente */}
-          <div className="space-y-1">
-            <h3 className="font-heading text-base font-extrabold text-[#071B3A] line-clamp-2 leading-snug group-hover:text-blue-600 transition-colors">
+          <div>
+            <h4 className="font-heading text-sm font-extrabold text-[#071B3A] line-clamp-1 group-hover:text-blue-600 transition-colors">
               {doc.title}
-            </h3>
-
+            </h4>
             {doc.client ? (
-              <div className="flex items-center gap-1.5 text-xs text-slate-600 font-bold font-heading">
-                <Folder className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                <span className="truncate">{doc.client.name}</span>
+              <div className="flex items-center justify-between text-[11px] text-slate-600 font-medium mt-0.5">
+                <span className="truncate font-bold text-slate-700 flex items-center gap-1">
+                  <User className="w-3 h-3 text-blue-600 shrink-0" /> {doc.client.name}
+                </span>
+                <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                  {maskCpfCnpj(doc.client.cpfCnpj)}
+                </span>
               </div>
             ) : (
-              <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium">
-                <FolderOpen className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span>Sem cliente vinculado</span>
-              </div>
+              <span className="text-[11px] text-slate-400 italic">Sem cliente vinculado</span>
             )}
           </div>
 
           {/* Progresso de Assinaturas */}
-          <div className="p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200/80 space-y-2">
-            <div className="flex justify-between items-center text-[11px] font-bold text-slate-700 font-heading">
-              <span className="flex items-center gap-1">
-                <Users className="w-3.5 h-3.5 text-slate-500" /> Signatários
+          <div className="p-2 bg-slate-50 rounded-xl border border-slate-200/70 space-y-1.5">
+            <div className="flex justify-between items-center text-[10px] font-bold text-slate-700 font-heading">
+              <span className="flex items-center gap-1 text-slate-500">
+                <Users className="w-3 h-3" /> Signatários
               </span>
-              <span className="text-[#071B3A]">
+              <span className="text-[#071B3A] font-extrabold">
                 {signedCount} de {totalSigners} assinados
               </span>
             </div>
-            <div className="w-full h-2 bg-slate-200/70 rounded-full overflow-hidden">
+            <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
               <div
-                className="h-full bg-blue-600 transition-all duration-500"
+                className="h-full bg-blue-600 transition-all duration-300"
                 style={{ width: `${(signedCount / (totalSigners || 1)) * 100}%` }}
               />
             </div>
@@ -575,11 +582,11 @@ export default function DocumentsPage() {
 
           {/* Tags */}
           {doc.tags && doc.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1 pt-0.5">
               {doc.tags.map((t) => (
                 <span
                   key={t.id}
-                  className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold text-white font-heading"
+                  className="px-2 py-0.5 rounded-md text-[9px] font-extrabold text-white font-heading"
                   style={{ backgroundColor: t.color }}
                 >
                   {t.name}
@@ -589,33 +596,31 @@ export default function DocumentsPage() {
           )}
         </div>
 
-        {/* Footer do Card */}
-        <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+        {/* Footer de Ações Compactas */}
+        <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-1.5">
           {firstSigner && doc.status !== 'CANCELADO' ? (
             <button
               onClick={() => handleOpenWhatsApp(doc.title, firstSigner.name, firstSigner.token)}
-              title="Enviar cobrança de assinatura via WhatsApp"
-              className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-extrabold rounded-xl text-xs border border-emerald-200 flex items-center gap-1.5 font-heading"
+              title="Enviar cobrança via WhatsApp"
+              className="flex-1 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-extrabold rounded-lg text-xs border border-emerald-200 flex items-center justify-center gap-1 font-heading"
             >
               <MessageSquare className="w-3.5 h-3.5 text-emerald-600" /> WhatsApp
             </button>
-          ) : <div />}
+          ) : <div className="flex-1" />}
 
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setSelectedDoc(doc)}
-              className="px-3.5 py-2 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-xl text-xs transition-all font-heading shadow-xs"
-            >
-              Dossiê
-            </button>
-            <button
-              onClick={() => handleDelete(doc)}
-              title="Excluir documento permanentemente"
-              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl border border-slate-200 bg-white"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          <button
+            onClick={() => setSelectedDoc(doc)}
+            className="px-3 py-1.5 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-lg text-xs font-heading shadow-2xs"
+          >
+            Dossiê
+          </button>
+          <button
+            onClick={() => handleDelete(doc)}
+            title="Excluir documento"
+            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg border border-slate-200"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
     );
@@ -623,12 +628,12 @@ export default function DocumentsPage() {
 
   return (
     <div className="space-y-6 font-sans pb-16">
-      {/* Top Banner Luxuoso */}
-      <div className="bg-gradient-to-r from-[#071B3A] via-[#0B254C] to-[#071B3A] text-white p-6 sm:p-8 rounded-3xl shadow-xl relative overflow-hidden border border-white/10">
+      {/* Top Banner Luxuoso Executivo */}
+      <div className="bg-gradient-to-r from-[#071B3A] via-[#0B254C] to-[#071B3A] text-white p-6 sm:p-7 rounded-3xl shadow-xl relative overflow-hidden border border-white/10">
         <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-blue-500/10 via-transparent to-transparent pointer-events-none" />
 
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
-          <div className="space-y-2">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative z-10">
+          <div className="space-y-1.5">
             <div className="flex items-center gap-2">
               <span className="px-3 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-extrabold text-[10px] uppercase tracking-widest font-heading border border-blue-400/30">
                 Central de Contratos Legal SaaS
@@ -641,30 +646,30 @@ export default function DocumentsPage() {
               Gestão Executiva de Documentos
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-2xl font-medium leading-relaxed">
-              Organização inteligente por pastas de clientes, emissão de Certificados de Evidências em PDF e notificações instantâneas via WhatsApp.
+              Organização por pastas de clientes, emissão de Certificados de Evidências em PDF e notificações no WhatsApp.
             </p>
           </div>
 
           <div className="flex items-center gap-3">
             <Link
               href="/documentos/novo"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-6 py-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-extrabold rounded-2xl shadow-lg hover:shadow-blue-900/40 transition-all text-xs font-heading tracking-wide border border-white/20 active:scale-98"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-extrabold rounded-2xl shadow-lg hover:shadow-blue-900/40 transition-all text-xs font-heading tracking-wide border border-white/20 active:scale-98"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
-              Novo Envio de Documento
+              Novo Envio
             </Link>
           </div>
         </div>
       </div>
 
-      {/* Grid Principal: Navegação por Categorias/Pastas à Esquerda + Conteúdo de Documentos à Direita */}
+      {/* Layout Principal: 3 Colunas de Filtros + 9 Colunas de Documentos */}
       <div className="grid lg:grid-cols-12 gap-6 items-start">
-        {/* Painel Lateral de Pastas e Estágios (3 colunas em telas grandes) */}
+        {/* Painel Lateral de Filtros */}
         <div className="lg:col-span-3 space-y-4">
-          {/* Box 1: Filtro por Ciclo de Vida */}
-          <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
+          {/* Estágios */}
+          <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-xs space-y-2.5">
             <h3 className="font-heading text-xs font-extrabold text-[#071B3A] uppercase tracking-wider flex items-center gap-2">
-              <Layers className="w-4 h-4 text-blue-600" /> Estágios do Documento
+              <Layers className="w-4 h-4 text-blue-600" /> Estágios
             </h3>
 
             <div className="space-y-1">
@@ -673,14 +678,14 @@ export default function DocumentsPage() {
                   setCategoryFilter('ALL');
                   setSelectedClientFolder(null);
                 }}
-                className={`w-full text-left px-3.5 py-2.5 rounded-2xl text-xs font-bold font-heading transition-all flex items-center justify-between ${
+                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold font-heading transition-all flex items-center justify-between ${
                   categoryFilter === 'ALL' && !selectedClientFolder
                     ? 'bg-[#071B3A] text-white shadow-xs'
                     : 'text-slate-700 hover:bg-slate-100'
                 }`}
               >
                 <span className="flex items-center gap-2">
-                  <Inbox className="w-4 h-4 text-blue-400" /> Todos os Documentos
+                  <Inbox className="w-3.5 h-3.5 text-blue-400" /> Todos
                 </span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] bg-white/20 font-mono">{stats.total}</span>
               </button>
@@ -690,14 +695,14 @@ export default function DocumentsPage() {
                   setCategoryFilter('CONCLUIDO');
                   setSelectedClientFolder(null);
                 }}
-                className={`w-full text-left px-3.5 py-2.5 rounded-2xl text-xs font-bold font-heading transition-all flex items-center justify-between ${
+                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold font-heading transition-all flex items-center justify-between ${
                   categoryFilter === 'CONCLUIDO' && !selectedClientFolder
                     ? 'bg-emerald-700 text-white shadow-xs'
                     : 'text-slate-700 hover:bg-emerald-50'
                 }`}
               >
                 <span className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Concluídos Válidos
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Concluídos
                 </span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-extrabold font-mono">
                   {stats.completed}
@@ -709,14 +714,14 @@ export default function DocumentsPage() {
                   setCategoryFilter('EM_ANDAMENTO');
                   setSelectedClientFolder(null);
                 }}
-                className={`w-full text-left px-3.5 py-2.5 rounded-2xl text-xs font-bold font-heading transition-all flex items-center justify-between ${
+                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold font-heading transition-all flex items-center justify-between ${
                   categoryFilter === 'EM_ANDAMENTO' && !selectedClientFolder
                     ? 'bg-amber-600 text-white shadow-xs'
                     : 'text-slate-700 hover:bg-amber-50'
                 }`}
               >
                 <span className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-amber-500" /> Em Assinatura
+                  <Clock className="w-3.5 h-3.5 text-amber-500" /> Em Assinatura
                 </span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-100 text-amber-900 font-extrabold font-mono">
                   {stats.inProgress}
@@ -728,435 +733,208 @@ export default function DocumentsPage() {
                   setCategoryFilter('RASCUNHO');
                   setSelectedClientFolder(null);
                 }}
-                className={`w-full text-left px-3.5 py-2.5 rounded-2xl text-xs font-bold font-heading transition-all flex items-center justify-between ${
+                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold font-heading transition-all flex items-center justify-between ${
                   categoryFilter === 'RASCUNHO' && !selectedClientFolder
                     ? 'bg-slate-800 text-white shadow-xs'
                     : 'text-slate-700 hover:bg-slate-100'
                 }`}
               >
                 <span className="flex items-center gap-2">
-                  <FileCheck2 className="w-4 h-4 text-slate-500" /> Prontos p/ Envio
+                  <FileCheck2 className="w-3.5 h-3.5 text-slate-500" /> Prontos
                 </span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-200 text-slate-700 font-mono">{stats.draft}</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setCategoryFilter('CANCELADO');
-                  setSelectedClientFolder(null);
-                }}
-                className={`w-full text-left px-3.5 py-2.5 rounded-2xl text-xs font-bold font-heading transition-all flex items-center justify-between ${
-                  categoryFilter === 'CANCELADO' && !selectedClientFolder
-                    ? 'bg-rose-700 text-white shadow-xs'
-                    : 'text-slate-700 hover:bg-rose-50'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <Ban className="w-4 h-4 text-rose-500" /> Cancelados / Recusados
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-100 text-rose-800 font-mono">{stats.cancelled}</span>
               </button>
             </div>
           </div>
 
-          {/* Box 2: Pastas por Cliente */}
-          <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
+          {/* Pastas por Cliente */}
+          <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-xs space-y-2.5">
             <div className="flex items-center justify-between">
               <h3 className="font-heading text-xs font-extrabold text-[#071B3A] uppercase tracking-wider flex items-center gap-2">
-                <Folder className="w-4 h-4 text-blue-600" /> Pastas por Cliente
+                <Folder className="w-4 h-4 text-blue-600" /> Pastas
               </h3>
               {selectedClientFolder && (
-                <button
-                  onClick={() => setSelectedClientFolder(null)}
-                  className="text-[10px] text-blue-600 font-bold hover:underline"
-                >
-                  Limpar Pasta
+                <button onClick={() => setSelectedClientFolder(null)} className="text-[10px] text-blue-600 font-bold hover:underline">
+                  Limpar
                 </button>
               )}
             </div>
 
-            <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
-              {clientFolders.length === 0 ? (
-                <p className="text-[11px] text-slate-400 p-2">Nenhum cliente cadastrado.</p>
-              ) : (
-                clientFolders.map((folder) => {
-                  const isSelected = selectedClientFolder === folder.id;
-                  return (
-                    <button
-                      key={folder.id}
-                      onClick={() => setSelectedClientFolder(isSelected ? null : folder.id)}
-                      className={`w-full text-left px-3 py-2 rounded-2xl text-xs font-bold font-heading transition-all flex items-center justify-between ${
-                        isSelected ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2 truncate">
-                        {folder.id === AVULSO_KEY ? (
-                          <FolderOpen className="w-4 h-4 text-slate-400 shrink-0" />
-                        ) : (
-                          <Folder className="w-4 h-4 text-blue-600 shrink-0" />
-                        )}
-                        <span className="truncate">{folder.name}</span>
-                      </span>
-                      <span className="text-[10px] font-mono text-slate-500 bg-slate-100 rounded-full px-2 py-0.5 shrink-0">
-                        {folder.count}
-                      </span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Box 3: Tags Temáticas */}
-          <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-heading text-xs font-extrabold text-[#071B3A] uppercase tracking-wider flex items-center gap-2">
-                <TagIcon className="w-4 h-4 text-blue-600" /> Tags Temáticas
-              </h3>
-              <button
-                onClick={() => setShowTagManager(true)}
-                className="text-[10px] text-blue-600 font-bold hover:underline"
-              >
-                + Gerenciar
-              </button>
-            </div>
-
-            <div className="flex flex-wrap gap-1.5">
-              {allTags.length === 0 ? (
-                <p className="text-[11px] text-slate-400">Nenhuma tag criada.</p>
-              ) : (
-                allTags.map((t) => {
-                  const isSelected = selectedTagId === t.id;
-                  return (
-                    <button
-                      key={t.id}
-                      onClick={() => setSelectedTagId(isSelected ? null : t.id)}
-                      className={`px-3 py-1 rounded-full text-[10px] font-extrabold transition-all border font-heading ${
-                        isSelected ? 'ring-2 ring-blue-600 shadow-xs' : 'opacity-80 hover:opacity-100'
-                      }`}
-                      style={{ backgroundColor: t.color, color: '#fff', borderColor: t.color }}
-                    >
-                      {t.name}
-                    </button>
-                  );
-                })
-              )}
+            <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+              {clientFolders.map((folder) => {
+                const isSelected = selectedClientFolder === folder.id;
+                return (
+                  <button
+                    key={folder.id}
+                    onClick={() => setSelectedClientFolder(isSelected ? null : folder.id)}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs font-bold font-heading transition-all flex items-center justify-between ${
+                      isSelected ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 truncate">
+                      <Folder className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      <span className="truncate">{folder.name}</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-500 bg-slate-100 rounded-full px-2 py-0.5 shrink-0">
+                      {folder.count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
 
-        {/* Área de Documentos (9 colunas em telas grandes) */}
+        {/* Área de Documentos */}
         <div className="lg:col-span-9 space-y-4">
-          {/* Barra de Controle de Pesquisa e Modos de Exibição */}
-          <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row gap-4 items-center justify-between">
+          {/* Controle de Busca & Formatos */}
+          <div className="bg-white p-3.5 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row gap-3 items-center justify-between">
             <div className="w-full sm:w-80 relative">
               <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar por título, cliente ou CPF..."
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 font-medium"
+                placeholder="Buscar documento ou cliente..."
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 font-medium"
               />
             </div>
 
-            <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-              {/* Botões do Alternador de Visualização Tríplice */}
-              <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
-                <button
-                  onClick={() => setViewFormat('KANBAN')}
-                  className={`p-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 font-heading ${
-                    viewFormat === 'KANBAN' ? 'bg-[#071B3A] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                  title="Visão Kanban (Colunas por Status)"
-                >
-                  <Kanban className="w-4 h-4" />
-                  <span className="hidden sm:inline">Kanban</span>
-                </button>
+            {/* Alternador de Formatos */}
+            <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
+              <button
+                onClick={() => setViewFormat('KANBAN')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 font-heading ${
+                  viewFormat === 'KANBAN' ? 'bg-[#071B3A] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Kanban className="w-3.5 h-3.5" />
+                <span>Kanban</span>
+              </button>
 
-                <button
-                  onClick={() => setViewFormat('GRID')}
-                  className={`p-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 font-heading ${
-                    viewFormat === 'GRID' ? 'bg-[#071B3A] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                  title="Modo Cards Visuais (Certificados x Pendentes)"
-                >
-                  <LayoutGrid className="w-4 h-4" />
-                  <span className="hidden sm:inline">Cards</span>
-                </button>
+              <button
+                onClick={() => setViewFormat('GRID')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 font-heading ${
+                  viewFormat === 'GRID' ? 'bg-[#071B3A] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Cards</span>
+              </button>
 
-                <button
-                  onClick={() => setViewFormat('TABLE')}
-                  className={`p-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 font-heading ${
-                    viewFormat === 'TABLE' ? 'bg-[#071B3A] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                  title="Modo Tabela por Pastas de Cliente"
-                >
-                  <List className="w-4 h-4" />
-                  <span className="hidden sm:inline">Tabela</span>
-                </button>
-              </div>
+              <button
+                onClick={() => setViewFormat('TABLE')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 font-heading ${
+                  viewFormat === 'TABLE' ? 'bg-[#071B3A] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <List className="w-3.5 h-3.5" />
+                <span>Tabela</span>
+              </button>
             </div>
           </div>
 
-          {/* Barra Flutuante de Ações em Lote */}
-          {selectedDocIds.size > 0 && (
-            <div className="bg-[#071B3A] text-white p-4 rounded-3xl shadow-xl flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
-              <div className="flex items-center gap-2 font-heading font-extrabold text-xs">
-                <CheckSquare className="w-4 h-4 text-blue-400" />
-                <span>{selectedDocIds.size} documento(s) selecionado(s)</span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    alert('Os PDFs dos documentos selecionados estão sendo preparados para download em lote.');
-                  }}
-                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-xs font-heading"
-                >
-                  <Download className="w-3.5 h-3.5" /> Baixar PDFs
-                </button>
-
-                <button
-                  onClick={() => setSelectedDocIds(new Set())}
-                  className="text-xs text-slate-300 hover:text-white font-bold px-2 py-1"
-                >
-                  Cancelar Seleção
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* CONTEÚDO PRINCIPAL (LOADING, EMPTY OU LISTAGEM NOS FORMATOS DIVERSOS) */}
+          {/* LISTAGEM DE DOCUMENTOS */}
           {loading ? (
-            <div className="bg-white p-16 rounded-3xl border border-slate-200/80 text-center space-y-3">
-              <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto" />
-              <p className="font-heading font-extrabold text-[#071B3A] text-sm">Carregando acervo jurídico...</p>
+            <div className="bg-white p-12 rounded-3xl border border-slate-200/80 text-center space-y-2">
+              <Loader2 className="w-7 h-7 animate-spin text-blue-600 mx-auto" />
+              <p className="font-heading font-extrabold text-[#071B3A] text-xs">Carregando acervo...</p>
             </div>
           ) : filteredDocuments.length === 0 ? (
-            <div className="bg-white p-16 rounded-3xl border border-slate-200/80 text-center space-y-4 max-w-md mx-auto my-6">
-              <div className="w-16 h-16 bg-slate-50 border border-slate-200 text-slate-400 rounded-3xl flex items-center justify-center mx-auto shadow-xs">
-                <FileCheck2 className="w-8 h-8" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="font-heading font-extrabold text-[#071B3A] text-base">Nenhum documento localizado</h3>
-                <p className="text-xs text-slate-500 font-medium">Ajuste a busca por nome ou selecione outro estágio.</p>
-              </div>
-              <Link
-                href="/documentos/novo"
-                className="inline-flex items-center gap-2 px-5 py-3 bg-blue-600 text-white font-bold rounded-2xl text-xs font-heading shadow-md"
-              >
-                <Plus className="w-4 h-4 stroke-[3]" />
-                Criar Novo Envio
-              </Link>
+            <div className="bg-white p-12 rounded-3xl border border-slate-200/80 text-center space-y-3 max-w-sm mx-auto my-4">
+              <FileCheck2 className="w-8 h-8 text-slate-400 mx-auto" />
+              <p className="font-heading font-extrabold text-[#071B3A] text-sm">Nenhum documento encontrado</p>
             </div>
           ) : viewFormat === 'KANBAN' ? (
-            /* FORMATO 1: QUADRO KANBAN POR ESTÁGIO JURÍDICO */
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-start">
-              {/* Coluna 1: Concluídos */}
+            /* VISÃO KANBAN COMPACTA */
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+              {/* Coluna Concluídos */}
               <div className="space-y-3">
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between">
-                  <span className="font-heading font-black text-xs text-emerald-900 flex items-center gap-1.5 uppercase tracking-wider">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" /> 1. Concluídos & Válidos
+                <div className="p-3 bg-emerald-50/90 border border-emerald-200 rounded-2xl flex items-center justify-between shadow-2xs">
+                  <span className="font-heading font-black text-xs text-emerald-950 flex items-center gap-1.5 uppercase tracking-wide">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Concluídos
                   </span>
-                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-200/70 text-emerald-900 font-extrabold text-[10px] font-mono">
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900 font-extrabold text-[10px] font-mono">
                     {kanbanColumns.completed.length}
                   </span>
                 </div>
 
                 <div className="space-y-3">
-                  {kanbanColumns.completed.length === 0 ? (
-                    <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs font-medium">
-                      Nenhum concluído nesta busca
-                    </div>
-                  ) : (
-                    kanbanColumns.completed.map((doc) => renderDocumentCard(doc))
-                  )}
+                  {kanbanColumns.completed.map((doc) => renderDocumentCard(doc))}
                 </div>
               </div>
 
-              {/* Coluna 2: Em Assinatura */}
+              {/* Coluna Em Assinatura */}
               <div className="space-y-3">
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between">
-                  <span className="font-heading font-black text-xs text-amber-900 flex items-center gap-1.5 uppercase tracking-wider">
-                    <Clock className="w-4 h-4 text-amber-600" /> 2. Em Assinatura
+                <div className="p-3 bg-amber-50/90 border border-amber-200 rounded-2xl flex items-center justify-between shadow-2xs">
+                  <span className="font-heading font-black text-xs text-amber-950 flex items-center gap-1.5 uppercase tracking-wide">
+                    <Clock className="w-4 h-4 text-amber-600" /> Em Assinatura
                   </span>
-                  <span className="px-2.5 py-0.5 rounded-full bg-amber-200/70 text-amber-900 font-extrabold text-[10px] font-mono">
+                  <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-extrabold text-[10px] font-mono">
                     {kanbanColumns.inProgress.length}
                   </span>
                 </div>
 
                 <div className="space-y-3">
-                  {kanbanColumns.inProgress.length === 0 ? (
-                    <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs font-medium">
-                      Nenhum em andamento nesta busca
-                    </div>
-                  ) : (
-                    kanbanColumns.inProgress.map((doc) => renderDocumentCard(doc))
-                  )}
+                  {kanbanColumns.inProgress.map((doc) => renderDocumentCard(doc))}
                 </div>
               </div>
 
-              {/* Coluna 3: Rascunhos */}
+              {/* Coluna Rascunhos */}
               <div className="space-y-3">
-                <div className="p-3 bg-slate-100 border border-slate-200 rounded-2xl flex items-center justify-between">
-                  <span className="font-heading font-black text-xs text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
-                    <FileCheck2 className="w-4 h-4 text-slate-600" /> 3. Rascunhos / Prontos
+                <div className="p-3 bg-slate-100 border border-slate-200 rounded-2xl flex items-center justify-between shadow-2xs">
+                  <span className="font-heading font-black text-xs text-slate-800 flex items-center gap-1.5 uppercase tracking-wide">
+                    <FileCheck2 className="w-4 h-4 text-slate-600" /> Prontos / Rascunhos
                   </span>
-                  <span className="px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-800 font-extrabold text-[10px] font-mono">
+                  <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-800 font-extrabold text-[10px] font-mono">
                     {kanbanColumns.drafts.length}
                   </span>
                 </div>
 
                 <div className="space-y-3">
-                  {kanbanColumns.drafts.length === 0 ? (
-                    <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs font-medium">
-                      Nenhum rascunho localizado
-                    </div>
-                  ) : (
-                    kanbanColumns.drafts.map((doc) => renderDocumentCard(doc))
-                  )}
+                  {kanbanColumns.drafts.map((doc) => renderDocumentCard(doc))}
                 </div>
               </div>
             </div>
           ) : viewFormat === 'GRID' ? (
-            /* FORMATO 2: CARDS LUXUOSOS DIVERSOS */
-            <div className="grid md:grid-cols-2 gap-4">
+            /* VISÃO CARDS GRADE */
+            <div className="grid md:grid-cols-2 gap-3.5">
               {filteredDocuments.map((doc) => renderDocumentCard(doc))}
             </div>
           ) : (
-            /* FORMATO 3: TABELA AGRUPADA POR CLIENTE */
+            /* VISÃO TABELA */
             <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs text-slate-700">
-                  <thead className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-extrabold uppercase tracking-wider text-slate-500 font-heading">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-extrabold uppercase text-slate-500 font-heading">
                     <tr>
-                      <th className="px-6 py-4">Título do Documento</th>
-                      <th className="px-6 py-4">Progresso de Assinaturas</th>
-                      <th className="px-6 py-4">Tags</th>
-                      <th className="px-6 py-4">Status</th>
-                      <th className="px-6 py-4 text-right">Ações</th>
+                      <th className="px-5 py-3">Documento</th>
+                      <th className="px-5 py-3">Signatários</th>
+                      <th className="px-5 py-3">Status</th>
+                      <th className="px-5 py-3 text-right">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {groups.map((group) => {
-                      const isCollapsed = collapsedGroups.has(group.key);
-                      return (
-                        <Fragment key={group.key}>
-                          <tr
-                            className="bg-slate-50/90 hover:bg-slate-100/80 transition-colors cursor-pointer select-none border-t border-slate-200/60"
-                            onClick={() => toggleGroup(group.key)}
+                    {filteredDocuments.map((doc) => (
+                      <tr key={doc.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-5 py-3">
+                          <div className="font-extrabold text-slate-900 font-heading">{doc.title}</div>
+                          <div className="text-[11px] text-slate-400">{doc.client?.name || 'Avulso'}</div>
+                        </td>
+                        <td className="px-5 py-3">
+                          {doc.signers.filter((s) => s.status === 'ASSINADO').length} de {doc.signers.length} assinados
+                        </td>
+                        <td className="px-5 py-3">{getStatusBadge(doc.status)}</td>
+                        <td className="px-5 py-3 text-right space-x-2">
+                          <button
+                            onClick={() => setSelectedDoc(doc)}
+                            className="px-3 py-1 bg-[#071B3A] text-white font-extrabold rounded-lg text-xs"
                           >
-                            <td colSpan={5} className="px-6 py-3.5">
-                              <div className="flex items-center gap-2.5">
-                                {isCollapsed ? (
-                                  <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
-                                ) : (
-                                  <ChevronDown className="w-4 h-4 text-slate-500 shrink-0" />
-                                )}
-                                {group.key === AVULSO_KEY ? (
-                                  <FolderOpen className="w-4 h-4 text-slate-400 shrink-0" />
-                                ) : (
-                                  <Folder className="w-4 h-4 text-blue-600 shrink-0" />
-                                )}
-                                <span className="font-heading font-extrabold text-slate-900 text-xs tracking-tight">{group.label}</span>
-                                {group.subtitle && (
-                                  <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
-                                    CPF/CNPJ: {maskCpfCnpj(group.subtitle)}
-                                  </span>
-                                )}
-                                <span className="ml-auto text-[10px] font-extrabold text-slate-600 bg-white border border-slate-200 rounded-full px-3 py-0.5 shrink-0 shadow-2xs font-heading">
-                                  {group.docs.length} doc{group.docs.length !== 1 ? 's' : ''}
-                                </span>
-                              </div>
-                            </td>
-                          </tr>
-
-                          {!isCollapsed &&
-                            group.docs.map((doc) => {
-                              const signedCount = doc.signers.filter((s) => s.status === 'ASSINADO').length;
-                              const totalSigners = doc.signers.length;
-
-                              return (
-                                <tr key={doc.id} className="hover:bg-slate-50/80 transition-colors">
-                                  <td className="px-6 py-4">
-                                    <div className="font-extrabold text-slate-900 flex items-center gap-2 font-heading">
-                                      <FileText className="w-4 h-4 text-blue-600 shrink-0" />
-                                      <span>{doc.title}</span>
-                                    </div>
-                                    <div className="text-[11px] text-slate-400 mt-0.5 font-medium">
-                                      Criado em {new Date(doc.createdAt).toLocaleDateString('pt-BR')}
-                                    </div>
-                                  </td>
-
-                                  <td className="px-6 py-4">
-                                    <div className="space-y-1">
-                                      <div className="flex justify-between text-xs font-bold text-slate-700 font-heading">
-                                        <span>{signedCount} de {totalSigners} assinados</span>
-                                      </div>
-                                      <div className="w-36 h-2 bg-slate-100 rounded-full overflow-hidden">
-                                        <div
-                                          className="h-full bg-blue-600 transition-all duration-300"
-                                          style={{ width: `${(signedCount / (totalSigners || 1)) * 100}%` }}
-                                        />
-                                      </div>
-                                    </div>
-                                  </td>
-
-                                  <td className="px-6 py-4">
-                                    <div className="flex flex-wrap gap-1 max-w-[160px]">
-                                      {doc.tags && doc.tags.length > 0 ? (
-                                        doc.tags.map((t) => (
-                                          <span
-                                            key={t.id}
-                                            className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white font-heading"
-                                            style={{ backgroundColor: t.color }}
-                                          >
-                                            {t.name}
-                                          </span>
-                                        ))
-                                      ) : (
-                                        <span className="text-slate-300 text-[10px]">—</span>
-                                      )}
-                                    </div>
-                                  </td>
-
-                                  <td className="px-6 py-4">{getStatusBadge(doc.status)}</td>
-
-                                  <td className="px-6 py-4 text-right space-x-2">
-                                    {(doc.status === 'CONCLUIDO' || doc.status === 'PARCIALMENTE_ASSINADO') && (
-                                      <a
-                                        href={`/api/documents/${doc.id}/download`}
-                                        download
-                                        title="Baixar PDF Assinado com Certificado"
-                                        className="px-3 py-1.5 text-emerald-700 hover:bg-emerald-100 rounded-xl transition-colors border border-emerald-200 bg-emerald-50 inline-flex items-center gap-1.5 text-xs font-extrabold font-heading"
-                                      >
-                                        <Download className="w-3.5 h-3.5" />
-                                        PDF Assinado
-                                      </a>
-                                    )}
-
-                                    <button
-                                      onClick={() => setSelectedDoc(doc)}
-                                      className="px-3.5 py-1.5 bg-[#071B3A] text-white font-extrabold rounded-xl text-xs hover:bg-[#0B1D3D] transition-colors font-heading shadow-xs"
-                                    >
-                                      Dossiê
-                                    </button>
-
-                                    <button
-                                      onClick={() => handleDelete(doc)}
-                                      title="Excluir documento permanentemente"
-                                      className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-xl border border-slate-200 bg-white"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                        </Fragment>
-                      );
-                    })}
+                            Dossiê
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -1165,202 +943,54 @@ export default function DocumentsPage() {
         </div>
       </div>
 
-      {/* Modal: Gerenciar Tags */}
-      {showTagManager && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 font-sans">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 relative my-8">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <h2 className="font-heading text-lg font-black text-[#071B3A] flex items-center gap-2">
-                <TagIcon className="w-4 h-4 text-blue-600" /> Gerenciar Tags
-              </h2>
-              <button onClick={() => setShowTagManager(false)} className="text-slate-400 hover:text-slate-600 text-lg font-bold">
-                ✕
-              </button>
-            </div>
-
-            <div className="py-4 space-y-4">
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {allTags.length === 0 && <p className="text-xs text-slate-400">Nenhuma tag criada ainda.</p>}
-                {allTags.map((t) => (
-                  <div key={t.id} className="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-slate-200">
-                    <span
-                      className="px-2.5 py-1 rounded-full text-[10px] font-extrabold text-white font-heading"
-                      style={{ backgroundColor: t.color }}
-                    >
-                      {t.name}
-                    </span>
-                    <button onClick={() => handleDeleteTag(t.id)} className="text-slate-400 hover:text-red-600 p-1" title="Excluir tag">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <div className="pt-3 border-t border-slate-100 space-y-2.5">
-                <input
-                  value={newTagName}
-                  onChange={(e) => setNewTagName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleCreateTag()}
-                  placeholder="Nome da nova tag (ex: Urgente, Trabalhista)"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 font-medium"
-                />
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {TAG_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => setNewTagColor(c)}
-                      className="w-6 h-6 rounded-full border-2 transition-all"
-                      style={{ backgroundColor: c, borderColor: newTagColor === c ? '#071B3A' : 'transparent' }}
-                    />
-                  ))}
-                </div>
-                <button
-                  onClick={handleCreateTag}
-                  disabled={savingTag || !newTagName.trim()}
-                  className="w-full py-2.5 bg-[#071B3A] hover:bg-[#0B1D3D] disabled:opacity-50 disabled:cursor-not-allowed text-white font-extrabold rounded-xl text-xs transition-all font-heading shadow-md"
-                >
-                  {savingTag ? 'Salvando...' : '+ Criar Nova Tag'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Slide-over / Modal: Dossiê Jurídico & Evidências */}
       {selectedDoc && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 font-sans">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative my-8 overflow-y-auto max-h-[90vh] space-y-6">
-            {/* Header do Dossiê */}
-            <div className="flex items-start justify-between pb-4 border-b border-slate-100">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 relative my-8 overflow-y-auto max-h-[90vh] space-y-5">
+            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
               <div>
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-extrabold text-[10px] uppercase font-heading border border-blue-200">
-                    {selectedDoc.documentType || 'DOCUMENTO'}
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-mono">ID: {selectedDoc.id}</span>
-                </div>
-                <h2 className="font-heading text-xl font-black text-[#071B3A] mt-1">{selectedDoc.title}</h2>
+                <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-extrabold text-[10px] uppercase font-heading border border-blue-200">
+                  {selectedDoc.documentType || 'DOCUMENTO'}
+                </span>
+                <h2 className="font-heading text-lg font-black text-[#071B3A] mt-1">{selectedDoc.title}</h2>
               </div>
               <button onClick={() => setSelectedDoc(null)} className="text-slate-400 hover:text-slate-600 text-lg font-bold">
                 ✕
               </button>
             </div>
 
-            <div className="space-y-6">
-              {/* Card de Certificado de Evidências */}
+            <div className="space-y-4">
               {(selectedDoc.status === 'CONCLUIDO' || selectedDoc.status === 'PARCIALMENTE_ASSINADO') && (
-                <div className="p-5 bg-gradient-to-r from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-2xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="font-extrabold text-emerald-900 text-xs flex items-center gap-1.5 font-heading">
-                      <Award className="w-4 h-4 text-emerald-600" /> Certificado Jurídico de Evidências
-                    </span>
-                    {selectedDoc.verificationCode && (
-                      <Link
-                        href={`/verificar/${selectedDoc.verificationCode}`}
-                        target="_blank"
-                        className="text-xs font-extrabold text-blue-600 hover:underline flex items-center gap-1 font-heading"
-                      >
-                        Página de Verificação Pública <ExternalLink className="w-3.5 h-3.5" />
-                      </Link>
-                    )}
-                  </div>
-                  <a
-                    href={`/api/documents/${selectedDoc.id}/download`}
-                    download
-                    className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 shadow-md transition-all font-heading"
-                  >
-                    <Download className="w-4 h-4" /> Baixar Documento Assinado com Certificado (.PDF)
-                  </a>
-                </div>
+                <a
+                  href={`/api/documents/${selectedDoc.id}/download`}
+                  download
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 shadow-md transition-all font-heading"
+                >
+                  <Download className="w-4 h-4" /> Baixar Documento Assinado com Certificado (.PDF)
+                </a>
               )}
 
-              {/* Dossiê dos Signatários & Links WhatsApp */}
               <div>
-                <h3 className="text-xs font-extrabold text-[#071B3A] uppercase tracking-wider mb-3 font-heading flex items-center gap-1.5">
-                  <Users className="w-4 h-4 text-blue-600" /> Signatários & Envio via WhatsApp
+                <h3 className="text-xs font-extrabold text-[#071B3A] uppercase tracking-wider mb-2 font-heading">
+                  Signatários & Notificações WhatsApp
                 </h3>
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {selectedDoc.signers.map((s) => (
-                    <div key={s.id} className="p-4 bg-slate-50/90 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div key={s.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between text-xs">
                       <div>
-                        <div className="font-extrabold text-slate-900 font-heading">
-                          {s.name} <span className="text-slate-500 font-normal">({s.role})</span>
-                        </div>
-                        <div className="text-slate-500 font-mono text-[11px] mt-0.5">CPF: {s.cpf}</div>
-                        {s.status === 'ASSINADO' && s.signedAt && (
-                          <div className="text-[10px] text-emerald-700 font-extrabold mt-1 flex items-center gap-1 font-heading">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Assinado em {new Date(s.signedAt).toLocaleString('pt-BR')}
-                          </div>
-                        )}
+                        <div className="font-extrabold text-slate-900">{s.name} ({s.role})</div>
+                        <div className="text-slate-500 font-mono text-[10px]">CPF: {s.cpf}</div>
                       </div>
-
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => handleOpenWhatsApp(selectedDoc.title, s.name, s.token)}
-                          className="px-3.5 py-2 bg-emerald-50 border border-emerald-200 text-emerald-800 font-extrabold rounded-xl hover:bg-emerald-100 flex items-center gap-1.5 font-heading shadow-2xs"
+                          className="px-3 py-1.5 bg-emerald-50 text-emerald-800 font-extrabold rounded-lg border border-emerald-200 flex items-center gap-1 text-xs"
                         >
                           <MessageSquare className="w-3.5 h-3.5 text-emerald-600" /> WhatsApp
-                        </button>
-                        <button
-                          onClick={() => handleCopyLink(s.token)}
-                          className="px-3 py-2 bg-white border border-slate-200 text-slate-700 font-extrabold rounded-xl hover:bg-slate-100 flex items-center gap-1.5 font-heading shadow-2xs"
-                        >
-                          {copiedToken === s.token ? <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" /> : <Copy className="w-3.5 h-3.5 text-blue-600" />}
-                          Copiar Link
                         </button>
                       </div>
                     </div>
                   ))}
-                </div>
-              </div>
-
-              {/* Tags do Documento */}
-              <div>
-                <h3 className="text-xs font-extrabold text-[#071B3A] uppercase tracking-wider mb-3 font-heading flex items-center gap-1.5">
-                  <TagIcon className="w-4 h-4 text-blue-600" /> Tags do Documento
-                </h3>
-                {allTags.length === 0 ? (
-                  <p className="text-[11px] text-slate-400">Nenhuma tag cadastrada ainda.</p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {allTags.map((t) => {
-                      const active = selectedDoc.tags?.some((dt) => dt.id === t.id);
-                      return (
-                        <button
-                          key={t.id}
-                          onClick={() => handleToggleDocTag(selectedDoc, t.id)}
-                          className="px-3 py-1 rounded-full text-[10px] font-extrabold border-2 transition-all font-heading"
-                          style={
-                            active
-                              ? { backgroundColor: t.color, borderColor: t.color, color: '#fff' }
-                              : { borderColor: t.color, color: t.color, backgroundColor: 'transparent' }
-                          }
-                        >
-                          {t.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Zona de Risco: Exclusão Permanente */}
-              <div className="pt-4 border-t border-slate-100">
-                <div className="p-4 bg-red-50/60 border border-red-200 rounded-2xl flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-extrabold text-red-800 font-heading">Excluir Documento Permanentemente</p>
-                    <p className="text-[11px] text-red-700/80 mt-0.5">
-                      Esta ação apaga irreversivelmente o documento e seu certificado de evidências.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => handleDelete(selectedDoc)}
-                    className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs rounded-xl flex items-center gap-1.5 font-heading shadow-xs shrink-0"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    Excluir
-                  </button>
                 </div>
               </div>
             </div>
