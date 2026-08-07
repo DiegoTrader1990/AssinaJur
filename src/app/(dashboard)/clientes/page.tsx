@@ -77,6 +77,7 @@ export default function ClientsPage() {
   const [ocrSuccess, setOcrSuccess] = useState(false);
   const [ocrDocPreview, setOcrDocPreview] = useState<string | null>(null);
   const [ocrDragActive, setOcrDragActive] = useState(false);
+  const [isPdfDoc, setIsPdfDoc] = useState(false);
   const [activeTab, setActiveTab] = useState<'resumo' | 'pessoais' | 'documentos' | 'historico'>('resumo');
 
   // Formulário do Cliente
@@ -149,6 +150,9 @@ export default function ClientsPage() {
     setOcrLoading(true);
     setFormError('');
     setOcrSuccess(false);
+
+    const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type.toLowerCase().includes('pdf');
+    setIsPdfDoc(isPdf);
 
     const previewUrl = URL.createObjectURL(file);
     setOcrDocPreview(previewUrl);
@@ -473,13 +477,21 @@ export default function ClientsPage() {
                     </span>
                     <span className="text-slate-400 text-[10px]">Conferência</span>
                   </div>
-                  <div className="my-auto py-2 flex items-center justify-center">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={ocrDocPreview}
-                      alt="Documento do cliente"
-                      className="max-h-[340px] w-auto object-contain rounded-lg shadow-md"
-                    />
+                  <div className="my-auto py-2 flex items-center justify-center w-full min-h-[320px]">
+                    {isPdfDoc ? (
+                      <iframe
+                        src={ocrDocPreview}
+                        className="w-full h-[330px] rounded-lg bg-white border border-slate-700"
+                        title="Documento PDF"
+                      />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={ocrDocPreview}
+                        alt="Documento do cliente"
+                        className="max-h-[330px] w-auto object-contain rounded-lg shadow-md"
+                      />
+                    )}
                   </div>
                   <div className="text-center pt-2 border-t border-slate-800 text-[10px] text-slate-400 font-medium">
                     Confira a imagem ao lado com o formulário

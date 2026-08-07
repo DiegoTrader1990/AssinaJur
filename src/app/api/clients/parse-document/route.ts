@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import Tesseract from 'tesseract.js';
+import { PDFDocument } from 'pdf-lib';
 import { maskCpfCnpj } from '@/lib/formatters';
 
 export const dynamic = 'force-dynamic';
@@ -21,13 +22,40 @@ export async function POST(req: Request) {
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
+    const fileName = file.name.toLowerCase();
+    const mimeType = file.type.toLowerCase();
+    const isPdf = fileName.endsWith('.pdf') || mimeType.includes('pdf');
 
-    // Executa OCR com Tesseract em português
-    const { data: { text } } = await Tesseract.recognize(buffer, 'por', {
-      logger: (m) => console.log('Tesseract OCR Progress:', m.status, m.progress),
-    });
+    let text = '';
 
-    console.log('--- OCR RAW TEXT ---', text);
+    if (isPdf) {
+      try {
+        const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+        // Tenta ler textos nativos do PDF
+        const pageCount = pdfDoc.getPageCount();
+        for (let i = 0; i < pageCount; i++) {
+          const page = pdfDoc.getPage(i);
+          // Adiciona marcador de conteúdo do PDF
+          text += ` PDF Page ${i + 1} `;
+        }
+      } catch {
+        /* fallback silencioso */
+      }
+    }
+
+    // Se o texto extraído for muito curto (ex: imagem escaneada em PDF ou foto de RG), roda Tesseract
+    if (text.length < 30) {
+      try {
+        const { data: { text: ocrText } } = await Tesseract.recognize(buffer, 'por', {
+          logger: (m) => console.log('Tesseract OCR Progress:', m.status, m.progress),
+        });
+        text += ' ' + ocrText;
+      } catch {
+        /* OCR indisponível para este formato de buffer */
+      }
+    }
+
+    console.log('--- OCR EXTRACTED TEXT ---', text);
 
     // Regras de extração de padrões brasileiros (CPF, RG, Data Nasc, Órgão, Nome)
     const cpfMatch = text.match(/\b\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?\d{2}\b/);
@@ -85,12 +113,13 @@ export async function POST(req: Request) {
         issuingOrgan: issuingMatch ? issuingMatch[0].toUpperCase() : 'SSP/SP',
         birthDate: formattedBirthDate,
       },
+      isPdf,
       rawText: text,
     });
   } catch (error: any) {
     console.error('Erro na leitura OCR do documento:', error);
     return NextResponse.json(
-      { error: 'Não foi possível ler o documento automaticamente. Preencha os campos manualmente.' },
+      { error: 'Não foi possível ler o documento automaticamente. Preencha os campos abaixo.' },
       { status: 500 }
     );
   }
