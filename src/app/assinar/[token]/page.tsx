@@ -158,23 +158,48 @@ function unlockAudioPermissions() {
   }
 }
 
+let isSpeakingRef = false;
+const speechQueue: string[] = [];
+
+function processSpeechQueue() {
+  if (isSpeakingRef || speechQueue.length === 0 || typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    return;
+  }
+  const text = speechQueue.shift();
+  if (!text) return;
+
+  isSpeakingRef = true;
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'pt-BR';
+  
+  const voice = getBestPortugueseVoice();
+  if (voice) {
+    utterance.voice = voice;
+  }
+
+  utterance.rate = 0.94; // Cadência humana suave e pausada
+  utterance.pitch = 1.0; // Tom natural sem efeito robótico
+
+  utterance.onend = () => {
+    isSpeakingRef = false;
+    setTimeout(processSpeechQueue, 350); // Pausa humana de 350ms entre frases
+  };
+
+  utterance.onerror = () => {
+    isSpeakingRef = false;
+    setTimeout(processSpeechQueue, 350);
+  };
+
+  window.speechSynthesis.speak(utterance);
+}
+
 function speakInstruction(text: string, enabled = true) {
   if (!enabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   try {
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'pt-BR';
-    
-    const voice = getBestPortugueseVoice();
-    if (voice) {
-      utterance.voice = voice;
-    }
-
-    utterance.rate = 0.98;
-    utterance.pitch = 1.05;
-    window.speechSynthesis.speak(utterance);
+    speechQueue.push(text);
+    processSpeechQueue();
   } catch {
-    /* sintetizador indisponível */
+    /* fala indisponível */
   }
 }
 
@@ -412,7 +437,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
 
-    const { noseX, faceWidthRatio } = faceInfo;
+    const { noseX, faceWidthRatio, noseRelOffset, eyeRatio } = faceInfo;
     setCurrentYaw(noseX);
 
     // Valida se o rosto está visível na câmera
@@ -426,7 +451,76 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
 
-    // ── ROSTO DETECTADO COM SUCESSO! MOLDURA VERDE + CONTAGEM REGRESSIVA 3..2..1 ──
+    // ── FOTO 1: ROSTO FRONTAL (Centralizado na moldura) ──
+    if (currentKey === 'center') {
+      const isCentered = Math.abs(noseRelOffset) <= 0.08 && noseX >= 0.28 && noseX <= 0.72;
+
+      if (!isCentered) {
+        setFrameState('YELLOW');
+        setSelfieInstruction('Olhe para a CÂMERA e centralize o rosto.');
+        centeredStartTimeRef.current = null;
+        setCountdownSecs(null);
+        return;
+      }
+
+      // Salva referência da própria pessoa
+      frontalNoseXRef.current = noseRelOffset;
+      frontalEyeRatioRef.current = eyeRatio;
+
+      setFrameState('GREEN');
+      if (!centeredStartTimeRef.current) {
+        centeredStartTimeRef.current = Date.now();
+      }
+
+      const elapsed = Date.now() - centeredStartTimeRef.current;
+      const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
+      setCountdownSecs(secsRemaining);
+      setSelfieInstruction(`Mantenha-se assim! Foto 1 em ${secsRemaining}s...`);
+
+      if (elapsed >= 3000) {
+        setCountdownSecs(null);
+        centeredStartTimeRef.current = null;
+        triggerAutomaticCapture('center');
+      }
+      return;
+    }
+
+    // ── FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (DETECÇÃO DA POSE CORRETA) ──
+    const baseOffset = frontalNoseXRef.current ?? 0;
+    const baseEye = frontalEyeRatioRef.current ?? 0.50;
+
+    const offsetDev = noseRelOffset - baseOffset;
+    const eyeDev = eyeRatio - baseEye;
+
+    let isPoseValid = false;
+
+    if (currentKey === 'left') {
+      // Foto 2: exige rotação para a ESQUERDA em relação ao centro
+      isPoseValid = eyeDev <= -0.05 || offsetDev <= -0.05 || offsetDev >= 0.05;
+      if (isPoseValid) {
+        leftTurnDirRef.current = Math.abs(eyeDev) > Math.abs(offsetDev) ? eyeDev : offsetDev;
+      }
+    } else if (currentKey === 'right') {
+      // Foto 3: exige rotação para o LADO OPOSTO da Foto 2
+      if (leftTurnDirRef.current !== null) {
+        const curDev = Math.abs(eyeDev) > Math.abs(offsetDev) ? eyeDev : offsetDev;
+        isPoseValid = (curDev * leftTurnDirRef.current) < 0 && Math.abs(curDev) >= 0.05;
+      } else {
+        isPoseValid = eyeDev >= 0.05 || offsetDev >= 0.05;
+      }
+    }
+
+    // Se o rosto NÃO estiver na pose correta solicitada, aguarda
+    if (!isPoseValid) {
+      setFrameState('YELLOW');
+      const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
+      setSelfieInstruction(`Vire o rosto para a ${dirLabel}`);
+      centeredStartTimeRef.current = null;
+      setCountdownSecs(null);
+      return;
+    }
+
+    // POSE CONFIRMADA! MOLDURA VERDE + CONTAGEM REGRESSIVA 3..2..1
     setFrameState('GREEN');
 
     if (!centeredStartTimeRef.current) {
@@ -437,16 +531,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
     setCountdownSecs(secsRemaining);
 
-    const stepLabel =
-      currentKey === 'center'
-        ? `Olhe para a câmera! Foto 1 em ${secsRemaining}s...`
-        : currentKey === 'left'
-        ? `Vire para a ESQUERDA ← (Foto 2 em ${secsRemaining}s)...`
-        : `Vire para a DIREITA → (Foto 3 em ${secsRemaining}s)...`;
+    const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
+    setSelfieInstruction(`Excelente! Mantenha a cabeça virada (${secsRemaining}s)...`);
 
-    setSelfieInstruction(stepLabel);
-
-    // Após 3.0s exatos na câmera -> CAPTURA A FOTO
     if (elapsed >= 3000) {
       setCountdownSecs(null);
       centeredStartTimeRef.current = null;
@@ -505,7 +592,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setSelfieImages(updatedSelfies);
       saveSessionProgress({ selfieImages: updatedSelfies });
 
-      // Se for refilmagem individual de uma única foto
       if (singleRetakeKey) {
         setSelfieInstruction(`✓ Foto de ${LIVENESS_STEPS.find(s => s.key === key)?.label} atualizada com sucesso!`);
         stopSelfieCamera();
@@ -515,21 +601,20 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
       playShutterSound(audioEnabledRef.current);
 
-      // Se for a sequência automática normal das 3 fotos
       if (key === 'center') {
         activeKeyRef.current = 'left';
         setActiveSelfieKey('left');
         centeredStartTimeRef.current = null;
         warmupUntilRef.current = Date.now() + 2000;
         setSelfieInstruction('✓ Foto 1 Salva! Agora vire o rosto para a ESQUERDA ←');
-        speakInstruction('Foto frontal salva! Agora vire o rosto para a esquerda.', audioEnabledRef.current);
+        speakInstruction('Foto 1 registrada com sucesso. Agora, vire o rosto para a esquerda.', audioEnabledRef.current);
       } else if (key === 'left') {
         activeKeyRef.current = 'right';
         setActiveSelfieKey('right');
         centeredStartTimeRef.current = null;
         warmupUntilRef.current = Date.now() + 2000;
         setSelfieInstruction('✓ Foto 2 Salva! Agora vire o rosto para a DIREITA →');
-        speakInstruction('Perfil esquerdo salvo! Agora vire o rosto para a direita.', audioEnabledRef.current);
+        speakInstruction('Foto 2 registrada com sucesso. Agora, vire o rosto para a direita.', audioEnabledRef.current);
       } else if (key === 'right') {
         setSelfieInstruction('✓ Prova de presença concluída com 3 fotos! Confira o resultado.');
         speakInstruction('Excelente! Prova de presença concluída com sucesso.', audioEnabledRef.current);
