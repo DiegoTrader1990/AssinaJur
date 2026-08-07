@@ -300,70 +300,72 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const handleFaceMeshResults = (results: any) => {
     if (isCapturingRef.current || !streamRef.current) return;
 
-    // Tempo de aquecimento / estabilização inicial (1.5 segundos para a câmera focar/ajustar exposição)
-    if (Date.now() < warmupUntilRef.current) {
-      setFrameState('YELLOW');
-      const currentKey = activeKeyRef.current;
-      setSelfieInstruction(
-        currentKey === 'center'
-          ? 'Aguarde a câmera estabilizar...'
-          : `Prepare-se para o ${LIVENESS_STEPS.find(s => s.key === currentKey)?.label}...`
-      );
-      stabilityCounterRef.current = 0;
-      return;
-    }
-
     const landmarks = results?.multiFaceLandmarks?.[0];
     if (!landmarks) {
       setFrameState('GRAY');
       setSelfieInstruction('Posicione seu rosto dentro da moldura.');
       stabilityCounterRef.current = 0;
+      setTurnProgress(0);
       return;
     }
 
     const faceInfo = computeFaceOrientation(landmarks);
     if (!faceInfo) {
       setFrameState('GRAY');
-      setSelfieInstruction('Rosto parcialmente visível. Centralize no vídeo.');
+      setSelfieInstruction('Rosto dentro da moldura.');
       stabilityCounterRef.current = 0;
+      setTurnProgress(0);
       return;
     }
 
-    const { yawRatio, yawDeviation, faceWidthRatio, centerX } = faceInfo;
+    const { yawRatio, yawDeviation, faceWidthRatio } = faceInfo;
     const currentKey = activeKeyRef.current;
-
-    // Checar se o rosto está muito longe ou muito perto
-    const minWidth = currentKey === 'center' ? 0.18 : 0.10;
-    if (faceWidthRatio < minWidth) {
-      setFrameState('YELLOW');
-      setSelfieInstruction('Aproxime um pouco mais o rosto.');
-      stabilityCounterRef.current = 0;
-      return;
-    }
-    if (faceWidthRatio > 0.75) {
-      setFrameState('YELLOW');
-      setSelfieInstruction('Afaste um pouco o rosto da câmera.');
-      stabilityCounterRef.current = 0;
-      return;
-    }
-
-    // Checar se está na área da tela
-    const minX = currentKey === 'center' ? 0.20 : 0.05;
-    const maxX = currentKey === 'center' ? 0.80 : 0.95;
-    if (centerX < minX || centerX > maxX) {
-      setFrameState('YELLOW');
-      setSelfieInstruction('Posicione o rosto no centro da moldura.');
-      stabilityCounterRef.current = 0;
-      return;
-    }
-
-    let isAngleRecognized = false;
     setCurrentYaw(yawRatio);
 
+    // 1. SEMPRE calcula e atualiza o progresso do movimento do rosto em tempo real!
+    let currentProg = 0;
     if (currentKey === 'center') {
-      const prog = Math.min(100, Math.max(0, (1 - yawDeviation / 0.12) * 100));
-      setTurnProgress(prog);
+      currentProg = Math.min(100, Math.max(0, (1 - yawDeviation / 0.12) * 100));
+    } else {
+      // 0.04 de desvio (apenas ~4% de giro!) já é 100% de progresso
+      currentProg = Math.min(100, Math.max(0, (yawDeviation / 0.04) * 100));
+    }
+    setTurnProgress(currentProg);
 
+    // 2. Tempo de aquecimento / estabilização (1.5s inicial para focar/ajustar exposição antes do disparo)
+    if (Date.now() < warmupUntilRef.current) {
+      setFrameState('YELLOW');
+      const secsLeft = Math.max(1, Math.ceil((warmupUntilRef.current - Date.now()) / 1000));
+      if (currentKey === 'center') {
+        setSelfieInstruction(`Estabilizando câmera... (${secsLeft}s)`);
+      } else {
+        const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
+        setSelfieInstruction(`Prepare-se: vire para a ${dirLabel} (${secsLeft}s)`);
+      }
+      stabilityCounterRef.current = 0;
+      return;
+    }
+
+    // 3. Checar distância do rosto (somente para a foto frontal)
+    if (currentKey === 'center') {
+      if (faceWidthRatio < 0.15) {
+        setFrameState('YELLOW');
+        setSelfieInstruction('Aproxime um pouco mais o rosto.');
+        stabilityCounterRef.current = 0;
+        return;
+      }
+      if (faceWidthRatio > 0.75) {
+        setFrameState('YELLOW');
+        setSelfieInstruction('Afaste um pouco o rosto da câmera.');
+        stabilityCounterRef.current = 0;
+        return;
+      }
+    }
+
+    // 4. Avaliar se a pose é válida para a foto atual
+    let isAngleRecognized = false;
+
+    if (currentKey === 'center') {
       if (yawDeviation <= 0.12) {
         isAngleRecognized = true;
         setSelfieInstruction('Perfeito! Mantenha o rosto parado...');
@@ -372,17 +374,14 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         setSelfieInstruction('Olhe diretamente para a câmera.');
       }
     } else {
-      // Para 'left' ou 'right': desvio >= 0.05 (apenas 5% de giro do rosto!)
-      const prog = Math.min(100, Math.max(0, (yawDeviation / 0.05) * 100));
-      setTurnProgress(prog);
-
-      if (yawDeviation >= 0.05) {
+      // Para 'left' ou 'right': qualquer desvio do centro >= 0.04 (ultra sensível)
+      if (yawDeviation >= 0.04) {
         isAngleRecognized = true;
         setSelfieInstruction('Excelente! Mantenha a cabeça virada...');
       } else {
         setFrameState('YELLOW');
         const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
-        setSelfieInstruction(`Vire lentamente o rosto para a ${dirLabel}`);
+        setSelfieInstruction(`Vire o rosto para a ${dirLabel}`);
       }
     }
 
@@ -390,7 +389,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setFrameState('GREEN');
       stabilityCounterRef.current += 1;
 
-      // Exige 2 frames consecutivos de estabilidade (~0.5 segundos) para disparo preciso
+      // Exige 2 quadros (~0.4s) de confirmação estável
       if (stabilityCounterRef.current >= 2) {
         triggerAutomaticCapture(currentKey);
       }
