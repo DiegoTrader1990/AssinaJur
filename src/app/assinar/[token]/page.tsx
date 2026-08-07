@@ -75,40 +75,43 @@ function computeHeadRotation(landmarks: any[]) {
 
   if (!nose || !leftEye || !rightEye || !chin || !forehead) return null;
 
-  // 1. Asimetria 2D entre o nariz e os olhos (indica giro do rosto)
+  // 1. Asimetria 2D ultra-estável entre o nariz e os dois olhos
   const distL = Math.abs(nose.x - leftEye.x);
   const distR = Math.abs(nose.x - rightEye.x);
   const totalDist = distL + distR;
 
-  let eyeAsymmetry = 0;
+  let eyeRatio = 0.50;
   if (totalDist > 0) {
-    eyeAsymmetry = Math.abs((distL / totalDist) - 0.50);
+    eyeRatio = distL / totalDist;
   }
 
-  // 2. Diferença de profundidade 3D Z entre os olhos (MediaPipe Z-depth)
-  const zDiff = (leftEye.z !== undefined && rightEye.z !== undefined) 
-    ? Math.abs(leftEye.z - rightEye.z) 
-    : 0;
-
-  // 3. Asimetria das bochechas
-  let cheekAsymmetry = 0;
+  // 2. Asimetria 2D entre o nariz e o contorno das bochechas
+  let cheekRatio = 0.50;
   let spanX = 0.3;
   if (edgeA && edgeB) {
     spanX = Math.abs(edgeB.x - edgeA.x);
     if (spanX > 0) {
-      cheekAsymmetry = Math.abs(((nose.x - edgeA.x) / spanX) - 0.50);
+      cheekRatio = Math.abs(nose.x - edgeA.x) / spanX;
     }
   }
 
-  // Combina as 3 métricas 3D de rotação da cabeça
-  const rawTurnScore = Math.max(eyeAsymmetry * 3.5, zDiff * 4.5, cheekAsymmetry * 3.0);
-  // Aplica zona morta (noise floor) de 0.12 para garantir que o rosto parado de frente fique em 0%
-  const netTurnScore = Math.max(0, rawTurnScore - 0.12);
+  // Desvio absoluto 2D da posição central (0.50)
+  const devEyes = Math.abs(eyeRatio - 0.50);
+  const devCheeks = Math.abs(cheekRatio - 0.50);
+
+  // Média ponderada 2D ultra-suave (sem ruído de profundidade Z)
+  const rawDev = (devEyes * 2.2 + devCheeks * 1.8) / 2;
+
+  // Zona morta de 0.05 para travar 0.00 cravado quando olhando de frente
+  const netDev = Math.max(0, rawDev - 0.05);
+
+  // 0.18 de desvio 2D corresponde a um giro claro de ~30 graus
+  const turnScore = Math.min(1.0, netDev / 0.18);
 
   return {
     noseX: nose.x,
     faceWidthRatio: spanX,
-    turnScore: Math.min(1.0, netTurnScore),
+    turnScore,
   };
 }
 
@@ -390,17 +393,17 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const faceInfo = landmarks ? computeHeadRotation(landmarks) : null;
     const turnScore = faceInfo ? faceInfo.turnScore : 0;
 
-    // Progresso alvo da seta (0% cravado de frente, 100% ao girar ~30 graus)
-    const targetProg = Math.min(100, Math.max(0, (turnScore / 0.25) * 100));
+    // Progresso alvo da seta (0% cravado de frente, 100% ao girar a cabeça)
+    const targetProg = Math.min(100, Math.max(0, turnScore * 100));
 
-    // Filtro LERP de suavização exponencial (movimento gradual, leve e sem saltos)
-    smoothTurnProgressRef.current += (targetProg - smoothTurnProgressRef.current) * 0.20;
+    // Filtro LERP de amortecimento hidráulico (suavização fluida de 15% por quadro)
+    smoothTurnProgressRef.current += (targetProg - smoothTurnProgressRef.current) * 0.15;
     setTurnProgress(smoothTurnProgressRef.current);
 
     const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
 
-    // Dispara a foto SOMENTE quando o giro real estabilizar acima de 0.24 por 3 quadros (~0.5s)
-    if (turnScore >= 0.24) {
+    // Dispara a foto SOMENTE quando o giro estabilizar acima de 85% do caminho por 3 quadros (~0.5s)
+    if (turnScore >= 0.85) {
       setFrameState('GREEN');
       stabilityCounterRef.current += 1;
       setSelfieInstruction('Excelente! Mantenha a cabeça virada...');
