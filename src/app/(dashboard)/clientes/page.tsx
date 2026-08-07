@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Users,
@@ -81,6 +81,7 @@ export default function ClientsPage() {
   const [ocrDragActive, setOcrDragActive] = useState(false);
   const [isPdfDoc, setIsPdfDoc] = useState(false);
   const [showZoomModal, setShowZoomModal] = useState(false);
+  const dragCounter = useRef(0);
   const [activeTab, setActiveTab] = useState<'resumo' | 'pessoais' | 'documentos' | 'historico'>('resumo');
 
   // Formulário do Cliente
@@ -201,19 +202,34 @@ export default function ClientsPage() {
     if (file) await processOcrFile(file);
   };
 
-  const handleOcrDrag = (e: React.DragEvent) => {
+  const handleOcrDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
+    dragCounter.current += 1;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
       setOcrDragActive(true);
-    } else if (e.type === 'dragleave') {
+    }
+  };
+
+  const handleOcrDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current -= 1;
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0;
       setOcrDragActive(false);
     }
+  };
+
+  const handleOcrDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
   };
 
   const handleOcrDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    dragCounter.current = 0;
     setOcrDragActive(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       await processOcrFile(e.dataTransfer.files[0]);
@@ -393,22 +409,22 @@ export default function ClientsPage() {
       {/* Modal: Novo Cliente com OCR & Leitura por IA */}
       {showModal && (
         <div
-          onDragEnter={handleOcrDrag}
-          onDragLeave={handleOcrDrag}
-          onDragOver={handleOcrDrag}
+          onDragEnter={handleOcrDragEnter}
+          onDragLeave={handleOcrDragLeave}
+          onDragOver={handleOcrDragOver}
           onDrop={handleOcrDrop}
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto font-sans relative"
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto font-sans relative"
         >
           {ocrDragActive && (
-            <div className="absolute inset-0 bg-blue-900/90 backdrop-blur-md z-50 flex flex-col items-center justify-center text-white p-8 border-4 border-dashed border-blue-400">
+            <div className="absolute inset-0 bg-blue-900/90 backdrop-blur-md z-50 flex flex-col items-center justify-center text-white p-8 border-4 border-dashed border-blue-400 pointer-events-none">
               <Upload className="w-16 h-16 text-blue-300 animate-bounce mb-4" />
-              <h2 className="font-heading text-2xl font-extrabold">Solte a foto do RG, CNH ou PDF aqui!</h2>
-              <p className="text-sm text-blue-200 mt-2">Processamento instantâneo por inteligência de visão</p>
+              <h2 className="font-heading text-2xl font-extrabold">Solte o RG, CNH ou PDF aqui!</h2>
+              <p className="text-sm text-blue-200 mt-2">Preenchimento automático por visão computacional</p>
             </div>
           )}
 
-          <div className={`bg-white rounded-3xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative my-8 transition-all ${
-            ocrDocPreview ? 'max-w-6xl' : 'max-w-3xl'
+          <div className={`bg-white rounded-3xl w-full p-5 sm:p-7 shadow-2xl border border-slate-200 relative my-auto max-h-[92vh] overflow-y-auto transition-all ${
+            ocrDocPreview ? 'max-w-5xl' : 'max-w-3xl'
           }`}>
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
@@ -426,9 +442,9 @@ export default function ClientsPage() {
 
             {/* Zona de Leitura Inteligente de Documento (RG / CNH / CPF) */}
             <div
-              onDragEnter={handleOcrDrag}
-              onDragLeave={handleOcrDrag}
-              onDragOver={handleOcrDrag}
+              onDragEnter={handleOcrDragEnter}
+              onDragLeave={handleOcrDragLeave}
+              onDragOver={handleOcrDragOver}
               onDrop={handleOcrDrop}
               className={`mt-4 p-4 rounded-2xl transition-all border flex flex-col sm:flex-row items-center justify-between gap-4 ${
                 ocrDragActive
@@ -490,11 +506,11 @@ export default function ClientsPage() {
             )}
 
             {/* Layout Lado a Lado (Caso tenha enviado documento) */}
-            <div className={ocrDocPreview ? 'grid md:grid-cols-12 gap-6 mt-6' : 'mt-6'}>
-              {/* Coluna da Esquerda: Pré-visualização Ampliada do Documento Enviado */}
+            <div className={ocrDocPreview ? 'grid md:grid-cols-12 gap-5 mt-5' : 'mt-5'}>
+              {/* Coluna da Esquerda: Pré-visualização do Documento Enviado */}
               {ocrDocPreview && (
-                <div className="md:col-span-5 bg-slate-900 rounded-3xl overflow-hidden border border-slate-700 flex flex-col justify-between p-4 relative group min-h-[420px] shadow-lg">
-                  <div className="flex items-center justify-between text-white text-[11px] font-bold pb-3 border-b border-slate-800 font-heading">
+                <div className="md:col-span-5 bg-slate-900 rounded-2xl overflow-hidden border border-slate-700 flex flex-col justify-between p-3 relative group shadow-md max-h-[380px]">
+                  <div className="flex items-center justify-between text-white text-[11px] font-bold pb-2 border-b border-slate-800 font-heading">
                     <span className="flex items-center gap-1.5 text-blue-400">
                       <Camera className="w-4 h-4" /> Documento Original
                     </span>
@@ -503,14 +519,14 @@ export default function ClientsPage() {
                       onClick={() => setShowZoomModal(true)}
                       className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all font-heading shadow-xs"
                     >
-                      <ZoomIn className="w-3.5 h-3.5" /> Ampliar (Zoom)
+                      <ZoomIn className="w-3.5 h-3.5" /> Ampliar
                     </button>
                   </div>
-                  <div className="my-auto py-3 flex items-center justify-center w-full min-h-[360px]">
+                  <div className="my-auto py-2 flex items-center justify-center w-full min-h-[250px] max-h-[270px]">
                     {isPdfDoc ? (
                       <iframe
                         src={ocrDocPreview}
-                        className="w-full h-[380px] rounded-xl bg-white border border-slate-700"
+                        className="w-full h-[260px] rounded-lg bg-white border border-slate-700"
                         title="Documento PDF"
                       />
                     ) : (
@@ -518,7 +534,7 @@ export default function ClientsPage() {
                       <img
                         src={ocrDocPreview}
                         alt="Documento do cliente"
-                        className="max-h-[380px] w-auto object-contain rounded-xl shadow-md cursor-pointer"
+                        className="max-h-[260px] w-auto object-contain rounded-lg shadow-md cursor-pointer"
                         onClick={() => setShowZoomModal(true)}
                       />
                     )}
