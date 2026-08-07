@@ -372,57 +372,43 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     // ─────────────────────────────────────────────────────────────
-    // FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (CAPTURA POR ROTAÇÃO REAL DA CABEÇA)
+    // FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (SEQUÊNCIA TEMPORIZADA GUIADA DE 3s)
     // ─────────────────────────────────────────────────────────────
-    setCountdownSecs(null);
-
     // Se estiver na pausa de transição (cooldown de 1.8s entre fotos), segura a seta no centro
     if (Date.now() < warmupUntilRef.current) {
       setFrameState('YELLOW');
       setTurnProgress(0);
-      stabilityCounterRef.current = 0;
+      setCountdownSecs(null);
       return;
     }
 
-    const landmarks = results?.multiFaceLandmarks?.[0];
-    const faceInfo = landmarks ? computeHeadRotation(landmarks) : null;
-    const signedYaw = faceInfo ? faceInfo.signedYaw : 0;
-
-    // Isola estritamente a direção solicitada:
-    // Se for foto da ESQUERDA, só aceita desvio para a esquerda (> 0).
-    // Se for foto da DIREITA, só aceita desvio para a direita (< 0).
-    let directionalDev = 0;
-    if (currentKey === 'left') {
-      directionalDev = Math.max(0, signedYaw);
-    } else if (currentKey === 'right') {
-      directionalDev = Math.max(0, -signedYaw);
+    if (!stepStartTimestampRef.current) {
+      stepStartTimestampRef.current = Date.now();
     }
 
-    // Zona morta de 0.05 (ignora giros leves de até ~15 graus)
-    const netDev = Math.max(0, directionalDev - 0.05);
+    const elapsed = Date.now() - stepStartTimestampRef.current;
+    const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
+    setCountdownSecs(secsRemaining);
 
-    // Exige giro amplo e intencional de 0.14 (~35 graus) para atingir 100%
-    const targetProg = Math.min(100, Math.max(0, (netDev / 0.14) * 100));
-
-    // Filtro LERP de amortecimento hidráulico ultra-suave (10% por quadro para deslizar como seda)
-    smoothTurnProgressRef.current += (targetProg - smoothTurnProgressRef.current) * 0.10;
-    setTurnProgress(smoothTurnProgressRef.current);
+    // O progresso da seta desliza de forma 100% gradual e suave do CENTRO (50%) à PONTA (100%) em 3s
+    const timeProg = Math.min(100, Math.max(0, (elapsed / 3000) * 100));
+    setTurnProgress(timeProg);
 
     const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
 
-    // Dispara a foto SOMENTE quando o giro na DIREÇÃO CORRETA alcançar 95% e estabilizar por 4 quadros (~0.6s)
-    if (targetProg >= 95) {
+    if (elapsed >= 2400) {
       setFrameState('GREEN');
-      stabilityCounterRef.current += 1;
-      setSelfieInstruction('Excelente! Mantenha a cabeça virada...');
-
-      if (stabilityCounterRef.current >= 4) {
-        triggerAutomaticCapture(currentKey);
-      }
+      setSelfieInstruction(`Excelente! Mantenha a cabeça virada...`);
     } else {
       setFrameState('YELLOW');
-      stabilityCounterRef.current = 0;
       setSelfieInstruction(`Vire o rosto para a ${dirLabel}`);
+    }
+
+    // Após 3.0s de contagem guiada -> CAPTURA A FOTO DE PERFIL AUTOMATICAMENTE
+    if (elapsed >= 3000) {
+      setCountdownSecs(null);
+      stepStartTimestampRef.current = null;
+      triggerAutomaticCapture(currentKey);
     }
   };
 
