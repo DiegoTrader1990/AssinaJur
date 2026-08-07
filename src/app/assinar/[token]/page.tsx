@@ -73,40 +73,29 @@ function computeHeadRotation(landmarks: any[]) {
   const chin = landmarks[CHIN_IDX];
   const forehead = landmarks[FOREHEAD_IDX];
 
-  if (!nose || !leftEye || !rightEye || !chin || !forehead) return null;
+  if (!nose || !leftEye || !rightEye || !edgeA || !edgeB || !chin || !forehead) return null;
 
-  // 1. Geometria 2D dos olhos
+  // Distância 2D do nariz aos olhos
   const distL = Math.abs(nose.x - leftEye.x);
   const distR = Math.abs(nose.x - rightEye.x);
-  const totalDist = distL + distR;
+  const totalEyeDist = distL + distR;
 
-  let eyeRatio = 0.50;
-  if (totalDist > 0) {
-    eyeRatio = distL / totalDist;
-  }
+  // Largura e centro da face
+  const faceWidth = Math.abs(edgeB.x - edgeA.x);
+  const faceCenter = (edgeA.x + edgeB.x) / 2;
+  const noseOffset = faceWidth > 0 ? Math.abs(nose.x - faceCenter) / faceWidth : 0;
 
-  // 2. Geometria 2D das bochechas
-  let cheekRatio = 0.50;
-  let spanX = 0.3;
-  if (edgeA && edgeB) {
-    spanX = Math.abs(edgeB.x - edgeA.x);
-    if (spanX > 0) {
-      cheekRatio = (nose.x - edgeA.x) / spanX;
-    }
-  }
+  // Asimetria dos olhos ao girar
+  const eyeAsymmetry = totalEyeDist > 0 ? Math.abs((distL / totalEyeDist) - 0.50) : 0;
 
-  // Desvio assinado (signed yaw):
-  // Rosto parado de frente = 0.00
-  // Rosto virado para a ESQUERDA = valor positivo
-  // Rosto virado para a DIREITA = valor negativo
-  const eyeDev = (0.50 - eyeRatio);
-  const cheekDev = (0.50 - cheekRatio);
-  const signedYaw = (eyeDev * 1.5 + cheekDev * 1.2) / 2;
+  // Indicador consolidado de rotação da cabeça (0.00 de frente, >0.14 virado)
+  const turnAmount = Math.max(eyeAsymmetry * 2.5, noseOffset * 2.0);
 
   return {
     noseX: nose.x,
-    faceWidthRatio: spanX,
-    signedYaw,
+    faceWidthRatio: faceWidth,
+    turnAmount,
+    isTurned: turnAmount >= 0.14, // Giro nítido e calibrado (~20-30 graus)
   };
 }
 
@@ -372,42 +361,66 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     // ─────────────────────────────────────────────────────────────
-    // FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (SEQUÊNCIA TEMPORIZADA GUIADA DE 3s)
+    // FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (PADRÃO ADVANCED DETECÇÃO + TIMER 2s)
     // ─────────────────────────────────────────────────────────────
-    // Se estiver na pausa de transição (cooldown de 1.8s entre fotos), segura a seta no centro
     if (Date.now() < warmupUntilRef.current) {
       setFrameState('YELLOW');
       setTurnProgress(0);
       setCountdownSecs(null);
+      centeredStartTimeRef.current = null;
       return;
     }
 
-    if (!stepStartTimestampRef.current) {
-      stepStartTimestampRef.current = Date.now();
+    const landmarks = results?.multiFaceLandmarks?.[0];
+    if (!landmarks) {
+      setFrameState('GRAY');
+      setSelfieInstruction('Posicione seu rosto dentro da moldura.');
+      centeredStartTimeRef.current = null;
+      setCountdownSecs(null);
+      setTurnProgress(0);
+      return;
     }
 
-    const elapsed = Date.now() - stepStartTimestampRef.current;
-    const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
-    setCountdownSecs(secsRemaining);
+    const faceInfo = computeHeadRotation(landmarks);
+    if (!faceInfo) {
+      setFrameState('GRAY');
+      setSelfieInstruction('Rosto dentro da moldura.');
+      centeredStartTimeRef.current = null;
+      setCountdownSecs(null);
+      setTurnProgress(0);
+      return;
+    }
 
-    // O progresso da seta desliza de forma 100% gradual e suave do CENTRO (50%) à PONTA (100%) em 3s
-    const timeProg = Math.min(100, Math.max(0, (elapsed / 3000) * 100));
-    setTurnProgress(timeProg);
-
+    const { isTurned } = faceInfo;
     const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
 
-    if (elapsed >= 2400) {
-      setFrameState('GREEN');
-      setSelfieInstruction(`Excelente! Mantenha a cabeça virada...`);
-    } else {
+    // Se o rosto NÃO estiver virado para o lado, fica AMARELO aguardando o giro
+    if (!isTurned) {
       setFrameState('YELLOW');
       setSelfieInstruction(`Vire o rosto para a ${dirLabel}`);
+      centeredStartTimeRef.current = null;
+      setCountdownSecs(null);
+      setTurnProgress(0);
+      return;
     }
 
-    // Após 3.0s de contagem guiada -> CAPTURA A FOTO DE PERFIL AUTOMATICAMENTE
-    if (elapsed >= 3000) {
+    // ROSTO VIRADO DETECTADO! Ativa a moldura VERDE, posiciona a seta em 100% e conta 2..1
+    setFrameState('GREEN');
+    setTurnProgress(100);
+
+    if (!centeredStartTimeRef.current) {
+      centeredStartTimeRef.current = Date.now();
+    }
+
+    const elapsed = Date.now() - centeredStartTimeRef.current;
+    const secsRemaining = Math.max(1, Math.ceil((1800 - elapsed) / 1000));
+    setCountdownSecs(secsRemaining);
+    setSelfieInstruction(`Excelente! Mantenha a cabeça virada (${secsRemaining}s)...`);
+
+    // Após 1.8s de permanência virado -> CAPTURA A FOTO DE PERFIL
+    if (elapsed >= 1800) {
       setCountdownSecs(null);
-      stepStartTimestampRef.current = null;
+      centeredStartTimeRef.current = null;
       triggerAutomaticCapture(currentKey);
     }
   };
