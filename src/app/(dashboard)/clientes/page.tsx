@@ -487,7 +487,7 @@ export default function ClientsPage() {
 
       {/* Modal: Novo Cliente com OCR & Leitura por IA */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-black/15 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto font-sans relative">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-2 sm:p-4 overflow-y-auto font-sans relative">
           <div
             onDragEnter={handleOcrDragEnter}
             onDragLeave={handleOcrDragLeave}
@@ -878,7 +878,7 @@ export default function ClientsPage() {
 
       {/* Modal: Ficha Detalhada do Cliente */}
       {selectedClient && (
-        <div className="fixed inset-0 z-50 bg-slate-900/25 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto font-sans">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4 overflow-y-auto font-sans">
           <div className="bg-white rounded-3xl max-w-4xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative my-8">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
