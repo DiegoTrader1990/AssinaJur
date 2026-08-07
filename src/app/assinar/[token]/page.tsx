@@ -9,6 +9,7 @@ import {
   AlertCircle,
   Loader2,
   ArrowRight,
+  ArrowLeft,
   Edit3,
   PenTool,
   Camera,
@@ -17,7 +18,9 @@ import {
   Check,
   RefreshCw,
   Sparkles,
-  ChevronRight
+  ChevronRight,
+  MoveLeft,
+  MoveRight
 } from 'lucide-react';
 import { formatBrasiliaDateTime } from '@/lib/dateUtils';
 
@@ -136,6 +139,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [frameState, setFrameState] = useState<'GRAY' | 'YELLOW' | 'GREEN' | 'FLASH'>('GRAY');
   const [selfieInstruction, setSelfieInstruction] = useState('Abra a câmera para iniciar a prova de presença.');
   const [capturingSelfie, setCapturingSelfie] = useState(false);
+  const [currentYaw, setCurrentYaw] = useState<number>(0.5); // 0=esquerda total, 0.5=centro, 1=direita total
 
   // Geolocalização
   const [geo, setGeo] = useState<{ lat: number | null; lng: number | null; accuracy: number | null; city: string | null; state: string | null }>({
@@ -318,7 +322,18 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const currentKey = activeKeyRef.current;
     let isAngleRecognized = false;
 
-    // Câmera frontal espelhada
+    // Atualiza o indicador de yaw em tempo real para a seta visual
+    setCurrentYaw(yawRatio);
+
+    // Câmera frontal espelhada:
+    // yawRatio ~0.5 = olhando para frente
+    // yawRatio < 0.5 = rosto virado para a DIREITA do observador (ESQUERDA do usuário na tela espelhada)
+    // yawRatio > 0.5 = rosto virado para a ESQUERDA do observador (DIREITA do usuário na tela espelhada)
+    //
+    // Na câmera espelhada (scaleX(-1)):
+    //   Quando o usuário vira SEU rosto para a ESQUERDA dele → o yaw AUMENTA (> 0.5)
+    //   Quando o usuário vira SEU rosto para a DIREITA dele → o yaw DIMINUI (< 0.5)
+
     if (currentKey === 'center') {
       if (yawRatio >= 0.38 && yawRatio <= 0.62) {
         isAngleRecognized = true;
@@ -328,21 +343,25 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         setSelfieInstruction('Olhe diretamente para a câmera.');
       }
     } else if (currentKey === 'left') {
-      // Para virar para a esquerda na câmera frontal (espelhada), yawRatio costuma diminuir ou aumentar conforme a câmera
-      if (yawRatio < 0.35 || yawRatio > 0.65) {
+      // Perfil esquerdo: o usuário vira o rosto para a esquerda dele
+      // Na câmera espelhada, yawRatio AUMENTA quando vira para a esquerda
+      // Threshold mais tolerante: >= 0.62 (estava exigindo < 0.35 || > 0.65 — o OR causava aceitar ambos os lados)
+      if (yawRatio >= 0.60) {
         isAngleRecognized = true;
         setSelfieInstruction('Excelente! Mantenha essa posição...');
       } else {
         setFrameState('YELLOW');
-        setSelfieInstruction('Vire lentamente o rosto para a ESQUERDA.');
+        setSelfieInstruction('Vire lentamente o rosto para a ESQUERDA ←');
       }
     } else if (currentKey === 'right') {
-      if (yawRatio < 0.35 || yawRatio > 0.65) {
+      // Perfil direito: o usuário vira o rosto para a direita dele
+      // Na câmera espelhada, yawRatio DIMINUI quando vira para a direita
+      if (yawRatio <= 0.40) {
         isAngleRecognized = true;
         setSelfieInstruction('Excelente! Mantenha essa posição...');
       } else {
         setFrameState('YELLOW');
-        setSelfieInstruction('Vire lentamente o rosto para a DIREITA.');
+        setSelfieInstruction('Vire lentamente o rosto para a DIREITA →');
       }
     }
 
@@ -350,8 +369,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setFrameState('GREEN');
       stabilityCounterRef.current += 1;
 
-      // Exige 4 frames consecutivos de estabilidade (~1.2 segundos) para evitar foto tremida
-      if (stabilityCounterRef.current >= 4) {
+      // Exige 3 frames consecutivos de estabilidade (~0.9 segundos) para captura mais rápida
+      if (stabilityCounterRef.current >= 3) {
         triggerAutomaticCapture(currentKey);
       }
     } else {
@@ -768,9 +787,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </button>
             )}
 
-            {/* Container da Câmera em Proporção 4:3 */}
+            {/* Container da Câmera em Proporção 4:3 — AMPLIADO */}
             <div className={cameraActive ? 'space-y-3' : 'hidden'}>
-              <div className={`relative rounded-xl overflow-hidden border-4 transition-colors aspect-[4/3] bg-black ${
+              <div className={`relative rounded-2xl overflow-hidden border-4 transition-colors aspect-[3/4] sm:aspect-[4/3] bg-black ${
                 frameState === 'GREEN'
                   ? 'border-emerald-400 shadow-emerald-500/50 shadow-lg'
                   : frameState === 'YELLOW'
@@ -788,22 +807,74 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   style={{ transform: 'scaleX(-1)' }}
                 />
 
-                {/* Overlay de moldura guia */}
-                <div className="absolute inset-0 border-2 border-white/20 rounded-xl pointer-events-none flex items-center justify-center">
-                  <div className={`w-48 h-60 rounded-full border-2 border-dashed transition-colors ${
-                    frameState === 'GREEN' ? 'border-emerald-400 bg-emerald-500/10' : 'border-white/40'
+                {/* Moldura guia AMPLIADA — 70% da largura e altura */}
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                  <div className={`w-[70%] h-[75%] rounded-[50%] border-[3px] border-dashed transition-all duration-300 ${
+                    frameState === 'GREEN' ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' 
+                    : frameState === 'YELLOW' ? 'border-amber-400/70 bg-amber-500/5'
+                    : 'border-white/30'
                   }`} />
                 </div>
 
-                <div className="absolute bottom-0 left-0 right-0 bg-black/75 text-emerald-300 text-xs font-semibold text-center py-2.5 px-3 backdrop-blur-xs flex items-center justify-center gap-2">
+                {/* ─── SETA INDICADORA DE DIREÇÃO ─── */}
+                {activeSelfieKey !== 'center' && !capturingSelfie && (
+                  <div className="absolute inset-0 pointer-events-none flex items-center justify-between px-4">
+                    {/* Seta para ESQUERDA */}
+                    {activeSelfieKey === 'left' && (
+                      <div className={`flex flex-col items-center gap-1 transition-all duration-300 ${
+                        currentYaw >= 0.60 ? 'opacity-0 scale-75' : 'opacity-100 animate-pulse'
+                      }`}>
+                        <div className="bg-amber-400/90 text-black rounded-full p-2.5 shadow-lg">
+                          <MoveLeft className="w-7 h-7" />
+                        </div>
+                        <span className="text-[10px] font-bold text-amber-300 bg-black/60 px-2 py-0.5 rounded-full">Vire ←</span>
+                      </div>
+                    )}
+                    {activeSelfieKey === 'left' && <div />}
+                    
+                    {/* Seta para DIREITA */}
+                    {activeSelfieKey === 'right' && <div />}
+                    {activeSelfieKey === 'right' && (
+                      <div className={`flex flex-col items-center gap-1 transition-all duration-300 ${
+                        currentYaw <= 0.40 ? 'opacity-0 scale-75' : 'opacity-100 animate-pulse'
+                      }`}>
+                        <div className="bg-amber-400/90 text-black rounded-full p-2.5 shadow-lg">
+                          <MoveRight className="w-7 h-7" />
+                        </div>
+                        <span className="text-[10px] font-bold text-amber-300 bg-black/60 px-2 py-0.5 rounded-full">Vire →</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ─── BARRA DE PROGRESSO DO ÂNGULO ─── */}
+                {activeSelfieKey !== 'center' && !capturingSelfie && (
+                  <div className="absolute top-3 left-3 right-3 pointer-events-none">
+                    <div className="bg-black/50 backdrop-blur-sm rounded-full h-2 overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-150 ${
+                          frameState === 'GREEN' ? 'bg-emerald-400' : 'bg-amber-400'
+                        }`}
+                        style={{
+                          width: activeSelfieKey === 'left' 
+                            ? `${Math.min(100, Math.max(0, ((currentYaw - 0.5) / 0.15) * 100))}%`
+                            : `${Math.min(100, Math.max(0, ((0.5 - currentYaw) / 0.15) * 100))}%`
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Instrução na parte inferior */}
+                <div className="absolute bottom-0 left-0 right-0 bg-black/75 text-emerald-300 text-sm font-semibold text-center py-3 px-4 backdrop-blur-sm flex items-center justify-center gap-2">
                   {capturingSelfie ? <Loader2 className="w-4 h-4 animate-spin text-emerald-400" /> : null}
                   <span>{selfieInstruction}</span>
                 </div>
               </div>
 
-              <div className="flex justify-between items-center text-xs text-slate-300 bg-[#0B1D3D] p-2.5 rounded-xl border border-white/10">
+              <div className="flex justify-between items-center text-xs text-slate-300 bg-[#0B1D3D] p-3 rounded-xl border border-white/10">
                 <span className="font-semibold text-gold-400">
-                  Etapa atual: {LIVENESS_STEPS.find(s => s.key === activeSelfieKey)?.label}
+                  📸 {LIVENESS_STEPS.find(s => s.key === activeSelfieKey)?.label}
                 </span>
                 <button
                   type="button"
