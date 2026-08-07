@@ -174,7 +174,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const frontalNoseXRef = useRef<number | null>(null);
   const centeredStartTimeRef = useRef<number | null>(null);
   const stepStartTimestampRef = useRef<number | null>(null);
-  const awaitingCenterRef = useRef<boolean>(false);
 
   // ── RECUPERAÇÃO DE SESSÃO LOCALSTORAGE ──
   const storageKey = `assinajur_session_${params.token}`;
@@ -361,72 +360,31 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     // ─────────────────────────────────────────────────────────────
-    // FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (MESMA LÓGICA DE DETECÇÃO + TIMER 3s DA FOTO 1)
+    // FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (CONTAGEM DE 3s COM TRANSITION PAUSE DE 1.8s)
     // ─────────────────────────────────────────────────────────────
-    const landmarks = results?.multiFaceLandmarks?.[0];
-    if (!landmarks) {
-      setFrameState('GRAY');
-      setSelfieInstruction('Posicione seu rosto dentro da moldura.');
-      centeredStartTimeRef.current = null;
+    if (Date.now() < warmupUntilRef.current) {
+      setFrameState('YELLOW');
       setCountdownSecs(null);
+      centeredStartTimeRef.current = null;
       return;
     }
 
-    const faceInfo = computeHeadRotation(landmarks);
-    if (!faceInfo) {
-      setFrameState('GRAY');
-      setSelfieInstruction('Rosto dentro da moldura.');
-      centeredStartTimeRef.current = null;
-      setCountdownSecs(null);
-      return;
+    if (!stepStartTimestampRef.current) {
+      stepStartTimestampRef.current = Date.now();
     }
 
-    const { isTurned, noseX } = faceInfo;
+    const elapsed = Date.now() - stepStartTimestampRef.current;
+    const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
     const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
 
-    // Se estiver aguardando o usuário retornar ao centro antes de liberar a foto 3
-    if (awaitingCenterRef.current) {
-      const isFrontalAgain = noseX >= 0.30 && noseX <= 0.70 && !isTurned;
-      if (isFrontalAgain) {
-        awaitingCenterRef.current = false;
-        centeredStartTimeRef.current = null;
-        setCountdownSecs(null);
-        setFrameState('YELLOW');
-        setSelfieInstruction('Perfeito! Agora vire o rosto para a DIREITA →');
-        return;
-      } else {
-        setFrameState('YELLOW');
-        setSelfieInstruction('Olhe para a CÂMERA (de frente) para destravar a foto da DIREITA →');
-        centeredStartTimeRef.current = null;
-        setCountdownSecs(null);
-        return;
-      }
-    }
-
-    // Se o rosto NÃO estiver virado para o lado solicitado, aguarda o giro
-    if (!isTurned) {
-      setFrameState('YELLOW');
-      setSelfieInstruction(`Vire o rosto para a ${dirLabel}`);
-      centeredStartTimeRef.current = null;
-      setCountdownSecs(null);
-      return;
-    }
-
-    // ROSTO VIRADO DETECTADO! Ativa a moldura VERDE e a contagem regressiva de 3s no centro
     setFrameState('GREEN');
-
-    if (!centeredStartTimeRef.current) {
-      centeredStartTimeRef.current = Date.now();
-    }
-
-    const elapsed = Date.now() - centeredStartTimeRef.current;
-    const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
     setCountdownSecs(secsRemaining);
-    setSelfieInstruction(`Excelente! Mantenha a cabeça virada (${secsRemaining}s)...`);
+    setSelfieInstruction(`Vire o rosto para a ${dirLabel} (${secsRemaining}s)...`);
 
-    // Após 3.0s de permanência com o rosto virado -> CAPTURA FOTO DE PERFIL
+    // Após 3.0s de contagem para a foto de perfil -> CAPTURA
     if (elapsed >= 3000) {
       setCountdownSecs(null);
+      stepStartTimestampRef.current = null;
       centeredStartTimeRef.current = null;
       triggerAutomaticCapture(currentKey);
     }
@@ -495,12 +453,15 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       if (key === 'center') {
         activeKeyRef.current = 'left';
         setActiveSelfieKey('left');
+        stepStartTimestampRef.current = Date.now();
+        warmupUntilRef.current = Date.now() + 1800; // Pausa de 1.8s para se posicionar
         setSelfieInstruction('Ótimo! Agora vire o rosto para a ESQUERDA ←');
       } else if (key === 'left') {
         activeKeyRef.current = 'right';
         setActiveSelfieKey('right');
-        awaitingCenterRef.current = true; // Força o retorno ao centro antes da foto 3
-        setSelfieInstruction('Ótimo! Olhe de frente para a CÂMERA para destravar a foto da DIREITA →');
+        stepStartTimestampRef.current = Date.now();
+        warmupUntilRef.current = Date.now() + 1800; // Pausa de 1.8s para virar para a direita
+        setSelfieInstruction('Perfeito! Olhe de frente e vire para a DIREITA →');
       } else if (key === 'right') {
         setSelfieInstruction('✓ Prova de presença concluída com 3 fotos! Confira o resultado.');
         stopSelfieCamera();
