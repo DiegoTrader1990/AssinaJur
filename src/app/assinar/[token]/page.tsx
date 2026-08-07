@@ -27,6 +27,7 @@ import {
   Scale
 } from 'lucide-react';
 import { formatBrasiliaDateTime } from '@/lib/dateUtils';
+import { maskCpfCnpj } from '@/lib/formatters';
 
 interface SignerInfo {
   name: string;
@@ -294,7 +295,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
       setSigner(data.signer);
       setDocument(data.document);
-      setCpf(data.signer.cpf);
+      setCpf(maskCpfCnpj(data.signer.cpf));
       setTypedName(data.signer.name);
 
       if (data.signer.status === 'ASSINADO') {
@@ -846,7 +847,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   type="text"
                   required
                   value={cpf}
-                  onChange={(e) => setCpf(e.target.value)}
+                  onChange={(e) => setCpf(maskCpfCnpj(e.target.value))}
                   placeholder="000.000.000-00"
                   className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-600 rounded-2xl py-3.5 px-4 text-center font-mono text-lg text-[#071B3A] placeholder-slate-400 focus:outline-none font-bold tracking-wider transition-all"
                 />

@@ -20,6 +20,7 @@ import {
   Check,
   Scale
 } from 'lucide-react';
+import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
 
 interface UploadedFile {
   id: string;
@@ -149,8 +150,11 @@ export default function NewDocumentPage() {
   };
 
   const handleSignerChange = (index: number, field: keyof SignerInput, value: any) => {
+    let val = value;
+    if (field === 'cpf') val = maskCpfCnpj(val);
+    if (field === 'phone') val = maskPhone(val);
     const updated = [...signers];
-    updated[index] = { ...updated[index], [field]: value };
+    updated[index] = { ...updated[index], [field]: val };
     setSigners(updated);
   };
 

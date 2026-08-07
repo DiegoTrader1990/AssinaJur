@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ShieldCheck, Building2, User, Mail, Phone, Lock, FileText, ArrowRight, AlertCircle, Loader2, Sparkles, Check } from 'lucide-react';
+import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -21,7 +22,10 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    let { name, value } = e.target;
+    if (name === 'cpfCnpj') value = maskCpfCnpj(value);
+    if (name === 'phone') value = maskPhone(value);
+    setFormData({ ...formData, [name]: value });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

@@ -22,6 +22,7 @@ import {
   FolderOpen,
   Scale
 } from 'lucide-react';
+import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
 
 interface Client {
   id: string;
@@ -126,7 +127,10 @@ export default function ClientsPage() {
   };
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    let { name, value } = e.target;
+    if (name === 'cpfCnpj') value = maskCpfCnpj(value);
+    if (name === 'phone' || name === 'whatsapp') value = maskPhone(value);
+    setFormData({ ...formData, [name]: value });
   };
 
   const handleCreateClient = async (e: React.FormEvent) => {
@@ -275,10 +279,10 @@ export default function ClientsPage() {
                       {client.profession && <div className="text-xs text-slate-400 font-medium">{client.profession}</div>}
                     </td>
                     <td className="px-6 py-4 font-mono text-xs font-bold text-slate-700">
-                      {client.cpfCnpj}
+                      {maskCpfCnpj(client.cpfCnpj)}
                     </td>
                     <td className="px-6 py-4 text-xs space-y-0.5 font-medium">
-                      <div className="font-bold text-slate-800">{client.phone}</div>
+                      <div className="font-bold text-slate-800">{maskPhone(client.phone)}</div>
                       {client.email && <div className="text-slate-400">{client.email}</div>}
                     </td>
                     <td className="px-6 py-4">
