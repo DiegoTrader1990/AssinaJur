@@ -23,7 +23,8 @@ import {
   MoveRight,
   Target,
   Volume2,
-  VolumeX
+  VolumeX,
+  Scale
 } from 'lucide-react';
 import { formatBrasiliaDateTime } from '@/lib/dateUtils';
 
@@ -62,10 +63,6 @@ const LIVENESS_STEPS: SelfieStepConfig[] = [
   { key: 'right', label: 'Perfil Direito', instruction: 'Vire lentamente o rosto para a DIREITA.', targetYaw: 'RIGHT' },
 ];
 
-const NOSE_TIP_IDX = 1;
-const CHIN_IDX = 152;
-const FOREHEAD_IDX = 10;
-
 function computeFaceOrientation(landmarks: any[]) {
   const nose = landmarks[1];
   const leftEye = landmarks[133] || landmarks[33];
@@ -75,19 +72,15 @@ function computeFaceOrientation(landmarks: any[]) {
 
   if (!nose || !leftEye || !rightEye || !edgeA || !edgeB) return null;
 
-  // Distância 2D do nariz aos dois olhos anatômicos da pessoa
   const distL = Math.abs(nose.x - leftEye.x);
   const distR = Math.abs(nose.x - rightEye.x);
   const totalEyeDist = distL + distR;
 
-  // Proporção anatômica do olho esquerdo (de frente ~0.50)
   const eyeRatio = totalEyeDist > 0 ? distL / totalEyeDist : 0.50;
 
-  // Centro e largura da face em 2D
   const faceCenter = (edgeA.x + edgeB.x) / 2;
   const faceWidth = Math.abs(edgeB.x - edgeA.x);
 
-  // Desvio 2D do nariz relativo ao centro do rosto
   const noseRelOffset = faceWidth > 0 ? (nose.x - faceCenter) / faceWidth : 0;
 
   return {
@@ -222,8 +215,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [countdownSecs, setCountdownSecs] = useState<number | null>(null);
   const [audioEnabled, setAudioEnabled] = useState<boolean>(true);
   const audioEnabledRef = useRef<boolean>(true);
-  const [currentYaw, setCurrentYaw] = useState<number>(0.5); // 0=esquerda total, 0.5=centro, 1=direita total
-  const [turnProgress, setTurnProgress] = useState<number>(0); // 0% a 100% do movimento do rosto
+  const [currentYaw, setCurrentYaw] = useState<number>(0.5);
 
   // Geolocalização
   const [geo, setGeo] = useState<{ lat: number | null; lng: number | null; accuracy: number | null; city: string | null; state: string | null }>({
@@ -248,9 +240,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const frontalEyeRatioRef = useRef<number | null>(null);
   const leftTurnDirRef = useRef<number | null>(null);
   const centeredStartTimeRef = useRef<number | null>(null);
-  const stepStartTimestampRef = useRef<number | null>(null);
 
-  // ── RECUPERAÇÃO DE SESSÃO LOCALSTORAGE ──
   const storageKey = `assinajur_session_${params.token}`;
 
   const saveSessionProgress = (override?: Partial<{ step: any; selfieImages: any; agreedConsent: any }>) => {
@@ -263,7 +253,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       };
       localStorage.setItem(storageKey, JSON.stringify(dataToSave));
     } catch {
-      /* storage desabilitado no navegador */
+      /* storage desabilitado */
     }
   };
 
@@ -345,10 +335,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // RECONHECIMENTO FACIAL REAL-TIME COM MEDIAPIPE (YAW/PITCH/ROLL)
-  // ─────────────────────────────────────────────────────────────
-
   const initFaceMesh = async () => {
     if (faceMeshRef.current) return faceMeshRef.current;
     try {
@@ -371,7 +357,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
     const currentKey = activeKeyRef.current;
 
-    // Se estiver na pausa de transição (cooldown de 1.8s entre fotos para se posicionar)
     if (Date.now() < warmupUntilRef.current) {
       setFrameState('YELLOW');
       setCountdownSecs(null);
@@ -400,7 +385,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const { noseX, faceWidthRatio, noseRelOffset, eyeRatio } = faceInfo;
     setCurrentYaw(noseX);
 
-    // Valida se o rosto está visível na câmera
     const hasValidFace = noseX >= 0.15 && noseX <= 0.85 && faceWidthRatio >= 0.08 && faceWidthRatio <= 0.85;
 
     if (!hasValidFace) {
@@ -411,7 +395,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
 
-    // ── FOTO 1: ROSTO FRONTAL (Centralizado na moldura) ──
     if (currentKey === 'center') {
       const isCentered = Math.abs(noseRelOffset) <= 0.08 && noseX >= 0.28 && noseX <= 0.72;
 
@@ -423,7 +406,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         return;
       }
 
-      // Salva referência da própria pessoa
       frontalNoseXRef.current = noseRelOffset;
       frontalEyeRatioRef.current = eyeRatio;
 
@@ -445,7 +427,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
 
-    // ── FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (DETECÇÃO DA POSE CORRETA) ──
     const baseOffset = frontalNoseXRef.current ?? 0;
     const baseEye = frontalEyeRatioRef.current ?? 0.50;
 
@@ -455,13 +436,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     let isPoseValid = false;
 
     if (currentKey === 'left') {
-      // Foto 2: exige rotação para a ESQUERDA em relação ao centro
       isPoseValid = eyeDev <= -0.05 || offsetDev <= -0.05 || offsetDev >= 0.05;
       if (isPoseValid) {
         leftTurnDirRef.current = Math.abs(eyeDev) > Math.abs(offsetDev) ? eyeDev : offsetDev;
       }
     } else if (currentKey === 'right') {
-      // Foto 3: exige rotação para o LADO OPOSTO da Foto 2
       if (leftTurnDirRef.current !== null) {
         const curDev = Math.abs(eyeDev) > Math.abs(offsetDev) ? eyeDev : offsetDev;
         isPoseValid = (curDev * leftTurnDirRef.current) < 0 && Math.abs(curDev) >= 0.05;
@@ -470,7 +449,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       }
     }
 
-    // Se o rosto NÃO estiver na pose correta solicitada, aguarda
     if (!isPoseValid) {
       setFrameState('YELLOW');
       const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
@@ -480,7 +458,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
 
-    // POSE CONFIRMADA! MOLDURA VERDE + CONTAGEM REGRESSIVA 3..2..1
     setFrameState('GREEN');
 
     if (!centeredStartTimeRef.current) {
@@ -491,7 +468,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
     setCountdownSecs(secsRemaining);
 
-    const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
     setSelfieInstruction(`Excelente! Mantenha a cabeça virada (${secsRemaining}s)...`);
 
     if (elapsed >= 3000) {
@@ -511,7 +487,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       try {
         await fm.send({ image: video });
       } catch {
-        /* ignora falhas de quadro individual */
+        /* ignora erro de quadro */
       }
     }
 
@@ -535,12 +511,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     try {
-      // Forçar proporção 4:3 padronizada (640 x 480)
       canvas.width = 640;
       canvas.height = 480;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        // Espelha a imagem para o canvas salvar como a pessoa vê na tela
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -553,7 +527,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       saveSessionProgress({ selfieImages: updatedSelfies });
 
       if (singleRetakeKey) {
-        setSelfieInstruction(`✓ Foto de ${LIVENESS_STEPS.find(s => s.key === key)?.label} atualizada com sucesso!`);
+        setSelfieInstruction(`✓ Foto de ${LIVENESS_STEPS.find(s => s.key === key)?.label} atualizada!`);
         stopSelfieCamera();
         setSingleRetakeKey(null);
         return;
@@ -576,7 +550,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         setSelfieInstruction('✓ Foto 2 Salva! Agora vire o rosto para a DIREITA →');
         playGoogleAudio('step2', audioEnabledRef.current);
       } else if (key === 'right') {
-        setSelfieInstruction('✓ Prova de presença concluída com 3 fotos! Confira o resultado.');
+        setSelfieInstruction('✓ Prova de presença concluída com 3 fotos!');
         playGoogleAudio('step3', audioEnabledRef.current);
         stopSelfieCamera();
       }
@@ -629,7 +603,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
       requestGeolocation();
     } catch {
-      setError('Não foi possível acessar a câmera frontal. Verifique a permissão do navegador.');
+      setError('Não foi possível acessar a câmera frontal. Verifique a permissão do seu navegador.');
     }
   };
 
@@ -672,10 +646,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   const selfieComplete = Boolean(selfieImages.center && selfieImages.left && selfieImages.right);
 
-  // ─────────────────────────────────────────────────────────────
-  // CANVAS DE ASSINATURA DESENHADA
-  // ─────────────────────────────────────────────────────────────
-
   const startDrawing = (e: any) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -704,7 +674,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const y = (e.clientY || e.touches?.[0]?.clientY) - rect.top;
 
     ctx.lineTo(x, y);
-    ctx.strokeStyle = '#0B1D3D';
+    ctx.strokeStyle = '#071B3A';
     ctx.lineWidth = 2.8;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -789,10 +759,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0B1D3D] flex items-center justify-center text-white p-6 font-sans">
+      <div className="min-h-screen bg-[#071B3A] flex items-center justify-center text-white p-6 font-sans">
         <div className="flex flex-col items-center gap-4 text-center">
-          <Loader2 className="w-10 h-10 animate-spin text-gold-500" />
-          <p className="text-sm font-semibold">Carregando ambiente seguro de assinatura...</p>
+          <Loader2 className="w-10 h-10 animate-spin text-blue-400" />
+          <p className="text-sm font-semibold text-slate-300 font-heading">Carregando ambiente seguro de assinatura...</p>
         </div>
       </div>
     );
@@ -800,11 +770,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   if (error && !signer) {
     return (
-      <div className="min-h-screen bg-[#0B1D3D] flex items-center justify-center text-white p-6 font-sans">
-        <div className="max-w-md w-full bg-[#132A54] p-8 rounded-2xl border border-white/10 text-center space-y-4 shadow-2xl">
-          <AlertCircle className="w-12 h-12 text-red-400 mx-auto" />
-          <h1 className="text-xl font-bold">Link de Assinatura Inválido</h1>
-          <p className="text-sm text-slate-300">{error}</p>
+      <div className="min-h-screen bg-[#F7F9FC] flex items-center justify-center text-slate-800 p-6 font-sans">
+        <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-slate-200/80 text-center space-y-4 shadow-2xl">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
+          <h1 className="font-heading text-xl font-extrabold text-[#071B3A]">Link de Assinatura Inválido</h1>
+          <p className="text-xs text-slate-600 font-medium leading-relaxed">{error}</p>
         </div>
       </div>
     );
@@ -820,70 +790,73 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   };
 
   return (
-    <div className="min-h-screen bg-[#0B1D3D] text-white flex flex-col justify-between p-4 sm:p-6 font-sans relative overflow-hidden">
-      {/* Header Mobile */}
-      <header className="max-w-md mx-auto w-full flex items-center justify-between py-3 border-b border-white/10">
+    <div className="min-h-screen bg-[#F7F9FC] text-slate-800 flex flex-col justify-between p-4 sm:p-6 font-sans relative">
+      {/* Background Decorativo Superior */}
+      <div className="absolute top-0 inset-x-0 h-64 bg-gradient-to-b from-[#071B3A] to-[#0B1D3D] pointer-events-none" />
+
+      {/* Header Mobile / Tablet */}
+      <header className="relative z-10 max-w-md mx-auto w-full flex items-center justify-between py-3 border-b border-white/10">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gold-500 text-[#0B1D3D] font-extrabold flex items-center justify-center text-lg shadow-md">
+          <div className="w-9 h-9 rounded-xl bg-white text-[#071B3A] font-heading font-extrabold flex items-center justify-center text-lg shadow-md border border-white/10">
             AJ
           </div>
           <div>
-            <h1 className="font-extrabold text-white text-base tracking-tight leading-none">
+            <h1 className="font-heading font-extrabold text-white text-base tracking-tight leading-none">
               {document?.officeName || 'AssinaJur'}
             </h1>
-            <p className="text-[10px] text-gold-400 font-medium mt-0.5">Assinatura Eletrônica Jurídica</p>
+            <p className="text-[10px] text-blue-300 font-semibold mt-0.5">Assinatura Eletrônica Jurídica</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold text-slate-300 bg-white/10 px-2.5 py-1 rounded-full border border-white/10">
+          <span className="text-[10px] font-extrabold text-white bg-blue-600/30 px-3 py-1 rounded-full border border-blue-400/30 font-heading uppercase tracking-wider">
             {getStepProgress()}
           </span>
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="max-w-md mx-auto w-full my-auto py-5">
+      <main className="relative z-10 max-w-md mx-auto w-full my-auto py-4">
         {error && (
-          <div className="mb-5 p-4 rounded-xl bg-red-500/20 border border-red-500/40 text-red-200 text-xs flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+          <div className="mb-5 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-3 font-medium">
+            <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
         {/* ETAPA 1: Identificação de CPF */}
         {step === 'IDENTIFY' && (
-          <div className="bg-[#132A54]/90 p-6 rounded-2xl border border-white/10 shadow-2xl space-y-6">
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-2xl space-y-6">
             <div className="text-center space-y-2">
-              <div className="w-12 h-12 bg-gold-500/20 border border-gold-500/40 text-gold-400 rounded-2xl flex items-center justify-center mx-auto">
+              <div className="w-12 h-12 bg-blue-50 border border-blue-200 text-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
                 <FileText className="w-6 h-6" />
               </div>
-              <span className="px-2.5 py-0.5 rounded-full bg-gold-400/20 text-gold-300 font-bold text-[10px] uppercase">
-                {document?.documentType || 'DOCUMENTO JURÍDICO'}
+              <span className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full bg-blue-50 text-blue-700 font-extrabold text-[10px] uppercase border border-blue-200 font-heading tracking-wider">
+                <Scale className="w-3 h-3" /> {document?.documentType || 'DOCUMENTO JURÍDICO'}
               </span>
-              <h2 className="text-lg font-extrabold text-white">{document?.title}</h2>
-              <p className="text-xs text-slate-300">
-                Olá, <strong className="text-gold-400">{signer?.name}</strong>! Confirme seu CPF abaixo para acessar o documento e iniciar a prova de presença.
+              <h2 className="font-heading text-xl font-extrabold text-[#071B3A]">{document?.title}</h2>
+              <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                Olá, <strong className="text-[#071B3A]">{signer?.name}</strong>! Confirme seu CPF abaixo para acessar o documento e iniciar a prova de presença ao vivo.
               </p>
             </div>
 
             <form onSubmit={handleConfirmCpf} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">CPF do Signatário *</label>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 font-heading">CPF do Signatário *</label>
                 <input
                   type="text"
                   required
                   value={cpf}
                   onChange={(e) => setCpf(e.target.value)}
                   placeholder="000.000.000-00"
-                  className="w-full bg-[#0B1D3D] border border-slate-600 focus:border-gold-500 rounded-xl py-3.5 px-4 text-center font-mono text-base text-white placeholder-slate-400 focus:outline-none"
+                  className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-600 rounded-2xl py-3.5 px-4 text-center font-mono text-lg text-[#071B3A] placeholder-slate-400 focus:outline-none font-bold tracking-wider transition-all"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={confirmingCpf}
-                className="w-full py-3.5 bg-gold-500 hover:bg-gold-400 text-[#0B1D3D] font-extrabold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+                className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-2xl shadow-lg hover:shadow-blue-600/25 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 font-heading"
               >
                 {confirmingCpf ? (
                   <>
@@ -891,8 +864,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   </>
                 ) : (
                   <>
-                    Confirmar e Continuar
-                    <ArrowRight className="w-4 h-4" />
+                    Confirmar e Acessar Documento
+                    <ArrowRight className="w-4 h-4 stroke-[2.5]" />
                   </>
                 )}
               </button>
@@ -902,13 +875,13 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
         {/* ETAPA 2: Prova de Presença com Câmera Real-time */}
         {step === 'SELFIE' && (
-          <div className="bg-[#132A54]/90 p-5 rounded-2xl border border-emerald-500/30 shadow-2xl space-y-4">
+          <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
             <div className="text-center space-y-1">
-              <div className="w-10 h-10 bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 rounded-xl flex items-center justify-center mx-auto">
+              <div className="w-10 h-10 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
                 <Eye className="w-5 h-5" />
               </div>
-              <h2 className="text-base font-extrabold text-white">🤳 Prova de Presença ao Vivo</h2>
-              <p className="text-xs text-slate-300 leading-snug">
+              <h2 className="font-heading text-base font-extrabold text-[#071B3A]">🤳 Prova de Presença ao Vivo</h2>
+              <p className="text-xs text-slate-500 font-medium leading-snug">
                 Registramos 3 fotos em sequência (Frontal, Esquerda e Direita). A câmera detecta a posição e captura automaticamente.
               </p>
             </div>
@@ -917,17 +890,17 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               <button
                 type="button"
                 onClick={() => startSelfieCamera('center')}
-                className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-[#0B1D3D] font-extrabold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm"
+                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-2xl shadow-lg hover:shadow-emerald-600/25 transition-all flex items-center justify-center gap-2 text-sm font-heading"
               >
                 <Camera className="w-4 h-4" /> Abrir Câmera do Celular
               </button>
             )}
 
-            {/* Container da Câmera em Proporção 4:3 — AMPLIADO */}
+            {/* Container da Câmera em Proporção 4:3 */}
             <div className={cameraActive ? 'space-y-3' : 'hidden'}>
-              <div className={`relative rounded-2xl overflow-hidden border-4 transition-colors aspect-[3/4] sm:aspect-[4/3] bg-black ${
+              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[3/4] sm:aspect-[4/3] bg-black ${
                 frameState === 'GREEN'
-                  ? 'border-emerald-400 shadow-emerald-500/50 shadow-lg'
+                  ? 'border-emerald-500 shadow-emerald-500/50 shadow-xl'
                   : frameState === 'YELLOW'
                   ? 'border-amber-400'
                   : frameState === 'FLASH'
@@ -943,7 +916,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   style={{ transform: 'scaleX(-1)' }}
                 />
 
-                {/* Moldura guia AMPLIADA — 70% da largura e altura */}
+                {/* Moldura guia */}
                 <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
                   <div className={`w-[70%] h-[75%] rounded-[50%] border-[3px] border-dashed transition-all duration-300 ${
                     frameState === 'GREEN' ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' 
@@ -952,24 +925,25 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   }`} />
                 </div>
 
-                {/* ─── CONTAGEM REGRESSIVA GRANDE NO CENTRO DA TELA (3..2..1) ─── */}
+                {/* CONTAGEM REGRESSIVA 3..2..1 NO CENTRO DA TELA */}
                 {cameraActive && countdownSecs !== null && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-30 bg-black/30 backdrop-blur-[2px]">
-                    <div className="w-24 h-24 rounded-full bg-black/75 border-4 border-amber-400 backdrop-blur-md flex items-center justify-center shadow-2xl animate-pulse">
+                    <div className="w-24 h-24 rounded-full bg-black/80 border-4 border-amber-400 backdrop-blur-md flex items-center justify-center shadow-2xl animate-pulse">
                       <span className="text-5xl font-black text-amber-400 font-mono tracking-tighter">
                         {countdownSecs}
                       </span>
                     </div>
-                    <span className="mt-3 text-xs font-extrabold text-white bg-black/80 px-3.5 py-1.5 rounded-full border border-white/20 uppercase tracking-widest backdrop-blur-xs shadow-lg">
+                    <span className="mt-3 text-xs font-extrabold text-white bg-black/80 px-4 py-1.5 rounded-full border border-white/20 uppercase tracking-widest backdrop-blur-xs shadow-lg font-heading">
                       {activeSelfieKey === 'center'
-                        ? 'Prepare-se: Olhe para a câmera'
+                        ? 'Olhe para a câmera'
                         : activeSelfieKey === 'left'
-                        ? 'Prepare-se: Vire para a Esquerda ←'
-                        : 'Prepare-se: Vire para a Direita →'}
+                        ? 'Vire para a Esquerda ←'
+                        : 'Vire para a Direita →'}
                     </span>
                   </div>
                 )}
-                {/* Botão de Controle de Voz / Som (🔊 / 🔇) */}
+
+                {/* Botão de Controle de Som */}
                 {cameraActive && (
                   <button
                     type="button"
@@ -987,38 +961,31 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                     {audioEnabled ? (
                       <>
                         <Volume2 className="w-4 h-4 text-emerald-400" />
-                        <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Voz On</span>
+                        <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider font-heading">Voz On</span>
                       </>
                     ) : (
                       <>
                         <VolumeX className="w-4 h-4 text-slate-400" />
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mudo</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-heading">Mudo</span>
                       </>
                     )}
                   </button>
                 )}
 
-
-
                 {/* Instrução na parte inferior */}
-                <div className="absolute bottom-0 left-0 right-0 bg-black/75 text-emerald-300 text-sm font-semibold text-center py-3 px-4 backdrop-blur-sm flex items-center justify-center gap-2">
+                <div className="absolute bottom-0 left-0 right-0 bg-black/80 text-emerald-300 text-xs font-bold text-center py-3 px-4 backdrop-blur-sm flex items-center justify-center gap-2 font-heading">
                   {capturingSelfie ? <Loader2 className="w-4 h-4 animate-spin text-emerald-400" /> : null}
                   <span>{selfieInstruction}</span>
                 </div>
               </div>
 
-              <div className="flex justify-between items-center text-xs text-slate-300 bg-[#0B1D3D] p-3 rounded-xl border border-white/10">
-                <span className="font-semibold text-gold-400">
+              <div className="flex justify-between items-center text-xs text-slate-700 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                <span className="font-bold text-[#071B3A] font-heading">
                   📸 {LIVENESS_STEPS.find(s => s.key === activeSelfieKey)?.label}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => triggerAutomaticCapture(activeSelfieKey)}
-                  disabled={capturingSelfie}
-                  className="text-[11px] font-bold text-slate-300 hover:text-white underline"
-                >
-                  Capturar Manualmente
-                </button>
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full uppercase">
+                  Detecção Automática
+                </span>
               </div>
             </div>
 
@@ -1028,7 +995,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 <div className="grid grid-cols-3 gap-2.5">
                   {LIVENESS_STEPS.map((s) => (
                     <div key={s.key} className="space-y-1.5 text-center">
-                      <div className="rounded-xl overflow-hidden border-2 border-emerald-500/60 aspect-[4/3] bg-black relative group">
+                      <div className="rounded-2xl overflow-hidden border-2 border-emerald-500 aspect-[4/3] bg-black relative group shadow-sm">
                         {selfieImages[s.key] && (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
@@ -1037,15 +1004,15 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                             className="w-full h-full object-cover"
                           />
                         )}
-                        <span className="absolute top-1 right-1 bg-emerald-500 text-[#0B1D3D] rounded-full p-0.5">
+                        <span className="absolute top-1.5 right-1.5 bg-emerald-500 text-white rounded-full p-0.5 shadow-sm">
                           <Check className="w-3 h-3 stroke-[3]" />
                         </span>
                       </div>
-                      <p className="text-[10px] font-bold text-slate-300">{s.label}</p>
+                      <p className="text-[10px] font-bold text-slate-700 font-heading">{s.label}</p>
                       <button
                         type="button"
                         onClick={() => startSelfieCamera(s.key)}
-                        className="text-[10px] text-gold-400 hover:underline flex items-center justify-center gap-1 mx-auto font-semibold"
+                        className="text-[10px] text-blue-600 hover:underline flex items-center justify-center gap-1 mx-auto font-bold font-heading"
                       >
                         <RotateCcw className="w-3 h-3" /> Refazer
                       </button>
@@ -1059,9 +1026,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                     setStep('SIGN');
                     saveSessionProgress({ step: 'SIGN' });
                   }}
-                  className="w-full py-3.5 bg-gold-500 hover:bg-gold-400 text-[#0B1D3D] font-extrabold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm"
+                  className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-2xl shadow-lg hover:shadow-blue-600/25 transition-all flex items-center justify-center gap-2 text-sm font-heading"
                 >
-                  Continuar para Assinatura <ArrowRight className="w-4 h-4" />
+                  Continuar para Assinatura <ArrowRight className="w-4 h-4 stroke-[2.5]" />
                 </button>
               </div>
             )}
@@ -1072,24 +1039,24 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
         {/* ETAPA 3: Quadro de Assinatura */}
         {step === 'SIGN' && (
-          <form onSubmit={handleSubmitSignature} className="bg-[#132A54]/90 p-6 rounded-2xl border border-white/10 shadow-2xl space-y-5">
+          <form onSubmit={handleSubmitSignature} className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-5">
             <div className="text-center space-y-1">
-              <h2 className="text-base font-extrabold text-white">Sua Assinatura Eletrônica</h2>
-              <p className="text-xs text-slate-300">Escolha o formato e assine no quadro abaixo.</p>
+              <h2 className="font-heading text-base font-extrabold text-[#071B3A]">Sua Assinatura Eletrônica</h2>
+              <p className="text-xs text-slate-500 font-medium">Escolha o formato e assine no quadro abaixo.</p>
             </div>
 
             {selfieComplete && (
-              <div className="flex items-center gap-2 justify-center text-[11px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-lg py-2 px-3">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Prova de presença registrada (3 fotos 4:3)
+              <div className="flex items-center gap-2 justify-center text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-2xl py-2 px-3.5 font-bold font-heading">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Prova de presença registrada (3 fotos 4:3)
               </div>
             )}
 
-            <div className="flex bg-[#0B1D3D] p-1 rounded-xl border border-slate-700 text-xs">
+            <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-heading">
               <button
                 type="button"
                 onClick={() => setSignatureMode('DESENHADA')}
-                className={`flex-1 py-2 rounded-lg font-bold transition-all flex items-center justify-center gap-1.5 ${
-                  signatureMode === 'DESENHADA' ? 'bg-gold-500 text-[#0B1D3D]' : 'text-slate-400 hover:text-white'
+                className={`flex-1 py-2.5 rounded-xl font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  signatureMode === 'DESENHADA' ? 'bg-[#071B3A] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <Edit3 className="w-3.5 h-3.5" /> Desenhar no Touch
@@ -1097,8 +1064,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               <button
                 type="button"
                 onClick={() => setSignatureMode('DIGITADA')}
-                className={`flex-1 py-2 rounded-lg font-bold transition-all flex items-center justify-center gap-1.5 ${
-                  signatureMode === 'DIGITADA' ? 'bg-gold-500 text-[#0B1D3D]' : 'text-slate-400 hover:text-white'
+                className={`flex-1 py-2.5 rounded-xl font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  signatureMode === 'DIGITADA' ? 'bg-[#071B3A] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <PenTool className="w-3.5 h-3.5" /> Nome Digitado
@@ -1106,7 +1073,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             </div>
 
             {signatureMode === 'DESENHADA' ? (
-              <div className="bg-white rounded-xl overflow-hidden border-2 border-gold-500 relative touch-none">
+              <div className="bg-white rounded-2xl overflow-hidden border-2 border-slate-300 focus-within:border-blue-600 relative touch-none shadow-inner">
                 <canvas
                   ref={canvasRef}
                   width={340}
@@ -1122,7 +1089,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 <button
                   type="button"
                   onClick={clearCanvas}
-                  className="absolute top-2 right-2 px-2.5 py-1 bg-slate-100 text-slate-600 font-bold rounded text-[10px] uppercase border border-slate-300"
+                  className="absolute top-2 right-2 px-3 py-1 bg-slate-100 text-slate-700 font-bold rounded-lg text-[10px] uppercase border border-slate-200 hover:bg-slate-200 font-heading"
                 >
                   Limpar
                 </button>
@@ -1135,12 +1102,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   value={typedName}
                   onChange={(e) => setTypedName(e.target.value)}
                   placeholder="Seu Nome Completo para Assinatura"
-                  className="w-full bg-[#0B1D3D] border border-gold-500 rounded-xl p-4 text-center font-serif text-lg text-gold-400 focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-300 focus:border-blue-600 rounded-2xl p-4 text-center font-serif text-lg text-[#071B3A] focus:outline-none font-bold"
                 />
               </div>
             )}
 
-            <label className="flex items-start gap-3 text-xs text-slate-300 cursor-pointer pt-2">
+            <label className="flex items-start gap-3 text-xs text-slate-600 cursor-pointer pt-2 font-medium">
               <input
                 type="checkbox"
                 checked={agreedConsent}
@@ -1148,9 +1115,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   setAgreedConsent(e.target.checked);
                   saveSessionProgress({ agreedConsent: e.target.checked });
                 }}
-                className="w-4 h-4 text-gold-500 rounded border-slate-600 mt-0.5"
+                className="w-4 h-4 text-blue-600 rounded border-slate-300 mt-0.5 focus:ring-blue-500"
               />
-              <span className="leading-snug">
+              <span className="leading-relaxed">
                 Declaro que li e concordo com os termos do documento <strong>{document?.title}</strong>, autorizo
                 minha assinatura eletrônica e a captura das fotos de prova de presença ao vivo, nos termos da MP
                 2.200-2/2001 e Lei 14.063/2020.
@@ -1160,7 +1127,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             <button
               type="submit"
               disabled={submitting || !agreedConsent}
-              className="w-full py-3.5 bg-gold-500 hover:bg-gold-400 text-[#0B1D3D] font-extrabold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+              className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-2xl shadow-lg hover:shadow-blue-600/25 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 font-heading"
             >
               {submitting ? (
                 <>
@@ -1168,7 +1135,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 </>
               ) : (
                 <>
-                  <CheckCircle2 className="w-5 h-5" /> Concluir e Assinar Documento
+                  <CheckCircle2 className="w-5 h-5 stroke-[2.5]" /> Concluir e Assinar Documento
                 </>
               )}
             </button>
@@ -1177,35 +1144,35 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
         {/* TELA DE SUCESSO */}
         {step === 'SUCCESS' && (
-          <div className="bg-[#132A54]/90 p-8 rounded-2xl border border-white/10 shadow-2xl text-center space-y-6">
-            <div className="w-16 h-16 bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 rounded-full flex items-center justify-center mx-auto shadow-xl">
+          <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-2xl text-center space-y-6">
+            <div className="w-16 h-16 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-xs">
               <CheckCircle2 className="w-10 h-10" />
             </div>
 
             <div className="space-y-2">
-              <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-extrabold text-xs border border-emerald-500/40 uppercase">
+              <span className="px-3.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-extrabold text-xs border border-emerald-200 uppercase tracking-wider font-heading">
                 Assinatura Registrada com Sucesso!
               </span>
-              <h2 className="text-xl font-extrabold text-white mt-2">{document?.title}</h2>
-              <p className="text-xs text-slate-300 leading-relaxed">
+              <h2 className="font-heading text-xl font-extrabold text-[#071B3A] mt-2">{document?.title}</h2>
+              <p className="text-xs text-slate-500 font-medium leading-relaxed">
                 Sua assinatura foi vinculada ao Certificado de Evidências Jurídicas com registro imutável.
               </p>
             </div>
 
-            <div className="p-4 bg-[#0B1D3D] rounded-xl border border-white/10 text-xs text-slate-300 space-y-2 text-left">
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-700 space-y-2 text-left font-medium">
               <div className="flex justify-between">
                 <span>Signatário:</span>
-                <strong className="text-white">{signer?.name}</strong>
+                <strong className="text-slate-900 font-bold">{signer?.name}</strong>
               </div>
               <div className="flex justify-between">
                 <span>Data de Conclusão:</span>
-                <strong className="text-gold-400">
+                <strong className="text-blue-600 font-bold font-mono">
                   {formatBrasiliaDateTime(signer?.signedAt || new Date())}
                 </strong>
               </div>
             </div>
 
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-slate-400 font-medium">
               Uma cópia assinada com certificado e QR Code de verificação foi encaminhada ao seu escritório de advocacia.
             </p>
           </div>
@@ -1213,7 +1180,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       </main>
 
       {/* Footer */}
-      <footer className="max-w-md mx-auto w-full text-center text-[11px] text-slate-400 pt-3 border-t border-white/10">
+      <footer className="relative z-10 max-w-md mx-auto w-full text-center text-[11px] text-slate-500 pt-3 border-t border-slate-200/60 font-medium">
         © 2026 {document?.officeName || 'AssinaJur'}. Respaldado pela MP 2.200-2/2001 e Lei 14.063/2020.
       </footer>
     </div>
