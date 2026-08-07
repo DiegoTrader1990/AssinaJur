@@ -160,6 +160,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [capturingSelfie, setCapturingSelfie] = useState(false);
   const [currentYaw, setCurrentYaw] = useState<number>(0.5); // 0=esquerda total, 0.5=centro, 1=direita total
   const [turnProgress, setTurnProgress] = useState<number>(0); // 0% a 100% do movimento do rosto
+  const [countdownSecs, setCountdownSecs] = useState<number | null>(null); // Contagem regressiva no centro (3..2..1)
 
   // Geolocalização
   const [geo, setGeo] = useState<{ lat: number | null; lng: number | null; accuracy: number | null; city: string | null; state: string | null }>({
@@ -332,18 +333,22 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
     setTurnProgress(currentProg);
 
-    // 2. Tempo de aquecimento / estabilização (1.5s inicial para focar/ajustar exposição antes do disparo)
+    // 2. Tempo de aquecimento / contagem regressiva de 3s no centro da tela
     if (Date.now() < warmupUntilRef.current) {
       setFrameState('YELLOW');
       const secsLeft = Math.max(1, Math.ceil((warmupUntilRef.current - Date.now()) / 1000));
+      setCountdownSecs(secsLeft);
+
       if (currentKey === 'center') {
-        setSelfieInstruction(`Estabilizando câmera... (${secsLeft}s)`);
+        setSelfieInstruction(`Prepare-se! Foto frontal em ${secsLeft}s...`);
       } else {
         const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
-        setSelfieInstruction(`Prepare-se: vire para a ${dirLabel} (${secsLeft}s)`);
+        setSelfieInstruction(`Prepare-se! Vire para a ${dirLabel} (${secsLeft}s)...`);
       }
       stabilityCounterRef.current = 0;
       return;
+    } else {
+      if (countdownSecs !== null) setCountdownSecs(null);
     }
 
     // 3. Checar distância do rosto (somente para a foto frontal)
@@ -458,12 +463,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       if (key === 'center') {
         activeKeyRef.current = 'left';
         setActiveSelfieKey('left');
-        warmupUntilRef.current = Date.now() + 1200; // 1.2s de pausa para o usuário virar o rosto
+        warmupUntilRef.current = Date.now() + 2000; // 2.0s de contagem para se posicionar para a esquerda
         setSelfieInstruction('Ótimo! Agora vire o rosto para a ESQUERDA.');
       } else if (key === 'left') {
         activeKeyRef.current = 'right';
         setActiveSelfieKey('right');
-        warmupUntilRef.current = Date.now() + 1200; // 1.2s de pausa para o usuário virar o rosto
+        warmupUntilRef.current = Date.now() + 2000; // 2.0s de contagem para se posicionar para a direita
         setSelfieInstruction('Perfeito! Agora vire o rosto para a DIREITA.');
       } else if (key === 'right') {
         setSelfieInstruction('✓ Prova de presença concluída com 3 fotos! Confira o resultado.');
@@ -506,7 +511,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setCameraActive(true);
       setFrameState('GRAY');
       stabilityCounterRef.current = 0;
-      warmupUntilRef.current = Date.now() + 1500; // 1.5s de aquecimento inicial para focar/estabilizar
+      warmupUntilRef.current = Date.now() + 3000; // 3.0s de contagem regressiva inicial no centro
 
       const fm = await initFaceMesh();
       if (fm) {
@@ -838,6 +843,24 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                     : 'border-white/30'
                   }`} />
                 </div>
+
+                {/* ─── CONTAGEM REGRESSIVA GRANDE NO CENTRO DA TELA (3..2..1) ─── */}
+                {cameraActive && countdownSecs !== null && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-30 bg-black/30 backdrop-blur-[2px]">
+                    <div className="w-24 h-24 rounded-full bg-black/75 border-4 border-amber-400 backdrop-blur-md flex items-center justify-center shadow-2xl animate-pulse">
+                      <span className="text-5xl font-black text-amber-400 font-mono tracking-tighter">
+                        {countdownSecs}
+                      </span>
+                    </div>
+                    <span className="mt-3 text-xs font-extrabold text-white bg-black/80 px-3.5 py-1.5 rounded-full border border-white/20 uppercase tracking-widest backdrop-blur-xs shadow-lg">
+                      {activeSelfieKey === 'center'
+                        ? 'Prepare-se: Olhe para a câmera'
+                        : activeSelfieKey === 'left'
+                        ? 'Prepare-se: Vire para a Esquerda ←'
+                        : 'Prepare-se: Vire para a Direita →'}
+                    </span>
+                  </div>
+                )}
 
                 {/* ─── LINHA GUIA MINIMALISTA E SETA MÓVEL (COMEÇA NO CENTRO 50%) ─── */}
                 {cameraActive && !capturingSelfie && (
