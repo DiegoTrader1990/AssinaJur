@@ -113,9 +113,9 @@ function loadScriptOnce(src: string): Promise<void> {
   });
 }
 
-let currentAudio: HTMLAudioElement | null = null;
+const audioCache: Record<string, HTMLAudioElement> = {};
 
-function unlockAudioPermissions() {
+function unlockAndPreloadAudios() {
   if (typeof window === 'undefined') return;
   try {
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -123,25 +123,43 @@ function unlockAudioPermissions() {
       const ctx = new AudioCtx();
       ctx.resume();
     }
+    const audioFiles = ['intro', 'step1', 'step2', 'step3'];
+    audioFiles.forEach((fileKey) => {
+      if (!audioCache[fileKey]) {
+        const audio = new Audio(`/audio/${fileKey}.mp3`);
+        audio.preload = 'auto';
+        audioCache[fileKey] = audio;
+      }
+      audioCache[fileKey].load();
+    });
   } catch {
     /* destravamento silencioso */
   }
 }
 
-function playGoogleAudio(audioPath: string, enabled = true) {
+function playGoogleAudio(fileKey: 'intro' | 'step1' | 'step2' | 'step3', enabled = true) {
   if (!enabled || typeof window === 'undefined') return;
   try {
-    if (currentAudio) {
-      currentAudio.pause();
-      currentAudio.currentTime = 0;
-    }
-    const audio = new Audio(audioPath);
-    currentAudio = audio;
-    audio.play().catch(() => {
-      /* reprodução tratada */
+    Object.values(audioCache).forEach((a) => {
+      a.pause();
+      a.currentTime = 0;
     });
+
+    let targetAudio = audioCache[fileKey];
+    if (!targetAudio) {
+      targetAudio = new Audio(`/audio/${fileKey}.mp3`);
+      audioCache[fileKey] = targetAudio;
+    }
+
+    targetAudio.currentTime = 0;
+    const playPromise = targetAudio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        console.log('Autoplay audio notification:', err);
+      });
+    }
   } catch {
-    /* áudio indisponível */
+    /* falha silenciosa de áudio */
   }
 }
 
@@ -549,17 +567,17 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         centeredStartTimeRef.current = null;
         warmupUntilRef.current = Date.now() + 2000;
         setSelfieInstruction('✓ Foto 1 Salva! Agora vire o rosto para a ESQUERDA ←');
-        playGoogleAudio('/audio/step1.mp3', audioEnabledRef.current);
+        playGoogleAudio('step1', audioEnabledRef.current);
       } else if (key === 'left') {
         activeKeyRef.current = 'right';
         setActiveSelfieKey('right');
         centeredStartTimeRef.current = null;
         warmupUntilRef.current = Date.now() + 2000;
         setSelfieInstruction('✓ Foto 2 Salva! Agora vire o rosto para a DIREITA →');
-        playGoogleAudio('/audio/step2.mp3', audioEnabledRef.current);
+        playGoogleAudio('step2', audioEnabledRef.current);
       } else if (key === 'right') {
         setSelfieInstruction('✓ Prova de presença concluída com 3 fotos! Confira o resultado.');
-        playGoogleAudio('/audio/step3.mp3', audioEnabledRef.current);
+        playGoogleAudio('step3', audioEnabledRef.current);
         stopSelfieCamera();
       }
     } finally {
@@ -572,7 +590,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   };
 
   const startSelfieCamera = async (targetKey?: SelfieKey) => {
-    unlockAudioPermissions();
+    unlockAndPreloadAudios();
     setError('');
     const keyToStart = targetKey || 'center';
     activeKeyRef.current = keyToStart;
@@ -601,7 +619,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setFrameState('GRAY');
       stabilityCounterRef.current = 0;
 
-      playGoogleAudio('/audio/intro.mp3', audioEnabledRef.current);
+      playGoogleAudio('intro', audioEnabledRef.current);
 
       const fm = await initFaceMesh();
       if (fm) {
@@ -960,7 +978,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                       setAudioEnabled(nextState);
                       audioEnabledRef.current = nextState;
                       if (nextState) {
-                        playGoogleAudio('/audio/intro.mp3', true);
+                        playGoogleAudio('intro', true);
                       }
                     }}
                     className="absolute top-3 right-3 z-40 bg-black/70 hover:bg-black/90 text-white p-2 rounded-full border border-white/20 backdrop-blur-md transition-all shadow-xl active:scale-95 flex items-center gap-1.5 px-3"
