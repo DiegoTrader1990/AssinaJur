@@ -21,7 +21,9 @@ import {
   ChevronRight,
   MoveLeft,
   MoveRight,
-  Target
+  Target,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { formatBrasiliaDateTime } from '@/lib/dateUtils';
 
@@ -111,6 +113,42 @@ function loadScriptOnce(src: string): Promise<void> {
   });
 }
 
+function speakInstruction(text: string, enabled = true) {
+  if (!enabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'pt-BR';
+    utterance.rate = 1.05;
+    utterance.pitch = 1.0;
+    window.speechSynthesis.speak(utterance);
+  } catch {
+    /* sintetizador indisponível */
+  }
+}
+
+function playShutterSound(enabled = true) {
+  if (!enabled || typeof window === 'undefined') return;
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(800, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.08);
+  } catch {
+    /* efeito sonoro indisponível */
+  }
+}
+
 export default function MobileSignaturePage({ params }: { params: { token: string } }) {
   const [step, setStep] = useState<'IDENTIFY' | 'SELFIE' | 'SIGN' | 'SUCCESS'>('IDENTIFY');
   const [signer, setSigner] = useState<SignerInfo | null>(null);
@@ -143,11 +181,13 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [singleRetakeKey, setSingleRetakeKey] = useState<SelfieKey | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [frameState, setFrameState] = useState<'GRAY' | 'YELLOW' | 'GREEN' | 'FLASH'>('GRAY');
-  const [selfieInstruction, setSelfieInstruction] = useState('Abra a câmera para iniciar a prova de presença.');
-  const [capturingSelfie, setCapturingSelfie] = useState(false);
+  const [selfieInstruction, setSelfieInstruction] = useState<string>('Posicione seu rosto dentro da moldura.');
+  const [capturingSelfie, setCapturingSelfie] = useState<boolean>(false);
+  const [countdownSecs, setCountdownSecs] = useState<number | null>(null);
+  const [audioEnabled, setAudioEnabled] = useState<boolean>(true);
+  const audioEnabledRef = useRef<boolean>(true);
   const [currentYaw, setCurrentYaw] = useState<number>(0.5); // 0=esquerda total, 0.5=centro, 1=direita total
   const [turnProgress, setTurnProgress] = useState<number>(0); // 0% a 100% do movimento do rosto
-  const [countdownSecs, setCountdownSecs] = useState<number | null>(null); // Contagem regressiva no centro (3..2..1)
 
   // Geolocalização
   const [geo, setGeo] = useState<{ lat: number | null; lng: number | null; accuracy: number | null; city: string | null; state: string | null }>({
@@ -422,21 +462,26 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         return;
       }
 
+      playShutterSound(audioEnabledRef.current);
+
       // Se for a sequência automática normal das 3 fotos
       if (key === 'center') {
         activeKeyRef.current = 'left';
         setActiveSelfieKey('left');
         centeredStartTimeRef.current = null;
-        warmupUntilRef.current = Date.now() + 2000; // 2.0s de pausa para ler e virar para a esquerda
+        warmupUntilRef.current = Date.now() + 2000;
         setSelfieInstruction('✓ Foto 1 Salva! Agora vire o rosto para a ESQUERDA ←');
+        speakInstruction('Foto frontal salva! Agora vire o rosto para a esquerda.', audioEnabledRef.current);
       } else if (key === 'left') {
         activeKeyRef.current = 'right';
         setActiveSelfieKey('right');
         centeredStartTimeRef.current = null;
-        warmupUntilRef.current = Date.now() + 2000; // 2.0s de pausa para ler e virar para a direita
+        warmupUntilRef.current = Date.now() + 2000;
         setSelfieInstruction('✓ Foto 2 Salva! Agora vire o rosto para a DIREITA →');
+        speakInstruction('Perfil esquerdo salvo! Agora vire o rosto para a direita.', audioEnabledRef.current);
       } else if (key === 'right') {
         setSelfieInstruction('✓ Prova de presença concluída com 3 fotos! Confira o resultado.');
+        speakInstruction('Excelente! Prova de presença concluída com sucesso.', audioEnabledRef.current);
         stopSelfieCamera();
       }
     } finally {
@@ -476,6 +521,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setCameraActive(true);
       setFrameState('GRAY');
       stabilityCounterRef.current = 0;
+
+      speakInstruction('Iniciando prova de presença. Olhe para a câmera e centralize o rosto.', audioEnabledRef.current);
 
       const fm = await initFaceMesh();
       if (fm) {
@@ -824,6 +871,36 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                         : 'Prepare-se: Vire para a Direita →'}
                     </span>
                   </div>
+                )}
+                {/* Botão de Controle de Voz / Som (🔊 / 🔇) */}
+                {cameraActive && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextState = !audioEnabled;
+                      setAudioEnabled(nextState);
+                      audioEnabledRef.current = nextState;
+                      if (nextState) {
+                        speakInstruction('Orientação por voz ativada.', true);
+                      } else if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                        window.speechSynthesis.cancel();
+                      }
+                    }}
+                    className="absolute top-3 right-3 z-40 bg-black/70 hover:bg-black/90 text-white p-2 rounded-full border border-white/20 backdrop-blur-md transition-all shadow-xl active:scale-95 flex items-center gap-1.5 px-3"
+                    title={audioEnabled ? 'Mutar voz' : 'Ativar voz'}
+                  >
+                    {audioEnabled ? (
+                      <>
+                        <Volume2 className="w-4 h-4 text-emerald-400" />
+                        <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Voz On</span>
+                      </>
+                    ) : (
+                      <>
+                        <VolumeX className="w-4 h-4 text-slate-400" />
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mudo</span>
+                      </>
+                    )}
+                  </button>
                 )}
 
 
