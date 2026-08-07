@@ -759,10 +759,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#071B3A] flex items-center justify-center text-white p-6 font-sans">
+      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center text-slate-800 p-6 font-sans">
         <div className="flex flex-col items-center gap-4 text-center">
-          <Loader2 className="w-10 h-10 animate-spin text-blue-400" />
-          <p className="text-sm font-semibold text-slate-300 font-heading">Carregando ambiente seguro de assinatura...</p>
+          <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
+          <p className="text-sm font-bold text-[#071B3A] font-heading">Carregando ambiente de assinatura...</p>
         </div>
       </div>
     );
@@ -770,8 +770,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   if (error && !signer) {
     return (
-      <div className="min-h-screen bg-[#F7F9FC] flex items-center justify-center text-slate-800 p-6 font-sans">
-        <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-slate-200/80 text-center space-y-4 shadow-2xl">
+      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center text-slate-800 p-6 font-sans">
+        <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-slate-200 shadow-2xl text-center space-y-4">
           <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
           <h1 className="font-heading text-xl font-extrabold text-[#071B3A]">Link de Assinatura Inválido</h1>
           <p className="text-xs text-slate-600 font-medium leading-relaxed">{error}</p>
@@ -790,35 +790,34 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F9FC] text-slate-800 flex flex-col justify-between p-4 sm:p-6 font-sans relative">
-      {/* Background Decorativo Superior */}
-      <div className="absolute top-0 inset-x-0 h-64 bg-gradient-to-b from-[#071B3A] to-[#0B1D3D] pointer-events-none" />
-
-      {/* Header Mobile / Tablet */}
-      <header className="relative z-10 max-w-md mx-auto w-full flex items-center justify-between py-3 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-white text-[#071B3A] font-heading font-extrabold flex items-center justify-center text-lg shadow-md border border-white/10">
-            AJ
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col justify-between font-sans">
+      {/* Top Header Executivo Clean (Sem Banner Azul Gigante) */}
+      <header className="bg-white border-b border-slate-200/80 py-4 px-6 sticky top-0 z-30 shadow-xs">
+        <div className="max-w-md mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-[#071B3A] text-white font-heading font-extrabold flex items-center justify-center text-lg shadow-md border border-white/10">
+              AJ
+            </div>
+            <div>
+              <h1 className="font-heading font-extrabold text-[#071B3A] text-base tracking-tight leading-none">
+                {document?.officeName || 'AssinaJur'}
+              </h1>
+              <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Assinatura Eletrônica Jurídica</p>
+            </div>
           </div>
-          <div>
-            <h1 className="font-heading font-extrabold text-white text-base tracking-tight leading-none">
-              {document?.officeName || 'AssinaJur'}
-            </h1>
-            <p className="text-[10px] text-blue-300 font-semibold mt-0.5">Assinatura Eletrônica Jurídica</p>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-extrabold text-white bg-blue-600/30 px-3 py-1 rounded-full border border-blue-400/30 font-heading uppercase tracking-wider">
-            {getStepProgress()}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-extrabold text-[#071B3A] bg-slate-100 px-3 py-1 rounded-full border border-slate-200 font-heading uppercase tracking-wider">
+              {getStepProgress()}
+            </span>
+          </div>
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="relative z-10 max-w-md mx-auto w-full my-auto py-4">
+      <main className="max-w-md mx-auto w-full my-auto p-4 sm:p-6 space-y-4">
         {error && (
-          <div className="mb-5 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-3 font-medium">
+          <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-3 font-medium">
             <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
             <span>{error}</span>
           </div>
@@ -856,11 +855,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               <button
                 type="submit"
                 disabled={confirmingCpf}
-                className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-2xl shadow-lg hover:shadow-blue-600/25 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 font-heading"
+                className="w-full py-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 font-heading"
               >
                 {confirmingCpf ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" /> Autenticando...
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-400" /> Autenticando...
                   </>
                 ) : (
                   <>
@@ -873,7 +872,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           </div>
         )}
 
-        {/* ETAPA 2: Prova de Presença com Câmera Real-time */}
+        {/* ETAPA 2: Prova de Presença com Câmera Real-time Clean */}
         {step === 'SELFIE' && (
           <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
             <div className="text-center space-y-1">
@@ -890,9 +889,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               <button
                 type="button"
                 onClick={() => startSelfieCamera('center')}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-2xl shadow-lg hover:shadow-emerald-600/25 transition-all flex items-center justify-center gap-2 text-sm font-heading"
+                className="w-full py-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
               >
-                <Camera className="w-4 h-4" /> Abrir Câmera do Celular
+                <Camera className="w-4 h-4 text-blue-400" /> Abrir Câmera do Celular
               </button>
             )}
 
@@ -973,17 +972,17 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 )}
 
                 {/* Instrução na parte inferior */}
-                <div className="absolute bottom-0 left-0 right-0 bg-black/80 text-emerald-300 text-xs font-bold text-center py-3 px-4 backdrop-blur-sm flex items-center justify-center gap-2 font-heading">
+                <div className="absolute bottom-0 left-0 right-0 bg-[#071B3A]/90 text-emerald-300 text-xs font-bold text-center py-3 px-4 backdrop-blur-sm flex items-center justify-center gap-2 font-heading">
                   {capturingSelfie ? <Loader2 className="w-4 h-4 animate-spin text-emerald-400" /> : null}
                   <span>{selfieInstruction}</span>
                 </div>
               </div>
 
-              <div className="flex justify-between items-center text-xs text-slate-700 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+              <div className="flex justify-between items-center text-xs text-slate-700 bg-slate-50 p-3 rounded-2xl border border-slate-200 font-medium">
                 <span className="font-bold text-[#071B3A] font-heading">
                   📸 {LIVENESS_STEPS.find(s => s.key === activeSelfieKey)?.label}
                 </span>
-                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full uppercase">
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full uppercase font-heading">
                   Detecção Automática
                 </span>
               </div>
@@ -1026,7 +1025,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                     setStep('SIGN');
                     saveSessionProgress({ step: 'SIGN' });
                   }}
-                  className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-2xl shadow-lg hover:shadow-blue-600/25 transition-all flex items-center justify-center gap-2 text-sm font-heading"
+                  className="w-full py-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
                 >
                   Continuar para Assinatura <ArrowRight className="w-4 h-4 stroke-[2.5]" />
                 </button>
@@ -1073,7 +1072,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             </div>
 
             {signatureMode === 'DESENHADA' ? (
-              <div className="bg-white rounded-2xl overflow-hidden border-2 border-slate-300 focus-within:border-blue-600 relative touch-none shadow-inner">
+              <div className="bg-white rounded-2xl overflow-hidden border-2 border-slate-300 focus-within:border-[#071B3A] relative touch-none shadow-inner">
                 <canvas
                   ref={canvasRef}
                   width={340}
@@ -1102,7 +1101,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   value={typedName}
                   onChange={(e) => setTypedName(e.target.value)}
                   placeholder="Seu Nome Completo para Assinatura"
-                  className="w-full bg-slate-50 border border-slate-300 focus:border-blue-600 rounded-2xl p-4 text-center font-serif text-lg text-[#071B3A] focus:outline-none font-bold"
+                  className="w-full bg-slate-50 border border-slate-300 focus:border-[#071B3A] rounded-2xl p-4 text-center font-serif text-lg text-[#071B3A] focus:outline-none font-bold"
                 />
               </div>
             )}
@@ -1115,7 +1114,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   setAgreedConsent(e.target.checked);
                   saveSessionProgress({ agreedConsent: e.target.checked });
                 }}
-                className="w-4 h-4 text-blue-600 rounded border-slate-300 mt-0.5 focus:ring-blue-500"
+                className="w-4 h-4 text-[#071B3A] rounded border-slate-300 mt-0.5 focus:ring-[#071B3A]"
               />
               <span className="leading-relaxed">
                 Declaro que li e concordo com os termos do documento <strong>{document?.title}</strong>, autorizo
@@ -1127,11 +1126,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             <button
               type="submit"
               disabled={submitting || !agreedConsent}
-              className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-2xl shadow-lg hover:shadow-blue-600/25 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 font-heading"
+              className="w-full py-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 font-heading"
             >
               {submitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Consolidando Certificado...
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-400" /> Consolidando Certificado...
                 </>
               ) : (
                 <>
@@ -1166,7 +1165,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </div>
               <div className="flex justify-between">
                 <span>Data de Conclusão:</span>
-                <strong className="text-blue-600 font-bold font-mono">
+                <strong className="text-[#071B3A] font-bold font-mono">
                   {formatBrasiliaDateTime(signer?.signedAt || new Date())}
                 </strong>
               </div>
@@ -1179,8 +1178,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="relative z-10 max-w-md mx-auto w-full text-center text-[11px] text-slate-500 pt-3 border-t border-slate-200/60 font-medium">
+      {/* Footer Clean */}
+      <footer className="max-w-md mx-auto w-full text-center text-[11px] text-slate-500 py-4 border-t border-slate-200/60 font-medium">
         © 2026 {document?.officeName || 'AssinaJur'}. Respaldado pela MP 2.200-2/2001 e Lei 14.063/2020.
       </footer>
     </div>
