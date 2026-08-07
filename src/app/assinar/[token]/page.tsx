@@ -405,17 +405,20 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   };
 
   const livenessLoop = async () => {
-    if (!streamRef.current || isCapturingRef.current) return;
+    if (!streamRef.current) return;
+
     const video = selfieVideoRef.current;
     const fm = faceMeshRef.current;
-    if (video && video.videoWidth > 0 && fm) {
+
+    if (!isCapturingRef.current && video && video.videoWidth > 0 && fm) {
       try {
         await fm.send({ image: video });
       } catch {
         /* ignora falhas de quadro individual */
       }
     }
-    if (streamRef.current && !isCapturingRef.current) {
+
+    if (streamRef.current) {
       livenessLoopRef.current = setTimeout(livenessLoop, 150);
     }
   };
