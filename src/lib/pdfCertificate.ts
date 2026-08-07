@@ -1,4 +1,4 @@
-import { PDFDocument, PDFPage, rgb, StandardFonts, LineCapStyle, PDFName, PDFString } from 'pdf-lib';
+import { PDFDocument, PDFPage, rgb, StandardFonts, LineCapStyle, PDFName, PDFString, degrees } from 'pdf-lib';
 import QRCode from 'qrcode';
 import { prisma } from '@/lib/prisma';
 import { getFileBuffer, saveFile } from './storage';
@@ -201,7 +201,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
   const CW = 515;
   const CR = CX + CW;
 
-  // ── 1. FAIXA INFERIOR EXCLUSIVA EM CADA PÁGINA DO DOCUMENTO ORIGINAL (SEM SOBREPOR CONTEÚDO) ──
+  // ── 1. FAIXA / CARIMBO NAS PÁGINAS DO DOCUMENTO ORIGINAL (Grampo Escolhido) ──
   const originalPages = pdfDoc.getPages();
   const totalOrigPages = originalPages.length;
   const primarySignerName = doc.signers[0]?.name || 'Signatário';
@@ -209,62 +209,114 @@ export async function generateFinalPdfCertificate(documentId: string) {
     ? `${primarySignerName} e outros (${doc.signers.length} signatários)`
     : primarySignerName;
 
+  const sigPos = (doc as any).signaturePosition || 'BOTTOM';
+
   originalPages.forEach((p, idx) => {
-    const { width: pW } = p.getSize();
-    const stripH = 22;
-    const stripY = 0; // Faixa desenhada na margem inferior reservada de 0 a 22pt
+    const { width: pW, height: pH } = p.getSize();
+    const stampText = `Documento assinado eletronicamente  |  Signatário: ${truncate(signerSummaryText, 35)}  |  Código: ${verificationCode}  |  Pág ${idx + 1}/${totalOrigPages}  |  AssinaJur`;
 
-    // Fundo da faixa discreta
-    p.drawRectangle({
-      x: 0,
-      y: stripY,
-      width: pW,
-      height: stripH,
-      color: rgb(0.96, 0.97, 0.99),
-      borderWidth: 0,
-    });
-    p.drawLine({
-      start: { x: 0, y: stripY + stripH },
-      end: { x: pW, y: stripY + stripH },
-      thickness: 0.8,
-      color: navy,
-    });
-
-    const textY = stripY + 7;
-    p.drawText('Documento assinado eletronicamente', {
-      x: 14,
-      y: textY,
-      size: 6.5,
-      font: bold,
-      color: navy,
-    });
-
-    p.drawText(`|  Signatário: ${truncate(signerSummaryText, 40)}`, {
-      x: 145,
-      y: textY,
-      size: 6,
-      font: regular,
-      color: text,
-    });
-
-    p.drawText(`|  Código: ${verificationCode}`, {
-      x: pW - 190,
-      y: textY,
-      size: 6,
-      font: mono,
-      color: navy,
-    });
-
-    p.drawText(`|  Pág ${idx + 1}/${totalOrigPages}  |  AssinaJur`, {
-      x: pW - 105,
-      y: textY,
-      size: 6,
-      font: bold,
-      color: muted,
-    });
+    if (sigPos === 'TOP') {
+      const stripH = 22;
+      const stripY = pH - stripH;
+      p.drawRectangle({
+        x: 0,
+        y: stripY,
+        width: pW,
+        height: stripH,
+        color: rgb(0.96, 0.97, 0.99),
+        borderWidth: 0,
+      });
+      p.drawLine({
+        start: { x: 0, y: stripY },
+        end: { x: pW, y: stripY },
+        thickness: 0.8,
+        color: navy,
+      });
+      p.drawText(stampText, {
+        x: 14,
+        y: stripY + 7,
+        size: 6,
+        font: bold,
+        color: navy,
+      });
+    } else if (sigPos === 'RIGHT_MARGIN') {
+      const stripW = 20;
+      const stripX = pW - stripW;
+      p.drawRectangle({
+        x: stripX,
+        y: 0,
+        width: stripW,
+        height: pH,
+        color: rgb(0.96, 0.97, 0.99),
+        borderWidth: 0,
+      });
+      p.drawLine({
+        start: { x: stripX, y: 0 },
+        end: { x: stripX, y: pH },
+        thickness: 0.8,
+        color: navy,
+      });
+      p.drawText(stampText, {
+        x: stripX + 13,
+        y: 20,
+        size: 5.8,
+        font: bold,
+        color: navy,
+        rotate: degrees(90),
+      });
+    } else if (sigPos === 'LEFT_MARGIN') {
+      const stripW = 20;
+      p.drawRectangle({
+        x: 0,
+        y: 0,
+        width: stripW,
+        height: pH,
+        color: rgb(0.96, 0.97, 0.99),
+        borderWidth: 0,
+      });
+      p.drawLine({
+        start: { x: stripW, y: 0 },
+        end: { x: stripW, y: pH },
+        thickness: 0.8,
+        color: navy,
+      });
+      p.drawText(stampText, {
+        x: 13,
+        y: 20,
+        size: 5.8,
+        font: bold,
+        color: navy,
+        rotate: degrees(90),
+      });
+    } else {
+      // BOTTOM (Padrão Rodapé)
+      const stripH = 22;
+      const stripY = 0;
+      p.drawRectangle({
+        x: 0,
+        y: stripY,
+        width: pW,
+        height: stripH,
+        color: rgb(0.96, 0.97, 0.99),
+        borderWidth: 0,
+      });
+      p.drawLine({
+        start: { x: 0, y: stripY + stripH },
+        end: { x: pW, y: stripY + stripH },
+        thickness: 0.8,
+        color: navy,
+      });
+      p.drawText(stampText, {
+        x: 14,
+        y: stripY + 7,
+        size: 6,
+        font: bold,
+        color: navy,
+      });
+    }
   });
 
-  // ── 2. PÁGINA(S) DO CERTIFICADO DE EVIDÊNCIAS JURÍDICAS (6 SEÇÕES ORGANIZADAS) ──
+  // ── 2. PÁGINA(S) DO CERTIFICADO DE EVIDÊNCIAS JURÍDICAS ──
   let page = pdfDoc.addPage([PAGE_W, PAGE_H]);
   let manifestPageCount = 1;
 
@@ -279,51 +331,51 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
   // SEÇÃO 1: CABEÇALHO DO CERTIFICADO
   drawFrame(page, 'CERTIFICADO DE EVIDENCIAS JURIDICAS - REGISTRO IMUTAVEL');
-  page.drawText(truncate(doc.title, 55), { x: CX, y: 733, size: 14, font: bold, color: navy });
-  page.drawText(`Código de Autenticidade: ${verificationCode}  |  ID: ${doc.id}`, {
+  page.drawText(truncate(doc.title, 42), { x: CX, y: 733, size: 13, font: bold, color: navy });
+  page.drawText(`Código de Autenticidade: ${verificationCode}  |  ID: ${truncate(doc.id, 20)}`, {
     x: CX,
     y: 716,
-    size: 8,
+    size: 7.5,
     font: mono,
     color: muted,
   });
 
-  // Selo "ASSINADO E AUTÊNTICO"
-  const badgeW = 190;
-  const badgeH = 32;
+  // Selo "ASSINADO E AUTÊNTICO" elegante sem sobreposição
+  const badgeW = 165;
+  const badgeH = 30;
   const badgeX = CR - badgeW;
-  const badgeY = 715;
+  const badgeY = 712;
   page.drawRectangle({
     x: badgeX,
     y: badgeY,
     width: badgeW,
     height: badgeH,
-    color: rgb(0.9, 0.97, 0.93),
-    borderWidth: 1.1,
+    color: rgb(0.92, 0.98, 0.94),
+    borderWidth: 1,
     borderColor: green,
   });
-  const circleR = 10;
-  const circleCx = badgeX + 18;
+  const circleR = 9;
+  const circleCx = badgeX + 16;
   const circleCy = badgeY + badgeH / 2;
   page.drawEllipse({ x: circleCx, y: circleCy, xScale: circleR, yScale: circleR, color: green });
   page.drawLine({
-    start: { x: circleCx - 4.5, y: circleCy - 0.5 },
-    end: { x: circleCx - 1.2, y: circleCy - 4.2 },
-    thickness: 2.2,
+    start: { x: circleCx - 4, y: circleCy - 0.5 },
+    end: { x: circleCx - 1.2, y: circleCy - 3.8 },
+    thickness: 2,
     color: rgb(1, 1, 1),
     lineCap: LineCapStyle.Round,
   });
   page.drawLine({
-    start: { x: circleCx - 1.2, y: circleCy - 4.2 },
-    end: { x: circleCx + 5.8, y: circleCy + 4.8 },
-    thickness: 2.2,
+    start: { x: circleCx - 1.2, y: circleCy - 3.8 },
+    end: { x: circleCx + 5, y: circleCy + 4.2 },
+    thickness: 2,
     color: rgb(1, 1, 1),
     lineCap: LineCapStyle.Round,
   });
-  page.drawText('ASSINADO E AUTÊNTICO', { x: circleCx + 16, y: circleCy + 2.5, size: 8.5, font: bold, color: green });
-  page.drawText('Conforme MP 2.200-2 & Lei 14.063', {
-    x: circleCx + 16,
-    y: circleCy - 8.5,
+  page.drawText('ASSINADO E AUTÊNTICO', { x: circleCx + 14, y: circleCy + 2, size: 7.5, font: bold, color: green });
+  page.drawText('MP 2.200-2 & Lei 14.063', {
+    x: circleCx + 14,
+    y: circleCy - 8,
     size: 6,
     font: regular,
     color: muted,
@@ -381,7 +433,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
   // SEÇÃO 3 & 4: DADOS DO SIGNATÁRIO E EVIDÊNCIAS COLETADAS
   for (const signer of doc.signers) {
     const hasPhotos = Boolean(signer.selfieCenterImage || signer.selfieLeftImage || signer.selfieRightImage);
-    const panelH = 155 + (hasPhotos ? 105 : 0);
+    const panelH = 155 + (hasPhotos ? 140 : 0);
     ensureSpace(panelH + 10);
 
     const pTop = y;
@@ -444,7 +496,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     }
 
     fieldLabel(col2X, pTop - 114, 'Método de autenticação');
-    fieldValue(col2X, pTop - 125, 'CPF + Prova de presença ao vivo (3 selfies 4:3) + Geolocalização', { size: 7.2, max: 48 });
+    fieldValue(col2X, pTop - 125, 'CPF + Prova de presença ao vivo (3 selfies) + Geolocalização', { size: 7.2, max: 48 });
 
     // Assinatura gráfica
     if (signer.signatureImage && signer.signatureImage.startsWith('data:image/png;base64,')) {
@@ -458,12 +510,12 @@ export async function generateFinalPdfCertificate(documentId: string) {
       }
     }
 
-    // SEÇÃO 4: EVIDÊNCIAS COLETADAS — 3 SELFIES 4:3 (CENTRO / PERFIL ESQUERDO / PERFIL DIREITO)
+    // SEÇÃO 4: EVIDÊNCIAS COLETADAS — 3 SELFIES (CENTRO / PERFIL ESQUERDO / PERFIL DIREITO)
     if (hasPhotos) {
-      page.drawText('3. PROVA DE PRESENÇA AO VIVO (PROPORÇÃO 4:3)', {
+      page.drawText('3. PROVA DE PRESENÇA AO VIVO (PROPORÇÃO PRESERVADA)', {
         x: padX,
         y: pTop - 146,
-        size: 7.2,
+        size: 7.5,
         font: bold,
         color: navy,
       });
@@ -474,30 +526,53 @@ export async function generateFinalPdfCertificate(documentId: string) {
         ['3. Perfil Direito', signer.selfieRightImage],
       ];
 
-      // Tamanho com proporção 4:3 exata (100px x 75px)
-      const photoW = 100;
-      const photoH = 75;
-      const gap = 14;
+      // Tamanho do container ampliado e proporcional
+      const boxW = 145;
+      const boxH = 110;
+      const gap = 16;
       let photoX = padX;
 
       for (const [label, img] of photoLabels) {
         const embedded = await embedBase64Image(pdfDoc, img);
+        const cardY = pTop - 268;
+
         page.drawRectangle({
           x: photoX - 2,
-          y: pTop - 235,
-          width: photoW + 4,
-          height: photoH + 4,
-          borderWidth: 0.8,
+          y: cardY - 2,
+          width: boxW + 4,
+          height: boxH + 4,
+          borderWidth: 1,
           borderColor: green,
           color: rgb(0.98, 1, 0.98),
         });
 
         if (embedded) {
-          page.drawImage(embedded, { x: photoX, y: pTop - 233, width: photoW, height: photoH });
+          // ESCALA PROPORCIONAL EXATA SEM DISTORÇÃO
+          const imgW = embedded.width;
+          const imgH = embedded.height;
+          const scale = Math.min(boxW / imgW, boxH / imgH);
+          const drawW = Math.round(imgW * scale);
+          const drawH = Math.round(imgH * scale);
+
+          const offsetX = photoX + (boxW - drawW) / 2;
+          const offsetY = cardY + (boxH - drawH) / 2;
+
+          page.drawImage(embedded, {
+            x: offsetX,
+            y: offsetY,
+            width: drawW,
+            height: drawH,
+          });
         }
 
-        page.drawText(`[OK] ${safeText(label, 40)}`, { x: photoX, y: pTop - 245, size: 6.5, font: bold, color: green });
-        photoX += photoW + gap;
+        page.drawText(`[OK] ${safeText(label, 40)}`, {
+          x: photoX,
+          y: cardY - 14,
+          size: 7,
+          font: bold,
+          color: green,
+        });
+        photoX += boxW + gap;
       }
     }
 

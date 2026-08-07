@@ -207,6 +207,16 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     left: null,
     right: null,
   });
+  const selfieImagesRef = useRef<Record<SelfieKey, string | null>>({
+    center: null,
+    left: null,
+    right: null,
+  });
+
+  const updateSelfieImages = (newImages: Record<SelfieKey, string | null>) => {
+    selfieImagesRef.current = newImages;
+    setSelfieImages(newImages);
+  };
   const [activeSelfieKey, setActiveSelfieKey] = useState<SelfieKey>('center');
   const [singleRetakeKey, setSingleRetakeKey] = useState<SelfieKey | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
@@ -248,7 +258,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     try {
       const dataToSave = {
         step: override?.step ?? step,
-        selfieImages: override?.selfieImages ?? selfieImages,
+        selfieImages: override?.selfieImages ?? selfieImagesRef.current,
         agreedConsent: override?.agreedConsent ?? agreedConsent,
         updatedAt: Date.now(),
       };
@@ -263,9 +273,21 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       const raw = localStorage.getItem(storageKey);
       if (!raw) return false;
       const parsed = JSON.parse(raw);
-      if (parsed.selfieImages) setSelfieImages(parsed.selfieImages);
+      if (parsed.selfieImages) updateSelfieImages(parsed.selfieImages);
       if (parsed.agreedConsent) setAgreedConsent(parsed.agreedConsent);
-      if (parsed.step && parsed.step !== 'SUCCESS') setStep(parsed.step);
+
+      const hasAll3Photos = Boolean(
+        parsed.selfieImages?.center && parsed.selfieImages?.left && parsed.selfieImages?.right
+      );
+
+      if (parsed.step && parsed.step !== 'SUCCESS') {
+        if (parsed.step === 'SIGN' && !hasAll3Photos) {
+          setStep('SELFIE');
+          saveSessionProgress({ step: 'SELFIE' });
+        } else {
+          setStep(parsed.step);
+        }
+      }
       return true;
     } catch {
       return false;
@@ -523,8 +545,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
       const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
 
-      const updatedSelfies = { ...selfieImages, [key]: dataUrl };
-      setSelfieImages(updatedSelfies);
+      const updatedSelfies = { ...selfieImagesRef.current, [key]: dataUrl };
+      updateSelfieImages(updatedSelfies);
       saveSessionProgress({ selfieImages: updatedSelfies });
 
       if (singleRetakeKey) {
@@ -580,7 +602,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     } else {
       setSingleRetakeKey(null);
       if (!targetKey) {
-        setSelfieImages({ center: null, left: null, right: null });
+        updateSelfieImages({ center: null, left: null, right: null });
       }
     }
 
@@ -704,7 +726,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const handleSubmitSignature = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selfieComplete) {
+    const currentSelfies = selfieImagesRef.current;
+    const isComplete = Boolean(currentSelfies.center && currentSelfies.left && currentSelfies.right);
+
+    if (!isComplete) {
       setError('Conclua a prova de presença com as 3 fotos antes de assinar.');
       return;
     }
@@ -741,9 +766,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           signatureType: signatureMode,
           signatureImage,
           signedConsentText: `Declaro que li e concordo com os termos do documento ${document?.title || 'documento'}, autorizo minha assinatura eletrônica e a captura das fotos de prova de presença ao vivo, nos termos da MP 2.200-2/2001 e Lei 14.063/2020.`,
-          selfieCenterImage: selfieImages.center,
-          selfieLeftImage: selfieImages.left,
-          selfieRightImage: selfieImages.right,
+          selfieCenterImage: currentSelfies.center,
+          selfieLeftImage: currentSelfies.left,
+          selfieRightImage: currentSelfies.right,
           geoLat: geo.lat,
           geoLng: geo.lng,
           geoAccuracy: geo.accuracy,
@@ -1051,20 +1076,29 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               <p className="text-xs text-slate-500 font-medium">Escolha o formato e assine no quadro abaixo.</p>
             </div>
 
-            {selfieComplete && (
-              <div className="flex items-center justify-between text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-2xl py-2 px-3.5 font-bold font-heading">
-                <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Prova de presença registrada (3 fotos)
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setStep('SELFIE')}
-                  className="text-[10px] text-blue-600 hover:underline flex items-center gap-1 font-bold"
-                >
-                  <RotateCcw className="w-3 h-3" /> Ver Fotos
-                </button>
-              </div>
-            )}
+            <div className="flex items-center justify-between text-[11px] text-slate-700 bg-slate-50 border border-slate-200 rounded-2xl py-2 px-3.5 font-bold font-heading">
+              <span className="flex items-center gap-1.5">
+                {selfieComplete ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> Prova de presença registrada (3 fotos)
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" /> Fotos pendentes ou incompletas
+                  </>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setStep('SELFIE');
+                  saveSessionProgress({ step: 'SELFIE' });
+                }}
+                className="text-[10px] text-blue-600 hover:underline flex items-center gap-1 font-bold shrink-0"
+              >
+                <RotateCcw className="w-3 h-3" /> {selfieComplete ? 'Ver / Refazer Fotos' : 'Tirar 3 Fotos Agora'}
+              </button>
+            </div>
 
             <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-heading">
               <button

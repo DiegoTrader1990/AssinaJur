@@ -65,6 +65,7 @@ export default function NewDocumentPage() {
   // Dados do Passo 3: Título e Detalhes
   const [title, setTitle] = useState('');
   const [documentType, setDocumentType] = useState('Contrato');
+  const [signaturePosition, setSignaturePosition] = useState<'BOTTOM' | 'TOP' | 'RIGHT_MARGIN' | 'LEFT_MARGIN'>('BOTTOM');
   const [customMessage, setCustomMessage] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
@@ -199,6 +200,7 @@ export default function NewDocumentPage() {
           originalFileId: uploadedFile.id,
           originalHash: uploadedFile.hash,
           clientId: selectedClientId || null,
+          signaturePosition,
           customMessage,
           signers,
         }),
@@ -554,6 +556,20 @@ export default function NewDocumentPage() {
                 <option value="Documento societário">Documento societário</option>
                 <option value="Outros">Outros</option>
                 <option value="Não informado">Não informado</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Posição do Carimbo / Grampo nas Páginas</label>
+              <select
+                value={signaturePosition}
+                onChange={(e) => setSignaturePosition(e.target.value as any)}
+                className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-bold focus:border-blue-600 focus:outline-none font-heading"
+              >
+                <option value="BOTTOM">⬇️ Rodapé (Faixa Inferior - Padrão)</option>
+                <option value="TOP">⬆️ Cabeçalho (Faixa Superior)</option>
+                <option value="RIGHT_MARGIN">➡️ Margem Lateral Direita (Grampo Vertical)</option>
+                <option value="LEFT_MARGIN">⬅️ Margem Lateral Esquerda (Grampo Vertical)</option>
               </select>
             </div>
           </div>
