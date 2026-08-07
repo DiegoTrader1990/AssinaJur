@@ -73,17 +73,26 @@ function computeFaceOrientation(landmarks: any[]) {
 
   if (!nose || !leftEye || !rightEye || !edgeA || !edgeB) return null;
 
+  // Distância 2D do nariz aos dois olhos anatômicos da pessoa
+  const distL = Math.abs(nose.x - leftEye.x);
+  const distR = Math.abs(nose.x - rightEye.x);
+  const totalEyeDist = distL + distR;
+
+  // Proporção anatômica do olho esquerdo (de frente ~0.50)
+  const eyeRatio = totalEyeDist > 0 ? distL / totalEyeDist : 0.50;
+
   // Centro e largura da face em 2D
   const faceCenter = (edgeA.x + edgeB.x) / 2;
   const faceWidth = Math.abs(edgeB.x - edgeA.x);
 
-  // Desvio 2D do nariz relativo ao centro do rosto (normalizado)
+  // Desvio 2D do nariz relativo ao centro do rosto
   const noseRelOffset = faceWidth > 0 ? (nose.x - faceCenter) / faceWidth : 0;
 
   return {
     noseX: nose.x,
     faceWidthRatio: faceWidth,
     noseRelOffset,
+    eyeRatio,
   };
 }
 
@@ -160,6 +169,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const isCapturingRef = useRef<boolean>(false);
   const warmupUntilRef = useRef<number>(0);
   const frontalNoseXRef = useRef<number | null>(null);
+  const frontalEyeRatioRef = useRef<number | null>(null);
   const leftTurnDirRef = useRef<number | null>(null);
   const centeredStartTimeRef = useRef<number | null>(null);
   const stepStartTimestampRef = useRef<number | null>(null);
@@ -311,7 +321,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
 
-    const { noseX, faceWidthRatio, noseRelOffset } = faceInfo;
+    const { noseX, faceWidthRatio, noseRelOffset, eyeRatio } = faceInfo;
     setCurrentYaw(noseX);
 
     // Valida presença de rosto enquadrado
@@ -337,8 +347,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         return;
       }
 
-      // Guarda a referência de rosto frontal da própria pessoa
+      // Guarda as referências de rosto frontal da própria pessoa
       frontalNoseXRef.current = noseRelOffset;
+      frontalEyeRatioRef.current = eyeRatio;
 
       setFrameState('GREEN');
       if (!centeredStartTimeRef.current) {
@@ -358,24 +369,28 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
 
-    // ── FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (EXIGE GIRO NA DIREÇÃO CORRETA) ──
-    const baseline = frontalNoseXRef.current ?? 0;
-    const signedDelta = noseRelOffset - baseline;
-    const absDev = Math.abs(signedDelta);
+    // ── FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (VERIFICAÇÃO DIREÇÃO EXATA) ──
+    const baseOffset = frontalNoseXRef.current ?? 0;
+    const baseEye = frontalEyeRatioRef.current ?? 0.50;
 
-    // O rosto precisa ter girado pelo menos 0.08 em relação ao centro da própria pessoa
-    let isCorrectDirection = absDev >= 0.08;
+    const offsetDev = noseRelOffset - baseOffset;
+    const eyeDev = eyeRatio - baseEye;
 
-    if (isCorrectDirection) {
-      if (currentKey === 'left') {
-        // Registra o lado do giro da Foto 2
-        leftTurnDirRef.current = signedDelta;
-      } else if (currentKey === 'right' && leftTurnDirRef.current !== null) {
-        // Para a Foto 3 (Direita), EXIGE que a cabeça seja virada para o LADO OPOSTO ao da Foto 2!
-        const isOppositeSide = (signedDelta * leftTurnDirRef.current) < 0;
-        if (!isOppositeSide) {
-          isCorrectDirection = false;
-        }
+    let isCorrectDirection = false;
+
+    if (currentKey === 'left') {
+      // Foto 2 (ESQUERDA): exige desvio anatômico para a esquerda do usuário
+      isCorrectDirection = eyeDev <= -0.06 || offsetDev <= -0.06 || offsetDev >= 0.06;
+      if (isCorrectDirection) {
+        leftTurnDirRef.current = Math.abs(eyeDev) > Math.abs(offsetDev) ? eyeDev : offsetDev;
+      }
+    } else if (currentKey === 'right') {
+      // Foto 3 (DIREITA): exige giro na direção OPOSTA à foto 2
+      if (leftTurnDirRef.current !== null) {
+        const curDev = Math.abs(eyeDev) > Math.abs(offsetDev) ? eyeDev : offsetDev;
+        isCorrectDirection = (curDev * leftTurnDirRef.current) < 0 && Math.abs(curDev) >= 0.06;
+      } else {
+        isCorrectDirection = eyeDev >= 0.06 || offsetDev >= 0.06;
       }
     }
 
@@ -388,7 +403,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
 
-    // DIREÇÃO OPOSTA CONFIRMADA! MOLDURA VERDE + CONTAGEM REGRESSIVA (3..2..1)
+    // DIREÇÃO CORRETA DETECTADA! MOLDURA VERDE + CONTAGEM REGRESSIVA (3..2..1)
     setFrameState('GREEN');
 
     if (!centeredStartTimeRef.current) {
