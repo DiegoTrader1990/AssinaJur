@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
+import { deleteFile } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -142,5 +143,63 @@ export async function POST(
   } catch (error: any) {
     console.error('Erro na ação do documento:', error);
     return NextResponse.json({ error: 'Erro ao processar ação no documento.' }, { status: 500 });
+  }
+}
+
+// Exclusão permanente do documento. Não há restrição de status — inclusive documentos
+// CONCLUÍDOS (já assinados) podem ser excluídos aqui, a pedido explícito do escritório;
+// a interface é responsável por deixar claro que isso apaga o certificado de evidências
+// e o histórico de assinatura de forma irreversível.
+export async function DELETE(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const user = await getSessionUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
+    }
+
+    const document = await prisma.document.findFirst({
+      where: {
+        id: params.id,
+        officeId: user.officeId, // INJEÇÃO RIGOROSA DO TENANT
+      },
+      include: { originalFile: true, signedFile: true },
+    });
+
+    if (!document) {
+      return NextResponse.json({ error: 'Documento não encontrado.' }, { status: 404 });
+    }
+
+    const documentTitle = document.title;
+    const originalFileId = document.originalFileId;
+    const signedFileId = document.signedFileId;
+    const originalStorageKey = document.originalFile?.storageKey;
+    const signedStorageKey = document.signedFile?.storageKey;
+
+    // 1. Exclui o documento — signatários e trilha de eventos são removidos em cascata
+    //    (onDelete: Cascade no schema.prisma).
+    await prisma.document.delete({ where: { id: document.id } });
+
+    // 2. Remove os registros StorageFile órfãos e os arquivos físicos correspondentes.
+    const storageFileIds = [originalFileId, signedFileId].filter(Boolean) as string[];
+    if (storageFileIds.length > 0) {
+      await prisma.storageFile.deleteMany({ where: { id: { in: storageFileIds } } });
+    }
+    if (originalStorageKey) await deleteFile(originalStorageKey);
+    if (signedStorageKey) await deleteFile(signedStorageKey);
+
+    await logAuditEvent({
+      officeId: user.officeId,
+      userId: user.id,
+      eventType: 'DOCUMENT_DELETED',
+      description: `Documento "${documentTitle}" excluído permanentemente por ${user.name}.`,
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('Erro ao excluir documento:', error);
+    return NextResponse.json({ error: 'Erro ao excluir documento.' }, { status: 500 });
   }
 }

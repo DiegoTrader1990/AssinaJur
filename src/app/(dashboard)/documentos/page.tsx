@@ -23,7 +23,8 @@ import {
   FileText,
   Download,
   Award,
-  Scale
+  Scale,
+  Trash2
 } from 'lucide-react';
 import { maskCpfCnpj } from '@/lib/formatters';
 
@@ -100,6 +101,28 @@ export default function DocumentsPage() {
 
       fetchDocuments();
       if (selectedDoc && selectedDoc.id === docId) {
+        setSelectedDoc(null);
+      }
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleDelete = async (doc: DocumentItem) => {
+    const isConcluded = doc.status === 'CONCLUIDO';
+    const warning = isConcluded
+      ? `Este documento já foi ASSINADO e CONCLUÍDO. Excluir "${doc.title}" apaga permanentemente o certificado de evidências e todo o histórico de assinatura — isso NÃO pode ser desfeito e pode comprometer a prova jurídica do documento. Tem certeza que deseja excluir mesmo assim?`
+      : `Tem certeza que deseja excluir permanentemente "${doc.title}"? Essa ação não pode ser desfeita.`;
+
+    if (!window.confirm(warning)) return;
+
+    try {
+      const res = await fetch(`/api/documents/${doc.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao excluir documento.');
+
+      fetchDocuments();
+      if (selectedDoc && selectedDoc.id === doc.id) {
         setSelectedDoc(null);
       }
     } catch (err: any) {
@@ -296,6 +319,14 @@ export default function DocumentsPage() {
                         >
                           Ver Detalhes
                         </button>
+
+                        <button
+                          onClick={() => handleDelete(doc)}
+                          title="Excluir documento permanentemente"
+                          className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors border border-slate-200 bg-white"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </td>
                     </tr>
                   );
@@ -409,6 +440,27 @@ export default function DocumentsPage() {
                   </button>
                 </div>
               )}
+
+              {/* Zona de Risco: Exclusão Permanente */}
+              <div className="pt-4 border-t border-slate-100">
+                <div className="p-4 bg-red-50/60 border border-red-200 rounded-2xl flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-extrabold text-red-800 font-heading">Excluir Documento Permanentemente</p>
+                    <p className="text-[11px] text-red-700/80 mt-0.5">
+                      {selectedDoc.status === 'CONCLUIDO'
+                        ? 'Este documento já está assinado — excluir apaga o certificado de evidências e o histórico de assinatura para sempre.'
+                        : 'Remove o documento e os arquivos associados de forma irreversível.'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleDelete(selectedDoc)}
+                    className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 font-heading shadow-xs shrink-0"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Excluir
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

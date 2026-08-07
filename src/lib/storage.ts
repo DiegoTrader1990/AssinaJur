@@ -74,6 +74,30 @@ export async function saveFile({
   return storageRecord;
 }
 
+// Exclui o arquivo físico do armazenamento (Blob em produção, disco local em dev).
+// Não remove o registro StorageFile no banco — isso fica a cargo de quem chama,
+// depois de garantir que nenhum outro registro ainda referencia esse storageKey.
+export async function deleteFile(storageKey: string): Promise<void> {
+  if (useBlobStorage) {
+    try {
+      const { del } = await import('@vercel/blob');
+      await del(storageKey);
+    } catch (err) {
+      console.error('Erro ao excluir arquivo do Vercel Blob:', err);
+    }
+    return;
+  }
+
+  const filePath = path.join(STORAGE_ROOT, storageKey);
+  try {
+    if (fs.existsSync(filePath)) {
+      await fs.promises.unlink(filePath);
+    }
+  } catch (err) {
+    console.error('Erro ao excluir arquivo local:', err);
+  }
+}
+
 // Substitui a antiga getFilePath(): em vez de devolver um caminho de arquivo
 // (que só faz sentido para disco local), devolve diretamente o conteúdo em
 // memória — funciona igual nos dois modos de armazenamento, então quem chama
