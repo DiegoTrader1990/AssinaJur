@@ -24,8 +24,7 @@ function extractJpegFromPdfBuffer(pdfBuffer: Buffer): Buffer | null {
       if (endIdx !== -1) {
         return pdfBuffer.subarray(startIdx, endIdx + 2);
       }
-      // Se não encontrou marcador de fim estrito, pega os primeiros 4MB a partir do início JPEG
-      return pdfBuffer.subarray(startIdx, Math.min(pdfBuffer.length, startIdx + 4 * 1024 * 1024));
+      return pdfBuffer.subarray(startIdx, Math.min(pdfBuffer.length, startIdx + 5 * 1024 * 1024));
     }
   } catch {
     /* fallback */
@@ -57,50 +56,54 @@ export async function POST(req: Request) {
     let targetBufferToRecognize: any = buffer;
 
     if (isPdf) {
-      // Tenta extrair a imagem JPEG escaneada contida dentro do arquivo PDF (ex: CamScanner, Fotos)
       const extractedJpeg = extractJpegFromPdfBuffer(buffer);
       if (extractedJpeg) {
         targetBufferToRecognize = extractedJpeg;
       }
     }
 
-    // Executa OCR Tesseract na imagem extraída ou foto
+    // Executa OCR Tesseract com limite de 6.0s para máxima extração
     try {
       const ocrResult = await timeoutPromise(
-        4000,
+        6000,
         Tesseract.recognize(targetBufferToRecognize, 'por', {
-          logger: () => {},
+          logger: (m) => console.log('Tesseract progress:', m.status, m.progress),
         })
       );
       if (ocrResult?.data?.text) {
-        text += ' ' + ocrResult.data.text;
+        text += '\n' + ocrResult.data.text;
       }
     } catch (e: any) {
-      console.log('OCR exception fallback:', e?.message);
+      console.log('OCR Exception:', e?.message);
     }
 
-    // Se o texto extraído ainda estiver vazio, analisa também o buffer bruto do PDF por expressões regulares
-    const rawString = buffer.toString('utf-8', 0, Math.min(buffer.length, 200000));
-    text += ' ' + rawString;
+    // fallback de leitura de strings puras
+    text += '\n' + buffer.toString('utf-8', 0, Math.min(buffer.length, 300000));
 
-    console.log('--- OCR EXTRACTED TEXT ---', text.substring(0, 400));
+    console.log('=== OCR RESULT TEXT ===\n', text);
 
-    // Regras de extração de padrões brasileiros (CPF, RG, Data Nasc, Órgão, Nome)
-    const cpfMatch = text.match(/\b\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?\d{2}\b/);
-    const rgMatch = text.match(/\b\d{1,2}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?[0-9X]\b/i);
-    const birthDateMatch = text.match(/\b(0[1-9]|[12][0-9]|3[01])[\/\.-](0[1-9]|1[012])[\/\.-](19|20)\d\d\b/);
-    const issuingMatch = text.match(/\b(SSP|DETRAN|IFP|SESP|POLICIA CIVIL|PC)[\/\s]?[A-Z]{2}\b/i);
+    // Extração de padrões de CPF e RG (Ex: 15.420.774-86 ou 1542077486)
+    const allNumbers = text.match(/\b\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?\d{2}\b/g) || [];
+    const rawDigitsMatches = text.match(/\b\d{11}\b/g) || [];
+    const birthDateMatches = text.match(/\b(0[1-9]|[12][0-9]|3[01])[\/\.-](0[1-9]|1[012])[\/\.-](19|20)\d\d\b/g) || [];
+    const issuingMatches = text.match(/\b(SSP|DETRAN|IFP|SESP|PC|SSP\/[A-Z]{2}|SSP-[A-Z]{2})\b/i);
+    const rgMatches = text.match(/\b\d{1,2}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?[0-9X]\b/gi) || [];
 
-    // Tentativa inteligente de encontrar o Nome da pessoa
-    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    // Nome Inteligente: Procura linhas com 2 ou mais palavras em maiúsculas sem palavras-chave do documento
+    const lines = text
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 4);
+
     let extractedName = '';
+    const reservedWords = /REPUBLICA|FEDERATIVA|BRASIL|MINISTERIO|CARTEIRA|IDENTIDADE|HABILITACAO|VALIDO|NACIONAL|CAMSCANNER|SECRETARIA|SEGURANCA|SSP|ESTADO|REGISTRO|GERAL|TITULAR|FILIACAO|DATA|NASCIMENTO|NATURALIDADE|DOC|ORIGEM|EXPEDICAO/i;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (/NOME\b/i.test(line) && i + 1 < lines.length) {
-        const candidate = lines[i + 1].replace(/[^a-zA-Z\s]/g, '').trim();
-        if (candidate.length > 5 && candidate.split(' ').length >= 2) {
-          extractedName = candidate;
+        const nextLine = lines[i + 1].replace(/[^a-zA-Z\s]/g, '').trim();
+        if (nextLine.length > 5 && nextLine.split(' ').length >= 2 && !reservedWords.test(nextLine)) {
+          extractedName = nextLine;
           break;
         }
       }
@@ -109,24 +112,29 @@ export async function POST(req: Request) {
     if (!extractedName) {
       for (const line of lines) {
         const clean = line.replace(/[^a-zA-Z\s]/g, '').trim();
-        if (
-          clean.length > 8 &&
-          clean.split(' ').length >= 2 &&
-          !/REPUBLICA|FEDERATIVA|BRASIL|MINISTERIO|CARTEIRA|IDENTIDADE|HABILITACAO|VALIDO|NACIONAL|CAMSCANNER/i.test(clean)
-        ) {
-          extractedName = clean;
-          break;
+        const words = clean.split(/\s+/);
+        if (words.length >= 2 && clean.length >= 7 && !reservedWords.test(clean)) {
+          // Garante que são palavras de nome (sem caracteres estranhos)
+          if (words.every((w) => w.length >= 2)) {
+            extractedName = clean;
+            break;
+          }
         }
       }
     }
 
-    // Formata os campos extraídos
-    const rawCpf = cpfMatch ? cpfMatch[0].replace(/\D/g, '') : '';
+    // CPF e RG formatting
+    let rawCpf = allNumbers[0] ? allNumbers[0].replace(/\D/g, '') : '';
+    if (!rawCpf && rawDigitsMatches[0]) {
+      rawCpf = rawDigitsMatches[0];
+    }
+
     const formattedCpf = rawCpf ? maskCpfCnpj(rawCpf) : '';
+    const extractedRg = rgMatches[0] ? rgMatches[0].toUpperCase() : '';
 
     let formattedBirthDate = '';
-    if (birthDateMatch) {
-      const parts = birthDateMatch[0].split(/[\/\.-]/);
+    if (birthDateMatches[0]) {
+      const parts = birthDateMatches[0].split(/[\/\.-]/);
       if (parts.length === 3) {
         formattedBirthDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
       }
@@ -137,8 +145,8 @@ export async function POST(req: Request) {
       extracted: {
         name: extractedName,
         cpfCnpj: formattedCpf,
-        rg: rgMatch ? rgMatch[0].toUpperCase() : '',
-        issuingOrgan: issuingMatch ? issuingMatch[0].toUpperCase() : 'SSP/SP',
+        rg: extractedRg,
+        issuingOrgan: issuingMatches ? issuingMatches[0].toUpperCase() : 'SSP/BA',
         birthDate: formattedBirthDate,
       },
       isPdf,
@@ -146,7 +154,7 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error('Erro na leitura OCR do documento:', error);
     return NextResponse.json(
-      { error: 'Documento carregado para conferência visual. Preencha os campos abaixo.' },
+      { error: 'Documento carregado para conferência visual.' },
       { status: 200 }
     );
   }

@@ -166,9 +166,9 @@ export default function ClientsPage() {
     const previewUrl = URL.createObjectURL(file);
     setOcrDocPreview(previewUrl);
 
-    // Controller de cancelamento para garantir resposta ultra-rápida (máx 3.5s)
+    // Controller de cancelamento para leitura OCR (máx 6s)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
 
     try {
       const data = new FormData();
@@ -426,7 +426,7 @@ export default function ClientsPage() {
           onDragLeave={handleOcrDragLeave}
           onDragOver={handleOcrDragOver}
           onDrop={handleOcrDrop}
-          className="fixed inset-0 z-50 bg-slate-900/10 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-5 overflow-y-auto font-sans relative"
+          className="fixed inset-0 z-50 bg-black/15 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto font-sans relative"
         >
           {ocrDragActive && (
             <div className="absolute inset-0 bg-blue-600/90 backdrop-blur-md z-50 flex flex-col items-center justify-center text-white p-8 border-4 border-dashed border-white/80 pointer-events-none">
@@ -436,8 +436,8 @@ export default function ClientsPage() {
             </div>
           )}
 
-          <div className={`bg-white rounded-3xl w-full p-5 sm:p-7 shadow-2xl border border-slate-200 relative my-auto max-h-[92vh] overflow-y-auto transition-all ${
-            ocrDocPreview ? 'max-w-5xl' : 'max-w-3xl'
+          <div className={`bg-white rounded-3xl w-full p-5 sm:p-7 shadow-2xl border border-slate-200 relative my-auto max-h-[94vh] overflow-y-auto transition-all ${
+            ocrDocPreview ? 'max-w-[96vw] lg:max-w-6xl' : 'max-w-5xl'
           }`}>
             {/* Cabeçalho Limpo com Ação Compacta de IA / OCR Integrada */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3.5 border-b border-slate-100 gap-3">
@@ -493,9 +493,9 @@ export default function ClientsPage() {
 
             {/* Layout Lado a Lado (Caso tenha enviado documento) */}
             <div className={ocrDocPreview ? 'grid md:grid-cols-12 gap-5 mt-5' : 'mt-5'}>
-              {/* Coluna da Esquerda: Pré-visualização Elegante (Tema Claro Executivo) */}
+              {/* Coluna da Esquerda: Pré-visualização Ampliada Executiva (460px) */}
               {ocrDocPreview && (
-                <div className="md:col-span-5 bg-slate-50/90 rounded-2xl border border-slate-200/90 flex flex-col justify-between p-3.5 relative shadow-xs max-h-[380px]">
+                <div className="md:col-span-6 bg-slate-50/90 rounded-2xl border border-slate-200/90 flex flex-col justify-between p-4 relative shadow-xs min-h-[480px]">
                   <div className="flex items-center justify-between text-slate-800 text-[11px] font-bold pb-2.5 border-b border-slate-200 font-heading">
                     <span className="flex items-center gap-1.5 text-[#071B3A]">
                       <FileText className="w-4 h-4 text-blue-600" /> Documento Original
@@ -531,7 +531,7 @@ export default function ClientsPage() {
                     </div>
                   </div>
 
-                  <div className="my-auto py-2 flex items-center justify-center w-full min-h-[240px] max-h-[260px] overflow-hidden bg-white rounded-xl border border-slate-200/80 p-2 shadow-xs">
+                  <div className="my-auto py-2 flex items-center justify-center w-full min-h-[420px] overflow-hidden bg-white rounded-xl border border-slate-200/80 p-2 shadow-xs">
                     <div
                       style={{
                         transform: `scale(${zoomLevel}) rotate(${rotationAngle}deg)`,
@@ -542,7 +542,7 @@ export default function ClientsPage() {
                       {isPdfDoc ? (
                         <iframe
                           src={ocrDocPreview}
-                          className="w-full h-[250px] rounded-lg bg-white border border-slate-200"
+                          className="w-full h-[430px] min-w-[340px] rounded-lg bg-white border border-slate-200"
                           title="Documento PDF"
                         />
                       ) : (
@@ -550,7 +550,7 @@ export default function ClientsPage() {
                         <img
                           src={ocrDocPreview}
                           alt="Documento do cliente"
-                          className="max-h-[250px] w-auto object-contain rounded-lg cursor-pointer"
+                          className="max-h-[430px] w-auto object-contain rounded-lg cursor-pointer"
                         />
                       )}
                     </div>
@@ -575,7 +575,7 @@ export default function ClientsPage() {
               )}
 
               {/* Coluna da Direita: Formulário de Cadastro */}
-              <div className={ocrDocPreview ? 'md:col-span-7' : 'w-full'}>
+              <div className={ocrDocPreview ? 'md:col-span-6' : 'w-full'}>
                 <form onSubmit={handleCreateClient} className="space-y-4 text-xs">
                   <div className="grid md:grid-cols-2 gap-4">
                     <div>
