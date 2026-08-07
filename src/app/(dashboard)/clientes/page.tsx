@@ -520,30 +520,30 @@ export default function ClientsPage() {
 
             {/* Layout Lado a Lado (Caso tenha enviado documento) */}
             <div className={ocrDocPreview ? 'grid md:grid-cols-12 gap-5 mt-5' : 'mt-5'}>
-              {/* Coluna da Esquerda: Pré-visualização com Zoom e Rotação Integrados */}
+              {/* Coluna da Esquerda: Pré-visualização Elegante (Tema Claro Executivo) */}
               {ocrDocPreview && (
-                <div className="md:col-span-5 bg-slate-900 rounded-2xl overflow-hidden border border-slate-700 flex flex-col justify-between p-3 relative group shadow-md max-h-[380px]">
-                  <div className="flex items-center justify-between text-white text-[11px] font-bold pb-2 border-b border-slate-800 font-heading">
-                    <span className="flex items-center gap-1.5 text-blue-400">
-                      <Camera className="w-4 h-4" /> Documento Original
+                <div className="md:col-span-5 bg-slate-50/90 rounded-2xl border border-slate-200/90 flex flex-col justify-between p-3.5 relative shadow-xs max-h-[380px]">
+                  <div className="flex items-center justify-between text-slate-800 text-[11px] font-bold pb-2.5 border-b border-slate-200 font-heading">
+                    <span className="flex items-center gap-1.5 text-[#071B3A]">
+                      <FileText className="w-4 h-4 text-blue-600" /> Documento Original
                     </span>
                     
-                    {/* Barra de Ferramentas: Zoom (+/-) e Rotação (90°) */}
+                    {/* Barra de Ferramentas Elegante */}
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
                         onClick={handleZoomOut}
                         title="Diminuir Zoom (-)"
-                        className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-bold transition-all shadow-xs"
+                        className="p-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded text-xs font-bold transition-all shadow-xs"
                       >
                         <ZoomOut className="w-3.5 h-3.5" />
                       </button>
-                      <span className="text-[10px] font-mono text-slate-300 w-8 text-center">{Math.round(zoomLevel * 100)}%</span>
+                      <span className="text-[10px] font-mono text-slate-600 w-8 text-center">{Math.round(zoomLevel * 100)}%</span>
                       <button
                         type="button"
                         onClick={handleZoomIn}
                         title="Aumentar Zoom (+)"
-                        className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-bold transition-all shadow-xs"
+                        className="p-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded text-xs font-bold transition-all shadow-xs"
                       >
                         <ZoomIn className="w-3.5 h-3.5" />
                       </button>
@@ -558,7 +558,7 @@ export default function ClientsPage() {
                     </div>
                   </div>
 
-                  <div className="my-auto py-2 flex items-center justify-center w-full min-h-[240px] max-h-[260px] overflow-hidden">
+                  <div className="my-auto py-2 flex items-center justify-center w-full min-h-[240px] max-h-[260px] overflow-hidden bg-white rounded-xl border border-slate-200/80 p-2 shadow-xs">
                     <div
                       style={{
                         transform: `scale(${zoomLevel}) rotate(${rotationAngle}deg)`,
@@ -569,7 +569,7 @@ export default function ClientsPage() {
                       {isPdfDoc ? (
                         <iframe
                           src={ocrDocPreview}
-                          className="w-full h-[250px] rounded-lg bg-white border border-slate-700"
+                          className="w-full h-[250px] rounded-lg bg-white border border-slate-200"
                           title="Documento PDF"
                         />
                       ) : (
@@ -577,23 +577,23 @@ export default function ClientsPage() {
                         <img
                           src={ocrDocPreview}
                           alt="Documento do cliente"
-                          className="max-h-[250px] w-auto object-contain rounded-lg shadow-md cursor-pointer"
+                          className="max-h-[250px] w-auto object-contain rounded-lg cursor-pointer"
                         />
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-[10px] text-slate-400 font-medium">
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-[10px] text-slate-500 font-medium">
                     <button
                       type="button"
                       onClick={handleResetTransform}
-                      className="text-slate-400 hover:text-white underline text-[10px]"
+                      className="text-slate-500 hover:text-slate-800 underline text-[10px]"
                     >
                       Restaurar Vista
                     </button>
                     <button
                       type="button"
                       onClick={() => setShowZoomModal(true)}
-                      className="text-blue-400 hover:underline font-bold"
+                      className="text-blue-600 hover:underline font-bold"
                     >
                       Tela Cheia 🔍
                     </button>
