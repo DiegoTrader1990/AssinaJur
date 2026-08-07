@@ -282,7 +282,10 @@ export default function ClientsPage() {
 
   const handleDocumentOcr = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) await processOcrFile(file);
+    if (file) {
+      await processOcrFile(file);
+    }
+    e.target.value = '';
   };
 
   const handleOcrDragEnter = (e: React.DragEvent) => {
