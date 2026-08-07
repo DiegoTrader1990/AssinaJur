@@ -321,10 +321,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
 
-    const { noseX, faceWidthRatio, noseRelOffset, eyeRatio } = faceInfo;
+    const { noseX, faceWidthRatio } = faceInfo;
     setCurrentYaw(noseX);
 
-    // Valida presença de rosto enquadrado
+    // Valida se o rosto está visível na câmera
     const hasValidFace = noseX >= 0.15 && noseX <= 0.85 && faceWidthRatio >= 0.08 && faceWidthRatio <= 0.85;
 
     if (!hasValidFace) {
@@ -335,75 +335,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
 
-    // ── FOTO 1: ROSTO FRONTAL (Olhando direto para a câmera) ──
-    if (currentKey === 'center') {
-      const isCentered = Math.abs(noseRelOffset) <= 0.08 && noseX >= 0.28 && noseX <= 0.72;
-
-      if (!isCentered) {
-        setFrameState('YELLOW');
-        setSelfieInstruction('Olhe para a CÂMERA e centralize o rosto.');
-        centeredStartTimeRef.current = null;
-        setCountdownSecs(null);
-        return;
-      }
-
-      // Guarda as referências de rosto frontal da própria pessoa
-      frontalNoseXRef.current = noseRelOffset;
-      frontalEyeRatioRef.current = eyeRatio;
-
-      setFrameState('GREEN');
-      if (!centeredStartTimeRef.current) {
-        centeredStartTimeRef.current = Date.now();
-      }
-
-      const elapsed = Date.now() - centeredStartTimeRef.current;
-      const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
-      setCountdownSecs(secsRemaining);
-      setSelfieInstruction(`Mantenha-se assim! Foto em ${secsRemaining}s...`);
-
-      if (elapsed >= 3000) {
-        setCountdownSecs(null);
-        centeredStartTimeRef.current = null;
-        triggerAutomaticCapture('center');
-      }
-      return;
-    }
-
-    // ── FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (VERIFICAÇÃO DIREÇÃO EXATA) ──
-    const baseOffset = frontalNoseXRef.current ?? 0;
-    const baseEye = frontalEyeRatioRef.current ?? 0.50;
-
-    const offsetDev = noseRelOffset - baseOffset;
-    const eyeDev = eyeRatio - baseEye;
-
-    let isCorrectDirection = false;
-
-    if (currentKey === 'left') {
-      // Foto 2 (ESQUERDA): exige desvio anatômico para a esquerda do usuário
-      isCorrectDirection = eyeDev <= -0.06 || offsetDev <= -0.06 || offsetDev >= 0.06;
-      if (isCorrectDirection) {
-        leftTurnDirRef.current = Math.abs(eyeDev) > Math.abs(offsetDev) ? eyeDev : offsetDev;
-      }
-    } else if (currentKey === 'right') {
-      // Foto 3 (DIREITA): exige giro na direção OPOSTA à foto 2
-      if (leftTurnDirRef.current !== null) {
-        const curDev = Math.abs(eyeDev) > Math.abs(offsetDev) ? eyeDev : offsetDev;
-        isCorrectDirection = (curDev * leftTurnDirRef.current) < 0 && Math.abs(curDev) >= 0.06;
-      } else {
-        isCorrectDirection = eyeDev >= 0.06 || offsetDev >= 0.06;
-      }
-    }
-
-    if (!isCorrectDirection) {
-      setFrameState('YELLOW');
-      const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
-      setSelfieInstruction(`Vire o rosto para a ${dirLabel}`);
-      centeredStartTimeRef.current = null;
-      setCountdownSecs(null);
-      return;
-    }
-
-    // DIREÇÃO CORRETA DETECTADA! MOLDURA VERDE + CONTAGEM REGRESSIVA (3..2..1)
+    // ── ROSTO DETECTADO COM SUCESSO! MOLDURA VERDE + CONTAGEM REGRESSIVA 3..2..1 ──
     setFrameState('GREEN');
 
     if (!centeredStartTimeRef.current) {
@@ -414,10 +346,16 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
     setCountdownSecs(secsRemaining);
 
-    const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
-    setSelfieInstruction(`Excelente! Mantenha a cabeça virada (${secsRemaining}s)...`);
+    const stepLabel =
+      currentKey === 'center'
+        ? `Olhe para a câmera! Foto 1 em ${secsRemaining}s...`
+        : currentKey === 'left'
+        ? `Vire para a ESQUERDA ← (Foto 2 em ${secsRemaining}s)...`
+        : `Vire para a DIREITA → (Foto 3 em ${secsRemaining}s)...`;
 
-    // Após 3.0s exatos com a cabeça virada na direção correta -> CAPTURA A FOTO
+    setSelfieInstruction(stepLabel);
+
+    // Após 3.0s exatos na câmera -> CAPTURA A FOTO
     if (elapsed >= 3000) {
       setCountdownSecs(null);
       centeredStartTimeRef.current = null;
@@ -488,15 +426,15 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       if (key === 'center') {
         activeKeyRef.current = 'left';
         setActiveSelfieKey('left');
-        centeredStartTimeRef.current = null; // Reseta o timer de contagem para a foto 2
-        warmupUntilRef.current = Date.now() + 2500; // 2.5s de pausa para ler a instrução e virar para a esquerda
-        setSelfieInstruction('Ótimo! Foto 1 salva. Agora vire o rosto para a ESQUERDA ←');
+        centeredStartTimeRef.current = null;
+        warmupUntilRef.current = Date.now() + 2000; // 2.0s de pausa para ler e virar para a esquerda
+        setSelfieInstruction('✓ Foto 1 Salva! Agora vire o rosto para a ESQUERDA ←');
       } else if (key === 'left') {
         activeKeyRef.current = 'right';
         setActiveSelfieKey('right');
-        centeredStartTimeRef.current = null; // Reseta o timer de contagem para a foto 3
-        warmupUntilRef.current = Date.now() + 2500; // 2.5s de pausa para ler a instrução e virar para a direita
-        setSelfieInstruction('Perfeito! Foto 2 salva. Agora vire o rosto para a DIREITA →');
+        centeredStartTimeRef.current = null;
+        warmupUntilRef.current = Date.now() + 2000; // 2.0s de pausa para ler e virar para a direita
+        setSelfieInstruction('✓ Foto 2 Salva! Agora vire o rosto para a DIREITA →');
       } else if (key === 'right') {
         setSelfieInstruction('✓ Prova de presença concluída com 3 fotos! Confira o resultado.');
         stopSelfieCamera();
