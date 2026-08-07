@@ -1,733 +1,1547 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import {
-  ShieldCheck,
   FileCheck2,
-  Users,
-  Smartphone,
-  CheckCircle2,
-  ArrowRight,
-  Sparkles,
-  Lock,
-  ChevronDown,
-  MessageSquare,
-  Building2,
-  FileText,
-  Clock,
-  Eye,
-  Award,
-  Zap,
-  HelpCircle,
-  Play,
-  QrCode,
-  Shield,
   Layers,
-  Search,
+  Smartphone,
+  Eye,
+  FileText,
+  Users,
+  Clock,
+  Copy,
+  Award,
+  Shield,
+  QrCode,
+  Scale,
+  Building2,
+  Briefcase,
+  Home,
+  Building,
+  Menu,
+  X,
   Check,
-  PhoneCall
+  Lock,
+  Link2,
+  PenTool,
+  UserCheck,
+  Camera,
+  Monitor,
+  Search,
+  Key,
+  ChevronDown,
+  ArrowRight
 } from 'lucide-react';
-import { COMMERCIAL_WHATSAPP } from '@/lib/constants';
-
-const FAQ_ITEMS = [
-  {
-    q: 'A assinatura do AssinaJur possui validade jurídica?',
-    a: 'Sim. A assinatura possui plena validade respaldada pelo Art. 10, § 2º da Medida Provisória nº 2.200-2/2001 e pela Lei nº 14.063/2020 (assinatura eletrônica avançada), contando com registro imutável de IP, geolocalização, prova de presença com 3 fotos e hash SHA-256.',
-  },
-  {
-    q: 'O cliente precisa instalar algum aplicativo para assinar?',
-    a: 'Não. Todo o fluxo é feito diretamente no navegador do celular ou computador através de um único link seguro enviado pelo WhatsApp ou e-mail.',
-  },
-  {
-    q: 'Como funciona a prova de presença ao vivo?',
-    a: 'A câmera do celular guia o cliente em tempo real para capturar 3 registros faciais (Frontal, Perfil Esquerdo e Perfil Direito) na proporção 4:3. A inteligência de detecção facial valida a posição e estabilidade antes de registrar a foto.',
-  },
-  {
-    q: 'Posso enviar vários documentos juntos em um único pacote?',
-    a: 'Sim! Essa é a principal proposta do AssinaJur. Você pode reunir contrato de honorários, procuração, declaração de hipossuficiência e outros documentos daquela contratação em um único link enviado ao cliente.',
-  },
-  {
-    q: 'Como é feita a validação de um documento assinado?',
-    a: 'Qualquer pessoa com o documento ou o código de autenticidade pode escanear o QR Code impresso no Certificado de Evidências ou acessar a página pública de verificação no site.',
-  },
-  {
-    q: 'O cliente recebe uma cópia do documento assinado?',
-    a: 'Sim, ao concluir o fluxo de assinatura o cliente visualiza a confirmação e o escritório responsável recebe o PDF consolidado com todas as evidências registradas.',
-  },
-  {
-    q: 'Posso personalizar com o nome e marca do meu escritório?',
-    a: 'Sim. O sistema permite configurar o nome do escritório, dados de contato e identidade visual exibida na página de assinatura e no certificado.',
-  },
-  {
-    q: 'O que acontece após o período de teste gratuito de 30 dias?',
-    a: 'Após os 30 dias ou após utilizar os 5 pacotes gratuitos, você poderá escolher um dos nossos planos pagos. Não há nenhuma cobrança automática.',
-  },
-  {
-    q: 'É necessário cadastrar cartão de crédito para testar?',
-    a: 'Não! O cadastro para o teste gratuito exige apenas seu e-mail e dados básicos do seu escritório.',
-  },
-  {
-    q: 'Como cancelar ou suspender um documento enviado por engano?',
-    a: 'No painel do escritório você pode cancelar qualquer documento pendente a qualquer momento, invalidando o link de assinatura.',
-  },
-  {
-    q: 'O sistema funciona perfeitamente em qualquer modelo de celular?',
-    a: 'Sim, é totalmente otimizado para Android (Chrome) e iPhone (Safari), adaptando-se com fluidez às telas de smartphones.',
-  },
-  {
-    q: 'O Certificado de Evidências acompanha o próprio PDF do documento?',
-    a: 'Sim. O AssinaJur compila todas as páginas do documento original com uma faixa discreta de autenticação e adiciona o Certificado de Evidências com fotos, hashes e QR Code no final do PDF.',
-  },
-  {
-    q: 'Qual a diferença entre o AssinaJur e um assinador de PDFs convencional?',
-    a: 'Enquanto assinadores comuns trabalham com PDFs avulsos já prontos, o AssinaJur organiza a contratação jurídica desde o cadastro do cliente, permitindo preparar kits de documentos e colher assinaturas em lote.',
-  },
-];
+import {
+  COMMERCIAL_WHATSAPP_FORMATTED,
+  getWhatsAppLink,
+  SOLO_PLAN_WHATSAPP_MESSAGE,
+  PRO_PLAN_WHATSAPP_MESSAGE,
+  OFFICE_PLAN_WHATSAPP_MESSAGE,
+  ENTERPRISE_WHATSAPP_MESSAGE
+} from '@/lib/constants';
 
 export default function LandingPage() {
+  const [scrolled, setScrolled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
-  const [activeDemoTab, setActiveDemoTab] = useState<'PANEL' | 'PACKAGE' | 'WHATSAPP' | 'SIGNING' | 'CERTIFICATE'>('PANEL');
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+
+  // Scroll detection for header
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 20);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Body scroll lock for mobile menu
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [mobileMenuOpen]);
+
+  // Intersection Observer for scroll animations
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible');
+          }
+        });
+      },
+      { threshold: 0.1 }
+    );
+
+    document.querySelectorAll('.scroll-reveal').forEach((el) => {
+      observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, []);
 
   const toggleFaq = (index: number) => {
     setOpenFaq(openFaq === index ? null : index);
   };
 
-  const getWhatsAppLink = (message: string) => {
-    const encoded = encodeURIComponent(message);
-    return `https://wa.me/${COMMERCIAL_WHATSAPP}?text=${encoded}`;
-  };
+  const handleDropdownEnter = (dropdown: string) => setActiveDropdown(dropdown);
+  const handleDropdownLeave = () => setActiveDropdown(null);
 
   return (
-    <div className="min-h-screen bg-[#F7F8FA] text-slate-800 font-sans selection:bg-gold-500 selection:text-[#0B1D3D]">
-      {/* ── HEADER STICKY PREMIUM ── */}
-      <header className="sticky top-0 z-50 bg-[#0B1D3D]/95 backdrop-blur-md border-b border-gold-500/20 text-white transition-all">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gold-500 text-[#0B1D3D] font-extrabold flex items-center justify-center text-xl shadow-lg">
+    <div className="min-h-screen bg-surface-50 font-sans text-body selection:bg-brand-500/30">
+      
+      {/* ═══ 1. HEADER ═══ */}
+      <header
+        className={`fixed top-0 left-0 right-0 z-50 h-[72px] transition-all duration-300 ${
+          scrolled ? 'glass-navy shadow-soft' : 'bg-transparent'
+        }`}
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
+          
+          {/* Logo */}
+          <Link href="/" className="flex items-center gap-3 z-50 relative group">
+            <div className="w-10 h-10 bg-navy-900 text-white rounded-xl flex items-center justify-center font-heading font-extrabold text-lg shadow-elevated group-hover:bg-brand-600 transition-colors">
               AJ
             </div>
-            <div>
-              <span className="font-extrabold text-white text-xl tracking-tight">
-                Assina<span className="text-gold-400">Jur</span>
-              </span>
-              <p className="text-[10px] text-slate-300 font-medium uppercase tracking-wider">Advocacia Digital & Evidências</p>
-            </div>
+            <span className={`font-heading font-extrabold text-xl ${scrolled ? 'text-white' : 'text-navy-900'} transition-colors duration-300`}>
+              AssinaJur
+            </span>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-8 text-xs font-semibold text-slate-300">
-            <a href="#como-funciona" className="hover:text-gold-400 transition-colors">Como Funciona</a>
-            <a href="#demonstracao" className="hover:text-gold-400 transition-colors">Demonstração Real</a>
-            <a href="#diferenciais" className="hover:text-gold-400 transition-colors">Diferenciais</a>
-            <a href="#seguranca" className="hover:text-gold-400 transition-colors">Segurança</a>
-            <a href="#planos" className="hover:text-gold-400 transition-colors">Planos</a>
-            <a href="#faq" className="hover:text-gold-400 transition-colors">FAQ</a>
+          {/* Desktop Nav */}
+          <nav className="hidden lg:flex items-center gap-8 h-full">
+            <div
+              className="relative h-full flex items-center"
+              onMouseEnter={() => handleDropdownEnter('produto')}
+              onMouseLeave={handleDropdownLeave}
+            >
+              <button className={`font-semibold flex items-center gap-1 transition-colors ${scrolled ? 'text-slate-200 hover:text-white' : 'text-navy-800 hover:text-brand-600'}`}>
+                Produto
+                <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${activeDropdown === 'produto' ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {/* ═══ 2. MEGA MENU 'PRODUTO' ═══ */}
+              <div className={`absolute top-full left-1/2 -translate-x-1/2 pt-4 transition-all duration-300 pointer-events-none origin-top ${activeDropdown === 'produto' ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95'}`}>
+                <div className="bg-white rounded-3xl shadow-elevated max-w-4xl w-[800px] p-8 grid grid-cols-3 gap-8 relative border border-surface-200 before:absolute before:-top-2 before:left-1/2 before:-translate-x-1/2 before:border-8 before:border-transparent before:border-b-white">
+                  
+                  <div className="space-y-6">
+                    <h3 className="font-heading font-bold text-xs uppercase tracking-wider text-muted mb-4 border-b pb-2">Assinaturas</h3>
+                    <Link href="#assinatura" className="group flex gap-4 hover:bg-surface-50 p-2 -m-2 rounded-xl transition-colors">
+                      <div className="w-10 h-10 rounded-lg bg-brand-50 flex items-center justify-center shrink-0 group-hover:bg-brand-100 transition-colors">
+                        <FileCheck2 className="w-5 h-5 text-brand-600" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-navy-900 text-sm">Assinatura eletrônica</div>
+                        <div className="text-caption text-muted mt-1 leading-snug">Colha assinaturas com validade jurídica pelo celular</div>
+                      </div>
+                    </Link>
+                    <Link href="#pacotes" className="group flex gap-4 hover:bg-surface-50 p-2 -m-2 rounded-xl transition-colors">
+                      <div className="w-10 h-10 rounded-lg bg-brand-50 flex items-center justify-center shrink-0 group-hover:bg-brand-100 transition-colors">
+                        <Layers className="w-5 h-5 text-brand-600" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-navy-900 text-sm">Pacotes de documentos</div>
+                        <div className="text-caption text-muted mt-1 leading-snug">Contrato, procuração e declarações em um único envio</div>
+                      </div>
+                    </Link>
+                    <Link href="#mobile" className="group flex gap-4 hover:bg-surface-50 p-2 -m-2 rounded-xl transition-colors">
+                      <div className="w-10 h-10 rounded-lg bg-brand-50 flex items-center justify-center shrink-0 group-hover:bg-brand-100 transition-colors">
+                        <Smartphone className="w-5 h-5 text-brand-600" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-navy-900 text-sm">Assinatura pelo celular</div>
+                        <div className="text-caption text-muted mt-1 leading-snug">Fluxo otimizado para telas de smartphones</div>
+                      </div>
+                    </Link>
+                    <Link href="#prova-presenca" className="group flex gap-4 hover:bg-surface-50 p-2 -m-2 rounded-xl transition-colors">
+                      <div className="w-10 h-10 rounded-lg bg-brand-50 flex items-center justify-center shrink-0 group-hover:bg-brand-100 transition-colors">
+                        <Eye className="w-5 h-5 text-brand-600" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-navy-900 text-sm">Prova de presença</div>
+                        <div className="text-caption text-muted mt-1 leading-snug">Registros faciais guiados durante a assinatura</div>
+                      </div>
+                    </Link>
+                  </div>
+
+                  <div className="space-y-6">
+                    <h3 className="font-heading font-bold text-xs uppercase tracking-wider text-muted mb-4 border-b pb-2">Gestão</h3>
+                    <Link href="#gestao" className="group flex gap-4 hover:bg-surface-50 p-2 -m-2 rounded-xl transition-colors">
+                      <div className="w-10 h-10 rounded-lg bg-brand-50 flex items-center justify-center shrink-0 group-hover:bg-brand-100 transition-colors">
+                        <FileText className="w-5 h-5 text-brand-600" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-navy-900 text-sm">Gestão de documentos</div>
+                        <div className="text-caption text-muted mt-1 leading-snug">Organize e acompanhe o status de cada envio</div>
+                      </div>
+                    </Link>
+                    <Link href="#clientes" className="group flex gap-4 hover:bg-surface-50 p-2 -m-2 rounded-xl transition-colors">
+                      <div className="w-10 h-10 rounded-lg bg-brand-50 flex items-center justify-center shrink-0 group-hover:bg-brand-100 transition-colors">
+                        <Users className="w-5 h-5 text-brand-600" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-navy-900 text-sm">Clientes</div>
+                        <div className="text-caption text-muted mt-1 leading-snug">Cadastro único reutilizável em qualquer documento</div>
+                      </div>
+                    </Link>
+                    <Link href="#acompanhamento" className="group flex gap-4 hover:bg-surface-50 p-2 -m-2 rounded-xl transition-colors">
+                      <div className="w-10 h-10 rounded-lg bg-brand-50 flex items-center justify-center shrink-0 group-hover:bg-brand-100 transition-colors">
+                        <Clock className="w-5 h-5 text-brand-600" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-navy-900 text-sm">Acompanhamento</div>
+                        <div className="text-caption text-muted mt-1 leading-snug">Saiba quem assinou, quem está pendente</div>
+                      </div>
+                    </Link>
+                    <Link href="#modelos" className="group flex gap-4 hover:bg-surface-50 p-2 -m-2 rounded-xl transition-colors">
+                      <div className="w-10 h-10 rounded-lg bg-brand-50 flex items-center justify-center shrink-0 group-hover:bg-brand-100 transition-colors">
+                        <Copy className="w-5 h-5 text-brand-600" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-navy-900 text-sm">Modelos</div>
+                        <div className="text-caption text-muted mt-1 leading-snug">Crie modelos reutilizáveis para agilizar</div>
+                      </div>
+                    </Link>
+                  </div>
+
+                  <div className="space-y-6 bg-surface-50 -my-8 -mr-8 p-8 rounded-r-3xl">
+                    <h3 className="font-heading font-bold text-xs uppercase tracking-wider text-muted mb-4 border-b border-surface-200 pb-2">Evidências</h3>
+                    <Link href="#certificado" className="group flex gap-4 hover:bg-white p-2 -m-2 rounded-xl transition-colors shadow-none hover:shadow-soft">
+                      <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shrink-0 group-hover:bg-brand-50 transition-colors shadow-sm">
+                        <Award className="w-5 h-5 text-brand-600" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-navy-900 text-sm">Certificado de evidências</div>
+                        <div className="text-caption text-muted mt-1 leading-snug">PDF com fotos, hashes e QR Code</div>
+                      </div>
+                    </Link>
+                    <Link href="#trilha" className="group flex gap-4 hover:bg-white p-2 -m-2 rounded-xl transition-colors shadow-none hover:shadow-soft">
+                      <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shrink-0 group-hover:bg-brand-50 transition-colors shadow-sm">
+                        <Shield className="w-5 h-5 text-brand-600" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-navy-900 text-sm">Trilha de autenticidade</div>
+                        <div className="text-caption text-muted mt-1 leading-snug">Registro completo de cada etapa</div>
+                      </div>
+                    </Link>
+                    <Link href="#validacao" className="group flex gap-4 hover:bg-white p-2 -m-2 rounded-xl transition-colors shadow-none hover:shadow-soft">
+                      <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shrink-0 group-hover:bg-brand-50 transition-colors shadow-sm">
+                        <QrCode className="w-5 h-5 text-brand-600" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-navy-900 text-sm">Validação por QR Code</div>
+                        <div className="text-caption text-muted mt-1 leading-snug">Consulta pública de autenticidade</div>
+                      </div>
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div
+              className="relative h-full flex items-center"
+              onMouseEnter={() => handleDropdownEnter('solucoes')}
+              onMouseLeave={handleDropdownLeave}
+            >
+              <button className={`font-semibold flex items-center gap-1 transition-colors ${scrolled ? 'text-slate-200 hover:text-white' : 'text-navy-800 hover:text-brand-600'}`}>
+                Soluções
+                <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${activeDropdown === 'solucoes' ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {/* ═══ 3. SOLUTIONS MENU ═══ */}
+              <div className={`absolute top-full left-1/2 -translate-x-1/2 pt-4 transition-all duration-300 pointer-events-none origin-top ${activeDropdown === 'solucoes' ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95'}`}>
+                <div className="bg-white rounded-3xl shadow-elevated max-w-sm w-[360px] p-4 relative border border-surface-200 before:absolute before:-top-2 before:left-1/2 before:-translate-x-1/2 before:border-8 before:border-transparent before:border-b-white flex flex-col gap-1">
+                  
+                  <Link href="#advogados" className="group flex gap-4 hover:bg-surface-50 p-3 rounded-xl transition-colors items-center">
+                    <div className="w-10 h-10 rounded-lg bg-surface-100 flex items-center justify-center shrink-0 group-hover:bg-brand-50 group-hover:text-brand-600 transition-colors text-muted">
+                      <Scale className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-navy-900 text-sm">Para advogados</div>
+                    </div>
+                  </Link>
+                  
+                  <Link href="#escritorios" className="group flex gap-4 hover:bg-surface-50 p-3 rounded-xl transition-colors items-center">
+                    <div className="w-10 h-10 rounded-lg bg-surface-100 flex items-center justify-center shrink-0 group-hover:bg-brand-50 group-hover:text-brand-600 transition-colors text-muted">
+                      <Building2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-navy-900 text-sm">Para escritórios de advocacia</div>
+                    </div>
+                  </Link>
+
+                  <Link href="#departamentos" className="group flex gap-4 hover:bg-surface-50 p-3 rounded-xl transition-colors items-center">
+                    <div className="w-10 h-10 rounded-lg bg-surface-100 flex items-center justify-center shrink-0 group-hover:bg-brand-50 group-hover:text-brand-600 transition-colors text-muted">
+                      <Briefcase className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-navy-900 text-sm">Para departamentos jurídicos</div>
+                    </div>
+                  </Link>
+
+                  <Link href="#imobiliarias" className="group flex gap-4 hover:bg-surface-50 p-3 rounded-xl transition-colors items-center">
+                    <div className="w-10 h-10 rounded-lg bg-surface-100 flex items-center justify-center shrink-0 group-hover:bg-brand-50 group-hover:text-brand-600 transition-colors text-muted">
+                      <Home className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-navy-900 text-sm">Para imobiliárias</div>
+                    </div>
+                  </Link>
+
+                  <Link href="#empresas" className="group flex gap-4 hover:bg-surface-50 p-3 rounded-xl transition-colors items-center">
+                    <div className="w-10 h-10 rounded-lg bg-surface-100 flex items-center justify-center shrink-0 group-hover:bg-brand-50 group-hover:text-brand-600 transition-colors text-muted">
+                      <Building className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-navy-900 text-sm">Para empresas</div>
+                    </div>
+                  </Link>
+
+                </div>
+              </div>
+            </div>
+
+            <Link href="#seguranca" className={`font-semibold transition-colors ${scrolled ? 'text-slate-200 hover:text-white' : 'text-navy-800 hover:text-brand-600'}`}>Segurança</Link>
+            <Link href="#precos" className={`font-semibold transition-colors ${scrolled ? 'text-slate-200 hover:text-white' : 'text-navy-800 hover:text-brand-600'}`}>Preços</Link>
           </nav>
 
-          <div className="flex items-center gap-3">
-            <Link
-              href="/login"
-              className="text-xs font-bold text-slate-200 hover:text-white px-3.5 py-2 rounded-xl transition-colors"
-            >
+          {/* Desktop Actions */}
+          <div className="hidden lg:flex items-center gap-6">
+            <Link href="/login" className={`font-semibold transition-colors ${scrolled ? 'text-slate-200 hover:text-white' : 'text-navy-800 hover:text-brand-600'}`}>
               Entrar
             </Link>
-            <Link
-              href="/register"
-              className="px-5 py-2.5 bg-brand-600 hover:bg-brand-500 text-white font-extrabold rounded-xl shadow-md text-xs transition-all flex items-center gap-1.5"
-            >
-              Testar Gratuito
-              <ArrowRight className="w-3.5 h-3.5" />
+            <Link href="/register" className="btn-primary">
+              Testar grátis
             </Link>
           </div>
+
+          {/* Mobile Menu Toggle */}
+          <button 
+            onClick={() => setMobileMenuOpen(true)}
+            className={`lg:hidden p-2 -mr-2 rounded-lg transition-colors ${scrolled ? 'text-white hover:bg-white/10' : 'text-navy-900 hover:bg-black/5'}`}
+            aria-label="Abrir menu"
+          >
+            <Menu className="w-6 h-6" />
+          </button>
         </div>
       </header>
 
-      {/* ── 1. PRIMEIRA DOBRA (HERO) ── */}
-      <section className="bg-[#0B1D3D] text-white pt-10 pb-20 px-4 sm:px-6 relative overflow-hidden">
-        <div className="max-w-7xl mx-auto grid lg:grid-cols-12 gap-12 items-center relative z-10">
-          <div className="lg:col-span-7 space-y-6 text-center lg:text-left">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gold-500/10 border border-gold-500/30 text-gold-400 font-bold text-xs">
-              <Sparkles className="w-4 h-4" /> Desenvolvido para advogados e escritórios de advocacia
+      {/* ═══ 4. MOBILE MENU ═══ */}
+      <div 
+        className={`fixed inset-0 bg-navy-900 z-[60] text-white flex flex-col transition-transform duration-500 ease-in-out ${mobileMenuOpen ? 'translate-x-0' : 'translate-x-full'}`}
+      >
+        <div className="h-[72px] px-4 flex items-center justify-between border-b border-white/10">
+          <Link href="/" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-white text-navy-900 rounded-xl flex items-center justify-center font-heading font-extrabold text-lg">
+              AJ
             </div>
-
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white leading-tight">
-              Assinatura jurídica completa em um único link
-            </h1>
-
-            <p className="text-base sm:text-lg text-slate-300 max-w-2xl mx-auto lg:mx-0 font-normal leading-relaxed">
-              Cadastre o cliente uma única vez, prepare contrato, procuração e declarações e envie todos os documentos juntos para assinatura pelo celular.
-            </p>
-
-            <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 pt-2">
-              <Link
-                href="/register"
-                className="w-full sm:w-auto px-8 py-4 bg-brand-600 hover:bg-brand-500 text-white font-extrabold rounded-xl shadow-xl text-sm transition-all flex items-center justify-center gap-2"
-              >
-                Testar gratuitamente
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-
-              <a
-                href="#demonstracao"
-                className="w-full sm:w-auto px-6 py-4 bg-white/10 hover:bg-white/15 text-white font-bold rounded-xl border border-white/10 text-sm transition-all flex items-center justify-center gap-2"
-              >
-                <Play className="w-4 h-4 text-gold-400 fill-gold-400" />
-                Ver o AssinaJur em ação
-              </a>
-            </div>
-
-            <div className="pt-2 text-xs text-slate-400 space-y-1">
-              <p className="font-semibold text-slate-300">5 pacotes gratuitos por 30 dias • Sem cartão</p>
-              <p className="text-[11px] text-slate-400">Sem cobrança automática ao final do teste.</p>
-            </div>
-          </div>
-
-          {/* Composição Visual Interativa do Produto */}
-          <div className="lg:col-span-5">
-            <div className="bg-[#132A54]/90 p-6 rounded-2xl border border-white/10 shadow-2xl space-y-4">
-              <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-red-400" />
-                  <div className="w-3 h-3 rounded-full bg-amber-400" />
-                  <div className="w-3 h-3 rounded-full bg-emerald-400" />
-                  <span className="text-xs font-mono text-slate-400 ml-2">assinajur.app/assinar/token</span>
-                </div>
-                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/30">
-                  Criptografia 256-bit
-                </span>
-              </div>
-
-              <div className="space-y-3 text-xs text-slate-200">
-                <div className="p-3 bg-[#0B1D3D] rounded-xl border border-white/10 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Users className="w-5 h-5 text-gold-400" />
-                    <div>
-                      <div className="font-bold text-white">João da Silva Santos</div>
-                      <div className="text-[10px] text-slate-400">CPF: 111.222.333-44</div>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-bold text-emerald-400">Cliente Cadastrado</span>
-                </div>
-
-                <div className="p-3 bg-[#0B1D3D] rounded-xl border border-white/10 space-y-2">
-                  <span className="text-[10px] uppercase font-bold text-gold-400">Pacote Jurídico Previdenciário (3 Documentos)</span>
-                  <div className="space-y-1 pl-1">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> 1. Contrato de Honorários
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> 2. Procuração Ad Judicia
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> 3. Declaração de Hipossuficiência
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-3 bg-emerald-500/10 rounded-xl border border-emerald-500/30 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-emerald-300 font-bold">
-                    <Eye className="w-4 h-4" /> Prova de presença ao vivo (3 selfies 4:3)
-                  </div>
-                  <span className="text-[10px] font-extrabold text-emerald-400">VALIDADA</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── 2. SEÇÃO COMO FUNCIONA (5 PASSOS) ── */}
-      <section id="como-funciona" className="py-20 px-4 sm:px-6 bg-white border-b border-slate-200/80">
-        <div className="max-w-7xl mx-auto space-y-12">
-          <div className="text-center space-y-3 max-w-3xl mx-auto">
-            <span className="text-xs font-bold text-brand-600 uppercase tracking-wider bg-brand-50 px-3 py-1 rounded-full border border-brand-200">
-              Fluxo Jurídico Simplificado
+            <span className="font-heading font-extrabold text-xl">
+              AssinaJur
             </span>
-            <h2 className="text-3xl font-black text-[#0B1D3D]">Como funciona o AssinaJur</h2>
-            <p className="text-sm text-slate-600">
-              Em apenas cinco etapas simples seu escritório organiza o atendimento, envia os documentos e colhe todas as assinaturas com validade imutável.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-5 gap-6">
-            {[
-              { step: '01', title: 'Cadastre o cliente', desc: 'Preencha os dados do cliente uma única vez no painel do escritório.' },
-              { step: '02', title: 'Prepare os documentos', desc: 'Escolha contrato, procuração e declarações em um único pacote jurídico.' },
-              { step: '03', title: 'Envie um único link', desc: 'Compartilhe o link direto no WhatsApp do cliente para assinatura no celular.' },
-              { step: '04', title: 'Acompanhe as assinaturas', desc: 'Receba confirmações em tempo real à medida que as etapas são validadas.' },
-              { step: '05', title: 'Receba o certificado', desc: 'Acesse o PDF consolidado com fotos 4:3, IP, geolocalização e QR Code.' },
-            ].map((s, idx) => (
-              <div key={idx} className="bg-[#F7F8FA] p-6 rounded-2xl border border-slate-200 relative space-y-3">
-                <span className="text-2xl font-black text-gold-500 block">{s.step}</span>
-                <h3 className="text-sm font-extrabold text-[#0B1D3D]">{s.title}</h3>
-                <p className="text-xs text-slate-600 leading-relaxed">{s.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── 3. DEMONSTRAÇÃO REAL DO PRODUTO ── */}
-      <section id="demonstracao" className="py-20 px-4 sm:px-6 bg-[#F7F8FA] border-b border-slate-200/80">
-        <div className="max-w-7xl mx-auto space-y-10">
-          <div className="text-center space-y-3 max-w-3xl mx-auto">
-            <span className="text-xs font-bold text-gold-600 uppercase tracking-wider bg-gold-100 px-3 py-1 rounded-full border border-gold-300">
-              Interface Real
-            </span>
-            <h2 className="text-3xl font-black text-[#0B1D3D]">Veja o AssinaJur em ação</h2>
-            <p className="text-sm text-slate-600">
-              Conheça as telas verdadeiras do sistema e entenda como a experiência móvel garante rapidez e conformidade técnica.
-            </p>
-          </div>
-
-          {/* Abas de Navegação */}
-          <div className="flex flex-wrap items-center justify-center gap-2 bg-white p-2 rounded-2xl border border-slate-200 shadow-xs max-w-3xl mx-auto">
-            {[
-              { id: 'PANEL', label: 'Painel Inicial' },
-              { id: 'PACKAGE', label: 'Pacote Jurídico' },
-              { id: 'WHATSAPP', label: 'Envio WhatsApp' },
-              { id: 'SIGNING', label: 'Assinatura Mobile' },
-              { id: 'CERTIFICATE', label: 'Certificado Final' },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveDemoTab(tab.id as any)}
-                className={`px-4 py-2 rounded-xl font-bold text-xs transition-all ${
-                  activeDemoTab === tab.id
-                    ? 'bg-[#0B1D3D] text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Conteúdo da Aba */}
-          <div className="bg-white p-6 sm:p-10 rounded-2xl border border-slate-200 shadow-lg max-w-4xl mx-auto">
-            {activeDemoTab === 'PANEL' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b pb-4">
-                  <div>
-                    <h3 className="font-extrabold text-[#0B1D3D] text-lg">Painel de Gestão do Escritório</h3>
-                    <p className="text-xs text-slate-500">Visão geral dos documentos e consumos</p>
-                  </div>
-                  <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold text-xs">
-                    Plano Ativo
-                  </span>
-                </div>
-                <div className="grid sm:grid-cols-3 gap-4 text-center">
-                  <div className="p-4 bg-slate-50 rounded-xl border">
-                    <span className="text-xs text-slate-500 font-semibold block">Aguardando Assinatura</span>
-                    <span className="text-2xl font-black text-amber-600">4</span>
-                  </div>
-                  <div className="p-4 bg-slate-50 rounded-xl border">
-                    <span className="text-xs text-slate-500 font-semibold block">Concluídos no Mês</span>
-                    <span className="text-2xl font-black text-emerald-600">18</span>
-                  </div>
-                  <div className="p-4 bg-slate-50 rounded-xl border">
-                    <span className="text-xs text-slate-500 font-semibold block">Pacotes Utilizados</span>
-                    <span className="text-2xl font-black text-blue-600">18 / 60</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeDemoTab === 'PACKAGE' && (
-              <div className="space-y-4 text-xs text-slate-700">
-                <h3 className="font-extrabold text-[#0B1D3D] text-base">Criação de Pacote Previdenciário</h3>
-                <div className="p-4 bg-slate-50 rounded-xl border space-y-2">
-                  <div className="font-bold text-slate-900">Cliente: Maria das Graças Oliveira</div>
-                  <div className="text-slate-500">Documentos incluídos no mesmo link:</div>
-                  <ul className="list-disc pl-5 space-y-1 text-slate-800 font-semibold">
-                    <li>Contrato de Honorários Advocatícios Previdenciários</li>
-                    <li>Procuração Ad Judicia (INSS e Justiça Federal)</li>
-                    <li>Declaração de Hipossuficiência Financeira</li>
-                  </ul>
-                </div>
-              </div>
-            )}
-
-            {activeDemoTab === 'WHATSAPP' && (
-              <div className="space-y-4 text-xs">
-                <h3 className="font-extrabold text-[#0B1D3D] text-base">Mensagem Pronta para o WhatsApp</h3>
-                <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-950 font-mono space-y-2">
-                  <p>Olá Maria! Segue o link seguro para revisão e assinatura do seu contrato e procuração:</p>
-                  <p className="font-bold text-emerald-700 underline">https://assinajur.app/assinar/token-exemplo</p>
-                  <p>Você pode assinar diretamente pelo celular em poucos passos.</p>
-                </div>
-              </div>
-            )}
-
-            {activeDemoTab === 'SIGNING' && (
-              <div className="space-y-4 text-xs text-slate-700">
-                <h3 className="font-extrabold text-[#0B1D3D] text-base">Fluxo de Prova de Presença no Celular</h3>
-                <div className="grid sm:grid-cols-3 gap-3 text-center">
-                  <div className="p-3 bg-slate-50 rounded-xl border border-emerald-400">
-                    <span className="font-bold block text-emerald-700">1. Foto Frontal</span>
-                    <span className="text-[10px] text-slate-500">Rosto centralizado</span>
-                  </div>
-                  <div className="p-3 bg-slate-50 rounded-xl border border-emerald-400">
-                    <span className="font-bold block text-emerald-700">2. Perfil Esquerdo</span>
-                    <span className="text-[10px] text-slate-500">Giro guiado</span>
-                  </div>
-                  <div className="p-3 bg-slate-50 rounded-xl border border-emerald-400">
-                    <span className="font-bold block text-emerald-700">3. Perfil Direito</span>
-                    <span className="text-[10px] text-slate-500">Giro guiado</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeDemoTab === 'CERTIFICATE' && (
-              <div className="space-y-4 text-xs text-slate-700">
-                <h3 className="font-extrabold text-[#0B1D3D] text-base">Certificado de Evidências em PDF</h3>
-                <div className="p-4 bg-[#0B1D3D] text-white rounded-xl space-y-2">
-                  <div className="flex justify-between font-bold text-gold-400">
-                    <span>CERTIFICADO ASSINAJUR</span>
-                    <span>CÓDIGO: AJ-8F92-K3D1</span>
-                  </div>
-                  <div className="text-[11px] text-slate-300">
-                    Horário de Brasília (UTC-3) • Hash SHA-256 de 64 caracteres • QR Code de Verificação Imutável
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* ── 4. SEÇÃO DE DIFERENCIAIS ── */}
-      <section id="diferenciais" className="py-20 px-4 sm:px-6 bg-white border-b border-slate-200/80">
-        <div className="max-w-7xl mx-auto space-y-12">
-          <div className="text-center space-y-3 max-w-3xl mx-auto">
-            <span className="text-xs font-bold text-brand-600 uppercase tracking-wider bg-brand-50 px-3 py-1 rounded-full border border-brand-200">
-              Especializado para Advocacia
-            </span>
-            <h2 className="text-3xl font-black text-[#0B1D3D]">Diferenciais que simplificam a rotina</h2>
-            <p className="text-sm text-slate-600">
-              Conheça as vantagens exclusivas do AssinaJur em comparação com assinadores genéricos de arquivos.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                icon: Layers,
-                title: 'Vários documentos no mesmo link',
-                desc: 'Reúna contrato, procuração, declarações e documentos pessoais no mesmo envio para o cliente.',
-              },
-              {
-                icon: Users,
-                title: 'Cadastro único de clientes',
-                desc: 'Cadastre os dados uma só vez e reutilize nos modelos jurídicos sem precisar reescrever.',
-              },
-              {
-                icon: Smartphone,
-                title: 'Assinatura fluida pelo celular',
-                desc: 'Fluxo responsivo desenvolvido especificamente para telas de smartphones no WhatsApp.',
-              },
-              {
-                icon: Eye,
-                title: 'Prova de presença guiada',
-                desc: 'Três fotos faciais (frontal, perfil esquerdo e perfil direito) na proporção 4:3 para maior segurança.',
-              },
-              {
-                icon: Lock,
-                title: 'Registro de evidências imutável',
-                desc: 'Gravação de IP, dispositivo, navegador, geolocalização aproximada e carimbo de tempo em Brasília.',
-              },
-              {
-                icon: QrCode,
-                title: 'QR Code e Verificação pública',
-                desc: 'Qualquer pessoa pode validar a autenticidade e a integridade do PDF diretamente pelo QR Code.',
-              },
-            ].map((diff, idx) => (
-              <div key={idx} className="bg-[#F7F8FA] p-6 rounded-2xl border border-slate-200 space-y-3">
-                <div className="w-10 h-10 rounded-xl bg-gold-500/20 text-gold-600 border border-gold-500/30 flex items-center justify-center">
-                  <diff.icon className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-bold text-[#0B1D3D]">{diff.title}</h3>
-                <p className="text-xs text-slate-600 leading-relaxed">{diff.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── 5. SEÇÃO DE SEGURANÇA E CONFORMIDADE ── */}
-      <section id="seguranca" className="py-20 px-4 sm:px-6 bg-[#0B1D3D] text-white">
-        <div className="max-w-7xl mx-auto space-y-12">
-          <div className="text-center space-y-3 max-w-3xl mx-auto">
-            <span className="text-xs font-bold text-gold-400 uppercase tracking-wider bg-gold-500/10 px-3 py-1 rounded-full border border-gold-500/30">
-              Conformidade Técnica e Jurídica
-            </span>
-            <h2 className="text-3xl font-black text-white">Rastreabilidade e Integridade Garantidas</h2>
-            <p className="text-sm text-slate-300">
-              Segurança estruturada nos termos da Legislação Brasileira de Assinaturas Eletrônicas.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-4 gap-6 text-center">
-            <div className="p-6 bg-[#132A54] rounded-2xl border border-white/10 space-y-2">
-              <ShieldCheck className="w-8 h-8 text-gold-400 mx-auto" />
-              <h3 className="font-bold text-white text-sm">MP 2.200-2 / 2001</h3>
-              <p className="text-xs text-slate-300">Respaldo legal do Art. 10, § 2º para assinaturas avançadas.</p>
-            </div>
-
-            <div className="p-6 bg-[#132A54] rounded-2xl border border-white/10 space-y-2">
-              <FileCheck2 className="w-8 h-8 text-gold-400 mx-auto" />
-              <h3 className="font-bold text-white text-sm">Lei 14.063 / 2020</h3>
-              <p className="text-xs text-slate-300">Classificação oficial de assinatura eletrônica avançada.</p>
-            </div>
-
-            <div className="p-6 bg-[#132A54] rounded-2xl border border-white/10 space-y-2">
-              <Lock className="w-8 h-8 text-gold-400 mx-auto" />
-              <h3 className="font-bold text-white text-sm">Hash SHA-256</h3>
-              <p className="text-xs text-slate-300">Código criptográfico único de 64 caracteres impresso no PDF.</p>
-            </div>
-
-            <div className="p-6 bg-[#132A54] rounded-2xl border border-white/10 space-y-2">
-              <Clock className="w-8 h-8 text-gold-400 mx-auto" />
-              <h3 className="font-bold text-white text-sm">Horário de Brasília</h3>
-              <p className="text-xs text-slate-300">Carimbo de data e hora em fuso oficial UTC-3.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── 6. PLANOS DE ASSINATURA ── */}
-      <section id="planos" className="py-20 px-4 sm:px-6 bg-white border-b border-slate-200/80">
-        <div className="max-w-7xl mx-auto space-y-12">
-          <div className="text-center space-y-3 max-w-3xl mx-auto">
-            <span className="text-xs font-bold text-brand-600 uppercase tracking-wider bg-brand-50 px-3 py-1 rounded-full border border-brand-200">
-              Planos Transparentes
-            </span>
-            <h2 className="text-3xl font-black text-[#0B1D3D]">Escolha o plano ideal para seu escritório</h2>
-            <p className="text-sm text-slate-600">
-              Valores acessíveis sem taxas escondidas, sem multa de fidelidade e sem cobrança automática.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-4 gap-6 items-stretch">
-            {/* PLANO ESSENCIAL */}
-            <div className="bg-[#F7F8FA] p-6 rounded-2xl border border-slate-200 flex flex-col justify-between space-y-6">
-              <div className="space-y-4">
-                <span className="font-extrabold text-[#0B1D3D] text-lg block">Essencial</span>
-                <div className="text-3xl font-black text-[#0B1D3D]">
-                  R$ 39,90 <span className="text-xs font-normal text-slate-500">/mês</span>
-                </div>
-                <p className="text-xs text-slate-600">Para advogados autônomos que estão iniciando a digitalização.</p>
-                <ul className="space-y-2 text-xs text-slate-700 font-medium">
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Até 20 pacotes / mês</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> 1 Usuário</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Cadastro de Clientes</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Prova de presença 4:3</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Certificado de Evidências</li>
-                </ul>
-              </div>
-              <a
-                href={getWhatsAppLink('Olá! Gostaria de contratar o Plano Essencial do AssinaJur por R$ 39,90/mês.')}
-                target="_blank"
-                rel="noreferrer"
-                className="w-full py-3 text-center bg-[#0B1D3D] hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors"
-              >
-                Contratar Essencial
-              </a>
-            </div>
-
-            {/* PLANO PROFISSIONAL (RECOMENDADO) */}
-            <div className="bg-white p-6 rounded-2xl border-2 border-brand-600 shadow-xl flex flex-col justify-between space-y-6 relative transform lg:-translate-y-2">
-              <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-brand-600 text-white text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider">
-                Mais Escolhido
-              </span>
-              <div className="space-y-4">
-                <span className="font-extrabold text-[#0B1D3D] text-lg block">Profissional</span>
-                <div className="text-3xl font-black text-brand-600">
-                  R$ 69,90 <span className="text-xs font-normal text-slate-500">/mês</span>
-                </div>
-                <p className="text-xs text-slate-600">Para advogados e pequenos escritórios com maior fluxo de atendimento.</p>
-                <ul className="space-y-2 text-xs text-slate-700 font-medium">
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Até 60 pacotes / mês</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Até 3 Usuários</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Todos os recursos Essencial</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Marca do escritório</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Suporte prioritário</li>
-                </ul>
-              </div>
-              <a
-                href={getWhatsAppLink('Olá! Gostaria de contratar o Plano Profissional do AssinaJur por R$ 69,90/mês.')}
-                target="_blank"
-                rel="noreferrer"
-                className="w-full py-3 text-center bg-brand-600 hover:bg-brand-500 text-white font-extrabold rounded-xl text-xs transition-colors shadow-md"
-              >
-                Contratar Profissional
-              </a>
-            </div>
-
-            {/* PLANO ESCRITÓRIO */}
-            <div className="bg-[#F7F8FA] p-6 rounded-2xl border border-slate-200 flex flex-col justify-between space-y-6">
-              <div className="space-y-4">
-                <span className="font-extrabold text-[#0B1D3D] text-lg block">Escritório</span>
-                <div className="text-3xl font-black text-[#0B1D3D]">
-                  R$ 99,90 <span className="text-xs font-normal text-slate-500">/mês</span>
-                </div>
-                <p className="text-xs text-slate-600">Para escritórios em crescimento com equipes de advogados.</p>
-                <ul className="space-y-2 text-xs text-slate-700 font-medium">
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Até 150 pacotes / mês</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Até 5 Usuários</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Todos os recursos do Profissional</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Gestão de permissões</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Suporte Comercial dedicado</li>
-                </ul>
-              </div>
-              <a
-                href={getWhatsAppLink('Olá! Gostaria de contratar o Plano Escritório do AssinaJur por R$ 99,90/mês.')}
-                target="_blank"
-                rel="noreferrer"
-                className="w-full py-3 text-center bg-[#0B1D3D] hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors"
-              >
-                Contratar Escritório
-              </a>
-            </div>
-
-            {/* PLANO SOB MEDIDA */}
-            <div className="bg-[#F7F8FA] p-6 rounded-2xl border border-slate-200 flex flex-col justify-between space-y-6">
-              <div className="space-y-4">
-                <span className="font-extrabold text-[#0B1D3D] text-lg block">Sob Medida</span>
-                <div className="text-2xl font-black text-[#0B1D3D]">
-                  Consulte-nos
-                </div>
-                <p className="text-xs text-slate-600">Para grandes bancadas jurídicas ou demandas volumosas.</p>
-                <ul className="space-y-2 text-xs text-slate-700 font-medium">
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Pacotes personalizados</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Múltiplas filiais / OABs</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Atendimento consultivo</li>
-                </ul>
-              </div>
-              <a
-                href={getWhatsAppLink('Olá! Gostaria de uma proposta de plano Sob Medida para o meu escritório.')}
-                target="_blank"
-                rel="noreferrer"
-                className="w-full py-3 text-center bg-[#0B1D3D] hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors"
-              >
-                Falar com Consultor
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── 7. SEÇÃO DE PERGUNTAS FREQUENTES (FAQ) ── */}
-      <section id="faq" className="py-20 px-4 sm:px-6 bg-[#F7F8FA] border-b border-slate-200/80">
-        <div className="max-w-4xl mx-auto space-y-10">
-          <div className="text-center space-y-3">
-            <span className="text-xs font-bold text-gold-600 uppercase tracking-wider bg-gold-100 px-3 py-1 rounded-full border border-gold-300">
-              Esclareça suas dúvidas
-            </span>
-            <h2 className="text-3xl font-black text-[#0B1D3D]">Perguntas Frequentes (FAQ)</h2>
-            <p className="text-sm text-slate-600">
-              Tudo o que você precisa saber sobre a validade jurídica, o fluxo de assinatura e o teste do AssinaJur.
-            </p>
-          </div>
-
-          <div className="space-y-3">
-            {FAQ_ITEMS.map((item, idx) => (
-              <div key={idx} className="bg-white rounded-2xl border border-slate-200 overflow-hidden transition-all">
-                <button
-                  onClick={() => toggleFaq(idx)}
-                  className="w-full p-5 text-left font-bold text-[#0B1D3D] text-sm flex items-center justify-between gap-4 hover:bg-slate-50 transition-colors"
-                >
-                  <span>{item.q}</span>
-                  <ChevronDown className={`w-4 h-4 text-gold-500 shrink-0 transition-transform ${openFaq === idx ? 'rotate-180' : ''}`} />
-                </button>
-                {openFaq === idx && (
-                  <div className="px-5 pb-5 text-xs text-slate-600 leading-relaxed border-t border-slate-100 pt-3">
-                    {item.a}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── 8. SEÇÃO DE SUPORTE E CONTATO COMERCIAL ── */}
-      <section className="py-16 px-4 sm:px-6 bg-white border-b border-slate-200/80">
-        <div className="max-w-5xl mx-auto bg-[#0B1D3D] text-white p-8 sm:p-12 rounded-3xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-8">
-          <div className="space-y-3 text-center md:text-left">
-            <h2 className="text-2xl font-black text-white">Precisa de atendimento do nosso time?</h2>
-            <p className="text-xs text-slate-300 max-w-lg leading-relaxed">
-              Tire dúvidas diretamente com a equipe comercial do AssinaJur pelo WhatsApp no número comercial (73) 98825-0201.
-            </p>
-          </div>
-
-          <a
-            href={getWhatsAppLink('Olá! Gostaria de tirar dúvidas com o suporte do AssinaJur.')}
-            target="_blank"
-            rel="noreferrer"
-            className="px-8 py-4 bg-emerald-500 hover:bg-emerald-400 text-[#0B1D3D] font-extrabold rounded-xl shadow-lg text-sm transition-all flex items-center gap-2 shrink-0"
+          </Link>
+          <button 
+            onClick={() => setMobileMenuOpen(false)}
+            className="p-2 -mr-2 text-white hover:bg-white/10 rounded-lg transition-colors"
+            aria-label="Fechar menu"
           >
-            <PhoneCall className="w-4 h-4" />
-            Falar pelo WhatsApp
-          </a>
+            <X className="w-6 h-6" />
+          </button>
         </div>
-      </section>
+        
+        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
+          <nav className="flex flex-col gap-6 text-lg font-semibold">
+            <div className="flex flex-col gap-4">
+              <button 
+                onClick={() => setActiveDropdown(activeDropdown === 'mob-produto' ? null : 'mob-produto')}
+                className="flex items-center justify-between py-2 border-b border-white/5"
+              >
+                Produto
+                <ChevronDown className={`w-5 h-5 transition-transform ${activeDropdown === 'mob-produto' ? 'rotate-180' : ''}`} />
+              </button>
+              {activeDropdown === 'mob-produto' && (
+                <div className="pl-4 flex flex-col gap-4 text-base text-slate-300 font-medium">
+                  <Link href="#assinatura" onClick={() => setMobileMenuOpen(false)}>Assinatura eletrônica</Link>
+                  <Link href="#pacotes" onClick={() => setMobileMenuOpen(false)}>Pacotes de documentos</Link>
+                  <Link href="#prova-presenca" onClick={() => setMobileMenuOpen(false)}>Prova de presença</Link>
+                  <Link href="#gestao" onClick={() => setMobileMenuOpen(false)}>Gestão de documentos</Link>
+                  <Link href="#certificado" onClick={() => setMobileMenuOpen(false)}>Certificado de evidências</Link>
+                </div>
+              )}
+            </div>
 
-      {/* ── 9. RODAPÉ COMPLETO ── */}
-      <footer className="bg-[#0B1D3D] text-white pt-16 pb-12 px-4 sm:px-6 border-t border-gold-500/20">
-        <div className="max-w-7xl mx-auto grid md:grid-cols-4 gap-10 pb-12 border-b border-white/10 text-xs">
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-gold-500 text-[#0B1D3D] font-extrabold flex items-center justify-center text-lg">
-                AJ
+            <div className="flex flex-col gap-4">
+              <button 
+                onClick={() => setActiveDropdown(activeDropdown === 'mob-solucoes' ? null : 'mob-solucoes')}
+                className="flex items-center justify-between py-2 border-b border-white/5"
+              >
+                Soluções
+                <ChevronDown className={`w-5 h-5 transition-transform ${activeDropdown === 'mob-solucoes' ? 'rotate-180' : ''}`} />
+              </button>
+              {activeDropdown === 'mob-solucoes' && (
+                <div className="pl-4 flex flex-col gap-4 text-base text-slate-300 font-medium">
+                  <Link href="#advogados" onClick={() => setMobileMenuOpen(false)}>Para advogados</Link>
+                  <Link href="#escritorios" onClick={() => setMobileMenuOpen(false)}>Para escritórios</Link>
+                  <Link href="#departamentos" onClick={() => setMobileMenuOpen(false)}>Para departamentos jurídicos</Link>
+                </div>
+              )}
+            </div>
+
+            <Link href="#seguranca" onClick={() => setMobileMenuOpen(false)} className="py-2 border-b border-white/5">Segurança</Link>
+            <Link href="#precos" onClick={() => setMobileMenuOpen(false)} className="py-2 border-b border-white/5">Preços</Link>
+          </nav>
+
+          <div className="mt-auto flex flex-col gap-4 pt-6 border-t border-white/10">
+            <Link 
+              href="/login" 
+              onClick={() => setMobileMenuOpen(false)} 
+              className="text-center font-semibold py-3"
+            >
+              Entrar
+            </Link>
+            <Link 
+              href="/register" 
+              onClick={() => setMobileMenuOpen(false)} 
+              className="btn-primary w-full justify-center bg-brand-500 hover:bg-brand-400"
+            >
+              Testar grátis
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      <main>
+        {/* ═══ 5. HERO SECTION ═══ */}
+        <section className="relative gradient-hero pt-24 lg:pt-32 pb-20 overflow-hidden">
+          <div className="absolute inset-0 hero-grid opacity-30 mix-blend-overlay"></div>
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-brand-500/10 rounded-full blur-3xl opacity-50 pointer-events-none hero-glow"></div>
+          
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+            <div className="grid lg:grid-cols-2 gap-12 lg:gap-8 items-center">
+              
+              {/* Left Column */}
+              <div className="flex flex-col items-start gap-6 pt-10">
+                <div className="text-overline bg-brand-600/10 text-brand-700 border border-brand-200/50 rounded-full px-4 py-1.5 font-bold tracking-widest backdrop-blur-sm scroll-reveal animate-slide-in-down">
+                  LEGALTECH PARA ESCRITÓRIOS
+                </div>
+                
+                <h1 className="font-heading text-display text-navy-900 leading-[1.1] scroll-reveal text-[40px] md:text-[48px] lg:text-[64px]">
+                  Assinatura jurídica <span className="text-gradient bg-clip-text text-transparent bg-gradient-to-r from-brand-600 to-brand-400">completa</span> em um único link
+                </h1>
+                
+                <p className="text-body-lg text-muted max-w-xl scroll-reveal text-[17px] lg:text-[19px]">
+                  Prepare contratos, procurações e declarações, envie tudo de uma vez e acompanhe cada assinatura com evidências de autenticidade.
+                </p>
+                
+                <div className="flex flex-wrap items-center gap-4 pt-4 scroll-reveal">
+                  <Link href="/register" className="btn-primary text-base px-6 py-3">
+                    Começar gratuitamente <ArrowRight className="w-5 h-5 ml-1" />
+                  </Link>
+                  <Link href="#plataforma" className="btn-secondary text-base px-6 py-3">
+                    ▶ Ver demonstração
+                  </Link>
+                </div>
+
+                <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 text-caption text-muted font-medium scroll-reveal">
+                  <div className="flex items-center gap-1.5"><Check className="w-4 h-4 text-success-500" /> Sem cartão de crédito</div>
+                  <div className="flex items-center gap-1.5"><Check className="w-4 h-4 text-success-500" /> 5 pacotes gratuitos</div>
+                  <div className="flex items-center gap-1.5"><Check className="w-4 h-4 text-success-500" /> 30 dias para testar</div>
+                </div>
               </div>
-              <span className="font-extrabold text-white text-lg tracking-tight">Assina<span className="text-gold-400">Jur</span></span>
+
+              {/* Right Column - Mockup Composition */}
+              <div className="relative mt-8 lg:mt-0 scroll-reveal">
+                {/* Browser Mockup */}
+                <div className="mockup-browser bg-white rounded-2xl shadow-card-hover border border-surface-200 overflow-hidden ml-auto w-full max-w-[540px]">
+                  <div className="mockup-browser-bar bg-surface-100 flex items-center px-4 py-3 border-b border-surface-200 gap-2">
+                    <div className="flex gap-1.5">
+                      <div className="w-3 h-3 rounded-full mockup-dot bg-rose-400"></div>
+                      <div className="w-3 h-3 rounded-full mockup-dot bg-amber-400"></div>
+                      <div className="w-3 h-3 rounded-full mockup-dot bg-emerald-400"></div>
+                    </div>
+                    <div className="flex-1 bg-white rounded-md mx-4 h-6 text-[10px] text-muted flex items-center px-3 font-mono opacity-60">app.assinajur.com.br/dashboard</div>
+                  </div>
+                  
+                  <div className="p-6 bg-surface-50 h-[380px]">
+                    <div className="flex justify-between items-center mb-6">
+                      <h3 className="font-heading font-bold text-navy-900 text-lg">Painel do Escritório</h3>
+                      <span className="px-2 py-1 bg-success-50 text-success-700 text-[10px] font-bold rounded uppercase tracking-wider">Ativo</span>
+                    </div>
+                    
+                    <div className="grid grid-cols-3 gap-3 mb-6">
+                      <div className="bg-white p-3 rounded-xl shadow-sm border border-surface-100">
+                        <div className="text-[11px] text-muted font-semibold mb-1">Pendentes</div>
+                        <div className="text-xl font-bold text-amber-500">4</div>
+                      </div>
+                      <div className="bg-white p-3 rounded-xl shadow-sm border border-surface-100">
+                        <div className="text-[11px] text-muted font-semibold mb-1">Concluídos</div>
+                        <div className="text-xl font-bold text-success-500">18</div>
+                      </div>
+                      <div className="bg-white p-3 rounded-xl shadow-sm border border-surface-100">
+                        <div className="text-[11px] text-muted font-semibold mb-1">Pacotes</div>
+                        <div className="text-xl font-bold text-brand-600">18/60</div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-sm border border-surface-100 overflow-hidden">
+                      <div className="px-4 py-2 border-b border-surface-100 text-[11px] font-semibold text-muted flex justify-between bg-surface-50">
+                        <span>Documento</span>
+                        <span>Status</span>
+                      </div>
+                      <div className="p-4 flex items-center justify-between border-b border-surface-50">
+                        <div className="flex items-center gap-3">
+                          <FileText className="w-4 h-4 text-brand-500" />
+                          <div className="text-sm font-semibold text-navy-900">Honorários - Silva</div>
+                        </div>
+                        <span className="px-2 py-0.5 bg-success-50 text-success-700 text-[10px] font-bold rounded">Concluído</span>
+                      </div>
+                      <div className="p-4 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Layers className="w-4 h-4 text-amber-500" />
+                          <div className="text-sm font-semibold text-navy-900">Kit Imobiliário</div>
+                        </div>
+                        <span className="px-2 py-0.5 bg-amber-50 text-amber-700 text-[10px] font-bold rounded">Pendente</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Phone Mockup Overlapping */}
+                <div className="mockup-phone absolute -bottom-10 -right-6 lg:-right-12 w-[180px] h-[360px] bg-white rounded-[2rem] shadow-2xl border-4 border-navy-900 overflow-hidden flex flex-col z-20 animate-float-slow">
+                  <div className="bg-navy-900 text-white text-[10px] py-1 text-center font-medium">14:30</div>
+                  <div className="flex-1 bg-surface-100 relative p-3 flex flex-col justify-end pb-8">
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-32 border-2 border-dashed border-brand-400 rounded-[2rem] flex items-center justify-center opacity-60">
+                      <UserCheck className="w-10 h-10 text-brand-400" />
+                    </div>
+                    <div className="bg-white p-2 rounded-xl shadow-md z-10 text-center">
+                      <div className="text-[9px] text-muted font-bold uppercase mb-1">Prova de presença</div>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <div className="w-3 h-3 bg-success-500 rounded-full flex items-center justify-center">
+                          <Check className="w-2 h-2 text-white" />
+                        </div>
+                        <span className="text-[11px] font-semibold text-navy-900">Foto frontal</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Floating Cards */}
+                <div className="absolute -left-12 top-1/4 bg-white px-4 py-3 rounded-2xl shadow-card flex items-center gap-3 animate-float z-20 border border-surface-100">
+                  <div className="w-8 h-8 rounded-full bg-success-100 flex items-center justify-center">
+                    <Check className="w-4 h-4 text-success-600" />
+                  </div>
+                  <span className="text-sm font-semibold text-navy-900">Documento assinado</span>
+                </div>
+                
+                <div className="absolute -left-4 bottom-1/4 bg-white px-4 py-3 rounded-2xl shadow-card flex items-center gap-3 animate-float-delayed z-20 border border-surface-100">
+                  <div className="w-8 h-8 rounded-full bg-brand-50 flex items-center justify-center">
+                    <Camera className="w-4 h-4 text-brand-600" />
+                  </div>
+                  <span className="text-sm font-semibold text-navy-900">3 evidências capturadas</span>
+                </div>
+                
+                <div className="absolute top-10 right-4 lg:-right-8 bg-white px-4 py-3 rounded-2xl shadow-card flex items-center gap-3 animate-float z-20 border border-surface-100">
+                  <div className="w-8 h-8 rounded-full bg-amber-50 flex items-center justify-center">
+                    <Shield className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <span className="text-sm font-semibold text-navy-900">Integridade verificada</span>
+                </div>
+
+              </div>
             </div>
-            <p className="text-slate-400 leading-relaxed">
-              Plataforma de assinatura eletrônica jurídica desenvolvida para advogados e escritórios de advocacia.
+          </div>
+        </section>
+
+        {/* ═══ 6. TRUST BAR ═══ */}
+        <section className="bg-white border-y border-surface-200 py-12 scroll-reveal">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 className="text-caption text-muted text-center font-semibold mb-8 uppercase tracking-widest">
+              Uma plataforma criada para documentos que exigem confiança.
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 divide-x divide-surface-100">
+              <div className="flex flex-col items-center text-center px-4">
+                <Shield className="w-8 h-8 text-brand-600 mb-3" />
+                <div className="font-bold text-navy-900 mb-1">Lei 14.063/2020</div>
+                <div className="text-caption text-muted">Assinatura eletrônica</div>
+              </div>
+              <div className="flex flex-col items-center text-center px-4">
+                <Lock className="w-8 h-8 text-brand-600 mb-3" />
+                <div className="font-bold text-navy-900 mb-1">SHA-256</div>
+                <div className="text-caption text-muted">Integridade documental</div>
+              </div>
+              <div className="flex flex-col items-center text-center px-4">
+                <Eye className="w-8 h-8 text-brand-600 mb-3" />
+                <div className="font-bold text-navy-900 mb-1">3 registros faciais</div>
+                <div className="text-caption text-muted">Prova de presença</div>
+              </div>
+              <div className="flex flex-col items-center text-center px-4">
+                <QrCode className="w-8 h-8 text-brand-600 mb-3" />
+                <div className="font-bold text-navy-900 mb-1">QR Code</div>
+                <div className="text-caption text-muted">Validação independente</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ═══ 7. PLATFORM SECTION ═══ */}
+        <section id="plataforma" className="py-24 bg-surface-50 scroll-reveal">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-16">
+              <h2 className="text-h2 font-heading text-navy-900 mb-4">Do envio à evidência final, sem sair do AssinaJur</h2>
+            </div>
+            
+            <div className="max-w-5xl mx-auto mockup-browser bg-white rounded-2xl shadow-elevated border border-surface-200 overflow-hidden mb-16">
+              <div className="mockup-browser-bar bg-surface-100 flex items-center px-4 py-3 border-b border-surface-200 gap-2">
+                <div className="flex gap-1.5">
+                  <div className="w-3 h-3 rounded-full bg-rose-400"></div>
+                  <div className="w-3 h-3 rounded-full bg-amber-400"></div>
+                  <div className="w-3 h-3 rounded-full bg-emerald-400"></div>
+                </div>
+              </div>
+              <div className="flex h-[480px]">
+                {/* Sidebar */}
+                <div className="w-64 border-r border-surface-100 p-4 bg-surface-50 hidden md:flex flex-col gap-2">
+                  <div className="flex items-center gap-3 px-3 py-2 bg-brand-50 text-brand-700 rounded-lg font-semibold text-sm">
+                    <FileText className="w-4 h-4" /> Documentos
+                  </div>
+                  <div className="flex items-center gap-3 px-3 py-2 text-muted hover:bg-surface-100 rounded-lg font-medium text-sm transition-colors">
+                    <Users className="w-4 h-4" /> Clientes
+                  </div>
+                  <div className="flex items-center gap-3 px-3 py-2 text-muted hover:bg-surface-100 rounded-lg font-medium text-sm transition-colors">
+                    <Layers className="w-4 h-4" /> Kits
+                  </div>
+                  <div className="flex items-center gap-3 px-3 py-2 text-muted hover:bg-surface-100 rounded-lg font-medium text-sm transition-colors">
+                    <Copy className="w-4 h-4" /> Modelos
+                  </div>
+                </div>
+                {/* Main Content */}
+                <div className="flex-1 bg-white p-6 overflow-hidden flex flex-col">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="font-heading font-bold text-xl text-navy-900">Documentos Recentes</h3>
+                    <button className="btn-primary text-sm py-2">Novo Envio</button>
+                  </div>
+                  <div className="border border-surface-100 rounded-xl overflow-hidden flex-1">
+                    <div className="grid grid-cols-4 p-4 border-b border-surface-100 bg-surface-50 text-xs font-semibold text-muted uppercase tracking-wider">
+                      <div className="col-span-2">Documento</div>
+                      <div>Cliente</div>
+                      <div>Status</div>
+                    </div>
+                    <div className="grid grid-cols-4 p-4 border-b border-surface-50 items-center hover:bg-surface-50 transition-colors">
+                      <div className="col-span-2 flex items-center gap-3">
+                        <div className="p-2 bg-brand-50 rounded-lg text-brand-600"><Layers className="w-4 h-4" /></div>
+                        <span className="font-semibold text-navy-900 text-sm">Kit Compra e Venda Lote 42</span>
+                      </div>
+                      <div className="text-sm text-muted">Roberto Almeida</div>
+                      <div><span className="px-2.5 py-1 bg-success-50 text-success-700 text-xs font-bold rounded-full">Concluído</span></div>
+                    </div>
+                    <div className="grid grid-cols-4 p-4 border-b border-surface-50 items-center hover:bg-surface-50 transition-colors">
+                      <div className="col-span-2 flex items-center gap-3">
+                        <div className="p-2 bg-brand-50 rounded-lg text-brand-600"><FileText className="w-4 h-4" /></div>
+                        <span className="font-semibold text-navy-900 text-sm">Procuração Ad Judicia</span>
+                      </div>
+                      <div className="text-sm text-muted">Maria Silva</div>
+                      <div><span className="px-2.5 py-1 bg-amber-50 text-amber-700 text-xs font-bold rounded-full">Pendente</span></div>
+                    </div>
+                    <div className="grid grid-cols-4 p-4 border-b border-surface-50 items-center hover:bg-surface-50 transition-colors">
+                      <div className="col-span-2 flex items-center gap-3">
+                        <div className="p-2 bg-brand-50 rounded-lg text-brand-600"><Layers className="w-4 h-4" /></div>
+                        <span className="font-semibold text-navy-900 text-sm">Contrato de Honorários</span>
+                      </div>
+                      <div className="text-sm text-muted">Empresa XYZ Ltda</div>
+                      <div><span className="px-2.5 py-1 bg-brand-50 text-brand-700 text-xs font-bold rounded-full">Enviado</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-6 max-w-5xl mx-auto">
+              <div className="card-base flex items-start gap-4 p-6 bg-white">
+                <div className="p-3 bg-brand-50 text-brand-600 rounded-xl shrink-0"><Layers className="w-6 h-6" /></div>
+                <div>
+                  <h4 className="font-bold text-navy-900 mb-2">Pacotes</h4>
+                  <p className="text-muted text-sm leading-relaxed">Contrato, procuração e declaração em um único envio. Facilite a vida do seu cliente enviando tudo de uma vez.</p>
+                </div>
+              </div>
+              <div className="card-base flex items-start gap-4 p-6 bg-white">
+                <div className="p-3 bg-brand-50 text-brand-600 rounded-xl shrink-0"><Clock className="w-6 h-6" /></div>
+                <div>
+                  <h4 className="font-bold text-navy-900 mb-2">Acompanhamento</h4>
+                  <p className="text-muted text-sm leading-relaxed">Saiba quem abriu, assinou ou ainda está pendente. Tenha controle total sobre o andamento dos seus envios.</p>
+                </div>
+              </div>
+              <div className="card-base flex items-start gap-4 p-6 bg-white">
+                <div className="p-3 bg-brand-50 text-brand-600 rounded-xl shrink-0"><Eye className="w-6 h-6" /></div>
+                <div>
+                  <h4 className="font-bold text-navy-900 mb-2">Prova de presença</h4>
+                  <p className="text-muted text-sm leading-relaxed">Capturas orientadas durante o fluxo garantem que a pessoa que assina é realmente quem diz ser.</p>
+                </div>
+              </div>
+              <div className="card-base flex items-start gap-4 p-6 bg-white">
+                <div className="p-3 bg-brand-50 text-brand-600 rounded-xl shrink-0"><Award className="w-6 h-6" /></div>
+                <div>
+                  <h4 className="font-bold text-navy-900 mb-2">Certificado</h4>
+                  <p className="text-muted text-sm leading-relaxed">Evidências reunidas automaticamente no final, gerando um PDF único, robusto e com validade jurídica incontestável.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ═══ 8. SINGLE LINK FLOW SECTION ═══ */}
+        <section className="py-24 bg-white scroll-reveal">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-20">
+              <h2 className="text-h2 font-heading text-navy-900 mb-2">Não é só assinar um PDF.</h2>
+              <p className="text-h2 font-heading text-gradient bg-clip-text text-transparent bg-gradient-to-r from-brand-600 to-brand-400">É fechar o fluxo jurídico.</p>
+            </div>
+
+            <div className="relative flex flex-col md:flex-row items-center justify-between gap-6 md:gap-4 max-w-5xl mx-auto before:hidden md:before:block before:absolute before:top-1/2 before:-translate-y-1/2 before:left-0 before:right-0 before:h-1 before:bg-surface-200 before:-z-10">
+              
+              {/* Step 1 */}
+              <div className="flex flex-col items-center gap-3 relative bg-white p-2">
+                <div className="w-12 h-12 rounded-full bg-navy-900 text-white flex items-center justify-center shadow-md">
+                  <Users className="w-5 h-5" />
+                </div>
+                <span className="text-sm font-semibold text-navy-900">Cliente</span>
+              </div>
+
+              {/* Step 2 */}
+              <div className="flex flex-col items-center gap-3 relative bg-white p-2">
+                <div className="w-12 h-12 rounded-full bg-surface-100 text-muted flex items-center justify-center border border-surface-200">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <span className="text-sm font-semibold text-navy-900">Cadastro único</span>
+              </div>
+
+              {/* Step 3 */}
+              <div className="flex flex-col items-center gap-3 relative bg-white p-2">
+                <div className="w-12 h-12 rounded-full bg-surface-100 text-muted flex items-center justify-center border border-surface-200">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <span className="text-sm font-semibold text-navy-900 text-center max-w-[100px]">Documentos do pacote</span>
+              </div>
+
+              {/* Step 4 - Highlight */}
+              <div className="flex flex-col items-center gap-4 relative bg-white p-2 z-10 scale-110">
+                <div className="absolute inset-0 bg-brand-500/20 blur-xl rounded-full"></div>
+                <div className="w-16 h-16 rounded-full bg-brand-600 text-white flex items-center justify-center shadow-glow-blue relative ring-4 ring-white">
+                  <Link2 className="w-7 h-7" />
+                </div>
+                <span className="text-sm font-extrabold text-brand-700 bg-brand-50 px-3 py-1 rounded-full border border-brand-200">Um único link</span>
+              </div>
+
+              {/* Step 5 */}
+              <div className="flex flex-col items-center gap-3 relative bg-white p-2">
+                <div className="w-12 h-12 rounded-full bg-surface-100 text-muted flex items-center justify-center border border-surface-200">
+                  <PenTool className="w-5 h-5" />
+                </div>
+                <span className="text-sm font-semibold text-navy-900 text-center max-w-[100px]">Identificação + Assinatura</span>
+              </div>
+
+              {/* Step 6 */}
+              <div className="flex flex-col items-center gap-3 relative bg-white p-2">
+                <div className="w-12 h-12 rounded-full bg-surface-100 text-muted flex items-center justify-center border border-surface-200">
+                  <Award className="w-5 h-5" />
+                </div>
+                <span className="text-sm font-semibold text-navy-900 text-center max-w-[100px]">Certificado + Evidências</span>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        {/* ═══ 9. DARK EVIDENCE SECTION ═══ */}
+        <section className="bg-navy-900 py-24 text-white overflow-hidden scroll-reveal relative">
+          <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-brand-600/10 rounded-full blur-[100px] pointer-events-none"></div>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+            <h2 className="text-h2 font-heading text-white mb-16 text-center lg:text-left">Evidências que acompanham cada assinatura</h2>
+            
+            <div className="grid lg:grid-cols-2 gap-16 items-center">
+              
+              {/* Left - Certificate Preview */}
+              <div className="bg-white text-navy-900 rounded-xl p-8 shadow-2xl relative rotate-1 hover:rotate-0 transition-transform duration-500 max-w-md mx-auto lg:mx-0">
+                <div className="absolute inset-0 bg-gradient-to-br from-white to-surface-50 rounded-xl pointer-events-none"></div>
+                <div className="relative z-10">
+                  <div className="text-center mb-6">
+                    <h3 className="font-heading font-extrabold tracking-widest text-lg border-b-2 border-navy-900 inline-block pb-1 mb-2">CERTIFICADO DE EVIDÊNCIAS</h3>
+                    <div className="font-mono text-xs text-muted">AJ-8F92-K3D1</div>
+                  </div>
+                  
+                  <div className="space-y-4 mb-8">
+                    <div className="flex justify-between border-b border-dashed border-surface-200 pb-2">
+                      <span className="text-xs font-bold text-muted uppercase">Signatário</span>
+                      <span className="text-sm font-semibold">Roberto Almeida</span>
+                    </div>
+                    <div className="flex justify-between border-b border-dashed border-surface-200 pb-2">
+                      <span className="text-xs font-bold text-muted uppercase">CPF</span>
+                      <span className="text-sm font-semibold font-mono">***.456.789-**</span>
+                    </div>
+                    <div className="flex justify-between border-b border-dashed border-surface-200 pb-2">
+                      <span className="text-xs font-bold text-muted uppercase">Data</span>
+                      <span className="text-sm font-semibold">06/08/2026 14:32</span>
+                    </div>
+                    <div className="flex justify-between border-b border-dashed border-surface-200 pb-2">
+                      <span className="text-xs font-bold text-muted uppercase">Hash (SHA-256)</span>
+                      <span className="text-[10px] font-mono text-muted bg-surface-100 px-1 rounded truncate max-w-[120px]">a2c4e6f8...9b1d3</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3 mb-8">
+                    <div className="bg-surface-100 aspect-[3/4] rounded-lg border border-surface-200 flex flex-col items-center justify-center p-2 relative overflow-hidden">
+                       <UserCheck className="w-6 h-6 text-muted/50 absolute z-0" />
+                       <div className="mt-auto text-[8px] font-bold uppercase text-navy-900 bg-white/80 px-1 rounded w-full text-center z-10 backdrop-blur-sm">Frontal</div>
+                    </div>
+                    <div className="bg-surface-100 aspect-[3/4] rounded-lg border border-surface-200 flex flex-col items-center justify-center p-2 relative overflow-hidden">
+                       <UserCheck className="w-6 h-6 text-muted/50 absolute z-0" />
+                       <div className="mt-auto text-[8px] font-bold uppercase text-navy-900 bg-white/80 px-1 rounded w-full text-center z-10 backdrop-blur-sm">Esquerdo</div>
+                    </div>
+                    <div className="bg-surface-100 aspect-[3/4] rounded-lg border border-surface-200 flex flex-col items-center justify-center p-2 relative overflow-hidden">
+                       <UserCheck className="w-6 h-6 text-muted/50 absolute z-0" />
+                       <div className="mt-auto text-[8px] font-bold uppercase text-navy-900 bg-white/80 px-1 rounded w-full text-center z-10 backdrop-blur-sm">Direito</div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-end">
+                    <div className="text-[9px] text-muted font-medium">
+                      AssinaJur • Horário de Brasília — UTC−3<br/>
+                      Página 1 de 1
+                    </div>
+                    <div className="w-16 h-16 bg-white border-2 border-navy-900 rounded p-1 flex items-center justify-center">
+                      <QrCode className="w-full h-full text-navy-900" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right - Evidence List */}
+              <div className="flex flex-col gap-8">
+                <div className="flex gap-5">
+                  <div className="shrink-0 w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center border border-white/5">
+                    <UserCheck className="w-6 h-6 text-brand-400" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-lg mb-1">IDENTIFICAÇÃO</h4>
+                    <p className="text-slate-400 text-sm leading-relaxed">CPF, data, hora e informações precisas fornecidas pelo signatário no momento da assinatura.</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-5">
+                  <div className="shrink-0 w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center border border-white/5">
+                    <Camera className="w-6 h-6 text-brand-400" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-lg mb-1">PROVA DE PRESENÇA</h4>
+                    <p className="text-slate-400 text-sm leading-relaxed">Registros fotográficos orientados durante a assinatura, capturando múltiplos ângulos faciais.</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-5">
+                  <div className="shrink-0 w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center border border-white/5">
+                    <Monitor className="w-6 h-6 text-brand-400" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-lg mb-1">CONTEXTO TÉCNICO</h4>
+                    <p className="text-slate-400 text-sm leading-relaxed">Registro de IP, tipo de dispositivo, navegador e geolocalização (quando autorizada pelo usuário).</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-5">
+                  <div className="shrink-0 w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center border border-white/5">
+                    <Lock className="w-6 h-6 text-brand-400" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-lg mb-1">INTEGRIDADE</h4>
+                    <p className="text-slate-400 text-sm leading-relaxed">Criptografia com hash SHA-256 e código único de autenticidade protegendo contra adulterações.</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-5">
+                  <div className="shrink-0 w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center border border-white/5">
+                    <QrCode className="w-6 h-6 text-brand-400" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-lg mb-1">VALIDAÇÃO</h4>
+                    <p className="text-slate-400 text-sm leading-relaxed">QR Code impresso e link direto para consulta pública do documento a qualquer momento.</p>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        {/* ═══ 10. PROOF OF PRESENCE SECTION ═══ */}
+        <section id="prova-presenca" className="py-24 bg-surface-50 scroll-reveal">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="grid lg:grid-cols-2 gap-16 items-center">
+              
+              <div>
+                <h2 className="text-h2 font-heading text-navy-900 mb-6">Identificação guiada, sem complicar a experiência</h2>
+                <p className="text-body-lg text-muted mb-8">
+                  Nossa tecnologia de Prova de Presença garante que o signatário está participando ativamente do processo, criando um conjunto de evidências visuais irrefutáveis vinculadas ao documento final.
+                </p>
+                <ul className="space-y-4 text-navy-900 font-medium">
+                  <li className="flex items-start gap-3">
+                    <Check className="w-5 h-5 text-success-500 mt-0.5 shrink-0" />
+                    <span>O cliente recebe instruções claras na tela para cada etapa.</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <Check className="w-5 h-5 text-success-500 mt-0.5 shrink-0" />
+                    <span>Realiza os movimentos faciais guiados pela câmera do celular.</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <Check className="w-5 h-5 text-success-500 mt-0.5 shrink-0" />
+                    <span>As evidências são imediatamente vinculadas ao documento assinado.</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <Check className="w-5 h-5 text-success-500 mt-0.5 shrink-0" />
+                    <span>Tudo acontece diretamente pelo navegador, sem instalar nada.</span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="flex justify-center relative">
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-brand-500/20 rounded-full blur-3xl"></div>
+                <div className="mockup-phone w-[280px] h-[580px] bg-white rounded-[2.5rem] shadow-2xl border-[6px] border-navy-900 overflow-hidden flex flex-col relative z-10">
+                  {/* Status bar */}
+                  <div className="bg-navy-900 text-white text-xs py-1.5 px-6 flex justify-between font-medium">
+                    <span>14:30</span>
+                    <div className="flex gap-1.5 items-center">
+                      <div className="w-3 h-3 rounded-full border border-white/50"></div>
+                      <div className="w-4 h-2.5 bg-white rounded-sm"></div>
+                    </div>
+                  </div>
+                  {/* App Header */}
+                  <div className="bg-white px-4 py-4 border-b border-surface-100 flex items-center justify-center relative">
+                    <span className="text-xs font-bold text-navy-900">Prova de Presença — Etapa 2 de 4</span>
+                  </div>
+                  {/* Camera Area */}
+                  <div className="flex-1 bg-surface-100 p-4 flex flex-col gap-4 relative overflow-hidden">
+                    <div className="flex-1 bg-navy-800 rounded-2xl relative overflow-hidden flex items-center justify-center border-4 border-navy-900/10">
+                      {/* Fake video feed overlay */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent z-10"></div>
+                      <UserCheck className="w-32 h-32 text-white/20 z-0" />
+                      
+                      {/* Face outline guide */}
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-64 border-2 border-dashed border-white/50 rounded-[3rem] z-20"></div>
+                      
+                      {/* Instruction overlay */}
+                      <div className="absolute bottom-6 left-0 right-0 text-center z-30 px-4">
+                        <div className="bg-navy-900/80 backdrop-blur text-white text-sm font-bold py-2 px-4 rounded-full inline-block shadow-lg">
+                          Vire lentamente para a esquerda
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Thumbnails */}
+                    <div className="grid grid-cols-3 gap-2 h-20 shrink-0">
+                      <div className="bg-white rounded-xl border-2 border-success-500 flex flex-col items-center justify-center relative overflow-hidden">
+                        <UserCheck className="w-8 h-8 text-muted/30" />
+                        <div className="absolute bottom-1 bg-success-500 text-white text-[9px] font-bold px-1.5 rounded-full flex items-center gap-0.5">
+                          Frontal <Check className="w-2 h-2" />
+                        </div>
+                      </div>
+                      <div className="bg-brand-50 rounded-xl border-2 border-brand-500 flex flex-col items-center justify-center relative">
+                        <UserCheck className="w-8 h-8 text-brand-300" />
+                        <div className="absolute bottom-1 bg-brand-500 text-white text-[9px] font-bold px-1.5 rounded-full">Esquerdo</div>
+                      </div>
+                      <div className="bg-white rounded-xl border border-surface-200 flex flex-col items-center justify-center opacity-50">
+                        <UserCheck className="w-8 h-8 text-muted/30" />
+                        <div className="absolute bottom-1 bg-surface-200 text-muted text-[9px] font-bold px-1.5 rounded-full">Direito</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        {/* ═══ 11. DASHBOARD MANAGEMENT SECTION ═══ */}
+        <section id="gestao" className="py-24 bg-white scroll-reveal">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <h2 className="text-h2 font-heading text-navy-900 mb-16">Acompanhe tudo em um único painel</h2>
+            
+            <div className="mockup-browser bg-white rounded-2xl shadow-elevated border border-surface-200 overflow-hidden max-w-6xl mx-auto">
+              <div className="mockup-browser-bar bg-surface-100 flex items-center px-4 py-3 border-b border-surface-200 gap-2">
+                <div className="flex gap-1.5">
+                  <div className="w-3 h-3 rounded-full bg-rose-400"></div>
+                  <div className="w-3 h-3 rounded-full bg-amber-400"></div>
+                  <div className="w-3 h-3 rounded-full bg-emerald-400"></div>
+                </div>
+              </div>
+              <div className="bg-surface-50 p-8 text-left">
+                <div className="flex justify-between items-end mb-8">
+                  <div>
+                    <h3 className="font-heading font-bold text-2xl text-navy-900">Olá, Dr. Roberto 👋</h3>
+                    <p className="text-muted mt-1">Aqui está o resumo do seu escritório hoje, 06 de Agosto.</p>
+                  </div>
+                  <button className="btn-primary">Novo Pacote</button>
+                </div>
+
+                <div className="grid grid-cols-4 gap-6 mb-8">
+                  <div className="bg-white p-5 rounded-xl border border-surface-200 shadow-sm flex flex-col gap-2">
+                    <div className="text-sm font-semibold text-muted flex items-center gap-2"><FileText className="w-4 h-4" /> Documentos</div>
+                    <div className="text-3xl font-bold text-navy-900">142</div>
+                  </div>
+                  <div className="bg-white p-5 rounded-xl border border-surface-200 shadow-sm flex flex-col gap-2">
+                    <div className="text-sm font-semibold text-muted flex items-center gap-2"><Users className="w-4 h-4" /> Clientes</div>
+                    <div className="text-3xl font-bold text-navy-900">87</div>
+                  </div>
+                  <div className="bg-white p-5 rounded-xl border border-surface-200 shadow-sm flex flex-col gap-2">
+                    <div className="text-sm font-semibold text-muted flex items-center gap-2"><Layers className="w-4 h-4" /> Pacotes Mês</div>
+                    <div className="text-3xl font-bold text-brand-600">45/60</div>
+                  </div>
+                  <div className="bg-white p-5 rounded-xl border border-surface-200 shadow-sm flex flex-col gap-2">
+                    <div className="text-sm font-semibold text-muted flex items-center gap-2"><Clock className="w-4 h-4" /> Pendentes</div>
+                    <div className="text-3xl font-bold text-amber-500">12</div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-surface-200 shadow-sm overflow-hidden">
+                  <div className="p-5 border-b border-surface-100 flex justify-between items-center bg-surface-50">
+                    <h4 className="font-bold text-navy-900">Envios Recentes</h4>
+                    <span className="text-brand-600 text-sm font-semibold cursor-pointer">Ver todos</span>
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead className="bg-surface-50/50 text-muted border-b border-surface-100">
+                      <tr>
+                        <th className="text-left font-semibold py-3 px-5">Título / Referência</th>
+                        <th className="text-left font-semibold py-3 px-5">Cliente principal</th>
+                        <th className="text-left font-semibold py-3 px-5">Data de Envio</th>
+                        <th className="text-left font-semibold py-3 px-5">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-surface-100">
+                      <tr className="hover:bg-surface-50 transition-colors">
+                        <td className="py-4 px-5 font-medium text-navy-900 flex items-center gap-3"><Layers className="w-4 h-4 text-brand-500"/> Acordo Extrajudicial - Processo X</td>
+                        <td className="py-4 px-5 text-muted">Carlos Eduardo Alves</td>
+                        <td className="py-4 px-5 text-muted">Hoje, 10:45</td>
+                        <td className="py-4 px-5"><span className="px-2.5 py-1 bg-amber-50 text-amber-700 text-xs font-bold rounded-full border border-amber-200/50">Pendente (1/2)</span></td>
+                      </tr>
+                      <tr className="hover:bg-surface-50 transition-colors">
+                        <td className="py-4 px-5 font-medium text-navy-900 flex items-center gap-3"><FileText className="w-4 h-4 text-brand-500"/> Contrato de Prestação de Serviços</td>
+                        <td className="py-4 px-5 text-muted">Empresa Alfa Ltda</td>
+                        <td className="py-4 px-5 text-muted">Ontem, 16:20</td>
+                        <td className="py-4 px-5"><span className="px-2.5 py-1 bg-success-50 text-success-700 text-xs font-bold rounded-full border border-success-200/50">Concluído</span></td>
+                      </tr>
+                      <tr className="hover:bg-surface-50 transition-colors">
+                        <td className="py-4 px-5 font-medium text-navy-900 flex items-center gap-3"><Layers className="w-4 h-4 text-brand-500"/> Kit Inicial Trabalhista</td>
+                        <td className="py-4 px-5 text-muted">Juliana Santos</td>
+                        <td className="py-4 px-5 text-muted">04/08/2026</td>
+                        <td className="py-4 px-5"><span className="px-2.5 py-1 bg-success-50 text-success-700 text-xs font-bold rounded-full border border-success-200/50">Concluído</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ═══ 12. MOBILE EXPERIENCE SECTION ═══ */}
+        <section id="mobile" className="py-24 bg-surface-50 overflow-hidden scroll-reveal">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center mb-16">
+            <h2 className="text-h2 font-heading text-navy-900">O cliente assina pelo celular, sem instalar aplicativo</h2>
+          </div>
+
+          <div className="flex justify-start md:justify-center gap-4 md:gap-8 overflow-x-auto pb-8 px-4 sm:px-6 lg:px-8 snap-x snap-mandatory hide-scrollbar">
+            
+            {/* Step 1 */}
+            <div className="flex flex-col items-center gap-4 shrink-0 snap-center">
+              <div className="w-[200px] h-[400px] bg-white rounded-[2rem] shadow-card border-4 border-surface-200 overflow-hidden relative">
+                <div className="bg-[#075E54] text-white p-3 font-semibold text-sm flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center"><UserCheck className="w-3 h-3" /></div>
+                  Dr. Roberto
+                </div>
+                <div className="bg-[#E5DDD5] h-full p-3 flex flex-col gap-2">
+                  <div className="bg-white p-2 rounded-lg rounded-tl-none shadow-sm text-xs max-w-[85%]">
+                    Olá! O Dr. Roberto enviou um pacote de documentos para sua assinatura via AssinaJur.
+                  </div>
+                  <div className="bg-white p-2 rounded-lg rounded-tl-none shadow-sm text-xs max-w-[85%] text-brand-600 underline">
+                    https://assinajur.com/link-seguro-123
+                  </div>
+                </div>
+              </div>
+              <span className="font-semibold text-navy-900 text-sm">1. Recebe o link</span>
+            </div>
+
+            {/* Step 2 */}
+            <div className="flex flex-col items-center gap-4 shrink-0 snap-center relative">
+              <ArrowRight className="absolute -left-6 top-[200px] text-surface-300 hidden md:block" />
+              <div className="w-[200px] h-[400px] bg-white rounded-[2rem] shadow-card border-4 border-surface-200 overflow-hidden flex flex-col">
+                <div className="p-3 border-b border-surface-100 flex justify-center"><div className="w-6 h-6 bg-brand-600 text-white rounded font-bold text-[10px] flex items-center justify-center">AJ</div></div>
+                <div className="p-4 flex-1 flex flex-col">
+                  <h4 className="font-bold text-sm mb-2">Contrato de Honorários</h4>
+                  <div className="flex-1 bg-surface-50 border border-surface-200 rounded p-2 overflow-hidden relative">
+                    <div className="w-full h-1 bg-surface-200 rounded mb-2"></div>
+                    <div className="w-3/4 h-1 bg-surface-200 rounded mb-2"></div>
+                    <div className="w-full h-1 bg-surface-200 rounded mb-2"></div>
+                    <div className="w-5/6 h-1 bg-surface-200 rounded mb-2"></div>
+                    <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-white to-transparent"></div>
+                  </div>
+                  <div className="mt-3 bg-brand-600 text-white text-xs text-center py-2 rounded-lg font-semibold">Li e concordo</div>
+                </div>
+              </div>
+              <span className="font-semibold text-navy-900 text-sm">2. Visualiza</span>
+            </div>
+
+            {/* Step 3 */}
+            <div className="flex flex-col items-center gap-4 shrink-0 snap-center relative">
+              <ArrowRight className="absolute -left-6 top-[200px] text-surface-300 hidden md:block" />
+              <div className="w-[200px] h-[400px] bg-white rounded-[2rem] shadow-card border-4 border-surface-200 overflow-hidden flex flex-col">
+                <div className="p-3 bg-surface-50 border-b border-surface-100 text-center font-bold text-[10px]">Prova de Presença</div>
+                <div className="p-4 flex-1 flex flex-col gap-2">
+                  <div className="flex-1 bg-navy-800 rounded-xl relative flex items-center justify-center">
+                    <div className="w-20 h-28 border border-dashed border-white/50 rounded-[2rem]"></div>
+                  </div>
+                  <div className="bg-brand-600 text-white text-xs text-center py-2 rounded-lg font-semibold flex items-center justify-center gap-1"><Camera className="w-3 h-3"/> Capturar</div>
+                </div>
+              </div>
+              <span className="font-semibold text-navy-900 text-sm">3. Prova de presença</span>
+            </div>
+
+            {/* Step 4 */}
+            <div className="flex flex-col items-center gap-4 shrink-0 snap-center relative">
+              <ArrowRight className="absolute -left-6 top-[200px] text-surface-300 hidden md:block" />
+              <div className="w-[200px] h-[400px] bg-white rounded-[2rem] shadow-card border-4 border-surface-200 overflow-hidden flex flex-col">
+                <div className="p-3 bg-surface-50 border-b border-surface-100 text-center font-bold text-[10px]">Assinatura</div>
+                <div className="p-4 flex-1 flex flex-col">
+                  <div className="text-xs text-center mb-4 text-muted">Desenhe sua assinatura abaixo</div>
+                  <div className="flex-1 bg-surface-50 border border-dashed border-surface-300 rounded-xl flex items-center justify-center relative">
+                    <span className="font-signature text-2xl text-navy-900 transform -rotate-6">R. Almeida</span>
+                  </div>
+                  <div className="mt-4 bg-brand-600 text-white text-xs text-center py-2 rounded-lg font-semibold">Finalizar</div>
+                </div>
+              </div>
+              <span className="font-semibold text-navy-900 text-sm">4. Assina</span>
+            </div>
+
+            {/* Step 5 */}
+            <div className="flex flex-col items-center gap-4 shrink-0 snap-center relative">
+              <ArrowRight className="absolute -left-6 top-[200px] text-surface-300 hidden md:block" />
+              <div className="w-[200px] h-[400px] bg-white rounded-[2rem] shadow-card border-4 border-surface-200 overflow-hidden flex flex-col items-center justify-center p-6 text-center">
+                <div className="w-16 h-16 bg-success-100 rounded-full flex items-center justify-center mb-4">
+                  <Check className="w-8 h-8 text-success-500" />
+                </div>
+                <h4 className="font-bold text-navy-900 mb-2">Assinatura Concluída!</h4>
+                <p className="text-[10px] text-muted">O documento foi assinado com sucesso. Uma cópia será enviada para o seu email.</p>
+              </div>
+              <span className="font-semibold text-navy-900 text-sm">5. Confirmação</span>
+            </div>
+
+          </div>
+        </section>
+
+        {/* ═══ 13. DIFFERENTIALS SECTION ═══ */}
+        <section className="py-24 bg-white scroll-reveal">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 className="text-h2 font-heading text-navy-900 mb-16 text-center max-w-3xl mx-auto">Tudo o que seu escritório precisa em uma única plataforma</h2>
+
+            <div className="grid lg:grid-cols-2 gap-8 mb-8">
+              {/* Category 1: Envio & Organização */}
+              <div className="bg-surface-50 rounded-3xl p-8 border border-surface-200 hover:border-brand-300 transition-colors">
+                <h3 className="font-heading font-bold text-xl text-navy-900 mb-6 flex items-center gap-3">
+                  <div className="p-2 bg-white rounded-lg shadow-sm text-brand-600"><Layers className="w-5 h-5"/></div>
+                  Envio & Organização
+                </h3>
+                <ul className="space-y-5">
+                  <li className="flex items-start gap-4">
+                    <div className="w-6 h-6 rounded-full bg-brand-100 flex items-center justify-center shrink-0 mt-0.5"><Check className="w-3 h-3 text-brand-700"/></div>
+                    <div>
+                      <h4 className="font-semibold text-navy-900">Vários documentos num pacote</h4>
+                      <p className="text-sm text-muted">Agrupe contrato, procuração e anexos em um só link.</p>
+                    </div>
+                  </li>
+                  <li className="flex items-start gap-4">
+                    <div className="w-6 h-6 rounded-full bg-brand-100 flex items-center justify-center shrink-0 mt-0.5"><Check className="w-3 h-3 text-brand-700"/></div>
+                    <div>
+                      <h4 className="font-semibold text-navy-900">Cadastro único do cliente</h4>
+                      <p className="text-sm text-muted">Cadastre uma vez, reutilize em todos os documentos futuros.</p>
+                    </div>
+                  </li>
+                  <li className="flex items-start gap-4">
+                    <div className="w-6 h-6 rounded-full bg-brand-100 flex items-center justify-center shrink-0 mt-0.5"><Check className="w-3 h-3 text-brand-700"/></div>
+                    <div>
+                      <h4 className="font-semibold text-navy-900">Modelos reutilizáveis</h4>
+                      <p className="text-sm text-muted">Salve seus textos padrão e gere documentos em segundos.</p>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+
+              {/* Category 2: Identificação & Presença (Dark) */}
+              <div className="card-navy rounded-3xl p-8 flex flex-col justify-center relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-brand-500/20 rounded-full blur-3xl pointer-events-none"></div>
+                <h3 className="font-heading font-bold text-xl text-white mb-8 flex items-center gap-3 relative z-10">
+                  <div className="p-2 bg-white/10 rounded-lg text-brand-400"><UserCheck className="w-5 h-5"/></div>
+                  Identificação & Presença
+                </h3>
+                <div className="grid grid-cols-2 gap-6 relative z-10">
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-4 hover:bg-white/10 transition-colors">
+                    <Camera className="w-6 h-6 text-brand-400 mb-3" />
+                    <h4 className="font-semibold text-white text-sm mb-1">Prova de presença</h4>
+                    <p className="text-xs text-slate-400">Captura de 3 ângulos faciais</p>
+                  </div>
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-4 hover:bg-white/10 transition-colors">
+                    <PenTool className="w-6 h-6 text-brand-400 mb-3" />
+                    <h4 className="font-semibold text-white text-sm mb-1">Assinatura gráfica</h4>
+                    <p className="text-xs text-slate-400">Desenho da rubrica na tela</p>
+                  </div>
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-4 hover:bg-white/10 transition-colors">
+                    <Monitor className="w-6 h-6 text-brand-400 mb-3" />
+                    <h4 className="font-semibold text-white text-sm mb-1">Geolocalização</h4>
+                    <p className="text-xs text-slate-400">Registro do local exato</p>
+                  </div>
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-4 hover:bg-white/10 transition-colors">
+                    <Lock className="w-6 h-6 text-brand-400 mb-3" />
+                    <h4 className="font-semibold text-white text-sm mb-1">IP e Dispositivo</h4>
+                    <p className="text-xs text-slate-400">Dados do aparelho utilizado</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid lg:grid-cols-3 gap-8">
+              {/* Category 3: Segurança */}
+              <div className="lg:col-span-2 bg-surface-50 rounded-3xl p-8 border border-surface-200">
+                <h3 className="font-heading font-bold text-xl text-navy-900 mb-6 flex items-center gap-3">
+                  <div className="p-2 bg-white rounded-lg shadow-sm text-brand-600"><Shield className="w-5 h-5"/></div>
+                  Segurança & Integridade
+                </h3>
+                <div className="grid sm:grid-cols-2 gap-y-4 gap-x-8">
+                  <div className="flex items-center gap-3 p-3 bg-white rounded-xl shadow-sm border border-surface-100">
+                    <Lock className="w-5 h-5 text-brand-600 shrink-0" />
+                    <span className="font-semibold text-sm">Hash SHA-256</span>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 bg-white rounded-xl shadow-sm border border-surface-100">
+                    <Search className="w-5 h-5 text-brand-600 shrink-0" />
+                    <span className="font-semibold text-sm">Trilha de eventos</span>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 bg-white rounded-xl shadow-sm border border-surface-100">
+                    <QrCode className="w-5 h-5 text-brand-600 shrink-0" />
+                    <span className="font-semibold text-sm">QR Code de validação</span>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 bg-white rounded-xl shadow-sm border border-surface-100">
+                    <FileCheck2 className="w-5 h-5 text-brand-600 shrink-0" />
+                    <span className="font-semibold text-sm">Página pública de verificação</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Category 4: Experiência */}
+              <div className="bg-surface-50 rounded-3xl p-8 border border-surface-200">
+                <h3 className="font-heading font-bold text-xl text-navy-900 mb-6 flex items-center gap-3">
+                  <div className="p-2 bg-white rounded-lg shadow-sm text-brand-600"><Building2 className="w-5 h-5"/></div>
+                  Experiência
+                </h3>
+                <ul className="space-y-4">
+                  <li className="flex items-center gap-3 text-sm font-semibold text-navy-900">
+                     <div className="w-2 h-2 rounded-full bg-brand-500"></div> Identidade visual do escritório
+                  </li>
+                  <li className="flex items-center gap-3 text-sm font-semibold text-navy-900">
+                     <div className="w-2 h-2 rounded-full bg-brand-500"></div> Gestão de equipe
+                  </li>
+                  <li className="flex items-center gap-3 text-sm font-semibold text-navy-900">
+                     <div className="w-2 h-2 rounded-full bg-brand-500"></div> Acompanhamento em tempo real
+                  </li>
+                  <li className="flex items-center gap-3 text-sm font-semibold text-navy-900">
+                     <div className="w-2 h-2 rounded-full bg-brand-500"></div> Certificado de evidências unificado
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        {/* ═══ 14. SECURITY SECTION ═══ */}
+        <section id="seguranca" className="py-24 bg-surface-50 scroll-reveal">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 className="text-h2 font-heading text-navy-900 mb-16 text-center">Segurança em cada etapa do documento</h2>
+            
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="card-surface p-6">
+                <div className="w-10 h-10 bg-brand-50 rounded-xl flex items-center justify-center text-brand-600 mb-4">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <h3 className="font-bold text-navy-900 mb-2">Integridade</h3>
+                <p className="text-sm text-muted">Hash SHA-256 gerado e vinculado matematicamente ao documento original, garantindo que o conteúdo não foi alterado após a assinatura.</p>
+              </div>
+              
+              <div className="card-surface p-6">
+                <div className="w-10 h-10 bg-brand-50 rounded-xl flex items-center justify-center text-brand-600 mb-4">
+                  <Search className="w-5 h-5" />
+                </div>
+                <h3 className="font-bold text-navy-900 mb-2">Rastreabilidade</h3>
+                <p className="text-sm text-muted">Trilha completa de eventos registrando IP, tipo de dispositivo, navegador e horário exato de cada interação com o documento.</p>
+              </div>
+
+              <div className="card-surface p-6">
+                <div className="w-10 h-10 bg-brand-50 rounded-xl flex items-center justify-center text-brand-600 mb-4">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <h3 className="font-bold text-navy-900 mb-2">Identificação</h3>
+                <p className="text-sm text-muted">Vinculação direta do CPF informado com a prova de presença facial do signatário no momento exato da assinatura eletrônica.</p>
+              </div>
+
+              <div className="card-surface p-6">
+                <div className="w-10 h-10 bg-brand-50 rounded-xl flex items-center justify-center text-brand-600 mb-4">
+                  <Camera className="w-5 h-5" />
+                </div>
+                <h3 className="font-bold text-navy-900 mb-2">Evidências</h3>
+                <p className="text-sm text-muted">Captura de fotos em proporção 4:3, registro de geolocalização e captura da assinatura gráfica para compor o lastro probatório.</p>
+              </div>
+
+              <div className="card-surface p-6">
+                <div className="w-10 h-10 bg-brand-50 rounded-xl flex items-center justify-center text-brand-600 mb-4">
+                  <QrCode className="w-5 h-5" />
+                </div>
+                <h3 className="font-bold text-navy-900 mb-2">Validação</h3>
+                <p className="text-sm text-muted">QR Code impresso no certificado e página pública de consulta para verificação independente da autenticidade por terceiros.</p>
+              </div>
+
+              <div className="card-surface p-6">
+                <div className="w-10 h-10 bg-brand-50 rounded-xl flex items-center justify-center text-brand-600 mb-4">
+                  <Key className="w-5 h-5" />
+                </div>
+                <h3 className="font-bold text-navy-900 mb-2">Controle de acesso</h3>
+                <p className="text-sm text-muted">Geração de links únicos e criptografados com tokens temporários por documento, restritos apenas às partes envolvidas no processo.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ═══ 15. PRICING SECTION ═══ */}
+        <section id="precos" className="py-24 bg-white scroll-reveal">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-16">
+              <h2 className="text-h2 font-heading text-navy-900 mb-4">Escolha o plano ideal para seu escritório</h2>
+              <p className="text-body-sm text-muted max-w-2xl mx-auto">Valores acessíveis sem taxas escondidas, sem multa de fidelidade e sem cobrança automática. Teste antes e escolha com tranquilidade.</p>
+            </div>
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 items-center">
+              
+              {/* Essencial */}
+              <div className="card-base p-8 flex flex-col h-full bg-white">
+                <h3 className="font-bold text-navy-900 text-lg mb-2">Essencial</h3>
+                <p className="text-sm text-muted mb-6 h-10">Para advogados autônomos que estão iniciando a digitalização.</p>
+                <div className="mb-6">
+                  <span className="text-3xl font-heading font-extrabold text-navy-900">R$ 39,90</span><span className="text-muted">/mês</span>
+                </div>
+                <Link href={getWhatsAppLink(SOLO_PLAN_WHATSAPP_MESSAGE)} target="_blank" rel="noopener noreferrer" className="block text-center w-full py-3 px-4 bg-navy-900 text-white font-semibold rounded-xl hover:bg-navy-800 transition-colors mb-8">
+                  Contratar Essencial
+                </Link>
+                <ul className="space-y-4 text-sm font-medium flex-1">
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> 20 pacotes/mês</li>
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> 1 Usuário</li>
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> Cadastro de Clientes</li>
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> Prova de presença</li>
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> Certificado de Evidências</li>
+                </ul>
+              </div>
+
+              {/* Profissional (Highlighted) */}
+              <div className="card-base p-8 flex flex-col h-full bg-white ring-2 ring-brand-600 relative lg:scale-105 shadow-xl z-10">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand-600 text-white text-overline px-4 py-1 rounded-full whitespace-nowrap">Recomendado</div>
+                <h3 className="font-bold text-navy-900 text-lg mb-2">Profissional</h3>
+                <p className="text-sm text-muted mb-6 h-10">Para advogados e pequenos escritórios com maior fluxo.</p>
+                <div className="mb-6">
+                  <span className="text-3xl font-heading font-extrabold text-brand-600">R$ 69,90</span><span className="text-muted">/mês</span>
+                </div>
+                <Link href={getWhatsAppLink(PRO_PLAN_WHATSAPP_MESSAGE)} target="_blank" rel="noopener noreferrer" className="btn-primary w-full justify-center py-3 mb-8">
+                  Contratar Profissional
+                </Link>
+                <ul className="space-y-4 text-sm font-medium flex-1">
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-brand-600 shrink-0"/> 60 pacotes/mês</li>
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-brand-600 shrink-0"/> Até 3 Usuários</li>
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-brand-600 shrink-0"/> Todos os recursos Essencial</li>
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-brand-600 shrink-0"/> Marca do escritório</li>
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-brand-600 shrink-0"/> Suporte prioritário</li>
+                </ul>
+              </div>
+
+              {/* Escritório */}
+              <div className="card-base p-8 flex flex-col h-full bg-white">
+                <h3 className="font-bold text-navy-900 text-lg mb-2">Escritório</h3>
+                <p className="text-sm text-muted mb-6 h-10">Para escritórios em crescimento com equipes.</p>
+                <div className="mb-6">
+                  <span className="text-3xl font-heading font-extrabold text-navy-900">R$ 99,90</span><span className="text-muted">/mês</span>
+                </div>
+                <Link href={getWhatsAppLink(OFFICE_PLAN_WHATSAPP_MESSAGE)} target="_blank" rel="noopener noreferrer" className="block text-center w-full py-3 px-4 bg-surface-100 text-navy-900 font-semibold rounded-xl hover:bg-surface-200 transition-colors mb-8">
+                  Contratar Escritório
+                </Link>
+                <ul className="space-y-4 text-sm font-medium flex-1">
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> 150 pacotes/mês</li>
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> Até 5 Usuários</li>
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> Todos do Profissional</li>
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> Gestão de permissões</li>
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> Suporte Comercial dedicado</li>
+                </ul>
+              </div>
+
+              {/* Sob Medida */}
+              <div className="card-navy p-8 flex flex-col h-full relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-brand-500/20 rounded-full blur-2xl pointer-events-none"></div>
+                <h3 className="font-bold text-white text-lg mb-2 relative z-10">Sob Medida</h3>
+                <p className="text-sm text-slate-400 mb-6 h-10 relative z-10">Para bancadas jurídicas ou demandas volumosas.</p>
+                <div className="mb-6 relative z-10">
+                  <span className="text-2xl font-heading font-bold text-white">Consulte-nos</span>
+                </div>
+                <Link href={getWhatsAppLink(ENTERPRISE_WHATSAPP_MESSAGE)} target="_blank" rel="noopener noreferrer" className="block text-center w-full py-3 px-4 border border-white/20 text-white font-semibold rounded-xl hover:bg-white/10 transition-colors mb-8 relative z-10">
+                  Falar com consultor
+                </Link>
+                <ul className="space-y-4 text-sm font-medium flex-1 text-slate-300 relative z-10">
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-brand-400 shrink-0"/> Pacotes personalizados</li>
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-brand-400 shrink-0"/> Múltiplas filiais / OABs</li>
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-brand-400 shrink-0"/> Atendimento consultivo</li>
+                </ul>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        {/* ═══ 16. FAQ ACCORDION ═══ */}
+        <section id="faq" className="py-24 bg-surface-50 scroll-reveal">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 className="text-h2 font-heading text-navy-900 mb-12 text-center">Perguntas frequentes</h2>
+            
+            <div className="space-y-4">
+              {[
+                { q: 'A assinatura tem validade jurídica?', a: 'Sim. Respaldada pela MP 2.200-2/2001 (Art. 10, §2º) e Lei 14.063/2020, com registro de IP, geolocalização, prova de presença e hash SHA-256.' },
+                { q: 'O cliente precisa instalar aplicativo?', a: 'Não. Todo o fluxo acontece no navegador do celular ou computador através de um link seguro.' },
+                { q: 'Funciona pelo celular?', a: 'Sim. Otimizado para Android (Chrome) e iPhone (Safari).' },
+                { q: 'Posso enviar vários documentos juntos?', a: 'Sim. Reúna contrato, procuração e declarações em um único pacote enviado por um link só.' },
+                { q: 'Como funciona a prova de presença?', a: 'A câmera guia o cliente para 3 fotos (frontal, perfil esquerdo, perfil direito) na proporção 4:3 com detecção facial.' },
+                { q: 'Como validar o documento?', a: 'Escaneie o QR Code do certificado ou acesse a página pública de verificação no site.' },
+                { q: 'O certificado acompanha o PDF?', a: 'Sim. As evidências (fotos, hashes, QR Code) são compiladas no final do PDF.' },
+                { q: 'Posso personalizar com minha marca?', a: 'Sim. Configure nome, contato e identidade visual do escritório no plano Profissional ou superior.' },
+                { q: 'Como funciona o teste gratuito?', a: 'Cadastre-se sem cartão de crédito e receba 5 pacotes gratuitos para usar em até 30 dias.' },
+                { q: 'Existe cobrança automática?', a: 'Não. Após o teste você escolhe um plano. Sem cobrança automática ou multas.' }
+              ].map((faq, idx) => (
+                <div key={idx} className="card-base bg-white overflow-hidden transition-all duration-300">
+                  <button 
+                    onClick={() => toggleFaq(idx)}
+                    className="w-full px-6 py-5 text-left flex justify-between items-center focus:outline-none"
+                  >
+                    <span className="font-bold text-navy-900">{faq.q}</span>
+                    <ChevronDown className={`w-5 h-5 text-muted transition-transform duration-300 shrink-0 ${openFaq === idx ? 'rotate-180' : ''}`} />
+                  </button>
+                  <div 
+                    className={`px-6 overflow-hidden transition-all duration-300 ease-in-out border-surface-100 ${openFaq === idx ? 'max-h-40 pb-5 border-t pt-4 opacity-100' : 'max-h-0 opacity-0'}`}
+                  >
+                    <p className="text-muted text-sm leading-relaxed">{faq.a}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ═══ 17. CTA FINAL ═══ */}
+        <section className="gradient-cta py-20 scroll-reveal">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <h2 className="text-h2 font-heading text-white mb-6">Sua rotina jurídica pode ser mais simples.</h2>
+            <p className="text-body text-slate-300 mb-10 max-w-2xl mx-auto">Comece agora com 5 pacotes gratuitos e descubra como o AssinaJur pode organizar seu escritório.</p>
+            
+            <div className="flex flex-col items-center gap-4">
+              <Link href="/register" className="btn-primary bg-white text-navy-900 hover:bg-slate-100 hover:text-navy-900 px-8 py-4 text-lg">
+                Começar gratuitamente
+              </Link>
+              <div className="text-caption text-slate-400 font-medium">
+                Sem cartão • 5 pacotes gratuitos • 30 dias para testar
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </main>
+
+      {/* ═══ 18. FOOTER ═══ */}
+      <footer className="bg-navy-900 text-white pt-16 pb-8 border-t border-white/10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-8 lg:gap-12 mb-16">
+            
+            <div className="col-span-2 md:col-span-1 lg:col-span-2">
+              <Link href="/" className="flex items-center gap-3 mb-6 inline-flex">
+                <div className="w-10 h-10 bg-white text-navy-900 rounded-xl flex items-center justify-center font-heading font-extrabold text-lg">
+                  AJ
+                </div>
+                <span className="font-heading font-extrabold text-xl">
+                  AssinaJur
+                </span>
+              </Link>
+              <p className="text-slate-400 text-sm leading-relaxed max-w-xs mb-6">
+                Plataforma completa de assinatura eletrônica e gestão de documentos para o mercado jurídico brasileiro.
+              </p>
+              <div className="text-white font-semibold text-sm">
+                WhatsApp: {COMMERCIAL_WHATSAPP_FORMATTED}
+              </div>
+            </div>
+
+            <div>
+              <h4 className="font-bold mb-6 text-sm uppercase tracking-wider text-slate-300">Produto</h4>
+              <ul className="space-y-4 text-sm text-slate-400">
+                <li><Link href="#assinatura" className="hover:text-white transition-colors">Assinaturas</Link></li>
+                <li><Link href="#pacotes" className="hover:text-white transition-colors">Pacotes</Link></li>
+                <li><Link href="#prova-presenca" className="hover:text-white transition-colors">Prova de presença</Link></li>
+                <li><Link href="#certificado" className="hover:text-white transition-colors">Certificado</Link></li>
+                <li><Link href="#validacao" className="hover:text-white transition-colors">Validação</Link></li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="font-bold mb-6 text-sm uppercase tracking-wider text-slate-300">Soluções</h4>
+              <ul className="space-y-4 text-sm text-slate-400">
+                <li><Link href="#advogados" className="hover:text-white transition-colors">Advogados</Link></li>
+                <li><Link href="#escritorios" className="hover:text-white transition-colors">Escritórios</Link></li>
+                <li><Link href="#departamentos" className="hover:text-white transition-colors">Jurídico empresarial</Link></li>
+                <li><Link href="#imobiliarias" className="hover:text-white transition-colors">Imobiliárias</Link></li>
+                <li><Link href="#empresas" className="hover:text-white transition-colors">Empresas</Link></li>
+              </ul>
+            </div>
+
+            <div className="col-span-2 md:col-span-2 lg:col-span-1 grid grid-cols-2 lg:grid-cols-1 gap-8">
+              <div>
+                <h4 className="font-bold mb-6 text-sm uppercase tracking-wider text-slate-300">Empresa</h4>
+                <ul className="space-y-4 text-sm text-slate-400">
+                  <li><Link href="#sobre" className="hover:text-white transition-colors">Sobre</Link></li>
+                  <li><Link href="#seguranca" className="hover:text-white transition-colors">Segurança</Link></li>
+                  <li><Link href="#precos" className="hover:text-white transition-colors">Preços</Link></li>
+                </ul>
+              </div>
+              
+              <div>
+                <h4 className="font-bold mb-6 text-sm uppercase tracking-wider text-slate-300">Legal & Suporte</h4>
+                <ul className="space-y-4 text-sm text-slate-400">
+                  <li><Link href="/termos" className="hover:text-white transition-colors">Termos de uso</Link></li>
+                  <li><Link href="/privacidade" className="hover:text-white transition-colors">Política de privacidade</Link></li>
+                  <li><Link href={getWhatsAppLink()} target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">WhatsApp</Link></li>
+                </ul>
+              </div>
+            </div>
+
+          </div>
+
+          <div className="pt-8 border-t border-white/10 text-center flex flex-col md:flex-row justify-between items-center gap-4">
+            <p className="text-caption text-slate-500">
+              © 2026 AssinaJur. Todos os direitos reservados.
             </p>
-            <div className="text-gold-400 font-mono font-semibold">
-              WhatsApp: (73) 98825-0201
-            </div>
           </div>
-
-          <div className="space-y-3">
-            <h4 className="font-bold text-white text-sm">Plataforma</h4>
-            <ul className="space-y-2 text-slate-300">
-              <li><a href="#como-funciona" className="hover:text-gold-400">Como funciona</a></li>
-              <li><a href="#demonstracao" className="hover:text-gold-400">Demonstração real</a></li>
-              <li><a href="#diferenciais" className="hover:text-gold-400">Diferenciais</a></li>
-              <li><a href="#seguranca" className="hover:text-gold-400">Segurança & Legalidade</a></li>
-              <li><a href="#planos" className="hover:text-gold-400">Planos & Preços</a></li>
-            </ul>
-          </div>
-
-          <div className="space-y-3">
-            <h4 className="font-bold text-white text-sm">Acesso Rápido</h4>
-            <ul className="space-y-2 text-slate-300">
-              <li><Link href="/login" className="hover:text-gold-400">Painel do Escritório</Link></li>
-              <li><Link href="/register" className="hover:text-gold-400">Criar Conta Gratuita</Link></li>
-              <li><Link href="/verificar" className="hover:text-gold-400">Verificar Documento</Link></li>
-              <li><Link href="/admin/login" className="hover:text-gold-400">Acesso Admin</Link></li>
-            </ul>
-          </div>
-
-          <div className="space-y-3">
-            <h4 className="font-bold text-white text-sm">Informações Legais</h4>
-            <ul className="space-y-2 text-slate-300">
-              <li><Link href="/termos" className="hover:text-gold-400">Termos de Uso</Link></li>
-              <li><Link href="/privacidade" className="hover:text-gold-400">Política de Privacidade</Link></li>
-              <li className="text-slate-400 pt-2">Conformidade com a MP 2.200-2/2001 e a Lei 14.063/2020.</li>
-            </ul>
-          </div>
-        </div>
-
-        <div className="max-w-7xl mx-auto pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-4">
-          <p>© 2026 AssinaJur. Todos os direitos reservados.</p>
-          <p className="text-[11px]">Horário Oficial de Brasília — UTC−3</p>
         </div>
       </footer>
+
     </div>
   );
 }
