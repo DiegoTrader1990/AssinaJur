@@ -113,14 +113,65 @@ function loadScriptOnce(src: string): Promise<void> {
   });
 }
 
+let cachedVoice: SpeechSynthesisVoice | null = null;
+
+function getBestPortugueseVoice(): SpeechSynthesisVoice | null {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
+  if (cachedVoice) return cachedVoice;
+
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices || voices.length === 0) return null;
+
+  const ptVoices = voices.filter(v => v.lang.toLowerCase().includes('pt'));
+  if (ptVoices.length === 0) return null;
+
+  const best = ptVoices.find(v => 
+    v.name.includes('Natural') || 
+    v.name.includes('Google') || 
+    v.name.includes('Neural') || 
+    v.name.includes('Luciana') || 
+    v.name.includes('Heloisa') ||
+    v.name.includes('Felipe') ||
+    v.name.includes('Francisca')
+  ) || ptVoices[0];
+
+  cachedVoice = best;
+  return best;
+}
+
+function unlockAudioPermissions() {
+  if (typeof window === 'undefined') return;
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioCtx) {
+      const ctx = new AudioCtx();
+      ctx.resume();
+    }
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.getVoices();
+      const silentUtterance = new SpeechSynthesisUtterance('');
+      silentUtterance.volume = 0;
+      window.speechSynthesis.speak(silentUtterance);
+    }
+  } catch {
+    /* destravamento silencioso */
+  }
+}
+
 function speakInstruction(text: string, enabled = true) {
   if (!enabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   try {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'pt-BR';
-    utterance.rate = 1.05;
-    utterance.pitch = 1.0;
+    
+    const voice = getBestPortugueseVoice();
+    if (voice) {
+      utterance.voice = voice;
+    }
+
+    utterance.rate = 0.98;
+    utterance.pitch = 1.05;
     window.speechSynthesis.speak(utterance);
   } catch {
     /* sintetizador indisponível */
@@ -494,6 +545,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   };
 
   const startSelfieCamera = async (targetKey?: SelfieKey) => {
+    unlockAudioPermissions();
     setError('');
     const keyToStart = targetKey || 'center';
     activeKeyRef.current = keyToStart;
