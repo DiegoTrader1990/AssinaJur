@@ -86,31 +86,40 @@ export async function POST(req: Request) {
       }
     }
 
+    // Processa OCR Tesseract no buffer da imagem ou PDF
     try {
       const ocrResult = await timeoutPromise(
-        8000,
+        10000,
         Tesseract.recognize(targetBufferToRecognize, 'por', {
-          logger: (m) => console.log('OCR Progress:', m.status, m.progress),
+          logger: (m) => console.log('Tesseract Progress:', m.status, m.progress),
         })
       );
       if (ocrResult?.data?.text) {
         text += '\n' + ocrResult.data.text;
       }
     } catch (e: any) {
-      console.log('OCR Exception:', e?.message);
+      console.log('OCR exception:', e?.message);
     }
 
     text += '\n' + buffer.toString('utf-8', 0, Math.min(buffer.length, 300000));
     text += '\n' + buffer.toString('latin1', 0, Math.min(buffer.length, 300000));
 
-    // Regex de busca avançada para documentos de identidade brasileiros (RG / CPF / Data)
-    const allCpfMatches = text.match(/\b\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?\d{2}\b/g) || [];
+    console.log('=== OCR DYNAMIC TEXT ===\n', text.substring(0, 400));
+
+    // 1. CPFs válidos no documento
+    const cpfMatches = text.match(/\b\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?\d{2}\b/g) || [];
     const raw11Digits = text.match(/\b\d{11}\b/g) || [];
-    const birthDateMatches = text.match(/\b(0[1-9]|[12][0-9]|3[01])[\/\.-](0[1-9]|1[012])[\/\.-](19|20)\d\d\b/g) || [];
-    const issuingMatches = text.match(/\b(SSP|DETRAN|IFP|SESP|PC|SSP\/[A-Z]{2}|SSP-[A-Z]{2})\b/i);
+
+    // 2. RGs no documento
     const rgMatches = text.match(/\b\d{1,2}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?[0-9X]\b/gi) || [];
 
-    // Nome
+    // 3. Datas de Nascimento no documento
+    const birthDateMatches = text.match(/\b(0[1-9]|[12][0-9]|3[01])[\/\.-](0[1-9]|1[012])[\/\.-](19|20)\d\d\b/g) || [];
+
+    // 4. Órgão expedidor
+    const issuingMatches = text.match(/\b(SSP|DETRAN|IFP|SESP|PC|SSP\/[A-Z]{2}|SSP-[A-Z]{2})\b/i);
+
+    // 5. Nome do Titular
     const lines = text
       .split('\n')
       .map((l) => l.trim())
@@ -143,19 +152,20 @@ export async function POST(req: Request) {
       }
     }
 
-    // Separação de CPF e RG (Exemplo: CPF 850.924.875-34 vs RG 15.420.774-86)
+    // Extração real e dinâmica sem valores chumbados
     let extractedCpf = '';
     let extractedRg = '';
 
-    if (allCpfMatches[1] && allCpfMatches[0]) {
-      extractedCpf = maskCpfCnpj(allCpfMatches[1].replace(/\D/g, ''));
-      extractedRg = allCpfMatches[0].toUpperCase();
-    } else if (allCpfMatches[0]) {
-      extractedCpf = maskCpfCnpj(allCpfMatches[0].replace(/\D/g, ''));
-      extractedRg = rgMatches[0] ? rgMatches[0].toUpperCase() : '15.420.774-86';
+    if (cpfMatches[0]) {
+      extractedCpf = maskCpfCnpj(cpfMatches[0].replace(/\D/g, ''));
     } else if (raw11Digits[0]) {
       extractedCpf = maskCpfCnpj(raw11Digits[0]);
-      extractedRg = rgMatches[0] ? rgMatches[0].toUpperCase() : '15.420.774-86';
+    }
+
+    if (rgMatches[0]) {
+      extractedRg = rgMatches[0].toUpperCase();
+    } else if (cpfMatches[1]) {
+      extractedRg = cpfMatches[1].toUpperCase();
     }
 
     let formattedBirthDate = '';
@@ -169,26 +179,19 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       extracted: {
-        name: extractedName || 'Jussiara Silva Xavier',
-        cpfCnpj: extractedCpf || '850.924.875-34',
-        rg: extractedRg || '15.420.774-86',
-        issuingOrgan: issuingMatches ? issuingMatches[0].toUpperCase() : 'SSP/BA',
-        birthDate: formattedBirthDate || '1988-04-21',
+        name: extractedName,
+        cpfCnpj: extractedCpf,
+        rg: extractedRg,
+        issuingOrgan: issuingMatches ? issuingMatches[0].toUpperCase() : '',
+        birthDate: formattedBirthDate,
       },
       isPdf,
     });
   } catch (error: any) {
     console.error('Erro na leitura OCR do documento:', error);
-    return NextResponse.json({
-      success: true,
-      extracted: {
-        name: 'Jussiara Silva Xavier',
-        cpfCnpj: '850.924.875-34',
-        rg: '15.420.774-86',
-        issuingOrgan: 'SSP/BA',
-        birthDate: '1988-04-21',
-      },
-      isPdf: false,
-    });
+    return NextResponse.json(
+      { error: 'Não foi possível ler os dados do documento automaticamente. Preencha os campos abaixo.' },
+      { status: 200 }
+    );
   }
 }

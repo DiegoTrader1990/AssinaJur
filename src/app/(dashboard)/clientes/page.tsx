@@ -207,36 +207,21 @@ export default function ClientsPage() {
       const result = await res.json();
 
       if (result && result.extracted) {
-        setFormData((prev) => ({
-          ...prev,
-          name: result.extracted.name || 'Jussiara Silva Xavier',
-          cpfCnpj: result.extracted.cpfCnpj || '850.924.875-34',
-          rg: result.extracted.rg || '15.420.774-86',
-          issuingOrgan: result.extracted.issuingOrgan || 'SSP/BA',
-          birthDate: result.extracted.birthDate || '1988-04-21',
-        }));
-        setOcrSuccess(true);
-      } else {
-        setFormData((prev) => ({
-          ...prev,
-          name: 'Jussiara Silva Xavier',
-          cpfCnpj: '850.924.875-34',
-          rg: '15.420.774-86',
-          issuingOrgan: 'SSP/BA',
-          birthDate: '1988-04-21',
-        }));
-        setOcrSuccess(true);
+        const hasData = result.extracted.name || result.extracted.cpfCnpj || result.extracted.rg || result.extracted.birthDate;
+        if (hasData) {
+          setFormData((prev) => ({
+            ...prev,
+            name: result.extracted.name || prev.name,
+            cpfCnpj: result.extracted.cpfCnpj || prev.cpfCnpj,
+            rg: result.extracted.rg || prev.rg,
+            issuingOrgan: result.extracted.issuingOrgan || prev.issuingOrgan,
+            birthDate: result.extracted.birthDate || prev.birthDate,
+          }));
+          setOcrSuccess(true);
+        }
       }
     } catch {
-      setFormData((prev) => ({
-        ...prev,
-        name: 'Jussiara Silva Xavier',
-        cpfCnpj: '850.924.875-34',
-        rg: '15.420.774-86',
-        issuingOrgan: 'SSP/BA',
-        birthDate: '1988-04-21',
-      }));
-      setOcrSuccess(true);
+      /* Leitura exibida visualmente no painel */
     } finally {
       clearTimeout(timeoutId);
       setOcrLoading(false);
@@ -633,11 +618,12 @@ export default function ClientsPage() {
                     {isPdfDoc ? (
                       <iframe
                         src={`${ocrDocPreview}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+                        scrolling="no"
                         style={{
                           transform: `scale(${zoomLevel}) rotate(${rotationAngle}deg) translate(${panOffset.x}px, ${panOffset.y}px)`,
                           transformOrigin: 'center center',
                         }}
-                        className="w-full h-full min-h-[360px] rounded-lg bg-white border border-slate-200 transition-transform duration-100 ease-out"
+                        className="w-full h-full min-h-[360px] rounded-lg bg-white border-0 overflow-hidden pointer-events-none transition-transform duration-100 ease-out"
                         title="Documento PDF"
                       />
                     ) : (

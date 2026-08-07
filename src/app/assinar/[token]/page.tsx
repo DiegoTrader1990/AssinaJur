@@ -554,6 +554,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         setSelfieInstruction('✓ Prova de presença concluída com 3 fotos!');
         playGoogleAudio('step3', audioEnabledRef.current);
         stopSelfieCamera();
+        setTimeout(() => {
+          setStep('SIGN');
+          saveSessionProgress({ step: 'SIGN', selfieImages: updatedSelfies });
+        }, 1200);
       }
     } finally {
       setTimeout(() => {
@@ -564,18 +568,20 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
   };
 
-  const startSelfieCamera = async (targetKey?: SelfieKey) => {
+  const startSelfieCamera = async (targetKey?: SelfieKey, isSingleRetake: boolean = false) => {
     unlockAndPreloadAudios();
     setError('');
     const keyToStart = targetKey || 'center';
     activeKeyRef.current = keyToStart;
     setActiveSelfieKey(keyToStart);
 
-    if (targetKey) {
+    if (isSingleRetake && targetKey) {
       setSingleRetakeKey(targetKey);
     } else {
       setSingleRetakeKey(null);
-      setSelfieImages({ center: null, left: null, right: null });
+      if (!targetKey) {
+        setSelfieImages({ center: null, left: null, right: null });
+      }
     }
 
     try {
@@ -889,7 +895,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             {!cameraActive && !selfieComplete && (
               <button
                 type="button"
-                onClick={() => startSelfieCamera('center')}
+                onClick={() => startSelfieCamera()}
                 className="w-full py-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
               >
                 <Camera className="w-4 h-4 text-blue-400" /> Abrir Câmera do Celular
@@ -1011,7 +1017,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                       <p className="text-[10px] font-bold text-slate-700 font-heading">{s.label}</p>
                       <button
                         type="button"
-                        onClick={() => startSelfieCamera(s.key)}
+                        onClick={() => startSelfieCamera(s.key, true)}
                         className="text-[10px] text-blue-600 hover:underline flex items-center justify-center gap-1 mx-auto font-bold font-heading"
                       >
                         <RotateCcw className="w-3 h-3" /> Refazer
@@ -1046,8 +1052,17 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             </div>
 
             {selfieComplete && (
-              <div className="flex items-center gap-2 justify-center text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-2xl py-2 px-3.5 font-bold font-heading">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Prova de presença registrada (3 fotos 4:3)
+              <div className="flex items-center justify-between text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-2xl py-2 px-3.5 font-bold font-heading">
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Prova de presença registrada (3 fotos)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setStep('SELFIE')}
+                  className="text-[10px] text-blue-600 hover:underline flex items-center gap-1 font-bold"
+                >
+                  <RotateCcw className="w-3 h-3" /> Ver Fotos
+                </button>
               </div>
             )}
 
