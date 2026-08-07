@@ -77,7 +77,7 @@ export default function ClientsPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
-  // OCR Document Parser State
+  // OCR Document Parser State & Transform (Zoom + Pan Mãozinha)
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrSuccess, setOcrSuccess] = useState(false);
   const [ocrDocPreview, setOcrDocPreview] = useState<string | null>(null);
@@ -86,6 +86,9 @@ export default function ClientsPage() {
   const [showZoomModal, setShowZoomModal] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1.0);
   const [rotationAngle, setRotationAngle] = useState(0);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const startPanRef = useRef({ x: 0, y: 0 });
   const dragCounter = useRef(0);
   const [activeTab, setActiveTab] = useState<'resumo' | 'pessoais' | 'documentos' | 'historico'>('resumo');
 
@@ -202,12 +205,41 @@ export default function ClientsPage() {
     }
   };
 
-  const handleZoomIn = () => setZoomLevel((prev) => Math.min(prev + 0.25, 3.0));
-  const handleZoomOut = () => setZoomLevel((prev) => Math.max(prev - 0.25, 0.5));
+  const handleZoomIn = () => setZoomLevel((prev) => Math.min(prev + 0.25, 3.5));
+  const handleZoomOut = () => {
+    setZoomLevel((prev) => {
+      const next = Math.max(prev - 0.25, 0.5);
+      if (next <= 1.0) setPanOffset({ x: 0, y: 0 });
+      return next;
+    });
+  };
   const handleRotate = () => setRotationAngle((prev) => (prev + 90) % 360);
   const handleResetTransform = () => {
     setZoomLevel(1.0);
     setRotationAngle(0);
+    setPanOffset({ x: 0, y: 0 });
+  };
+
+  // Mãozinha / Pan Mouse Handlers
+  const handlePanStart = (e: React.MouseEvent) => {
+    if (zoomLevel > 1.0) {
+      setIsPanning(true);
+      startPanRef.current = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y };
+    }
+  };
+
+  const handlePanMove = (e: React.MouseEvent) => {
+    if (isPanning && zoomLevel > 1.0) {
+      e.preventDefault();
+      setPanOffset({
+        x: e.clientX - startPanRef.current.x,
+        y: e.clientY - startPanRef.current.y,
+      });
+    }
+  };
+
+  const handlePanEnd = () => {
+    setIsPanning(false);
   };
 
   const handleDocumentOcr = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -531,18 +563,26 @@ export default function ClientsPage() {
                     </div>
                   </div>
 
-                  <div className="my-auto py-2 flex items-center justify-center w-full min-h-[420px] overflow-hidden bg-white rounded-xl border border-slate-200/80 p-2 shadow-xs">
+                  <div
+                    onMouseDown={handlePanStart}
+                    onMouseMove={handlePanMove}
+                    onMouseUp={handlePanEnd}
+                    onMouseLeave={handlePanEnd}
+                    className={`my-auto py-2 flex items-center justify-center w-full min-h-[420px] overflow-hidden bg-white rounded-xl border border-slate-200/80 p-2 shadow-xs select-none ${
+                      zoomLevel > 1.0 ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'
+                    }`}
+                  >
                     <div
                       style={{
-                        transform: `scale(${zoomLevel}) rotate(${rotationAngle}deg)`,
+                        transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomLevel}) rotate(${rotationAngle}deg)`,
                         transformOrigin: 'center center',
                       }}
-                      className="transition-transform duration-300 ease-in-out flex items-center justify-center max-w-full max-h-full"
+                      className="transition-transform duration-150 ease-out flex items-center justify-center max-w-full max-h-full"
                     >
                       {isPdfDoc ? (
                         <iframe
                           src={ocrDocPreview}
-                          className="w-full h-[430px] min-w-[340px] rounded-lg bg-white border border-slate-200"
+                          className="w-full h-[430px] min-w-[340px] rounded-lg bg-white border border-slate-200 pointer-events-auto"
                           title="Documento PDF"
                         />
                       ) : (
@@ -550,19 +590,25 @@ export default function ClientsPage() {
                         <img
                           src={ocrDocPreview}
                           alt="Documento do cliente"
-                          className="max-h-[430px] w-auto object-contain rounded-lg cursor-pointer"
+                          className="max-h-[430px] w-auto object-contain rounded-lg pointer-events-none"
                         />
                       )}
                     </div>
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-[10px] text-slate-500 font-medium">
-                    <button
-                      type="button"
-                      onClick={handleResetTransform}
-                      className="text-slate-500 hover:text-slate-800 underline text-[10px]"
-                    >
-                      Restaurar Vista
-                    </button>
+                    {zoomLevel > 1.0 ? (
+                      <span className="text-blue-600 font-bold flex items-center gap-1">
+                        🖐️ Arraste com a mãozinha para mover
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleResetTransform}
+                        className="text-slate-500 hover:text-slate-800 underline text-[10px]"
+                      >
+                        Restaurar Vista
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setShowZoomModal(true)}
@@ -720,13 +766,13 @@ export default function ClientsPage() {
 
                   <div className="grid md:grid-cols-3 gap-4">
                     <div className="md:col-span-2">
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Endereço Residencial</label>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Endereço Residencial (Rua - Nº - Bairro)</label>
                       <input
                         type="text"
                         name="address"
                         value={formData.address}
                         onChange={handleFormChange}
-                        placeholder="Rua das Flores, nº 100"
+                        placeholder="Rua Botafogo - 112 - Novo Prado"
                         className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none"
                       />
                     </div>
