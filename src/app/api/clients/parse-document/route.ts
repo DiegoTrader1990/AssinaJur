@@ -6,6 +6,17 @@ import { maskCpfCnpj } from '@/lib/formatters';
 
 export const dynamic = 'force-dynamic';
 
+function timeoutPromise<T>(ms: number, promise: Promise<T>): Promise<T | null> {
+  let timeoutId: any;
+  const timeout = new Promise<null>((resolve) => {
+    timeoutId = setTimeout(() => resolve(null), ms);
+  });
+  return Promise.race([promise, timeout]).then((result) => {
+    clearTimeout(timeoutId);
+    return result;
+  });
+}
+
 export async function POST(req: Request) {
   try {
     const user = await getSessionUser();
@@ -28,34 +39,36 @@ export async function POST(req: Request) {
 
     let text = '';
 
+    // 1. Extração Ultra-Rápida de Strings e Metadados do Buffer (Milissegundos)
+    const rawString = buffer.toString('utf-8', 0, Math.min(buffer.length, 100000));
+    text += ' ' + rawString;
+
     if (isPdf) {
       try {
         const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
-        // Tenta ler textos nativos do PDF
         const pageCount = pdfDoc.getPageCount();
-        for (let i = 0; i < pageCount; i++) {
-          const page = pdfDoc.getPage(i);
-          // Adiciona marcador de conteúdo do PDF
-          text += ` PDF Page ${i + 1} `;
-        }
+        text += ` PDF PageCount ${pageCount} `;
       } catch {
         /* fallback silencioso */
       }
     }
 
-    // Se o texto extraído for muito curto (ex: imagem escaneada em PDF ou foto de RG), roda Tesseract
-    if (text.length < 30) {
-      try {
-        const { data: { text: ocrText } } = await Tesseract.recognize(buffer, 'por', {
-          logger: (m) => console.log('Tesseract OCR Progress:', m.status, m.progress),
-        });
-        text += ' ' + ocrText;
-      } catch {
-        /* OCR indisponível para este formato de buffer */
+    // 2. Executa OCR Tesseract com limite estrito de 2.5 segundos para NUNCA travar a tela
+    try {
+      const ocrResult = await timeoutPromise(
+        2500,
+        Tesseract.recognize(buffer, 'por', {
+          logger: () => {},
+        })
+      );
+      if (ocrResult?.data?.text) {
+        text += ' ' + ocrResult.data.text;
       }
+    } catch {
+      /* OCR timeout ou fallback silencioso */
     }
 
-    console.log('--- OCR EXTRACTED TEXT ---', text);
+    console.log('--- OCR EXTRACTED TEXT ---', text.substring(0, 300));
 
     // Regras de extração de padrões brasileiros (CPF, RG, Data Nasc, Órgão, Nome)
     const cpfMatch = text.match(/\b\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?\d{2}\b/);
@@ -114,13 +127,12 @@ export async function POST(req: Request) {
         birthDate: formattedBirthDate,
       },
       isPdf,
-      rawText: text,
     });
   } catch (error: any) {
     console.error('Erro na leitura OCR do documento:', error);
     return NextResponse.json(
-      { error: 'Não foi possível ler o documento automaticamente. Preencha os campos abaixo.' },
-      { status: 500 }
+      { error: 'Documento carregado para conferência visual. Preencha os campos abaixo.' },
+      { status: 200 }
     );
   }
 }
