@@ -73,21 +73,20 @@ function computeFaceOrientation(landmarks: any[]) {
   const chin = landmarks[CHIN_IDX];
   const forehead = landmarks[FOREHEAD_IDX];
 
-  if (!nose || !edgeA || !edgeB || !chin || !forehead) return null;
+  if (!nose || !chin || !forehead) return null;
 
-  const spanX = edgeB.x - edgeA.x;
-  if (spanX <= 0) return null;
-
-  const yawRatio = (nose.x - edgeA.x) / spanX;
-  const faceWidthRatio = spanX;
+  const spanX = (edgeA && edgeB) ? (edgeB.x - edgeA.x) : 0.3;
+  const faceWidthRatio = spanX > 0 ? spanX : 0.3;
   const faceHeightRatio = Math.abs(chin.y - forehead.y);
 
   return {
-    yawRatio,
+    noseX: nose.x,
+    noseY: nose.y,
+    foreheadX: forehead.x,
+    chinX: chin.x,
     faceWidthRatio,
     faceHeightRatio,
-    centerX: (edgeA.x + edgeB.x) / 2,
-    centerY: (chin.y + forehead.y) / 2,
+    centerX: edgeA && edgeB ? (edgeA.x + edgeB.x) / 2 : nose.x,
   };
 }
 
@@ -163,6 +162,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const stabilityCounterRef = useRef<number>(0);
   const isCapturingRef = useRef<boolean>(false);
   const warmupUntilRef = useRef<number>(0);
+  const frontalNoseXRef = useRef<number | null>(null);
+  const centeredStartTimeRef = useRef<number | null>(null);
 
   // ── RECUPERAÇÃO DE SESSÃO LOCALSTORAGE ──
   const storageKey = `assinajur_session_${params.token}`;
@@ -288,6 +289,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setFrameState('GRAY');
       setSelfieInstruction('Posicione seu rosto dentro da moldura.');
       stabilityCounterRef.current = 0;
+      centeredStartTimeRef.current = null;
       setTurnProgress(0);
       setCountdownSecs(null);
       return;
@@ -298,65 +300,79 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setFrameState('GRAY');
       setSelfieInstruction('Rosto dentro da moldura.');
       stabilityCounterRef.current = 0;
+      centeredStartTimeRef.current = null;
       setTurnProgress(0);
       setCountdownSecs(null);
       return;
     }
 
-    const { yawRatio, faceWidthRatio } = faceInfo;
+    const { noseX, foreheadX, faceWidthRatio } = faceInfo;
     const currentKey = activeKeyRef.current;
-    setCurrentYaw(yawRatio);
+    setCurrentYaw(noseX);
 
     // ─────────────────────────────────────────────────────────────
-    // FOTO 1: FRONTAL (CONTAGEM DE 3s SOMENTE COM ROSTO CENTRALIZADO)
+    // FOTO 1: FRONTAL (CONTAGEM REGRESSIVA REAL DE 3.0 SEGUNDOS)
     // ─────────────────────────────────────────────────────────────
     if (currentKey === 'center') {
-      const isCentered = yawRatio >= 0.36 && yawRatio <= 0.64 && faceWidthRatio >= 0.15 && faceWidthRatio <= 0.75;
+      const isCentered = noseX >= 0.32 && noseX <= 0.68 && faceWidthRatio >= 0.12 && faceWidthRatio <= 0.80;
 
       if (!isCentered) {
         setFrameState('YELLOW');
         setSelfieInstruction('Olhe para a câmera e centralize o rosto.');
-        stabilityCounterRef.current = 0;
+        centeredStartTimeRef.current = null;
         setCountdownSecs(null);
         setTurnProgress(0);
         return;
       }
 
-      // Rosto está no centro! Inicia contagem regressiva 3..2..1
+      // Guarda a posição frontal de referência do nariz
+      frontalNoseXRef.current = noseX;
+
+      // Inicia o relógio de contagem real de 3000ms (3 segundos)
+      if (!centeredStartTimeRef.current) {
+        centeredStartTimeRef.current = Date.now();
+      }
+
+      const elapsed = Date.now() - centeredStartTimeRef.current;
+      const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
+
       setFrameState('GREEN');
-      stabilityCounterRef.current += 1;
+      setCountdownSecs(secsRemaining);
+      setSelfieInstruction(`Mantenha-se assim! Foto em ${secsRemaining}s...`);
 
-      const count = Math.max(1, 3 - Math.floor(stabilityCounterRef.current / 3));
-      setCountdownSecs(count);
-      setSelfieInstruction(`Mantenha-se assim! Foto frontal em ${count}s...`);
-
-      // Após 9 quadros (~3 segundos) de permanência centralizado -> CAPTURA
-      if (stabilityCounterRef.current >= 9) {
+      // Após 3000ms reais (3 segundos completos no centro) -> CAPTURA
+      if (elapsed >= 3000) {
         setCountdownSecs(null);
+        centeredStartTimeRef.current = null;
         triggerAutomaticCapture('center');
       }
       return;
     }
 
     // ─────────────────────────────────────────────────────────────
-    // FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (SETA MÓVEL 0% a 100%)
+    // FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (DESLOCAMENTO DO NARIZ)
     // ─────────────────────────────────────────────────────────────
     setCountdownSecs(null);
+    centeredStartTimeRef.current = null;
 
-    // Desvio da cabeça em relação ao centro (0.50)
-    const dev = Math.abs(yawRatio - 0.50);
+    // Mede a mudança horizontal que o nariz se moveu da posição frontal (ou do centro 0.50)
+    const refNose = frontalNoseXRef.current ?? 0.50;
+    const shiftFromFrontal = Math.abs(noseX - refNose);
+    const shiftFromCenter = Math.abs(noseX - 0.50);
+    const shiftFromForehead = Math.abs(noseX - foreheadX);
 
-    // Progresso vai de 0% (olhando pra frente) a 100% (rosto virado)
-    // Giro de apenas 0.07 (~7% de rotação) alcança 100% de progresso
-    const prog = Math.min(100, Math.max(0, (dev / 0.07) * 100));
+    const maxDev = Math.max(shiftFromFrontal, shiftFromCenter, shiftFromForehead);
+
+    // Giro de apenas 0.04 (4% da tela) já é 100% de progresso
+    const prog = Math.min(100, Math.max(0, (maxDev / 0.04) * 100));
     setTurnProgress(prog);
 
-    if (dev >= 0.065) {
+    if (maxDev >= 0.04) {
       setFrameState('GREEN');
       stabilityCounterRef.current += 1;
       setSelfieInstruction('Excelente! Mantenha a cabeça virada...');
 
-      // Exige 2 quadros (~0.4s) com a cabeça virada -> CAPTURA
+      // Exige 2 quadros (~0.3s) com a cabeça virada -> CAPTURA
       if (stabilityCounterRef.current >= 2) {
         triggerAutomaticCapture(currentKey);
       }
