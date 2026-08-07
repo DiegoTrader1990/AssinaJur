@@ -38,6 +38,14 @@ próprios usuários, clientes, modelos de documento e documentos enviados para a
 3. `git add`, `git commit`, `git push origin main`.
 4. A Vercel builda e publica sozinha (leva ~30-60s). Acompanhar em
    https://vercel.com/diegos-projects-5d58e965/assinajur/deployments
+5. **Não avisar "está no ar" só porque o `git push` funcionou.** Esperar o deploy virar "Ready" no
+   painel da Vercel (passo 4) antes de dizer ao Diego que a mudança está em produção — o push por
+   si só não significa que o build/deploy já terminou.
+6. Se o Diego disser que uma mudança "não aparece no site" logo depois de um push: quase sempre é
+   (a) o deploy ainda estava buildando (ele checou antes dos ~30-60s terminarem) ou (b) cache do
+   navegador dele mostrando a versão antiga. Nos dois casos, a correção normalmente já está lá —
+   confirmar no painel da Vercel que o deploy mais recente está "Ready" e pedir para ele dar um
+   refresh forçado (Ctrl+Shift+R / Cmd+Shift+R) antes de assumir que algo quebrou.
 
 ### Se a mudança alterar o schema do banco (prisma/schema.prisma)
 
