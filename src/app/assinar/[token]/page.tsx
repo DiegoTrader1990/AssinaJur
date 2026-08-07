@@ -371,37 +371,35 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     // ─────────────────────────────────────────────────────────────
-    // FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (INFALÍVEL: IA + TIMER 3s)
+    // FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (CAPTURA POR ROTAÇÃO REAL DA CABEÇA)
     // ─────────────────────────────────────────────────────────────
-    if (!stepStartTimestampRef.current) {
-      stepStartTimestampRef.current = Date.now();
-    }
+    setCountdownSecs(null);
 
-    const elapsed = Date.now() - stepStartTimestampRef.current;
-    const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
-    setCountdownSecs(secsRemaining);
-
-    // O progresso visual combina tempo decorrido com a rotação IA (se disponível)
     const landmarks = results?.multiFaceLandmarks?.[0];
     const faceInfo = landmarks ? computeHeadRotation(landmarks) : null;
-    const aiProg = faceInfo ? Math.min(100, Math.max(0, faceInfo.turnScore * 100)) : 0;
-    const timeProg = Math.min(100, Math.max(0, (elapsed / 3000) * 100));
-    const prog = Math.max(timeProg, aiProg);
+    const turnScore = faceInfo ? faceInfo.turnScore : 0;
+
+    // Progresso visual da seta (0% de frente, 100% quando girar a cabeça)
+    // turnScore >= 0.22 corresponde a um giro claro de cabeça (~20 graus)
+    const prog = Math.min(100, Math.max(0, (turnScore / 0.22) * 100));
     setTurnProgress(prog);
 
     const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
 
-    // Captura se a IA reconhecer a rotação OU após 3 segundos (sem travamentos)
-    if ((faceInfo && faceInfo.turnScore >= 0.15) || elapsed >= 3000) {
+    // Dispara a foto SOMENTE quando o usuário virar a cabeça para o lado indicado
+    if (turnScore >= 0.22) {
       setFrameState('GREEN');
-      setCountdownSecs(null);
-      stepStartTimestampRef.current = null;
-      triggerAutomaticCapture(currentKey);
-      return;
-    }
+      stabilityCounterRef.current += 1;
+      setSelfieInstruction('Excelente! Mantenha a cabeça virada...');
 
-    setFrameState('YELLOW');
-    setSelfieInstruction(`Vire o rosto para a ${dirLabel} (foto em ${secsRemaining}s)...`);
+      if (stabilityCounterRef.current >= 2) {
+        triggerAutomaticCapture(currentKey);
+      }
+    } else {
+      setFrameState('YELLOW');
+      stabilityCounterRef.current = 0;
+      setSelfieInstruction(`Vire o rosto para a ${dirLabel}`);
+    }
   };
 
   const livenessLoop = async () => {
