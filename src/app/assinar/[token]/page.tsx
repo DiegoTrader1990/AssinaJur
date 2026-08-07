@@ -140,6 +140,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [selfieInstruction, setSelfieInstruction] = useState('Abra a câmera para iniciar a prova de presença.');
   const [capturingSelfie, setCapturingSelfie] = useState(false);
   const [currentYaw, setCurrentYaw] = useState<number>(0.5); // 0=esquerda total, 0.5=centro, 1=direita total
+  const [turnProgress, setTurnProgress] = useState<number>(0); // 0% a 100% do movimento do rosto
 
   // Geolocalização
   const [geo, setGeo] = useState<{ lat: number | null; lng: number | null; accuracy: number | null; city: string | null; state: string | null }>({
@@ -296,72 +297,64 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     const { yawRatio, faceWidthRatio, centerX } = faceInfo;
+    const currentKey = activeKeyRef.current;
 
-    // Checar se o rosto está muito longe ou muito perto
-    if (faceWidthRatio < 0.22) {
+    // Checar se o rosto está muito longe ou muito perto (mais flexível para perfil)
+    const minWidth = currentKey === 'center' ? 0.20 : 0.12;
+    if (faceWidthRatio < minWidth) {
       setFrameState('YELLOW');
       setSelfieInstruction('Aproxime um pouco mais o rosto.');
       stabilityCounterRef.current = 0;
       return;
     }
-    if (faceWidthRatio > 0.65) {
+    if (faceWidthRatio > 0.70) {
       setFrameState('YELLOW');
       setSelfieInstruction('Afaste um pouco o rosto da câmera.');
       stabilityCounterRef.current = 0;
       return;
     }
 
-    // Checar se está centralizado na tela
-    if (centerX < 0.25 || centerX > 0.75) {
+    // Checar se está na área da tela (mais flexível para perfil)
+    const minX = currentKey === 'center' ? 0.22 : 0.08;
+    const maxX = currentKey === 'center' ? 0.78 : 0.92;
+    if (centerX < minX || centerX > maxX) {
       setFrameState('YELLOW');
       setSelfieInstruction('Posicione o rosto no centro da moldura.');
       stabilityCounterRef.current = 0;
       return;
     }
 
-    const currentKey = activeKeyRef.current;
     let isAngleRecognized = false;
-
-    // Atualiza o indicador de yaw em tempo real para a seta visual
     setCurrentYaw(yawRatio);
 
-    // Câmera frontal espelhada:
-    // yawRatio ~0.5 = olhando para frente
-    // yawRatio < 0.5 = rosto virado para a DIREITA do observador (ESQUERDA do usuário na tela espelhada)
-    // yawRatio > 0.5 = rosto virado para a ESQUERDA do observador (DIREITA do usuário na tela espelhada)
-    //
-    // Na câmera espelhada (scaleX(-1)):
-    //   Quando o usuário vira SEU rosto para a ESQUERDA dele → o yaw AUMENTA (> 0.5)
-    //   Quando o usuário vira SEU rosto para a DIREITA dele → o yaw DIMINUI (< 0.5)
+    // Calculamos o desvio em relação ao centro (0.50)
+    // Usamos Math.abs para ser 100% agnóstico a espelhamento de câmera ou dispositivo
+    const yawDeviation = Math.abs(yawRatio - 0.50);
 
     if (currentKey === 'center') {
-      if (yawRatio >= 0.38 && yawRatio <= 0.62) {
+      const prog = Math.min(100, Math.max(0, (1 - yawDeviation / 0.12) * 100));
+      setTurnProgress(prog);
+
+      if (yawDeviation <= 0.12) {
         isAngleRecognized = true;
         setSelfieInstruction('Perfeito! Mantenha o rosto parado...');
       } else {
         setFrameState('YELLOW');
         setSelfieInstruction('Olhe diretamente para a câmera.');
       }
-    } else if (currentKey === 'left') {
-      // Perfil esquerdo: o usuário vira o rosto para a esquerda dele
-      // Na câmera espelhada, yawRatio AUMENTA quando vira para a esquerda
-      // Threshold mais tolerante: >= 0.62 (estava exigindo < 0.35 || > 0.65 — o OR causava aceitar ambos os lados)
-      if (yawRatio >= 0.60) {
+    } else {
+      // Para 'left' ou 'right': qualquer desvio do centro >= 0.08 (apenas 8% de giro do rosto!)
+      // O progresso vai de 0% (olhando front) até 100% (rosto virado)
+      const prog = Math.min(100, Math.max(0, (yawDeviation / 0.08) * 100));
+      setTurnProgress(prog);
+
+      if (yawDeviation >= 0.08) {
         isAngleRecognized = true;
-        setSelfieInstruction('Excelente! Mantenha essa posição...');
+        setSelfieInstruction('Excelente! Mantenha a cabeça virada...');
       } else {
         setFrameState('YELLOW');
-        setSelfieInstruction('Vire lentamente o rosto para a ESQUERDA ←');
-      }
-    } else if (currentKey === 'right') {
-      // Perfil direito: o usuário vira o rosto para a direita dele
-      // Na câmera espelhada, yawRatio DIMINUI quando vira para a direita
-      if (yawRatio <= 0.40) {
-        isAngleRecognized = true;
-        setSelfieInstruction('Excelente! Mantenha essa posição...');
-      } else {
-        setFrameState('YELLOW');
-        setSelfieInstruction('Vire lentamente o rosto para a DIREITA →');
+        const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
+        setSelfieInstruction(`Vire lentamente o rosto para a ${dirLabel}`);
       }
     }
 
@@ -369,8 +362,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setFrameState('GREEN');
       stabilityCounterRef.current += 1;
 
-      // Exige 3 frames consecutivos de estabilidade (~0.9 segundos) para captura mais rápida
-      if (stabilityCounterRef.current >= 3) {
+      // Exige 2 frames consecutivos de estabilidade (~0.5 segundos) para captura instantânea e precisa
+      if (stabilityCounterRef.current >= 2) {
         triggerAutomaticCapture(currentKey);
       }
     } else {
@@ -816,51 +809,58 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   }`} />
                 </div>
 
-                {/* ─── SETA INDICADORA DE DIREÇÃO ─── */}
+                {/* ─── TRILHO GUIA E SETA MÓVEL QUE ACOMPANHA O GIRO DO ROSTO ─── */}
                 {activeSelfieKey !== 'center' && !capturingSelfie && (
-                  <div className="absolute inset-0 pointer-events-none flex items-center justify-between px-4">
-                    {/* Seta para ESQUERDA */}
-                    {activeSelfieKey === 'left' && (
-                      <div className={`flex flex-col items-center gap-1 transition-all duration-300 ${
-                        currentYaw >= 0.60 ? 'opacity-0 scale-75' : 'opacity-100 animate-pulse'
-                      }`}>
-                        <div className="bg-amber-400/90 text-black rounded-full p-2.5 shadow-lg">
-                          <MoveLeft className="w-7 h-7" />
-                        </div>
-                        <span className="text-[10px] font-bold text-amber-300 bg-black/60 px-2 py-0.5 rounded-full">Vire ←</span>
-                      </div>
-                    )}
-                    {activeSelfieKey === 'left' && <div />}
-                    
-                    {/* Seta para DIREITA */}
-                    {activeSelfieKey === 'right' && <div />}
-                    {activeSelfieKey === 'right' && (
-                      <div className={`flex flex-col items-center gap-1 transition-all duration-300 ${
-                        currentYaw <= 0.40 ? 'opacity-0 scale-75' : 'opacity-100 animate-pulse'
-                      }`}>
-                        <div className="bg-amber-400/90 text-black rounded-full p-2.5 shadow-lg">
-                          <MoveRight className="w-7 h-7" />
-                        </div>
-                        <span className="text-[10px] font-bold text-amber-300 bg-black/60 px-2 py-0.5 rounded-full">Vire →</span>
-                      </div>
-                    )}
-                  </div>
-                )}
+                  <div className="absolute top-3 left-3 right-3 bg-black/65 backdrop-blur-md p-2.5 rounded-xl border border-white/20 shadow-2xl pointer-events-none space-y-1.5">
+                    <div className="flex justify-between items-center text-[11px] font-bold px-1">
+                      <span className="text-slate-200">
+                        {activeSelfieKey === 'left' ? '← Vire para a ESQUERDA' : 'Vire para a DIREITA →'}
+                      </span>
+                      <span className={frameState === 'GREEN' ? 'text-emerald-400 font-extrabold' : 'text-amber-400'}>
+                        {Math.round(turnProgress)}%
+                      </span>
+                    </div>
 
-                {/* ─── BARRA DE PROGRESSO DO ÂNGULO ─── */}
-                {activeSelfieKey !== 'center' && !capturingSelfie && (
-                  <div className="absolute top-3 left-3 right-3 pointer-events-none">
-                    <div className="bg-black/50 backdrop-blur-sm rounded-full h-2 overflow-hidden">
-                      <div 
-                        className={`h-full rounded-full transition-all duration-150 ${
-                          frameState === 'GREEN' ? 'bg-emerald-400' : 'bg-amber-400'
+                    {/* Trilho de Movimento */}
+                    <div className="relative h-7 bg-slate-900/90 rounded-lg border border-white/15 overflow-hidden flex items-center px-1">
+                      {/* Marcador Central (Início) */}
+                      <div className="absolute left-1/2 -translate-x-1/2 top-1 bottom-1 w-0.5 bg-slate-500/50" />
+
+                      {/* Marcador Alvo (Chegada) */}
+                      <div
+                        className={`absolute top-0.5 bottom-0.5 w-12 rounded-md transition-colors flex items-center justify-center font-extrabold text-[9px] tracking-wider ${
+                          activeSelfieKey === 'left' ? 'left-1' : 'right-1'
+                        } ${
+                          frameState === 'GREEN'
+                            ? 'bg-emerald-500/40 border border-emerald-400 text-emerald-300 shadow-sm shadow-emerald-500/30'
+                            : 'bg-amber-500/20 border border-amber-400/40 text-amber-300'
+                        }`}
+                      >
+                        ALVO
+                      </div>
+
+                      {/* Seta Móvel que Desliza Conforme o Rosto Vira */}
+                      <div
+                        className={`absolute top-1 bottom-1 px-2 rounded-md flex items-center justify-center gap-1 font-black text-xs transition-all duration-100 shadow-md ${
+                          frameState === 'GREEN'
+                            ? 'bg-emerald-400 text-slate-950 scale-105'
+                            : 'bg-amber-400 text-slate-950'
                         }`}
                         style={{
-                          width: activeSelfieKey === 'left' 
-                            ? `${Math.min(100, Math.max(0, ((currentYaw - 0.5) / 0.15) * 100))}%`
-                            : `${Math.min(100, Math.max(0, ((0.5 - currentYaw) / 0.15) * 100))}%`
+                          left:
+                            activeSelfieKey === 'left'
+                              ? `calc(50% - ${(turnProgress * 0.42)}%)`
+                              : `calc(50% + ${(turnProgress * 0.42)}% - 32px)`,
                         }}
-                      />
+                      >
+                        {frameState === 'GREEN' ? (
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        ) : activeSelfieKey === 'left' ? (
+                          <MoveLeft className="w-3.5 h-3.5" />
+                        ) : (
+                          <MoveRight className="w-3.5 h-3.5" />
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
