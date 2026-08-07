@@ -367,30 +367,35 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     // ─────────────────────────────────────────────────────────────
-    // FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (GIRO 3D DA CABEÇA)
+    // FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (HÍBRIDO: IA RÁPIDA + TIMER GARANTIDO 3s)
     // ─────────────────────────────────────────────────────────────
-    setCountdownSecs(null);
-    centeredStartTimeRef.current = null;
+    if (!centeredStartTimeRef.current) {
+      centeredStartTimeRef.current = Date.now();
+    }
 
-    // turnScore vai de 0.0 (olhando pra frente) a 1.0 (rosto virado)
-    const prog = Math.min(100, Math.max(0, turnScore * 100));
+    const elapsed = Date.now() - centeredStartTimeRef.current;
+    const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
+    setCountdownSecs(secsRemaining);
+
+    // O progresso combina o tempo decorrido com a rotação detectada pela IA
+    const timeProg = Math.min(100, Math.max(0, (elapsed / 3000) * 100));
+    const aiProg = Math.min(100, Math.max(0, turnScore * 100));
+    const prog = Math.max(timeProg, aiProg);
     setTurnProgress(prog);
 
-    if (turnScore >= 0.20) { // Apenas 20% do giro máximo necessário
-      setFrameState('GREEN');
-      stabilityCounterRef.current += 1;
-      setSelfieInstruction('Excelente! Mantenha a cabeça virada...');
+    const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
 
-      // Exige 2 quadros (~0.3s) com a cabeça virada -> CAPTURA FOTO PERFIL
-      if (stabilityCounterRef.current >= 2) {
-        triggerAutomaticCapture(currentKey);
-      }
-    } else {
-      setFrameState('YELLOW');
-      stabilityCounterRef.current = 0;
-      const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
-      setSelfieInstruction(`Vire o rosto para a ${dirLabel}`);
+    // Dispara a captura se a IA reconhecer a rotação OU após 3 segundos decorridos
+    if (turnScore >= 0.15 || elapsed >= 3000) {
+      setFrameState('GREEN');
+      setCountdownSecs(null);
+      centeredStartTimeRef.current = null;
+      triggerAutomaticCapture(currentKey);
+      return;
     }
+
+    setFrameState('YELLOW');
+    setSelfieInstruction(`Vire o rosto para a ${dirLabel} (foto em ${secsRemaining}s)...`);
   };
 
   const livenessLoop = async () => {
