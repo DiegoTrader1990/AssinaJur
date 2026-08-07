@@ -187,6 +187,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const frontalNoseXRef = useRef<number | null>(null);
   const centeredStartTimeRef = useRef<number | null>(null);
   const stepStartTimestampRef = useRef<number | null>(null);
+  const smoothTurnProgressRef = useRef<number>(0);
 
   // ── RECUPERAÇÃO DE SESSÃO LOCALSTORAGE ──
   const storageKey = `assinajur_session_${params.token}`;
@@ -389,14 +390,17 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const faceInfo = landmarks ? computeHeadRotation(landmarks) : null;
     const turnScore = faceInfo ? faceInfo.turnScore : 0;
 
-    // Progresso visual da seta (0% cravado de frente, 100% quando girar a cabeça ~30 graus)
-    const prog = Math.min(100, Math.max(0, (turnScore / 0.22) * 100));
-    setTurnProgress(prog);
+    // Progresso alvo da seta (0% cravado de frente, 100% ao girar ~30 graus)
+    const targetProg = Math.min(100, Math.max(0, (turnScore / 0.25) * 100));
+
+    // Filtro LERP de suavização exponencial (movimento gradual, leve e sem saltos)
+    smoothTurnProgressRef.current += (targetProg - smoothTurnProgressRef.current) * 0.20;
+    setTurnProgress(smoothTurnProgressRef.current);
 
     const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
 
-    // Dispara a foto SOMENTE quando o usuário virar a cabeça com firmeza e mantiver por 3 quadros (~0.5s)
-    if (turnScore >= 0.22) {
+    // Dispara a foto SOMENTE quando o giro real estabilizar acima de 0.24 por 3 quadros (~0.5s)
+    if (turnScore >= 0.24) {
       setFrameState('GREEN');
       stabilityCounterRef.current += 1;
       setSelfieInstruction('Excelente! Mantenha a cabeça virada...');
@@ -894,12 +898,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                             {frameState === 'GREEN' ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : <Target className="w-3.5 h-3.5" />}
                           </div>
 
-                          {/* Seta móvel discreta que desliza do CENTRO (50%) até o ALVO */}
+                          {/* Seta móvel discreta que desliza do CENTRO (50%) até o ALVO com movimento gradual e leve */}
                           <div
-                            className={`absolute top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center font-extrabold shadow-lg transition-all duration-100 ${
+                            className={`absolute top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center font-extrabold shadow-lg transition-all duration-300 ease-out ${
                               frameState === 'GREEN'
-                                ? 'bg-emerald-400 text-black scale-110'
-                                : 'bg-amber-400 text-black'
+                                ? 'bg-emerald-400 text-black scale-110 shadow-emerald-500/50'
+                                : 'bg-amber-400 text-black shadow-amber-500/30'
                             }`}
                             style={{
                               left:
