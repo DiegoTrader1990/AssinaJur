@@ -94,7 +94,7 @@ export default function DashboardPage() {
             Bom dia, Diego! 👋
           </h1>
           <p className="text-xs text-slate-500 mt-1 flex items-center gap-2">
-            <span>Quinta-feira, 6 de Agosto de 2026</span>
+            <span>{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Sao_Paulo' })}</span>
             <span>•</span>
             <span className="text-emerald-600 font-bold flex items-center gap-1">
               <ShieldCheck className="w-3.5 h-3.5" /> Escritório com Validade Jurídica Ativa (MP 2.200-2 / Lei 14.063)

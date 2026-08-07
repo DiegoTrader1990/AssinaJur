@@ -1,778 +1,731 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import {
-  ShieldCheck, FileCheck, Layers, Smartphone, CheckCircle, ArrowRight,
-  UserCheck, Send, HelpCircle, ChevronDown, MessageCircle, Award,
-  Menu, X, Scale, RefreshCw, Clock, FolderOpen, FileText, Users,
-  QrCode, Palette, Eye, LinkIcon, ClipboardList, Building2,
-  Lock, Star, Briefcase, Heart, ShoppingCart, Home, Landmark,
-  ChevronRight, Minus
+  ShieldCheck,
+  FileCheck2,
+  Users,
+  Smartphone,
+  CheckCircle2,
+  ArrowRight,
+  Sparkles,
+  Lock,
+  ChevronDown,
+  MessageSquare,
+  Building2,
+  FileText,
+  Clock,
+  Eye,
+  Award,
+  Zap,
+  HelpCircle,
+  Play,
+  QrCode,
+  Shield,
+  Layers,
+  Search,
+  Check,
+  PhoneCall
 } from 'lucide-react';
-import {
-  getWhatsAppLink,
-  SHOW_LEGACY_PLANS,
-  DEFAULT_WHATSAPP_MESSAGE,
-  SOLO_PLAN_WHATSAPP_MESSAGE,
-  PRO_PLAN_WHATSAPP_MESSAGE,
-  OFFICE_PLAN_WHATSAPP_MESSAGE,
-} from '@/lib/constants';
+import { COMMERCIAL_WHATSAPP } from '@/lib/constants';
 
-/* ------------------------------------------------------------------ */
-/*  Intersection Observer for scroll animations                        */
-/* ------------------------------------------------------------------ */
-function useScrollAnimation() {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => { entries.forEach((e) => { if (e.isIntersecting) e.target.classList.add('is-visible'); }); },
-      { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
-    );
-    const el = ref.current;
-    if (el) {
-      el.querySelectorAll('.scroll-animate').forEach((c) => observer.observe(c));
-      if (el.classList.contains('scroll-animate')) observer.observe(el);
-    }
-    return () => observer.disconnect();
-  }, []);
-  return ref;
-}
-
-function Section({ children, className = '', id }: { children: React.ReactNode; className?: string; id?: string }) {
-  const ref = useScrollAnimation();
-  return <div ref={ref} id={id} className={className}>{children}</div>;
-}
-
-/* ------------------------------------------------------------------ */
-/*  FAQ Accordion                                                      */
-/* ------------------------------------------------------------------ */
-function FaqItem({ question, answer, isOpen, onToggle }: { question: string; answer: string; isOpen: boolean; onToggle: () => void }) {
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <button onClick={onToggle} className="w-full p-5 sm:p-6 text-left font-semibold text-[15px] sm:text-base text-navy-900 flex items-center justify-between gap-4 hover:bg-slate-50/80 transition-colors" aria-expanded={isOpen}>
-        <span>{question}</span>
-        <ChevronDown className={`w-5 h-5 text-brand-600 flex-shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
-      <div className={`overflow-hidden transition-all duration-300 ${isOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`} role="region">
-        <div className="px-5 sm:px-6 pb-5 sm:pb-6 text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-4">{answer}</div>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Demo tabs data                                                     */
-/* ------------------------------------------------------------------ */
-const DEMO_STEPS = [
+const FAQ_ITEMS = [
   {
-    tab: 'Cadastro',
-    title: 'Cliente cadastrado',
-    description: 'Os dados ficam salvos para reutilização nos documentos do pacote.',
-    mockup: (
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center"><UserCheck className="w-5 h-5 text-brand-600" /></div>
-          <div><div className="font-semibold text-navy-900 text-sm">Maria Silva Santos</div><div className="text-xs text-slate-500">CPF: •••.456.789-••</div></div>
-        </div>
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="bg-slate-50 rounded-lg p-2.5"><span className="text-slate-400 block">Telefone</span><span className="text-navy-900 font-medium">(73) 9••••-••01</span></div>
-          <div className="bg-slate-50 rounded-lg p-2.5"><span className="text-slate-400 block">Estado Civil</span><span className="text-navy-900 font-medium">Solteira</span></div>
-          <div className="bg-slate-50 rounded-lg p-2.5 col-span-2"><span className="text-slate-400 block">Endereço</span><span className="text-navy-900 font-medium">Rua das Palmeiras, 123 — Ilhéus/BA</span></div>
-        </div>
-      </div>
-    ),
+    q: 'A assinatura do AssinaJur possui validade jurídica?',
+    a: 'Sim. A assinatura possui plena validade respaldada pelo Art. 10, § 2º da Medida Provisória nº 2.200-2/2001 e pela Lei nº 14.063/2020 (assinatura eletrônica avançada), contando com registro imutável de IP, geolocalização, prova de presença com 3 fotos e hash SHA-256.',
   },
   {
-    tab: 'Kit Jurídico',
-    title: 'Kit jurídico selecionado',
-    description: 'Escolha os documentos que compõem o pacote de contratação.',
-    mockup: (
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
-        <div className="flex items-center gap-2 mb-3">
-          <Layers className="w-5 h-5 text-brand-600" />
-          <span className="font-semibold text-navy-900 text-sm">Kit Previdenciário</span>
-          <span className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">4 documentos</span>
-        </div>
-        {['Contrato de Honorários', 'Procuração', 'Declaração de Hipossuficiência', 'Termo de Responsabilidade'].map((doc, i) => (
-          <div key={i} className="flex items-center gap-3 p-2.5 bg-slate-50 rounded-lg">
-            <CheckCircle className="w-4 h-4 text-success-600 flex-shrink-0" />
-            <span className="text-sm text-navy-900">{doc}</span>
-          </div>
-        ))}
-      </div>
-    ),
+    q: 'O cliente precisa instalar algum aplicativo para assinar?',
+    a: 'Não. Todo o fluxo é feito diretamente no navegador do celular ou computador através de um único link seguro enviado pelo WhatsApp ou e-mail.',
   },
   {
-    tab: 'Revisão',
-    title: 'Documentos conferidos',
-    description: 'Revise os dados e o conteúdo antes de gerar o link.',
-    mockup: (
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
-        <div className="flex items-center justify-between mb-3">
-          <span className="font-semibold text-navy-900 text-sm">Revisão do Pacote</span>
-          <span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium border border-amber-200">Pendente</span>
-        </div>
-        <div className="bg-slate-50 rounded-lg p-3 text-xs space-y-1.5">
-          <div className="flex justify-between"><span className="text-slate-500">Cliente</span><span className="font-medium text-navy-900">Maria Silva Santos</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Kit</span><span className="font-medium text-navy-900">Previdenciário</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Documentos</span><span className="font-medium text-navy-900">4 arquivos</span></div>
-        </div>
-        <div className="flex gap-2 mt-3">
-          <div className="flex-1 bg-brand-600 text-white text-center py-2 rounded-lg text-xs font-semibold">Gerar Link</div>
-          <div className="flex-1 bg-white border border-slate-200 text-slate-600 text-center py-2 rounded-lg text-xs font-medium">Editar</div>
-        </div>
-      </div>
-    ),
+    q: 'Como funciona a prova de presença ao vivo?',
+    a: 'A câmera do celular guia o cliente em tempo real para capturar 3 registros faciais (Frontal, Perfil Esquerdo e Perfil Direito) na proporção 4:3. A inteligência de detecção facial valida a posição e estabilidade antes de registrar a foto.',
   },
   {
-    tab: 'Link',
-    title: 'Link gerado e compartilhado',
-    description: 'O link pode ser copiado e enviado pelo canal de preferência do advogado.',
-    mockup: (
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
-        <div className="flex items-center gap-2 mb-1">
-          <LinkIcon className="w-5 h-5 text-brand-600" />
-          <span className="font-semibold text-navy-900 text-sm">Link de Assinatura</span>
-        </div>
-        <div className="bg-slate-50 rounded-lg p-3 flex items-center gap-2">
-          <span className="text-xs text-slate-500 truncate flex-1 font-mono">assinajur.vercel.app/assinar/a7x2k...</span>
-          <div className="bg-brand-600 text-white text-[10px] px-2.5 py-1 rounded font-medium flex-shrink-0">Copiar</div>
-        </div>
-        <div className="flex items-center gap-2 p-2.5 bg-success-50 rounded-lg border border-success-200">
-          <CheckCircle className="w-4 h-4 text-success-600" />
-          <span className="text-xs text-success-700 font-medium">Pronto para enviar ao cliente</span>
-        </div>
-      </div>
-    ),
+    q: 'Posso enviar vários documentos juntos em um único pacote?',
+    a: 'Sim! Essa é a principal proposta do AssinaJur. Você pode reunir contrato de honorários, procuração, declaração de hipossuficiência e outros documentos daquela contratação em um único link enviado ao cliente.',
   },
   {
-    tab: 'Assinatura',
-    title: 'Cliente assina pelo celular',
-    description: 'O cliente acessa o link pelo navegador do celular e segue as etapas.',
-    mockup: (
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3 max-w-[280px] mx-auto">
-        <div className="bg-navy-900 text-white rounded-lg p-3 text-center">
-          <div className="text-[10px] text-slate-300 mb-1">Rodrigues & Soares Advocacia</div>
-          <div className="font-semibold text-sm">Contrato de Honorários</div>
-        </div>
-        <div className="border-2 border-dashed border-slate-300 rounded-lg p-4 text-center">
-          <div className="text-xs text-slate-400 mb-2">Assinatura do cliente</div>
-          <svg viewBox="0 0 200 60" className="w-full h-12"><path d="M20,40 Q40,10 60,35 T100,30 T140,35 T180,25" fill="none" stroke="#1E293B" strokeWidth="2" strokeLinecap="round" /></svg>
-        </div>
-        <div className="bg-success-50 text-success-700 text-xs p-2.5 rounded-lg text-center font-medium border border-success-200">
-          ✓ Declaro que li e concordo com o conteúdo
-        </div>
-      </div>
-    ),
+    q: 'Como é feita a validação de um documento assinado?',
+    a: 'Qualquer pessoa com o documento ou o código de autenticidade pode escanear o QR Code impresso no Certificado de Evidências ou acessar a página pública de verificação no site.',
   },
   {
-    tab: 'Certificado',
-    title: 'Certificado de evidências',
-    description: 'Acesse as informações registradas durante a conclusão dos documentos.',
-    mockup: (
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
-        <div className="flex items-center gap-2 mb-2">
-          <Award className="w-5 h-5 text-brand-600" />
-          <span className="font-semibold text-navy-900 text-sm">Certificado de Evidências</span>
-        </div>
-        <div className="bg-slate-50 rounded-lg p-3 text-xs space-y-2">
-          <div className="flex justify-between"><span className="text-slate-500">Código</span><span className="font-mono font-medium text-navy-900">AJ-7X2K-9M4P</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Assinado em</span><span className="font-medium text-success-700">06/08/2026 14:32</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">IP</span><span className="font-mono font-medium text-navy-900">187.•••.•••.42</span></div>
-          <div className="flex items-start gap-1"><span className="text-slate-500 flex-shrink-0">Hash</span><span className="font-mono text-[10px] text-navy-900 break-all">a3f8c2...d91e4b</span></div>
-        </div>
-        <div className="flex items-center gap-3 mt-2 p-2.5 bg-brand-50 rounded-lg border border-brand-100">
-          <div className="w-10 h-10 bg-white rounded border border-slate-200 flex items-center justify-center flex-shrink-0">
-            <QrCode className="w-6 h-6 text-navy-900" />
-          </div>
-          <div className="text-xs"><span className="font-medium text-navy-900">QR Code de verificação</span><br /><span className="text-slate-500">Escaneie para conferir</span></div>
-        </div>
-      </div>
-    ),
+    q: 'O cliente recebe uma cópia do documento assinado?',
+    a: 'Sim, ao concluir o fluxo de assinatura o cliente visualiza a confirmação e o escritório responsável recebe o PDF consolidado com todas as evidências registradas.',
+  },
+  {
+    q: 'Posso personalizar com o nome e marca do meu escritório?',
+    a: 'Sim. O sistema permite configurar o nome do escritório, dados de contato e identidade visual exibida na página de assinatura e no certificado.',
+  },
+  {
+    q: 'O que acontece após o período de teste gratuito de 30 dias?',
+    a: 'Após os 30 dias ou após utilizar os 5 pacotes gratuitos, você poderá escolher um dos nossos planos pagos. Não há nenhuma cobrança automática.',
+  },
+  {
+    q: 'É necessário cadastrar cartão de crédito para testar?',
+    a: 'Não! O cadastro para o teste gratuito exige apenas seu e-mail e dados básicos do seu escritório.',
+  },
+  {
+    q: 'Como cancelar ou suspender um documento enviado por engano?',
+    a: 'No painel do escritório você pode cancelar qualquer documento pendente a qualquer momento, invalidando o link de assinatura.',
+  },
+  {
+    q: 'O sistema funciona perfeitamente em qualquer modelo de celular?',
+    a: 'Sim, é totalmente otimizado para Android (Chrome) e iPhone (Safari), adaptando-se com fluidez às telas de smartphones.',
+  },
+  {
+    q: 'O Certificado de Evidências acompanha o próprio PDF do documento?',
+    a: 'Sim. O AssinaJur compila todas as páginas do documento original com uma faixa discreta de autenticação e adiciona o Certificado de Evidências com fotos, hashes e QR Code no final do PDF.',
+  },
+  {
+    q: 'Qual a diferença entre o AssinaJur e um assinador de PDFs convencional?',
+    a: 'Enquanto assinadores comuns trabalham com PDFs avulsos já prontos, o AssinaJur organiza a contratação jurídica desde o cadastro do cliente, permitindo preparar kits de documentos e colher assinaturas em lote.',
   },
 ];
 
-/* ================================================================== */
-/*  MAIN LANDING PAGE                                                  */
-/* ================================================================== */
 export default function LandingPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [activeDemo, setActiveDemo] = useState(0);
-  const [scrolled, setScrolled] = useState(false);
+  const [activeDemoTab, setActiveDemoTab] = useState<'PANEL' | 'PACKAGE' | 'WHATSAPP' | 'SIGNING' | 'CERTIFICATE'>('PANEL');
 
-  const toggleFaq = (index: number) => setOpenFaq(openFaq === index ? null : index);
+  const toggleFaq = (index: number) => {
+    setOpenFaq(openFaq === index ? null : index);
+  };
 
-  useEffect(() => {
-    const h = () => setScrolled(window.scrollY > 10);
-    window.addEventListener('scroll', h, { passive: true });
-    return () => window.removeEventListener('scroll', h);
-  }, []);
-
-  useEffect(() => {
-    const h = () => { if (window.innerWidth >= 768) setMobileMenuOpen(false); };
-    window.addEventListener('resize', h);
-    return () => window.removeEventListener('resize', h);
-  }, []);
-
-  useEffect(() => {
-    document.body.style.overflow = mobileMenuOpen ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
-  }, [mobileMenuOpen]);
-
-  const closeMobileMenu = useCallback(() => setMobileMenuOpen(false), []);
-
-  const whatsappDefault = getWhatsAppLink(DEFAULT_WHATSAPP_MESSAGE);
-  const whatsappSolo = getWhatsAppLink(SOLO_PLAN_WHATSAPP_MESSAGE);
-  const whatsappPro = getWhatsAppLink(PRO_PLAN_WHATSAPP_MESSAGE);
-  const whatsappOffice = getWhatsAppLink(OFFICE_PLAN_WHATSAPP_MESSAGE);
-
-  const NAV_LINKS = [
-    { label: 'Como funciona', href: '#como-funciona' },
-    { label: 'Diferenciais', href: '#diferenciais' },
-    { label: 'Recursos', href: '#recursos' },
-    { label: 'Segurança', href: '#seguranca' },
-    { label: 'Planos', href: '#planos' },
-    { label: 'Perguntas frequentes', href: '#faq' },
-  ];
-
-  const FAQ_ITEMS = [
-    { q: 'O que é um pacote de assinatura?', a: 'É o conjunto de documentos relacionados à contratação de um cliente. Um pacote pode reunir contrato, procuração, declarações e outros documentos no mesmo fluxo.' },
-    { q: 'Quantos pacotes posso testar gratuitamente?', a: 'O teste inclui cinco pacotes, que podem ser utilizados durante o período de até 30 dias.' },
-    { q: 'O que acontece quando atinjo o limite do plano?', a: 'Você poderá contratar um plano com maior quantidade de pacotes. Não existe cobrança automática de excedentes.' },
-    { q: 'Posso mudar de plano?', a: 'Sim. O escritório poderá solicitar a mudança para um plano com maior ou menor volume, observadas as condições comerciais vigentes.' },
-    { q: 'Preciso cadastrar cartão no teste?', a: 'Não. O teste gratuito não exige cartão de crédito.' },
-    { q: 'Existe cobrança automática após o teste?', a: 'Não. Nenhuma cobrança será realizada automaticamente ao final do teste.' },
-    { q: 'O cliente precisa criar uma conta?', a: 'Não. O cliente recebe o link e segue as etapas de assinatura pelo navegador do celular.' },
-    { q: 'Posso reunir contrato e procuração no mesmo pacote?', a: 'Sim. Os documentos relacionados à contratação podem ser reunidos no mesmo pacote.' },
-    { q: 'Para quem o AssinaJur foi desenvolvido?', a: 'Para advogados autônomos e escritórios que desejam organizar a preparação, o envio e a assinatura dos documentos de contratação.' },
-    { q: 'Como funciona o suporte?', a: 'O suporte é realizado pelos canais disponibilizados pelo AssinaJur, incluindo o WhatsApp comercial.' },
-  ];
-
-  const LEGAL_AREAS = [
-    { icon: Landmark, name: 'Previdenciário' },
-    { icon: Briefcase, name: 'Trabalhista' },
-    { icon: Heart, name: 'Família' },
-    { icon: ShoppingCart, name: 'Consumidor' },
-    { icon: Scale, name: 'Cível' },
-    { icon: Home, name: 'Imobiliário' },
-  ];
+  const getWhatsAppLink = (message: string) => {
+    const encoded = encodeURIComponent(message);
+    return `https://wa.me/${COMMERCIAL_WHATSAPP}?text=${encoded}`;
+  };
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
-
-      {/* ============================================================ */}
-      {/*  HEADER                                                       */}
-      {/* ============================================================ */}
-      <header className={`sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b transition-all duration-200 ${scrolled ? 'border-slate-200 shadow-sm' : 'border-transparent'}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5 flex-shrink-0" aria-label="AssinaJur — Página inicial">
-            <div className="w-9 h-9 rounded-lg bg-navy-900 flex items-center justify-center font-bold text-white text-sm shadow-sm">AJ</div>
-            <span className="text-xl font-extrabold text-navy-900 tracking-tight">AssinaJur</span>
+    <div className="min-h-screen bg-[#F7F8FA] text-slate-800 font-sans selection:bg-gold-500 selection:text-[#0B1D3D]">
+      {/* ── HEADER STICKY PREMIUM ── */}
+      <header className="sticky top-0 z-50 bg-[#0B1D3D]/95 backdrop-blur-md border-b border-gold-500/20 text-white transition-all">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gold-500 text-[#0B1D3D] font-extrabold flex items-center justify-center text-xl shadow-lg">
+              AJ
+            </div>
+            <div>
+              <span className="font-extrabold text-white text-xl tracking-tight">
+                Assina<span className="text-gold-400">Jur</span>
+              </span>
+              <p className="text-[10px] text-slate-300 font-medium uppercase tracking-wider">Advocacia Digital & Evidências</p>
+            </div>
           </Link>
 
-          <nav className="hidden lg:flex items-center gap-6 text-[13px] font-medium text-slate-600" aria-label="Navegação principal">
-            {NAV_LINKS.map((l) => (<a key={l.href} href={l.href} className="hover:text-navy-900 transition-colors py-1">{l.label}</a>))}
+          <nav className="hidden md:flex items-center gap-8 text-xs font-semibold text-slate-300">
+            <a href="#como-funciona" className="hover:text-gold-400 transition-colors">Como Funciona</a>
+            <a href="#demonstracao" className="hover:text-gold-400 transition-colors">Demonstração Real</a>
+            <a href="#diferenciais" className="hover:text-gold-400 transition-colors">Diferenciais</a>
+            <a href="#seguranca" className="hover:text-gold-400 transition-colors">Segurança</a>
+            <a href="#planos" className="hover:text-gold-400 transition-colors">Planos</a>
+            <a href="#faq" className="hover:text-gold-400 transition-colors">FAQ</a>
           </nav>
 
-          <div className="hidden md:flex items-center gap-3">
-            <Link href="/login" className="text-sm font-medium text-slate-600 hover:text-navy-900 px-3 py-2 transition-colors">Entrar</Link>
-            <Link href="/register" className="text-sm font-semibold bg-brand-600 text-white hover:bg-brand-700 px-5 py-2.5 rounded-lg shadow-sm hover:shadow-md transition-all">Testar gratuitamente</Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/login"
+              className="text-xs font-bold text-slate-200 hover:text-white px-3.5 py-2 rounded-xl transition-colors"
+            >
+              Entrar
+            </Link>
+            <Link
+              href="/register"
+              className="px-5 py-2.5 bg-brand-600 hover:bg-brand-500 text-white font-extrabold rounded-xl shadow-md text-xs transition-all flex items-center gap-1.5"
+            >
+              Testar Gratuito
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
-
-          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden p-2 text-slate-600 hover:text-navy-900 transition-colors" aria-label={mobileMenuOpen ? 'Fechar menu' : 'Abrir menu'} aria-expanded={mobileMenuOpen}>
-            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
         </div>
-
-        {mobileMenuOpen && (
-          <div className="md:hidden fixed inset-0 top-16 bg-white z-40 overflow-y-auto no-scrollbar">
-            <nav className="flex flex-col p-6 space-y-1" aria-label="Navegação mobile">
-              {NAV_LINKS.map((l) => (<a key={l.href} href={l.href} onClick={closeMobileMenu} className="text-base font-medium text-slate-700 hover:text-navy-900 hover:bg-slate-50 px-4 py-3 rounded-lg transition-colors">{l.label}</a>))}
-              <div className="border-t border-slate-100 my-4" />
-              <Link href="/login" onClick={closeMobileMenu} className="text-base font-medium text-slate-700 hover:text-navy-900 px-4 py-3 rounded-lg transition-colors">Entrar</Link>
-              <Link href="/register" onClick={closeMobileMenu} className="text-base font-semibold bg-brand-600 text-white hover:bg-brand-700 px-4 py-3.5 rounded-lg text-center transition-colors mt-2">Testar gratuitamente</Link>
-            </nav>
-          </div>
-        )}
       </header>
 
-      <main>
-        {/* ============================================================ */}
-        {/*  HERO                                                         */}
-        {/* ============================================================ */}
-        <section className="relative overflow-hidden bg-gradient-to-b from-slate-50 to-white pt-12 sm:pt-20 pb-16 sm:pb-24 px-4 sm:px-6">
-          <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-            <div className="text-center lg:text-left">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-brand-50 border border-brand-100 text-brand-700 text-xs font-semibold mb-6">
-                <Scale className="w-3.5 h-3.5" />
-                Desenvolvido para advogados e escritórios de advocacia
-              </div>
-
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-[3.25rem] font-extrabold text-navy-900 leading-[1.15] tracking-tight mb-5">
-                Contratação jurídica completa em um único link
-              </h1>
-
-              <p className="text-base sm:text-lg text-slate-600 max-w-xl mx-auto lg:mx-0 mb-8 leading-relaxed">
-                Cadastre o cliente uma única vez, prepare contrato, procuração e declarações e envie todos os documentos juntos para assinatura pelo celular.
-              </p>
-
-              <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 mb-6">
-                <Link href="/register" className="w-full sm:w-auto text-base font-semibold bg-brand-600 text-white hover:bg-brand-700 px-7 py-3.5 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2">
-                  Testar gratuitamente <ArrowRight className="w-4 h-4" />
-                </Link>
-                <a href="#demonstracao" className="w-full sm:w-auto text-base font-medium text-slate-700 hover:text-navy-900 bg-white hover:bg-slate-50 border border-slate-200 px-7 py-3.5 rounded-xl transition-all text-center">
-                  Ver o AssinaJur em ação
-                </a>
-              </div>
-
-              <div className="flex flex-col items-center lg:items-start gap-1.5">
-                <p className="text-sm text-slate-500 font-medium">5 pacotes gratuitos • 30 dias • Sem cartão</p>
-                <p className="text-xs text-slate-400">Sem cobrança automática ao final do teste.</p>
-              </div>
+      {/* ── 1. PRIMEIRA DOBRA (HERO) ── */}
+      <section className="bg-[#0B1D3D] text-white pt-10 pb-20 px-4 sm:px-6 relative overflow-hidden">
+        <div className="max-w-7xl mx-auto grid lg:grid-cols-12 gap-12 items-center relative z-10">
+          <div className="lg:col-span-7 space-y-6 text-center lg:text-left">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gold-500/10 border border-gold-500/30 text-gold-400 font-bold text-xs">
+              <Sparkles className="w-4 h-4" /> Desenvolvido para advogados e escritórios de advocacia
             </div>
 
-            {/* Hero visual composition */}
-            <div className="relative hidden lg:block">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-6 relative z-10">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-navy-900 flex items-center justify-center"><Layers className="w-5 h-5 text-white" /></div>
-                  <div><div className="font-bold text-navy-900 text-sm">Pacote — Maria Silva Santos</div><div className="text-xs text-slate-500">Kit Previdenciário • 4 documentos</div></div>
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white leading-tight">
+              Assinatura jurídica completa em um único link
+            </h1>
+
+            <p className="text-base sm:text-lg text-slate-300 max-w-2xl mx-auto lg:mx-0 font-normal leading-relaxed">
+              Cadastre o cliente uma única vez, prepare contrato, procuração e declarações e envie todos os documentos juntos para assinatura pelo celular.
+            </p>
+
+            <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 pt-2">
+              <Link
+                href="/register"
+                className="w-full sm:w-auto px-8 py-4 bg-brand-600 hover:bg-brand-500 text-white font-extrabold rounded-xl shadow-xl text-sm transition-all flex items-center justify-center gap-2"
+              >
+                Testar gratuitamente
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+
+              <a
+                href="#demonstracao"
+                className="w-full sm:w-auto px-6 py-4 bg-white/10 hover:bg-white/15 text-white font-bold rounded-xl border border-white/10 text-sm transition-all flex items-center justify-center gap-2"
+              >
+                <Play className="w-4 h-4 text-gold-400 fill-gold-400" />
+                Ver o AssinaJur em ação
+              </a>
+            </div>
+
+            <div className="pt-2 text-xs text-slate-400 space-y-1">
+              <p className="font-semibold text-slate-300">5 pacotes gratuitos por 30 dias • Sem cartão</p>
+              <p className="text-[11px] text-slate-400">Sem cobrança automática ao final do teste.</p>
+            </div>
+          </div>
+
+          {/* Composição Visual Interativa do Produto */}
+          <div className="lg:col-span-5">
+            <div className="bg-[#132A54]/90 p-6 rounded-2xl border border-white/10 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-red-400" />
+                  <div className="w-3 h-3 rounded-full bg-amber-400" />
+                  <div className="w-3 h-3 rounded-full bg-emerald-400" />
+                  <span className="text-xs font-mono text-slate-400 ml-2">assinajur.app/assinar/token</span>
                 </div>
-                <div className="space-y-2">
-                  {['Contrato de Honorários', 'Procuração', 'Declaração de Hipossuficiência', 'Termo de Responsabilidade'].map((doc, i) => (
-                    <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                      <div className="flex items-center gap-2.5"><FileText className="w-4 h-4 text-slate-400" /><span className="text-sm text-navy-900">{doc}</span></div>
-                      <span className="text-[11px] font-medium text-success-700 bg-success-50 px-2 py-0.5 rounded-full border border-success-200">Assinado</span>
+                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/30">
+                  Criptografia 256-bit
+                </span>
+              </div>
+
+              <div className="space-y-3 text-xs text-slate-200">
+                <div className="p-3 bg-[#0B1D3D] rounded-xl border border-white/10 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Users className="w-5 h-5 text-gold-400" />
+                    <div>
+                      <div className="font-bold text-white">João da Silva Santos</div>
+                      <div className="text-[10px] text-slate-400">CPF: 111.222.333-44</div>
                     </div>
-                  ))}
+                  </div>
+                  <span className="text-[10px] font-bold text-emerald-400">Cliente Cadastrado</span>
                 </div>
-                <div className="mt-4 flex items-center justify-between text-xs">
-                  <span className="text-slate-500">Concluído em 06/08/2026</span>
-                  <span className="flex items-center gap-1 text-brand-600 font-medium"><Award className="w-3.5 h-3.5" /> Certificado disponível</span>
+
+                <div className="p-3 bg-[#0B1D3D] rounded-xl border border-white/10 space-y-2">
+                  <span className="text-[10px] uppercase font-bold text-gold-400">Pacote Jurídico Previdenciário (3 Documentos)</span>
+                  <div className="space-y-1 pl-1">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> 1. Contrato de Honorários
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> 2. Procuração Ad Judicia
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> 3. Declaração de Hipossuficiência
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="absolute -top-4 -right-4 bg-white rounded-xl border border-slate-200 shadow-md px-4 py-3 z-20 animate-fade-in">
-                <div className="flex items-center gap-2"><div className="w-8 h-8 rounded-full bg-success-100 flex items-center justify-center"><CheckCircle className="w-4 h-4 text-success-600" /></div><div><div className="text-xs font-semibold text-navy-900">Assinatura concluída</div><div className="text-[10px] text-slate-500">Há 2 minutos</div></div></div>
-              </div>
-              <div className="absolute -bottom-3 -left-4 bg-white rounded-xl border border-slate-200 shadow-md px-4 py-3 z-20 animate-slide-in-right">
-                <div className="flex items-center gap-3"><div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center border border-slate-200"><QrCode className="w-5 h-5 text-navy-900" /></div><div><div className="text-xs font-semibold text-navy-900">AJ-7X2K-9M4P</div><div className="text-[10px] text-slate-500">Código de verificação</div></div></div>
+
+                <div className="p-3 bg-emerald-500/10 rounded-xl border border-emerald-500/30 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-emerald-300 font-bold">
+                    <Eye className="w-4 h-4" /> Prova de presença ao vivo (3 selfies 4:3)
+                  </div>
+                  <span className="text-[10px] font-extrabold text-emerald-400">VALIDADA</span>
+                </div>
               </div>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* ============================================================ */}
-        {/*  BENEFITS STRIP                                               */}
-        {/* ============================================================ */}
-        <section className="border-y border-slate-100 bg-white py-6 px-4 sm:px-6">
-          <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
+      {/* ── 2. SEÇÃO COMO FUNCIONA (5 PASSOS) ── */}
+      <section id="como-funciona" className="py-20 px-4 sm:px-6 bg-white border-b border-slate-200/80">
+        <div className="max-w-7xl mx-auto space-y-12">
+          <div className="text-center space-y-3 max-w-3xl mx-auto">
+            <span className="text-xs font-bold text-brand-600 uppercase tracking-wider bg-brand-50 px-3 py-1 rounded-full border border-brand-200">
+              Fluxo Jurídico Simplificado
+            </span>
+            <h2 className="text-3xl font-black text-[#0B1D3D]">Como funciona o AssinaJur</h2>
+            <p className="text-sm text-slate-600">
+              Em apenas cinco etapas simples seu escritório organiza o atendimento, envia os documentos e colhe todas as assinaturas com validade imutável.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-5 gap-6">
             {[
-              { icon: Scale, text: 'Desenvolvido para advogados' },
-              { icon: Layers, text: 'Vários documentos no mesmo pacote' },
-              { icon: Smartphone, text: 'Assinatura pelo celular' },
-              { icon: Award, text: 'Certificado de evidências' },
-            ].map((item, i) => (
-              <div key={i} className="flex items-center gap-3 justify-center md:justify-start">
-                <div className="w-9 h-9 rounded-lg bg-brand-50 flex items-center justify-center flex-shrink-0"><item.icon className="w-[18px] h-[18px] text-brand-600" /></div>
-                <span className="text-sm font-medium text-slate-700">{item.text}</span>
+              { step: '01', title: 'Cadastre o cliente', desc: 'Preencha os dados do cliente uma única vez no painel do escritório.' },
+              { step: '02', title: 'Prepare os documentos', desc: 'Escolha contrato, procuração e declarações em um único pacote jurídico.' },
+              { step: '03', title: 'Envie um único link', desc: 'Compartilhe o link direto no WhatsApp do cliente para assinatura no celular.' },
+              { step: '04', title: 'Acompanhe as assinaturas', desc: 'Receba confirmações em tempo real à medida que as etapas são validadas.' },
+              { step: '05', title: 'Receba o certificado', desc: 'Acesse o PDF consolidado com fotos 4:3, IP, geolocalização e QR Code.' },
+            ].map((s, idx) => (
+              <div key={idx} className="bg-[#F7F8FA] p-6 rounded-2xl border border-slate-200 relative space-y-3">
+                <span className="text-2xl font-black text-gold-500 block">{s.step}</span>
+                <h3 className="text-sm font-extrabold text-[#0B1D3D]">{s.title}</h3>
+                <p className="text-xs text-slate-600 leading-relaxed">{s.desc}</p>
               </div>
             ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* ============================================================ */}
-        {/*  COMPARISON                                                    */}
-        {/* ============================================================ */}
-        <Section id="diferenciais" className="py-20 sm:py-24 px-4 sm:px-6 bg-white">
-          <div className="max-w-5xl mx-auto">
-            <div className="text-center mb-14 scroll-animate">
-              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-navy-900 mb-4">Muito além de um assinador de documentos</h2>
-              <p className="text-slate-600 max-w-2xl mx-auto text-base leading-relaxed">Plataformas convencionais normalmente começam com o PDF já preparado. O AssinaJur organiza a contratação desde o cadastro do cliente.</p>
-            </div>
-            <div className="grid md:grid-cols-2 gap-6 scroll-animate">
-              <div className="bg-white rounded-xl border border-slate-200 p-6 sm:p-8">
-                <div className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-5">Assinador convencional</div>
-                <ul className="space-y-3.5">
-                  {['Recebe o documento previamente preparado', 'Trabalha principalmente com arquivos isolados', 'Utiliza um fluxo genérico', 'Depende da preparação externa dos documentos', 'Não é organizado por tipo de atendimento jurídico'].map((t, i) => (
-                    <li key={i} className="flex items-start gap-3 text-sm text-slate-600"><div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0 mt-0.5"><Minus className="w-3 h-3 text-slate-400" /></div>{t}</li>
-                  ))}
-                </ul>
+      {/* ── 3. DEMONSTRAÇÃO REAL DO PRODUTO ── */}
+      <section id="demonstracao" className="py-20 px-4 sm:px-6 bg-[#F7F8FA] border-b border-slate-200/80">
+        <div className="max-w-7xl mx-auto space-y-10">
+          <div className="text-center space-y-3 max-w-3xl mx-auto">
+            <span className="text-xs font-bold text-gold-600 uppercase tracking-wider bg-gold-100 px-3 py-1 rounded-full border border-gold-300">
+              Interface Real
+            </span>
+            <h2 className="text-3xl font-black text-[#0B1D3D]">Veja o AssinaJur em ação</h2>
+            <p className="text-sm text-slate-600">
+              Conheça as telas verdadeiras do sistema e entenda como a experiência móvel garante rapidez e conformidade técnica.
+            </p>
+          </div>
+
+          {/* Abas de Navegação */}
+          <div className="flex flex-wrap items-center justify-center gap-2 bg-white p-2 rounded-2xl border border-slate-200 shadow-xs max-w-3xl mx-auto">
+            {[
+              { id: 'PANEL', label: 'Painel Inicial' },
+              { id: 'PACKAGE', label: 'Pacote Jurídico' },
+              { id: 'WHATSAPP', label: 'Envio WhatsApp' },
+              { id: 'SIGNING', label: 'Assinatura Mobile' },
+              { id: 'CERTIFICATE', label: 'Certificado Final' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveDemoTab(tab.id as any)}
+                className={`px-4 py-2 rounded-xl font-bold text-xs transition-all ${
+                  activeDemoTab === tab.id
+                    ? 'bg-[#0B1D3D] text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Conteúdo da Aba */}
+          <div className="bg-white p-6 sm:p-10 rounded-2xl border border-slate-200 shadow-lg max-w-4xl mx-auto">
+            {activeDemoTab === 'PANEL' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b pb-4">
+                  <div>
+                    <h3 className="font-extrabold text-[#0B1D3D] text-lg">Painel de Gestão do Escritório</h3>
+                    <p className="text-xs text-slate-500">Visão geral dos documentos e consumos</p>
+                  </div>
+                  <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold text-xs">
+                    Plano Ativo
+                  </span>
+                </div>
+                <div className="grid sm:grid-cols-3 gap-4 text-center">
+                  <div className="p-4 bg-slate-50 rounded-xl border">
+                    <span className="text-xs text-slate-500 font-semibold block">Aguardando Assinatura</span>
+                    <span className="text-2xl font-black text-amber-600">4</span>
+                  </div>
+                  <div className="p-4 bg-slate-50 rounded-xl border">
+                    <span className="text-xs text-slate-500 font-semibold block">Concluídos no Mês</span>
+                    <span className="text-2xl font-black text-emerald-600">18</span>
+                  </div>
+                  <div className="p-4 bg-slate-50 rounded-xl border">
+                    <span className="text-xs text-slate-500 font-semibold block">Pacotes Utilizados</span>
+                    <span className="text-2xl font-black text-blue-600">18 / 60</span>
+                  </div>
+                </div>
               </div>
-              <div className="bg-white rounded-xl border-2 border-brand-200 p-6 sm:p-8 shadow-sm">
-                <div className="text-sm font-semibold text-brand-600 uppercase tracking-wider mb-5 flex items-center gap-2"><div className="w-5 h-5 rounded bg-navy-900 flex items-center justify-center text-[10px] font-bold text-white">AJ</div>AssinaJur</div>
-                <ul className="space-y-3.5">
-                  {['Cadastra o cliente uma única vez', 'Reutiliza os dados nos documentos', 'Utiliza modelos e kits jurídicos', 'Reúne vários documentos no mesmo pacote', 'Conecta cadastro, documentos, assinatura e evidências', 'Foi desenvolvido para a rotina da advocacia'].map((t, i) => (
-                    <li key={i} className="flex items-start gap-3 text-sm text-navy-900 font-medium"><CheckCircle className="w-5 h-5 text-brand-600 flex-shrink-0 mt-0.5" />{t}</li>
-                  ))}
-                </ul>
+            )}
+
+            {activeDemoTab === 'PACKAGE' && (
+              <div className="space-y-4 text-xs text-slate-700">
+                <h3 className="font-extrabold text-[#0B1D3D] text-base">Criação de Pacote Previdenciário</h3>
+                <div className="p-4 bg-slate-50 rounded-xl border space-y-2">
+                  <div className="font-bold text-slate-900">Cliente: Maria das Graças Oliveira</div>
+                  <div className="text-slate-500">Documentos incluídos no mesmo link:</div>
+                  <ul className="list-disc pl-5 space-y-1 text-slate-800 font-semibold">
+                    <li>Contrato de Honorários Advocatícios Previdenciários</li>
+                    <li>Procuração Ad Judicia (INSS e Justiça Federal)</li>
+                    <li>Declaração de Hipossuficiência Financeira</li>
+                  </ul>
+                </div>
               </div>
-            </div>
-          </div>
-        </Section>
+            )}
 
-        {/* ============================================================ */}
-        {/*  LEGAL AREAS & KITS                                            */}
-        {/* ============================================================ */}
-        <Section className="py-20 sm:py-24 px-4 sm:px-6 bg-slate-50 border-y border-slate-100">
-          <div className="max-w-6xl mx-auto">
-            <div className="text-center mb-14 scroll-animate">
-              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-navy-900 mb-4">Organize seus kits por área jurídica</h2>
-              <p className="text-slate-600 max-w-2xl mx-auto text-base leading-relaxed">Crie seus próprios modelos e kits de documentos organizados por área de atuação do escritório.</p>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-10 scroll-animate">
-              {LEGAL_AREAS.map((area, i) => (
-                <div key={i} className="bg-white rounded-xl border border-slate-200 p-4 text-center card-hover">
-                  <div className="w-10 h-10 rounded-lg bg-brand-50 flex items-center justify-center mx-auto mb-3"><area.icon className="w-5 h-5 text-brand-600" /></div>
-                  <span className="text-sm font-semibold text-navy-900">{area.name}</span>
+            {activeDemoTab === 'WHATSAPP' && (
+              <div className="space-y-4 text-xs">
+                <h3 className="font-extrabold text-[#0B1D3D] text-base">Mensagem Pronta para o WhatsApp</h3>
+                <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-950 font-mono space-y-2">
+                  <p>Olá Maria! Segue o link seguro para revisão e assinatura do seu contrato e procuração:</p>
+                  <p className="font-bold text-emerald-700 underline">https://assinajur.app/assinar/token-exemplo</p>
+                  <p>Você pode assinar diretamente pelo celular em poucos passos.</p>
                 </div>
-              ))}
-            </div>
-
-            <div className="max-w-md mx-auto scroll-animate">
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <Layers className="w-5 h-5 text-brand-600" />
-                  <span className="font-bold text-navy-900">Kit Previdenciário</span>
-                  <span className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium ml-auto">Exemplo</span>
-                </div>
-                {['Contrato de Honorários', 'Procuração', 'Declaração de Hipossuficiência', 'Termo de Responsabilidade', 'Outros documentos selecionados pelo escritório'].map((doc, i) => (
-                  <div key={i} className="flex items-center gap-2.5 py-2 border-b border-slate-50 last:border-0">
-                    <CheckCircle className="w-4 h-4 text-success-600 flex-shrink-0" />
-                    <span className="text-sm text-slate-700">{doc}</span>
-                  </div>
-                ))}
-                <p className="text-xs text-slate-500 mt-4 leading-relaxed">O escritório pode organizar seus próprios modelos e kits conforme a necessidade de cada área.</p>
               </div>
-            </div>
-          </div>
-        </Section>
+            )}
 
-        {/* ============================================================ */}
-        {/*  HOW IT WORKS                                                  */}
-        {/* ============================================================ */}
-        <Section id="como-funciona" className="py-20 sm:py-24 px-4 sm:px-6 bg-white">
-          <div className="max-w-6xl mx-auto">
-            <div className="text-center mb-14 scroll-animate">
-              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-navy-900 mb-4">Da abertura do atendimento à contratação assinada</h2>
-            </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-animate">
-              {[
-                { icon: UserCheck, s: '1', t: 'Cadastre o cliente', d: 'Insira os dados uma única vez para utilizá-los nos documentos do pacote.' },
-                { icon: Layers, s: '2', t: 'Escolha o kit jurídico', d: 'Selecione contrato, procuração, declarações e outros documentos.' },
-                { icon: Eye, s: '3', t: 'Revise os documentos', d: 'Confira os dados e o conteúdo antes do envio.' },
-                { icon: LinkIcon, s: '4', t: 'Gere o link', d: 'Crie o acesso individual para o cliente.' },
-                { icon: Send, s: '5', t: 'Envie ao cliente', d: 'Compartilhe o link pelo canal de sua preferência.' },
-                { icon: Smartphone, s: '6', t: 'O cliente assina', d: 'Acessa pelo navegador do celular e segue as etapas apresentadas.' },
-                { icon: ClipboardList, s: '7', t: 'Acompanhe a conclusão', d: 'Consulte o status do pacote e dos documentos.' },
-                { icon: Award, s: '8', t: 'Acesse as evidências', d: 'Consulte os documentos concluídos e o certificado disponível.' },
-              ].map((item, i) => (
-                <div key={i} className="bg-white rounded-xl border border-slate-200 p-5 card-hover">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-8 h-8 rounded-lg bg-brand-600 text-white flex items-center justify-center text-sm font-bold flex-shrink-0">{item.s}</div>
-                    <item.icon className="w-[18px] h-[18px] text-slate-400" />
+            {activeDemoTab === 'SIGNING' && (
+              <div className="space-y-4 text-xs text-slate-700">
+                <h3 className="font-extrabold text-[#0B1D3D] text-base">Fluxo de Prova de Presença no Celular</h3>
+                <div className="grid sm:grid-cols-3 gap-3 text-center">
+                  <div className="p-3 bg-slate-50 rounded-xl border border-emerald-400">
+                    <span className="font-bold block text-emerald-700">1. Foto Frontal</span>
+                    <span className="text-[10px] text-slate-500">Rosto centralizado</span>
                   </div>
-                  <h3 className="font-bold text-navy-900 text-[15px] mb-1.5">{item.t}</h3>
-                  <p className="text-sm text-slate-600 leading-relaxed">{item.d}</p>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-emerald-400">
+                    <span className="font-bold block text-emerald-700">2. Perfil Esquerdo</span>
+                    <span className="text-[10px] text-slate-500">Giro guiado</span>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-emerald-400">
+                    <span className="font-bold block text-emerald-700">3. Perfil Direito</span>
+                    <span className="text-[10px] text-slate-500">Giro guiado</span>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </Section>
-
-        {/* ============================================================ */}
-        {/*  FEATURES                                                      */}
-        {/* ============================================================ */}
-        <Section id="recursos" className="py-20 sm:py-24 px-4 sm:px-6 bg-slate-50 border-y border-slate-100">
-          <div className="max-w-6xl mx-auto">
-            <div className="text-center mb-14 scroll-animate">
-              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-navy-900 mb-4">Tudo organizado para a rotina do escritório</h2>
-            </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 scroll-animate">
-              {[
-                { icon: Users, t: 'Cadastro centralizado de clientes', d: 'Insira os dados uma vez e reutilize em todos os documentos.' },
-                { icon: FileText, t: 'Modelos de documentos', d: 'Crie modelos com tags de preenchimento automático.' },
-                { icon: Layers, t: 'Kits jurídicos', d: 'Agrupe modelos em pacotes organizados por tipo de atendimento.' },
-                { icon: FolderOpen, t: 'Vários documentos em um pacote', d: 'Contrato, procuração e declarações reunidos no mesmo link.' },
-                { icon: Eye, t: 'Revisão antes do envio', d: 'Confira os dados e o conteúdo dos documentos gerados.' },
-                { icon: LinkIcon, t: 'Geração de link', d: 'Crie um link individual para cada contratação.' },
-                { icon: Smartphone, t: 'Assinatura pelo celular', d: 'O cliente assina pelo navegador do celular, sem criar conta.' },
-                { icon: ClipboardList, t: 'Consulta do andamento', d: 'Acompanhe o status de cada documento e pacote.' },
-                { icon: Award, t: 'Certificado de evidências', d: 'Acesse as informações registradas durante a conclusão.' },
-                { icon: QrCode, t: 'QR Code de verificação', d: 'Utilize o QR Code para conferir na página de verificação.' },
-                { icon: Palette, t: 'Personalização do escritório', d: 'Configure o nome, OAB, cores e mensagens do escritório.' },
-                { icon: Building2, t: 'Identidade visual nas assinaturas', d: 'Apresente a contratação com os dados e identidade do escritório.' },
-              ].map((item, i) => (
-                <div key={i} className="bg-white rounded-xl border border-slate-200 p-5 card-hover">
-                  <div className="w-9 h-9 rounded-lg bg-brand-50 flex items-center justify-center mb-3"><item.icon className="w-[18px] h-[18px] text-brand-600" /></div>
-                  <h3 className="font-bold text-navy-900 text-[15px] mb-1">{item.t}</h3>
-                  <p className="text-sm text-slate-600 leading-relaxed">{item.d}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Section>
-
-        {/* ============================================================ */}
-        {/*  SECURITY & EVIDENCE                                           */}
-        {/* ============================================================ */}
-        <Section id="seguranca" className="py-20 sm:py-24 px-4 sm:px-6 bg-white">
-          <div className="max-w-6xl mx-auto">
-            <div className="text-center mb-14 scroll-animate">
-              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-navy-900 mb-4">Rastreabilidade em cada contratação</h2>
-              <p className="text-slate-600 max-w-2xl mx-auto text-base leading-relaxed">O AssinaJur organiza as etapas da contratação e apresenta as evidências disponíveis nos documentos concluídos.</p>
-            </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 scroll-animate">
-              {[
-                { icon: ClipboardList, t: 'Registro das etapas', d: 'Consulte os eventos importantes relacionados ao processo de assinatura.' },
-                { icon: Award, t: 'Certificado de evidências', d: 'Acesse as informações registradas durante a conclusão dos documentos.' },
-                { icon: QrCode, t: 'Verificação por QR Code', d: 'Utilize o QR Code para consultar a página de conferência.' },
-                { icon: Lock, t: 'Controle de acesso', d: 'Os documentos permanecem vinculados ao respectivo escritório e à contratação.' },
-              ].map((item, i) => (
-                <div key={i} className="bg-slate-50 rounded-xl border border-slate-100 p-6 card-hover text-center">
-                  <div className="w-12 h-12 rounded-xl bg-navy-900 flex items-center justify-center mx-auto mb-4"><item.icon className="w-6 h-6 text-white" /></div>
-                  <h3 className="font-bold text-navy-900 mb-2">{item.t}</h3>
-                  <p className="text-sm text-slate-600 leading-relaxed">{item.d}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Section>
-
-        {/* ============================================================ */}
-        {/*  VISUAL DEMO                                                   */}
-        {/* ============================================================ */}
-        <Section id="demonstracao" className="py-20 sm:py-24 px-4 sm:px-6 bg-slate-50 border-y border-slate-100">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-12 scroll-animate">
-              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-navy-900 mb-4">Veja o AssinaJur em ação</h2>
-            </div>
-            <div className="scroll-animate">
-              <div className="flex overflow-x-auto no-scrollbar gap-1 p-1 bg-slate-100 rounded-xl mb-6 border border-slate-200">
-                {DEMO_STEPS.map((step, i) => (
-                  <button key={i} onClick={() => setActiveDemo(i)} className={`flex-shrink-0 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeDemo === i ? 'bg-white text-navy-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{step.tab}</button>
-                ))}
               </div>
-              <div className="grid md:grid-cols-2 gap-6 items-start">
-                <div className="space-y-3">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-50 text-brand-700 text-xs font-semibold">Etapa {activeDemo + 1} de {DEMO_STEPS.length}</div>
-                  <h3 className="text-xl font-bold text-navy-900">{DEMO_STEPS[activeDemo].title}</h3>
-                  <p className="text-slate-600 leading-relaxed">{DEMO_STEPS[activeDemo].description}</p>
+            )}
+
+            {activeDemoTab === 'CERTIFICATE' && (
+              <div className="space-y-4 text-xs text-slate-700">
+                <h3 className="font-extrabold text-[#0B1D3D] text-base">Certificado de Evidências em PDF</h3>
+                <div className="p-4 bg-[#0B1D3D] text-white rounded-xl space-y-2">
+                  <div className="flex justify-between font-bold text-gold-400">
+                    <span>CERTIFICADO ASSINAJUR</span>
+                    <span>CÓDIGO: AJ-8F92-K3D1</span>
+                  </div>
+                  <div className="text-[11px] text-slate-300">
+                    Horário de Brasília (UTC-3) • Hash SHA-256 de 64 caracteres • QR Code de Verificação Imutável
+                  </div>
                 </div>
-                <div className="transition-opacity duration-300">{DEMO_STEPS[activeDemo].mockup}</div>
               </div>
-            </div>
-          </div>
-        </Section>
-
-        {/* ============================================================ */}
-        {/*  PRICING — 4 PLANS                                             */}
-        {/* ============================================================ */}
-        <Section id="planos" className="py-20 sm:py-24 px-4 sm:px-6 bg-white">
-          <div className="max-w-7xl mx-auto">
-            <div className="text-center mb-14 scroll-animate">
-              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-navy-900 mb-4">Escolha a opção ideal para o seu escritório</h2>
-            </div>
-
-            {!SHOW_LEGACY_PLANS && (
-              <>
-                {/* Plan cards */}
-                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-16 scroll-animate">
-
-                  {/* FREE TRIAL */}
-                  <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col justify-between">
-                    <div>
-                      <h3 className="text-lg font-bold text-navy-900 mb-1">Teste gratuito</h3>
-                      <p className="text-sm text-slate-500 mb-5">Conheça as principais funções antes de contratar.</p>
-                      <div className="mb-5 pb-5 border-b border-slate-100">
-                        <span className="text-4xl font-extrabold text-navy-900">R$ 0</span>
-                        <p className="text-xs text-slate-500 mt-1">Até 30 dias</p>
-                      </div>
-                      <ul className="space-y-2.5 text-sm text-slate-700 mb-5">
-                        {['5 pacotes de assinatura', '30 dias para utilizar', '1 usuário', 'Sem cartão de crédito', 'Sem cobrança automática', 'Funções disponibilizadas no teste'].map((t, i) => (
-                          <li key={i} className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-success-600 flex-shrink-0" /><span>{t}</span></li>
-                        ))}
-                      </ul>
-                      <p className="text-xs text-slate-500 leading-relaxed mb-5">Cada pacote pode reunir contrato, procuração, declarações e outros documentos. O teste encerra ao utilizar os 5 pacotes ou completar os 30 dias.</p>
-                    </div>
-                    <div>
-                      <Link href="/register" className="w-full text-center py-3 bg-navy-900 text-white font-semibold rounded-xl hover:bg-navy-800 transition-colors block text-sm">Começar teste gratuito</Link>
-                      <p className="text-[11px] text-center text-slate-400 mt-2">Sem cobrança automática ao final do teste.</p>
-                    </div>
-                  </div>
-
-                  {/* SOLO */}
-                  <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col justify-between">
-                    <div>
-                      <h3 className="text-lg font-bold text-navy-900 mb-1">Plano Solo</h3>
-                      <p className="text-sm text-slate-500 mb-5">Para advogados autônomos que estão começando a organizar suas contratações.</p>
-                      <div className="mb-5 pb-5 border-b border-slate-100">
-                        <div className="flex items-baseline gap-1"><span className="text-4xl font-extrabold text-navy-900">R$ 39,90</span><span className="text-sm text-slate-500">/mês</span></div>
-                      </div>
-                      <ul className="space-y-2.5 text-sm text-slate-700 mb-5">
-                        {['Até 20 pacotes por mês', '1 usuário', 'Cadastro de clientes', 'Modelos de documentos', 'Kits jurídicos', 'Vários documentos por pacote', 'Assinatura pelo celular', 'Acompanhamento', 'Certificado de evidências', 'Suporte pelo canal disponibilizado'].map((t, i) => (
-                          <li key={i} className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-success-600 flex-shrink-0" /><span>{t}</span></li>
-                        ))}
-                      </ul>
-                    </div>
-                    <a href={whatsappSolo} target="_blank" rel="noopener noreferrer" className="w-full text-center py-3 bg-brand-600 text-white font-semibold rounded-xl hover:bg-brand-700 transition-all block text-sm">Escolher Plano Solo</a>
-                  </div>
-
-                  {/* PROFISSIONAL — highlighted */}
-                  <div className="bg-white rounded-2xl border-2 border-brand-500 p-6 flex flex-col justify-between relative shadow-lg">
-                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-brand-600 text-white text-[11px] font-semibold px-4 py-1 rounded-full flex items-center gap-1"><Star className="w-3 h-3" /> Mais escolhido</div>
-                    <div>
-                      <h3 className="text-lg font-bold text-navy-900 mb-1 mt-1">Plano Profissional</h3>
-                      <p className="text-sm text-slate-500 mb-5">Para advogados e pequenos escritórios com maior volume de contratações.</p>
-                      <div className="mb-5 pb-5 border-b border-slate-100">
-                        <div className="flex items-baseline gap-1"><span className="text-4xl font-extrabold text-navy-900">R$ 69,90</span><span className="text-sm text-slate-500">/mês</span></div>
-                      </div>
-                      <ul className="space-y-2.5 text-sm text-slate-700 mb-5">
-                        {['Até 60 pacotes por mês', 'Até 3 usuários', 'Todos os recursos do Plano Solo', 'Identidade visual do escritório', 'Organização de equipe', 'Prioridade no suporte'].map((t, i) => (
-                          <li key={i} className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-success-600 flex-shrink-0" /><span>{t}</span></li>
-                        ))}
-                      </ul>
-                    </div>
-                    <a href={whatsappPro} target="_blank" rel="noopener noreferrer" className="w-full text-center py-3 bg-brand-600 text-white font-semibold rounded-xl hover:bg-brand-700 transition-all block text-sm shadow-sm">Escolher Plano Profissional</a>
-                  </div>
-
-                  {/* ESCRITÓRIO */}
-                  <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col justify-between">
-                    <div>
-                      <h3 className="text-lg font-bold text-navy-900 mb-1">Plano Escritório</h3>
-                      <p className="text-sm text-slate-500 mb-5">Para escritórios com equipe e maior volume mensal.</p>
-                      <div className="mb-5 pb-5 border-b border-slate-100">
-                        <div className="flex items-baseline gap-1"><span className="text-4xl font-extrabold text-navy-900">R$ 99,90</span><span className="text-sm text-slate-500">/mês</span></div>
-                      </div>
-                      <ul className="space-y-2.5 text-sm text-slate-700 mb-5">
-                        {['Até 150 pacotes por mês', 'Até 5 usuários', 'Todos os recursos do Plano Profissional', 'Permissões de equipe', 'Suporte comercial'].map((t, i) => (
-                          <li key={i} className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-success-600 flex-shrink-0" /><span>{t}</span></li>
-                        ))}
-                      </ul>
-                    </div>
-                    <a href={whatsappOffice} target="_blank" rel="noopener noreferrer" className="w-full text-center py-3 bg-navy-900 text-white font-semibold rounded-xl hover:bg-navy-800 transition-all block text-sm">Falar sobre o Plano Escritório</a>
-                  </div>
-                </div>
-
-                {/* Comparison table */}
-                <div className="scroll-animate max-w-5xl mx-auto overflow-x-auto">
-                  <table className="w-full text-sm border-collapse min-w-[640px]">
-                    <thead>
-                      <tr className="border-b border-slate-200">
-                        <th className="text-left py-3 px-4 font-semibold text-navy-900">Recurso</th>
-                        <th className="text-center py-3 px-3 font-semibold text-navy-900">Teste</th>
-                        <th className="text-center py-3 px-3 font-semibold text-navy-900">Solo</th>
-                        <th className="text-center py-3 px-3 font-semibold text-brand-600 bg-brand-50/50 rounded-t-lg">Profissional</th>
-                        <th className="text-center py-3 px-3 font-semibold text-navy-900">Escritório</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-slate-600">
-                      {[
-                        { label: 'Pacotes por mês', v: ['5', '20', '60', '150'] },
-                        { label: 'Usuários', v: ['1', '1', '3', '5'] },
-                        { label: 'Cadastro de clientes', v: [true, true, true, true] },
-                        { label: 'Modelos e kits jurídicos', v: [true, true, true, true] },
-                        { label: 'Assinatura pelo celular', v: [true, true, true, true] },
-                        { label: 'Certificado de evidências', v: [true, true, true, true] },
-                        { label: 'QR Code de verificação', v: [true, true, true, true] },
-                        { label: 'Identidade visual do escritório', v: [false, false, true, true] },
-                        { label: 'Organização de equipe', v: [false, false, true, true] },
-                        { label: 'Permissões de equipe', v: [false, false, false, true] },
-                        { label: 'Preço', v: ['R$ 0', 'R$ 39,90', 'R$ 69,90', 'R$ 99,90'] },
-                      ].map((row, i) => (
-                        <tr key={i} className="border-b border-slate-100 last:border-0">
-                          <td className="py-3 px-4 font-medium text-navy-900">{row.label}</td>
-                          {row.v.map((val, j) => (
-                            <td key={j} className={`text-center py-3 px-3 ${j === 2 ? 'bg-brand-50/30' : ''}`}>
-                              {typeof val === 'boolean' ? (val ? <CheckCircle className="w-4 h-4 text-success-600 mx-auto" /> : <Minus className="w-4 h-4 text-slate-300 mx-auto" />) : <span className="font-medium text-navy-900">{val}</span>}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
             )}
           </div>
-        </Section>
+        </div>
+      </section>
 
-        {/* ============================================================ */}
-        {/*  FAQ                                                           */}
-        {/* ============================================================ */}
-        <Section id="faq" className="py-20 sm:py-24 px-4 sm:px-6 bg-slate-50 border-y border-slate-100">
-          <div className="max-w-3xl mx-auto">
-            <div className="text-center mb-12 scroll-animate">
-              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-navy-900 mb-4">Perguntas frequentes</h2>
-            </div>
-            <div className="space-y-3 scroll-animate">
-              {FAQ_ITEMS.map((item, i) => (<FaqItem key={i} question={item.q} answer={item.a} isOpen={openFaq === i} onToggle={() => toggleFaq(i)} />))}
-            </div>
+      {/* ── 4. SEÇÃO DE DIFERENCIAIS ── */}
+      <section id="diferenciais" className="py-20 px-4 sm:px-6 bg-white border-b border-slate-200/80">
+        <div className="max-w-7xl mx-auto space-y-12">
+          <div className="text-center space-y-3 max-w-3xl mx-auto">
+            <span className="text-xs font-bold text-brand-600 uppercase tracking-wider bg-brand-50 px-3 py-1 rounded-full border border-brand-200">
+              Especializado para Advocacia
+            </span>
+            <h2 className="text-3xl font-black text-[#0B1D3D]">Diferenciais que simplificam a rotina</h2>
+            <p className="text-sm text-slate-600">
+              Conheça as vantagens exclusivas do AssinaJur em comparação com assinadores genéricos de arquivos.
+            </p>
           </div>
-        </Section>
 
-        {/* ============================================================ */}
-        {/*  FINAL CTA                                                     */}
-        {/* ============================================================ */}
-        <Section className="py-20 sm:py-24 px-4 sm:px-6 gradient-cta">
-          <div className="max-w-3xl mx-auto text-center scroll-animate">
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white mb-4">Transforme a contratação dos clientes do seu escritório</h2>
-            <p className="text-slate-300 text-base sm:text-lg max-w-xl mx-auto mb-8 leading-relaxed">Cadastre os dados uma única vez, organize os documentos e encaminhe tudo para assinatura em um único fluxo.</p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-6">
-              <Link href="/register" className="w-full sm:w-auto text-base font-semibold bg-white text-navy-900 hover:bg-slate-100 px-8 py-3.5 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">Testar gratuitamente <ArrowRight className="w-4 h-4" /></Link>
-              <a href={whatsappDefault} target="_blank" rel="noopener noreferrer" className="w-full sm:w-auto text-base font-medium text-white/90 hover:text-white bg-white/10 hover:bg-white/15 border border-white/20 px-8 py-3.5 rounded-xl transition-all text-center flex items-center justify-center gap-2"><MessageCircle className="w-4 h-4" /> Falar com consultor</a>
-            </div>
-            <p className="text-sm text-slate-400">5 pacotes gratuitos • 30 dias • Sem cartão</p>
-          </div>
-        </Section>
-      </main>
-
-      {/* ============================================================ */}
-      {/*  FOOTER                                                        */}
-      {/* ============================================================ */}
-      <footer className="bg-navy-900 text-white py-14 px-4 sm:px-6 mt-auto">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 mb-10">
-            <div className="sm:col-span-2 lg:col-span-1 space-y-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center font-bold text-white text-sm">AJ</div>
-                <span className="text-lg font-extrabold text-white tracking-tight">AssinaJur</span>
+          <div className="grid md:grid-cols-3 gap-8">
+            {[
+              {
+                icon: Layers,
+                title: 'Vários documentos no mesmo link',
+                desc: 'Reúna contrato, procuração, declarações e documentos pessoais no mesmo envio para o cliente.',
+              },
+              {
+                icon: Users,
+                title: 'Cadastro único de clientes',
+                desc: 'Cadastre os dados uma só vez e reutilize nos modelos jurídicos sem precisar reescrever.',
+              },
+              {
+                icon: Smartphone,
+                title: 'Assinatura fluida pelo celular',
+                desc: 'Fluxo responsivo desenvolvido especificamente para telas de smartphones no WhatsApp.',
+              },
+              {
+                icon: Eye,
+                title: 'Prova de presença guiada',
+                desc: 'Três fotos faciais (frontal, perfil esquerdo e perfil direito) na proporção 4:3 para maior segurança.',
+              },
+              {
+                icon: Lock,
+                title: 'Registro de evidências imutável',
+                desc: 'Gravação de IP, dispositivo, navegador, geolocalização aproximada e carimbo de tempo em Brasília.',
+              },
+              {
+                icon: QrCode,
+                title: 'QR Code e Verificação pública',
+                desc: 'Qualquer pessoa pode validar a autenticidade e a integridade do PDF diretamente pelo QR Code.',
+              },
+            ].map((diff, idx) => (
+              <div key={idx} className="bg-[#F7F8FA] p-6 rounded-2xl border border-slate-200 space-y-3">
+                <div className="w-10 h-10 rounded-xl bg-gold-500/20 text-gold-600 border border-gold-500/30 flex items-center justify-center">
+                  <diff.icon className="w-5 h-5" />
+                </div>
+                <h3 className="text-base font-bold text-[#0B1D3D]">{diff.title}</h3>
+                <p className="text-xs text-slate-600 leading-relaxed">{diff.desc}</p>
               </div>
-              <p className="text-slate-400 text-sm leading-relaxed max-w-xs">Plataforma de contratação e assinatura eletrônica desenvolvida para advogados e escritórios de advocacia.</p>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── 5. SEÇÃO DE SEGURANÇA E CONFORMIDADE ── */}
+      <section id="seguranca" className="py-20 px-4 sm:px-6 bg-[#0B1D3D] text-white">
+        <div className="max-w-7xl mx-auto space-y-12">
+          <div className="text-center space-y-3 max-w-3xl mx-auto">
+            <span className="text-xs font-bold text-gold-400 uppercase tracking-wider bg-gold-500/10 px-3 py-1 rounded-full border border-gold-500/30">
+              Conformidade Técnica e Jurídica
+            </span>
+            <h2 className="text-3xl font-black text-white">Rastreabilidade e Integridade Garantidas</h2>
+            <p className="text-sm text-slate-300">
+              Segurança estruturada nos termos da Legislação Brasileira de Assinaturas Eletrônicas.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-4 gap-6 text-center">
+            <div className="p-6 bg-[#132A54] rounded-2xl border border-white/10 space-y-2">
+              <ShieldCheck className="w-8 h-8 text-gold-400 mx-auto" />
+              <h3 className="font-bold text-white text-sm">MP 2.200-2 / 2001</h3>
+              <p className="text-xs text-slate-300">Respaldo legal do Art. 10, § 2º para assinaturas avançadas.</p>
             </div>
-            <div>
-              <h4 className="font-semibold text-white text-sm mb-4">Navegação</h4>
-              <ul className="space-y-2.5 text-sm text-slate-400">
-                <li><a href="#como-funciona" className="hover:text-white transition-colors">Como funciona</a></li>
-                <li><a href="#diferenciais" className="hover:text-white transition-colors">Diferenciais</a></li>
-                <li><a href="#recursos" className="hover:text-white transition-colors">Recursos</a></li>
-                <li><a href="#seguranca" className="hover:text-white transition-colors">Segurança</a></li>
-                <li><a href="#planos" className="hover:text-white transition-colors">Planos</a></li>
-                <li><a href="#faq" className="hover:text-white transition-colors">Perguntas frequentes</a></li>
-              </ul>
+
+            <div className="p-6 bg-[#132A54] rounded-2xl border border-white/10 space-y-2">
+              <FileCheck2 className="w-8 h-8 text-gold-400 mx-auto" />
+              <h3 className="font-bold text-white text-sm">Lei 14.063 / 2020</h3>
+              <p className="text-xs text-slate-300">Classificação oficial de assinatura eletrônica avançada.</p>
             </div>
-            <div>
-              <h4 className="font-semibold text-white text-sm mb-4">Conta</h4>
-              <ul className="space-y-2.5 text-sm text-slate-400">
-                <li><Link href="/login" className="hover:text-white transition-colors">Entrar</Link></li>
-                <li><Link href="/register" className="hover:text-white transition-colors">Criar conta</Link></li>
-                <li><a href={whatsappDefault} target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> Falar com consultor</a></li>
-              </ul>
+
+            <div className="p-6 bg-[#132A54] rounded-2xl border border-white/10 space-y-2">
+              <Lock className="w-8 h-8 text-gold-400 mx-auto" />
+              <h3 className="font-bold text-white text-sm">Hash SHA-256</h3>
+              <p className="text-xs text-slate-300">Código criptográfico único de 64 caracteres impresso no PDF.</p>
             </div>
-            <div>
-              <h4 className="font-semibold text-white text-sm mb-4">Legal e Contato</h4>
-              <ul className="space-y-2.5 text-sm text-slate-400">
-                <li><Link href="/termos" className="hover:text-white transition-colors">Termos de Uso</Link></li>
-                <li><Link href="/privacidade" className="hover:text-white transition-colors">Política de Privacidade</Link></li>
-                <li className="pt-1"><a href="https://wa.me/5573988250201" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">WhatsApp: (73) 98825-0201</a></li>
-              </ul>
+
+            <div className="p-6 bg-[#132A54] rounded-2xl border border-white/10 space-y-2">
+              <Clock className="w-8 h-8 text-gold-400 mx-auto" />
+              <h3 className="font-bold text-white text-sm">Horário de Brasília</h3>
+              <p className="text-xs text-slate-300">Carimbo de data e hora em fuso oficial UTC-3.</p>
             </div>
           </div>
-          <div className="border-t border-white/10 pt-6 text-center text-xs text-slate-500">
-            <p>© {new Date().getFullYear()} AssinaJur. Todos os direitos reservados.</p>
+        </div>
+      </section>
+
+      {/* ── 6. PLANOS DE ASSINATURA ── */}
+      <section id="planos" className="py-20 px-4 sm:px-6 bg-white border-b border-slate-200/80">
+        <div className="max-w-7xl mx-auto space-y-12">
+          <div className="text-center space-y-3 max-w-3xl mx-auto">
+            <span className="text-xs font-bold text-brand-600 uppercase tracking-wider bg-brand-50 px-3 py-1 rounded-full border border-brand-200">
+              Planos Transparentes
+            </span>
+            <h2 className="text-3xl font-black text-[#0B1D3D]">Escolha o plano ideal para seu escritório</h2>
+            <p className="text-sm text-slate-600">
+              Valores acessíveis sem taxas escondidas, sem multa de fidelidade e sem cobrança automática.
+            </p>
           </div>
+
+          <div className="grid md:grid-cols-4 gap-6 items-stretch">
+            {/* PLANO ESSENCIAL */}
+            <div className="bg-[#F7F8FA] p-6 rounded-2xl border border-slate-200 flex flex-col justify-between space-y-6">
+              <div className="space-y-4">
+                <span className="font-extrabold text-[#0B1D3D] text-lg block">Essencial</span>
+                <div className="text-3xl font-black text-[#0B1D3D]">
+                  R$ 39,90 <span className="text-xs font-normal text-slate-500">/mês</span>
+                </div>
+                <p className="text-xs text-slate-600">Para advogados autônomos que estão iniciando a digitalização.</p>
+                <ul className="space-y-2 text-xs text-slate-700 font-medium">
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Até 20 pacotes / mês</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> 1 Usuário</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Cadastro de Clientes</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Prova de presença 4:3</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Certificado de Evidências</li>
+                </ul>
+              </div>
+              <a
+                href={getWhatsAppLink('Olá! Gostaria de contratar o Plano Essencial do AssinaJur por R$ 39,90/mês.')}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full py-3 text-center bg-[#0B1D3D] hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors"
+              >
+                Contratar Essencial
+              </a>
+            </div>
+
+            {/* PLANO PROFISSIONAL (RECOMENDADO) */}
+            <div className="bg-white p-6 rounded-2xl border-2 border-brand-600 shadow-xl flex flex-col justify-between space-y-6 relative transform lg:-translate-y-2">
+              <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-brand-600 text-white text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider">
+                Mais Escolhido
+              </span>
+              <div className="space-y-4">
+                <span className="font-extrabold text-[#0B1D3D] text-lg block">Profissional</span>
+                <div className="text-3xl font-black text-brand-600">
+                  R$ 69,90 <span className="text-xs font-normal text-slate-500">/mês</span>
+                </div>
+                <p className="text-xs text-slate-600">Para advogados e pequenos escritórios com maior fluxo de atendimento.</p>
+                <ul className="space-y-2 text-xs text-slate-700 font-medium">
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Até 60 pacotes / mês</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Até 3 Usuários</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Todos os recursos Essencial</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Marca do escritório</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Suporte prioritário</li>
+                </ul>
+              </div>
+              <a
+                href={getWhatsAppLink('Olá! Gostaria de contratar o Plano Profissional do AssinaJur por R$ 69,90/mês.')}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full py-3 text-center bg-brand-600 hover:bg-brand-500 text-white font-extrabold rounded-xl text-xs transition-colors shadow-md"
+              >
+                Contratar Profissional
+              </a>
+            </div>
+
+            {/* PLANO ESCRITÓRIO */}
+            <div className="bg-[#F7F8FA] p-6 rounded-2xl border border-slate-200 flex flex-col justify-between space-y-6">
+              <div className="space-y-4">
+                <span className="font-extrabold text-[#0B1D3D] text-lg block">Escritório</span>
+                <div className="text-3xl font-black text-[#0B1D3D]">
+                  R$ 99,90 <span className="text-xs font-normal text-slate-500">/mês</span>
+                </div>
+                <p className="text-xs text-slate-600">Para escritórios em crescimento com equipes de advogados.</p>
+                <ul className="space-y-2 text-xs text-slate-700 font-medium">
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Até 150 pacotes / mês</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Até 5 Usuários</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Todos os recursos do Profissional</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Gestão de permissões</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Suporte Comercial dedicado</li>
+                </ul>
+              </div>
+              <a
+                href={getWhatsAppLink('Olá! Gostaria de contratar o Plano Escritório do AssinaJur por R$ 99,90/mês.')}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full py-3 text-center bg-[#0B1D3D] hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors"
+              >
+                Contratar Escritório
+              </a>
+            </div>
+
+            {/* PLANO SOB MEDIDA */}
+            <div className="bg-[#F7F8FA] p-6 rounded-2xl border border-slate-200 flex flex-col justify-between space-y-6">
+              <div className="space-y-4">
+                <span className="font-extrabold text-[#0B1D3D] text-lg block">Sob Medida</span>
+                <div className="text-2xl font-black text-[#0B1D3D]">
+                  Consulte-nos
+                </div>
+                <p className="text-xs text-slate-600">Para grandes bancadas jurídicas ou demandas volumosas.</p>
+                <ul className="space-y-2 text-xs text-slate-700 font-medium">
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Pacotes personalizados</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Múltiplas filiais / OABs</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> Atendimento consultivo</li>
+                </ul>
+              </div>
+              <a
+                href={getWhatsAppLink('Olá! Gostaria de uma proposta de plano Sob Medida para o meu escritório.')}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full py-3 text-center bg-[#0B1D3D] hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors"
+              >
+                Falar com Consultor
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── 7. SEÇÃO DE PERGUNTAS FREQUENTES (FAQ) ── */}
+      <section id="faq" className="py-20 px-4 sm:px-6 bg-[#F7F8FA] border-b border-slate-200/80">
+        <div className="max-w-4xl mx-auto space-y-10">
+          <div className="text-center space-y-3">
+            <span className="text-xs font-bold text-gold-600 uppercase tracking-wider bg-gold-100 px-3 py-1 rounded-full border border-gold-300">
+              Esclareça suas dúvidas
+            </span>
+            <h2 className="text-3xl font-black text-[#0B1D3D]">Perguntas Frequentes (FAQ)</h2>
+            <p className="text-sm text-slate-600">
+              Tudo o que você precisa saber sobre a validade jurídica, o fluxo de assinatura e o teste do AssinaJur.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {FAQ_ITEMS.map((item, idx) => (
+              <div key={idx} className="bg-white rounded-2xl border border-slate-200 overflow-hidden transition-all">
+                <button
+                  onClick={() => toggleFaq(idx)}
+                  className="w-full p-5 text-left font-bold text-[#0B1D3D] text-sm flex items-center justify-between gap-4 hover:bg-slate-50 transition-colors"
+                >
+                  <span>{item.q}</span>
+                  <ChevronDown className={`w-4 h-4 text-gold-500 shrink-0 transition-transform ${openFaq === idx ? 'rotate-180' : ''}`} />
+                </button>
+                {openFaq === idx && (
+                  <div className="px-5 pb-5 text-xs text-slate-600 leading-relaxed border-t border-slate-100 pt-3">
+                    {item.a}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── 8. SEÇÃO DE SUPORTE E CONTATO COMERCIAL ── */}
+      <section className="py-16 px-4 sm:px-6 bg-white border-b border-slate-200/80">
+        <div className="max-w-5xl mx-auto bg-[#0B1D3D] text-white p-8 sm:p-12 rounded-3xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-8">
+          <div className="space-y-3 text-center md:text-left">
+            <h2 className="text-2xl font-black text-white">Precisa de atendimento do nosso time?</h2>
+            <p className="text-xs text-slate-300 max-w-lg leading-relaxed">
+              Tire dúvidas diretamente com a equipe comercial do AssinaJur pelo WhatsApp no número comercial (73) 98825-0201.
+            </p>
+          </div>
+
+          <a
+            href={getWhatsAppLink('Olá! Gostaria de tirar dúvidas com o suporte do AssinaJur.')}
+            target="_blank"
+            rel="noreferrer"
+            className="px-8 py-4 bg-emerald-500 hover:bg-emerald-400 text-[#0B1D3D] font-extrabold rounded-xl shadow-lg text-sm transition-all flex items-center gap-2 shrink-0"
+          >
+            <PhoneCall className="w-4 h-4" />
+            Falar pelo WhatsApp
+          </a>
+        </div>
+      </section>
+
+      {/* ── 9. RODAPÉ COMPLETO ── */}
+      <footer className="bg-[#0B1D3D] text-white pt-16 pb-12 px-4 sm:px-6 border-t border-gold-500/20">
+        <div className="max-w-7xl mx-auto grid md:grid-cols-4 gap-10 pb-12 border-b border-white/10 text-xs">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-gold-500 text-[#0B1D3D] font-extrabold flex items-center justify-center text-lg">
+                AJ
+              </div>
+              <span className="font-extrabold text-white text-lg tracking-tight">Assina<span className="text-gold-400">Jur</span></span>
+            </div>
+            <p className="text-slate-400 leading-relaxed">
+              Plataforma de assinatura eletrônica jurídica desenvolvida para advogados e escritórios de advocacia.
+            </p>
+            <div className="text-gold-400 font-mono font-semibold">
+              WhatsApp: (73) 98825-0201
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="font-bold text-white text-sm">Plataforma</h4>
+            <ul className="space-y-2 text-slate-300">
+              <li><a href="#como-funciona" className="hover:text-gold-400">Como funciona</a></li>
+              <li><a href="#demonstracao" className="hover:text-gold-400">Demonstração real</a></li>
+              <li><a href="#diferenciais" className="hover:text-gold-400">Diferenciais</a></li>
+              <li><a href="#seguranca" className="hover:text-gold-400">Segurança & Legalidade</a></li>
+              <li><a href="#planos" className="hover:text-gold-400">Planos & Preços</a></li>
+            </ul>
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="font-bold text-white text-sm">Acesso Rápido</h4>
+            <ul className="space-y-2 text-slate-300">
+              <li><Link href="/login" className="hover:text-gold-400">Painel do Escritório</Link></li>
+              <li><Link href="/register" className="hover:text-gold-400">Criar Conta Gratuita</Link></li>
+              <li><Link href="/verificar" className="hover:text-gold-400">Verificar Documento</Link></li>
+              <li><Link href="/admin/login" className="hover:text-gold-400">Acesso Admin</Link></li>
+            </ul>
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="font-bold text-white text-sm">Informações Legais</h4>
+            <ul className="space-y-2 text-slate-300">
+              <li><Link href="/termos" className="hover:text-gold-400">Termos de Uso</Link></li>
+              <li><Link href="/privacidade" className="hover:text-gold-400">Política de Privacidade</Link></li>
+              <li className="text-slate-400 pt-2">Conformidade com a MP 2.200-2/2001 e a Lei 14.063/2020.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="max-w-7xl mx-auto pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-4">
+          <p>© 2026 AssinaJur. Todos os direitos reservados.</p>
+          <p className="text-[11px]">Horário Oficial de Brasília — UTC−3</p>
         </div>
       </footer>
     </div>

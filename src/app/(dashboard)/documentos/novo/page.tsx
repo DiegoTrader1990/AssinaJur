@@ -506,10 +506,18 @@ export default function NewDocumentPage() {
                 onChange={(e) => setDocumentType(e.target.value)}
                 className="w-full p-2.5 border border-slate-300 rounded-xl text-slate-800 text-sm focus:border-gold-500 focus:outline-none"
               >
-                <option value="CONTRATO">Contrato de Honorários</option>
-                <option value="PROCURACAO">Procuração Ad Judicia</option>
-                <option value="DECLARACAO">Declaração de Hipossuficiência</option>
-                <option value="OUTROS">Outros Documentos</option>
+                <option value="Contrato">Contrato</option>
+                <option value="Procuração">Procuração</option>
+                <option value="Declaração">Declaração</option>
+                <option value="Termo">Termo</option>
+                <option value="Acordo">Acordo</option>
+                <option value="Petição">Petição</option>
+                <option value="Documento de identificação">Documento de identificação</option>
+                <option value="Documento previdenciário">Documento previdenciário</option>
+                <option value="Documento trabalhista">Documento trabalhista</option>
+                <option value="Documento societário">Documento societário</option>
+                <option value="Outros">Outros</option>
+                <option value="Não informado">Não informado</option>
               </select>
             </div>
           </div>

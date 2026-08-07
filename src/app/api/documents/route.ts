@@ -86,7 +86,7 @@ export async function POST(req: Request) {
           officeId: user.officeId,
           clientId: clientId || null,
           title,
-          documentType: documentType || 'DOCUMENTO',
+          documentType: documentType || 'Não informado',
           originalFileId,
           originalHash,
           status: 'PRONTO_PARA_ENVIO',

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { maskCpf, maskPhone } from '@/lib/pdfCertificate';
+import { formatFullCpf, formatFullPhone } from '@/lib/pdfCertificate';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +38,7 @@ export async function GET(
         },
         events: {
           select: { eventType: true, description: true, createdAt: true },
+          where: { NOT: { eventType: 'OTP_SENT' } },
           orderBy: { createdAt: 'asc' },
         },
       },
@@ -47,15 +48,11 @@ export async function GET(
       return NextResponse.json({ error: 'Código de verificação de autenticidade não encontrado.' }, { status: 404 });
     }
 
-    // Mascaramento de dados em conformidade com a LGPD — a página pública nunca expõe
-    // CPF completo, telefone completo, fotos de selfie ou coordenadas exatas de
-    // geolocalização (isso fica reservado ao certificado em PDF, de posse do escritório
-    // e do próprio signatário).
-    const maskedSigners = document.signers.map((s) => ({
+    const formattedSigners = document.signers.map((s) => ({
       name: s.name,
       role: s.role,
-      maskedCpf: maskCpf(s.cpf),
-      maskedPhone: maskPhone(s.phone),
+      cpf: formatFullCpf(s.cpf),
+      phone: formatFullPhone(s.phone),
       status: s.status,
       signedAt: s.signedAt,
       signatureType: s.signatureType,
@@ -83,7 +80,7 @@ export async function GET(
       originalHash: document.originalHash,
       signedHash: document.signedHash,
       office: document.office,
-      signers: maskedSigners,
+      signers: formattedSigners,
       auditTrail,
     });
   } catch (error: any) {

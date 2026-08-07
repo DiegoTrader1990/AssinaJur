@@ -13,7 +13,6 @@ export async function POST(
     const body = await req.json();
     const {
       confirmCpf,
-      otpCode,
       signatureType,
       signatureImage,
       signedConsentText,
@@ -37,7 +36,7 @@ export async function POST(
     });
 
     if (!signer || !signer.document) {
-      return NextResponse.json({ error: 'Signatário inválido.' }, { status: 404 });
+      return NextResponse.json({ error: 'Signatário inválido ou link expirado.' }, { status: 404 });
     }
 
     if (signer.status === 'ASSINADO') {
@@ -55,25 +54,10 @@ export async function POST(
       );
     }
 
-    // 2. Validação do Código OTP
-    if (!otpCode || signer.otpCode !== otpCode) {
-      return NextResponse.json(
-        { error: 'Código de verificação OTP incorreto.' },
-        { status: 400 }
-      );
-    }
-
-    if (signer.otpExpiresAt && new Date() > new Date(signer.otpExpiresAt)) {
-      return NextResponse.json(
-        { error: 'O código de verificação expirou. Por favor, solicite um novo código.' },
-        { status: 400 }
-      );
-    }
-
-    // 2.1 Validação da Prova de Presença ao Vivo (3 selfies obrigatórias)
+    // 2. Validação da Prova de Presença (3 selfies obrigatórias: centro, esquerda, direita)
     if (!selfieCenterImage || !selfieLeftImage || !selfieRightImage) {
       return NextResponse.json(
-        { error: 'É necessário concluir a prova de presença ao vivo (3 fotos) antes de assinar.' },
+        { error: 'É necessário concluir a prova de presença ao vivo (3 fotos: frontal, perfil esquerdo e perfil direito) antes de assinar.' },
         { status: 400 }
       );
     }
@@ -101,7 +85,6 @@ export async function POST(
         signedAt: new Date(),
         ipAddress: clientIp,
         userAgent,
-        otpCode: null, // Limpa o código de uso único
       },
     });
 
@@ -123,13 +106,24 @@ export async function POST(
       },
     });
 
-    // 6. Registros de Trilha de Auditoria
+    // 6. Registros de Trilha Pública de Eventos em Português Amigável (Sem OTP)
+    await prisma.documentEvent.create({
+      data: {
+        documentId: signer.document.id,
+        signerId: signer.id,
+        eventType: 'IDENTITY_CONFIRMED',
+        description: `CPF informado e confirmado pelo signatário ${signer.name}.`,
+        ipAddress: clientIp,
+        userAgent,
+      },
+    });
+
     await prisma.documentEvent.create({
       data: {
         documentId: signer.document.id,
         signerId: signer.id,
         eventType: 'LIVENESS_CAPTURED',
-        description: `Prova de presença ao vivo capturada (3 fotos: centro, lado 1 e lado 2) para ${signer.name}.`,
+        description: `Prova de presença ao vivo concluída com 3 fotos (frontal, perfil esquerdo e perfil direito) para ${signer.name}.`,
         ipAddress: clientIp,
         userAgent,
         metadata: JSON.stringify({
@@ -146,12 +140,12 @@ export async function POST(
         documentId: signer.document.id,
         signerId: signer.id,
         eventType: 'SIGNATURE_SUBMITTED',
-        description: `Assinatura eletrônica concluída com sucesso pelo signatário ${signer.name} (${signer.role}).`,
+        description: `Assinatura eletrônica concluída com sucesso por ${signer.name} (${signer.role}).`,
         ipAddress: clientIp,
         userAgent,
         metadata: JSON.stringify({
           signatureType,
-          authMethod: 'EMAIL_OTP_CPF',
+          authMethod: 'CPF_LIVENESS_3SELFIES',
           cpfConfirmed: true,
         }),
       },
@@ -163,13 +157,12 @@ export async function POST(
         data: {
           documentId: signer.document.id,
           eventType: 'DOCUMENT_COMPLETED',
-          description: 'Todas as assinaturas foram colhidas. Disparando geração do Certificado de Evidências.',
+          description: 'Todas as assinaturas foram colhidas. Certificado de Evidências Jurídicas emitido.',
           ipAddress: clientIp,
           userAgent,
         },
       });
 
-      // Dispara a geração automatizada do PDF Final com Certificado de Evidências e QR Code
       await generateFinalPdfCertificate(signer.document.id);
     }
 

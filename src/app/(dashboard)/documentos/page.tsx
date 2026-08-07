@@ -111,13 +111,19 @@ export default function DocumentsPage() {
         return <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 font-bold text-xs border border-blue-200">Enviado</span>;
       case 'VISUALIZADO':
         return <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 font-bold text-xs border border-indigo-200">Visualizado</span>;
+      case 'EM_ASSINATURA':
       case 'PARCIALMENTE_ASSINADO':
         return <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-bold text-xs border border-amber-200">Parcialmente Assinado</span>;
       case 'CONCLUIDO':
         return <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold text-xs border border-emerald-200">Concluído</span>;
+      case 'RECUSADO':
+        return <span className="px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 font-bold text-xs border border-rose-200">Recusado</span>;
       case 'CANCELADO':
         return <span className="px-2.5 py-1 rounded-full bg-red-50 text-red-700 font-bold text-xs border border-red-200">Cancelado</span>;
+      case 'EXPIRADO':
+        return <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-bold text-xs border border-slate-300">Expirado</span>;
       case 'PRONTO_PARA_ENVIO':
+      case 'RASCUNHO':
       default:
         return <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold text-xs border border-slate-200">Pronto p/ Envio</span>;
     }
@@ -165,10 +171,14 @@ export default function DocumentsPage() {
             className="py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:border-gold-500"
           >
             <option value="">Todos os Status</option>
+            <option value="PRONTO_PARA_ENVIO">Pronto p/ Envio</option>
             <option value="ENVIADO">Enviado</option>
+            <option value="VISUALIZADO">Visualizado</option>
             <option value="PARCIALMENTE_ASSINADO">Parcialmente Assinado</option>
             <option value="CONCLUIDO">Concluído</option>
+            <option value="RECUSADO">Recusado</option>
             <option value="CANCELADO">Cancelado</option>
+            <option value="EXPIRADO">Expirado</option>
           </select>
         </div>
       </div>
