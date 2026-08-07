@@ -160,6 +160,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const isCapturingRef = useRef<boolean>(false);
   const warmupUntilRef = useRef<number>(0);
   const frontalNoseXRef = useRef<number | null>(null);
+  const leftTurnDirRef = useRef<number | null>(null);
   const centeredStartTimeRef = useRef<number | null>(null);
   const stepStartTimestampRef = useRef<number | null>(null);
 
@@ -357,14 +358,28 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
 
-    // ── FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (EXIGE GIRO REAL DA CABEÇA) ──
+    // ── FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (EXIGE GIRO NA DIREÇÃO CORRETA) ──
     const baseline = frontalNoseXRef.current ?? 0;
-    const turnDeviation = Math.abs(noseRelOffset - baseline);
+    const signedDelta = noseRelOffset - baseline;
+    const absDev = Math.abs(signedDelta);
 
-    // Exige desvio de pelo menos 0.09 em relação à posição frontal da pessoa (giro de ~25-30 graus)
-    const isHeadTurned = turnDeviation >= 0.09;
+    // O rosto precisa ter girado pelo menos 0.08 em relação ao centro da própria pessoa
+    let isCorrectDirection = absDev >= 0.08;
 
-    if (!isHeadTurned) {
+    if (isCorrectDirection) {
+      if (currentKey === 'left') {
+        // Registra o lado do giro da Foto 2
+        leftTurnDirRef.current = signedDelta;
+      } else if (currentKey === 'right' && leftTurnDirRef.current !== null) {
+        // Para a Foto 3 (Direita), EXIGE que a cabeça seja virada para o LADO OPOSTO ao da Foto 2!
+        const isOppositeSide = (signedDelta * leftTurnDirRef.current) < 0;
+        if (!isOppositeSide) {
+          isCorrectDirection = false;
+        }
+      }
+    }
+
+    if (!isCorrectDirection) {
       setFrameState('YELLOW');
       const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
       setSelfieInstruction(`Vire o rosto para a ${dirLabel}`);
@@ -373,7 +388,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
 
-    // GIRO REAL DETECTADO! MOLDURA VERDE + CONTAGEM REGRESSIVA (3..2..1)
+    // DIREÇÃO OPOSTA CONFIRMADA! MOLDURA VERDE + CONTAGEM REGRESSIVA (3..2..1)
     setFrameState('GREEN');
 
     if (!centeredStartTimeRef.current) {
@@ -387,7 +402,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
     setSelfieInstruction(`Excelente! Mantenha a cabeça virada (${secsRemaining}s)...`);
 
-    // Após 3.0s exatos com a cabeça virada -> CAPTURA A FOTO DE PERFIL
+    // Após 3.0s exatos com a cabeça virada na direção correta -> CAPTURA A FOTO
     if (elapsed >= 3000) {
       setCountdownSecs(null);
       centeredStartTimeRef.current = null;
