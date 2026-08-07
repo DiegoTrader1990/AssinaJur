@@ -426,13 +426,13 @@ export default function ClientsPage() {
           onDragLeave={handleOcrDragLeave}
           onDragOver={handleOcrDragOver}
           onDrop={handleOcrDrop}
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto font-sans relative"
+          className="fixed inset-0 z-50 bg-slate-900/25 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto font-sans relative"
         >
           {ocrDragActive && (
-            <div className="absolute inset-0 bg-blue-900/90 backdrop-blur-md z-50 flex flex-col items-center justify-center text-white p-8 border-4 border-dashed border-blue-400 pointer-events-none">
-              <Upload className="w-16 h-16 text-blue-300 animate-bounce mb-4" />
+            <div className="absolute inset-0 bg-blue-600/90 backdrop-blur-md z-50 flex flex-col items-center justify-center text-white p-8 border-4 border-dashed border-white/80 pointer-events-none">
+              <Upload className="w-16 h-16 text-white animate-bounce mb-4" />
               <h2 className="font-heading text-2xl font-extrabold">Solte o RG, CNH ou PDF aqui!</h2>
-              <p className="text-sm text-blue-200 mt-2">Preenchimento automático por visão computacional</p>
+              <p className="text-sm text-blue-100 mt-2">Preenchimento automático por visão computacional</p>
             </div>
           )}
 
@@ -808,7 +808,7 @@ export default function ClientsPage() {
 
       {/* Modal: Ficha Detalhada do Cliente */}
       {selectedClient && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto font-sans">
+        <div className="fixed inset-0 z-50 bg-slate-900/25 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto font-sans">
           <div className="bg-white rounded-3xl max-w-4xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative my-8">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
