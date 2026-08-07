@@ -20,7 +20,8 @@ import {
   Sparkles,
   ChevronRight,
   MoveLeft,
-  MoveRight
+  MoveRight,
+  Target
 } from 'lucide-react';
 import { formatBrasiliaDateTime } from '@/lib/dateUtils';
 
@@ -64,6 +65,8 @@ const FACE_EDGE_A_IDX = 234;
 const FACE_EDGE_B_IDX = 454;
 const CHIN_IDX = 152;
 const FOREHEAD_IDX = 10;
+const LEFT_EYE_IDX = 33;
+const RIGHT_EYE_IDX = 263;
 
 function computeFaceOrientation(landmarks: any[]) {
   const nose = landmarks[NOSE_TIP_IDX];
@@ -71,21 +74,37 @@ function computeFaceOrientation(landmarks: any[]) {
   const edgeB = landmarks[FACE_EDGE_B_IDX];
   const chin = landmarks[CHIN_IDX];
   const forehead = landmarks[FOREHEAD_IDX];
+  const leftEye = landmarks[LEFT_EYE_IDX];
+  const rightEye = landmarks[RIGHT_EYE_IDX];
 
-  if (!nose || !edgeA || !edgeB || !chin || !forehead) return null;
+  if (!nose || !chin || !forehead) return null;
 
-  const spanX = edgeB.x - edgeA.x;
-  if (!spanX || spanX <= 0) return null;
+  const spanX = (edgeA && edgeB) ? (edgeB.x - edgeA.x) : 0;
+  const yawRatio = (spanX > 0 && edgeA) ? (nose.x - edgeA.x) / spanX : 0.5;
 
-  const yawRatio = (nose.x - edgeA.x) / spanX;
-  const faceWidthRatio = spanX;
+  // Medição secundária usando distância do nariz para cada olho (imune a bochecha escondida)
+  let eyeYawDev = 0;
+  if (leftEye && rightEye) {
+    const distL = Math.hypot(nose.x - leftEye.x, nose.y - leftEye.y);
+    const distR = Math.hypot(nose.x - rightEye.x, nose.y - rightEye.y);
+    const sumDist = distL + distR;
+    if (sumDist > 0) {
+      eyeYawDev = Math.abs((distL / sumDist) - 0.50);
+    }
+  }
+
+  const rawYawDev = Math.abs(yawRatio - 0.50);
+  const yawDeviation = Math.max(rawYawDev, eyeYawDev * 2.2);
+
+  const faceWidthRatio = spanX > 0 ? spanX : 0.30;
   const faceHeightRatio = Math.abs(chin.y - forehead.y);
 
   return {
     yawRatio,
+    yawDeviation,
     faceWidthRatio,
     faceHeightRatio,
-    centerX: (edgeA.x + edgeB.x) / 2,
+    centerX: edgeA && edgeB ? (edgeA.x + edgeB.x) / 2 : nose.x,
     centerY: (chin.y + forehead.y) / 2,
   };
 }
@@ -160,6 +179,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const activeKeyRef = useRef<SelfieKey>('center');
   const stabilityCounterRef = useRef<number>(0);
   const isCapturingRef = useRef<boolean>(false);
+  const warmupUntilRef = useRef<number>(0);
 
   // ── RECUPERAÇÃO DE SESSÃO LOCALSTORAGE ──
   const storageKey = `assinajur_session_${params.token}`;
@@ -280,6 +300,19 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const handleFaceMeshResults = (results: any) => {
     if (isCapturingRef.current || !streamRef.current) return;
 
+    // Tempo de aquecimento / estabilização inicial (1.5 segundos para a câmera focar/ajustar exposição)
+    if (Date.now() < warmupUntilRef.current) {
+      setFrameState('YELLOW');
+      const currentKey = activeKeyRef.current;
+      setSelfieInstruction(
+        currentKey === 'center'
+          ? 'Aguarde a câmera estabilizar...'
+          : `Prepare-se para o ${LIVENESS_STEPS.find(s => s.key === currentKey)?.label}...`
+      );
+      stabilityCounterRef.current = 0;
+      return;
+    }
+
     const landmarks = results?.multiFaceLandmarks?.[0];
     if (!landmarks) {
       setFrameState('GRAY');
@@ -296,27 +329,27 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
 
-    const { yawRatio, faceWidthRatio, centerX } = faceInfo;
+    const { yawRatio, yawDeviation, faceWidthRatio, centerX } = faceInfo;
     const currentKey = activeKeyRef.current;
 
-    // Checar se o rosto está muito longe ou muito perto (mais flexível para perfil)
-    const minWidth = currentKey === 'center' ? 0.20 : 0.12;
+    // Checar se o rosto está muito longe ou muito perto
+    const minWidth = currentKey === 'center' ? 0.18 : 0.10;
     if (faceWidthRatio < minWidth) {
       setFrameState('YELLOW');
       setSelfieInstruction('Aproxime um pouco mais o rosto.');
       stabilityCounterRef.current = 0;
       return;
     }
-    if (faceWidthRatio > 0.70) {
+    if (faceWidthRatio > 0.75) {
       setFrameState('YELLOW');
       setSelfieInstruction('Afaste um pouco o rosto da câmera.');
       stabilityCounterRef.current = 0;
       return;
     }
 
-    // Checar se está na área da tela (mais flexível para perfil)
-    const minX = currentKey === 'center' ? 0.22 : 0.08;
-    const maxX = currentKey === 'center' ? 0.78 : 0.92;
+    // Checar se está na área da tela
+    const minX = currentKey === 'center' ? 0.20 : 0.05;
+    const maxX = currentKey === 'center' ? 0.80 : 0.95;
     if (centerX < minX || centerX > maxX) {
       setFrameState('YELLOW');
       setSelfieInstruction('Posicione o rosto no centro da moldura.');
@@ -326,10 +359,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
     let isAngleRecognized = false;
     setCurrentYaw(yawRatio);
-
-    // Calculamos o desvio em relação ao centro (0.50)
-    // Usamos Math.abs para ser 100% agnóstico a espelhamento de câmera ou dispositivo
-    const yawDeviation = Math.abs(yawRatio - 0.50);
 
     if (currentKey === 'center') {
       const prog = Math.min(100, Math.max(0, (1 - yawDeviation / 0.12) * 100));
@@ -343,12 +372,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         setSelfieInstruction('Olhe diretamente para a câmera.');
       }
     } else {
-      // Para 'left' ou 'right': qualquer desvio do centro >= 0.08 (apenas 8% de giro do rosto!)
-      // O progresso vai de 0% (olhando front) até 100% (rosto virado)
-      const prog = Math.min(100, Math.max(0, (yawDeviation / 0.08) * 100));
+      // Para 'left' ou 'right': desvio >= 0.05 (apenas 5% de giro do rosto!)
+      const prog = Math.min(100, Math.max(0, (yawDeviation / 0.05) * 100));
       setTurnProgress(prog);
 
-      if (yawDeviation >= 0.08) {
+      if (yawDeviation >= 0.05) {
         isAngleRecognized = true;
         setSelfieInstruction('Excelente! Mantenha a cabeça virada...');
       } else {
@@ -362,7 +390,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setFrameState('GREEN');
       stabilityCounterRef.current += 1;
 
-      // Exige 2 frames consecutivos de estabilidade (~0.5 segundos) para captura instantânea e precisa
+      // Exige 2 frames consecutivos de estabilidade (~0.5 segundos) para disparo preciso
       if (stabilityCounterRef.current >= 2) {
         triggerAutomaticCapture(currentKey);
       }
@@ -431,10 +459,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       if (key === 'center') {
         activeKeyRef.current = 'left';
         setActiveSelfieKey('left');
+        warmupUntilRef.current = Date.now() + 1200; // 1.2s de pausa para o usuário virar o rosto
         setSelfieInstruction('Ótimo! Agora vire o rosto para a ESQUERDA.');
       } else if (key === 'left') {
         activeKeyRef.current = 'right';
         setActiveSelfieKey('right');
+        warmupUntilRef.current = Date.now() + 1200; // 1.2s de pausa para o usuário virar o rosto
         setSelfieInstruction('Perfeito! Agora vire o rosto para a DIREITA.');
       } else if (key === 'right') {
         setSelfieInstruction('✓ Prova de presença concluída com 3 fotos! Confira o resultado.');
@@ -477,6 +507,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setCameraActive(true);
       setFrameState('GRAY');
       stabilityCounterRef.current = 0;
+      warmupUntilRef.current = Date.now() + 1500; // 1.5s de aquecimento inicial para focar/estabilizar
 
       const fm = await initFaceMesh();
       if (fm) {
@@ -809,58 +840,50 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   }`} />
                 </div>
 
-                {/* ─── TRILHO GUIA E SETA MÓVEL QUE ACOMPANHA O GIRO DO ROSTO ─── */}
-                {activeSelfieKey !== 'center' && !capturingSelfie && (
-                  <div className="absolute top-3 left-3 right-3 bg-black/65 backdrop-blur-md p-2.5 rounded-xl border border-white/20 shadow-2xl pointer-events-none space-y-1.5">
-                    <div className="flex justify-between items-center text-[11px] font-bold px-1">
-                      <span className="text-slate-200">
-                        {activeSelfieKey === 'left' ? '← Vire para a ESQUERDA' : 'Vire para a DIREITA →'}
-                      </span>
-                      <span className={frameState === 'GREEN' ? 'text-emerald-400 font-extrabold' : 'text-amber-400'}>
-                        {Math.round(turnProgress)}%
-                      </span>
-                    </div>
+                {/* ─── LINHA GUIA MINIMALISTA E SETA MÓVEL (COMEÇA NO CENTRO 50%) ─── */}
+                {cameraActive && !capturingSelfie && (
+                  <div className="absolute top-4 left-6 right-6 pointer-events-none z-10">
+                    <div className="relative h-1.5 bg-white/20 backdrop-blur-xs rounded-full overflow-visible">
+                      {/* Marcador central de referência */}
+                      <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white/70 border border-black/40" />
 
-                    {/* Trilho de Movimento */}
-                    <div className="relative h-7 bg-slate-900/90 rounded-lg border border-white/15 overflow-hidden flex items-center px-1">
-                      {/* Marcador Central (Início) */}
-                      <div className="absolute left-1/2 -translate-x-1/2 top-1 bottom-1 w-0.5 bg-slate-500/50" />
+                      {activeSelfieKey !== 'center' && (
+                        <>
+                          {/* Alvo minimalista na ponta de destino */}
+                          <div
+                            className={`absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center transition-all ${
+                              activeSelfieKey === 'left' ? 'left-0' : 'right-0'
+                            } ${
+                              frameState === 'GREEN'
+                                ? 'bg-emerald-400 text-black shadow-lg shadow-emerald-500/50 scale-110'
+                                : 'bg-amber-400/80 text-black animate-pulse'
+                            }`}
+                          >
+                            {frameState === 'GREEN' ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : <Target className="w-3.5 h-3.5" />}
+                          </div>
 
-                      {/* Marcador Alvo (Chegada) */}
-                      <div
-                        className={`absolute top-0.5 bottom-0.5 w-12 rounded-md transition-colors flex items-center justify-center font-extrabold text-[9px] tracking-wider ${
-                          activeSelfieKey === 'left' ? 'left-1' : 'right-1'
-                        } ${
-                          frameState === 'GREEN'
-                            ? 'bg-emerald-500/40 border border-emerald-400 text-emerald-300 shadow-sm shadow-emerald-500/30'
-                            : 'bg-amber-500/20 border border-amber-400/40 text-amber-300'
-                        }`}
-                      >
-                        ALVO
-                      </div>
-
-                      {/* Seta Móvel que Desliza Conforme o Rosto Vira */}
-                      <div
-                        className={`absolute top-1 bottom-1 px-2 rounded-md flex items-center justify-center gap-1 font-black text-xs transition-all duration-100 shadow-md ${
-                          frameState === 'GREEN'
-                            ? 'bg-emerald-400 text-slate-950 scale-105'
-                            : 'bg-amber-400 text-slate-950'
-                        }`}
-                        style={{
-                          left:
-                            activeSelfieKey === 'left'
-                              ? `calc(50% - ${(turnProgress * 0.42)}%)`
-                              : `calc(50% + ${(turnProgress * 0.42)}% - 32px)`,
-                        }}
-                      >
-                        {frameState === 'GREEN' ? (
-                          <Check className="w-3.5 h-3.5 stroke-[3]" />
-                        ) : activeSelfieKey === 'left' ? (
-                          <MoveLeft className="w-3.5 h-3.5" />
-                        ) : (
-                          <MoveRight className="w-3.5 h-3.5" />
-                        )}
-                      </div>
+                          {/* Seta móvel discreta que desliza do CENTRO (50%) até o ALVO */}
+                          <div
+                            className={`absolute top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center font-extrabold shadow-lg transition-all duration-100 ${
+                              frameState === 'GREEN'
+                                ? 'bg-emerald-400 text-black scale-110'
+                                : 'bg-amber-400 text-black'
+                            }`}
+                            style={{
+                              left:
+                                activeSelfieKey === 'left'
+                                  ? `calc(50% - ${(turnProgress * 0.46)}% - 14px)`
+                                  : `calc(50% + ${(turnProgress * 0.46)}% - 14px)`,
+                            }}
+                          >
+                            {activeSelfieKey === 'left' ? (
+                              <ArrowLeft className="w-3.5 h-3.5 stroke-[3]" />
+                            ) : (
+                              <ArrowRight className="w-3.5 h-3.5 stroke-[3]" />
+                            )}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
