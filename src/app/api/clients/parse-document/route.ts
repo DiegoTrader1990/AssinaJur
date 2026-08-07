@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import Tesseract from 'tesseract.js';
-import { PDFDocument } from 'pdf-lib';
 import { maskCpfCnpj } from '@/lib/formatters';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +14,23 @@ function timeoutPromise<T>(ms: number, promise: Promise<T>): Promise<T | null> {
     clearTimeout(timeoutId);
     return result;
   });
+}
+
+function extractJpegFromPdfBuffer(pdfBuffer: Buffer): Buffer | null {
+  try {
+    const startIdx = pdfBuffer.indexOf(Buffer.from([0xff, 0xd8, 0xff]));
+    if (startIdx !== -1) {
+      const endIdx = pdfBuffer.indexOf(Buffer.from([0xff, 0xd9]), startIdx);
+      if (endIdx !== -1) {
+        return pdfBuffer.subarray(startIdx, endIdx + 2);
+      }
+      // Se não encontrou marcador de fim estrito, pega os primeiros 4MB a partir do início JPEG
+      return pdfBuffer.subarray(startIdx, Math.min(pdfBuffer.length, startIdx + 4 * 1024 * 1024));
+    }
+  } catch {
+    /* fallback */
+  }
+  return null;
 }
 
 export async function POST(req: Request) {
@@ -38,37 +54,36 @@ export async function POST(req: Request) {
     const isPdf = fileName.endsWith('.pdf') || mimeType.includes('pdf');
 
     let text = '';
-
-    // 1. Extração Ultra-Rápida de Strings e Metadados do Buffer (Milissegundos)
-    const rawString = buffer.toString('utf-8', 0, Math.min(buffer.length, 100000));
-    text += ' ' + rawString;
+    let targetBufferToRecognize: any = buffer;
 
     if (isPdf) {
-      try {
-        const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
-        const pageCount = pdfDoc.getPageCount();
-        text += ` PDF PageCount ${pageCount} `;
-      } catch {
-        /* fallback silencioso */
+      // Tenta extrair a imagem JPEG escaneada contida dentro do arquivo PDF (ex: CamScanner, Fotos)
+      const extractedJpeg = extractJpegFromPdfBuffer(buffer);
+      if (extractedJpeg) {
+        targetBufferToRecognize = extractedJpeg;
       }
     }
 
-    // 2. Executa OCR Tesseract com limite estrito de 2.5 segundos para NUNCA travar a tela
+    // Executa OCR Tesseract na imagem extraída ou foto
     try {
       const ocrResult = await timeoutPromise(
-        2500,
-        Tesseract.recognize(buffer, 'por', {
+        4000,
+        Tesseract.recognize(targetBufferToRecognize, 'por', {
           logger: () => {},
         })
       );
       if (ocrResult?.data?.text) {
         text += ' ' + ocrResult.data.text;
       }
-    } catch {
-      /* OCR timeout ou fallback silencioso */
+    } catch (e: any) {
+      console.log('OCR exception fallback:', e?.message);
     }
 
-    console.log('--- OCR EXTRACTED TEXT ---', text.substring(0, 300));
+    // Se o texto extraído ainda estiver vazio, analisa também o buffer bruto do PDF por expressões regulares
+    const rawString = buffer.toString('utf-8', 0, Math.min(buffer.length, 200000));
+    text += ' ' + rawString;
+
+    console.log('--- OCR EXTRACTED TEXT ---', text.substring(0, 400));
 
     // Regras de extração de padrões brasileiros (CPF, RG, Data Nasc, Órgão, Nome)
     const cpfMatch = text.match(/\b\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?\d{2}\b/);
@@ -97,7 +112,7 @@ export async function POST(req: Request) {
         if (
           clean.length > 8 &&
           clean.split(' ').length >= 2 &&
-          !/REPUBLICA|FEDERATIVA|BRASIL|MINISTERIO|CARTEIRA|IDENTIDADE|HABILITACAO|VALIDO|NACIONAL/i.test(clean)
+          !/REPUBLICA|FEDERATIVA|BRASIL|MINISTERIO|CARTEIRA|IDENTIDADE|HABILITACAO|VALIDO|NACIONAL|CAMSCANNER/i.test(clean)
         ) {
           extractedName = clean;
           break;

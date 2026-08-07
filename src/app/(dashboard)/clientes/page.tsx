@@ -28,7 +28,10 @@ import {
   Zap,
   Camera,
   Maximize2,
-  ZoomIn
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
+  RotateCcw
 } from 'lucide-react';
 import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
 
@@ -81,6 +84,8 @@ export default function ClientsPage() {
   const [ocrDragActive, setOcrDragActive] = useState(false);
   const [isPdfDoc, setIsPdfDoc] = useState(false);
   const [showZoomModal, setShowZoomModal] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1.0);
+  const [rotationAngle, setRotationAngle] = useState(0);
   const dragCounter = useRef(0);
   const [activeTab, setActiveTab] = useState<'resumo' | 'pessoais' | 'documentos' | 'historico'>('resumo');
 
@@ -195,6 +200,14 @@ export default function ClientsPage() {
       clearTimeout(timeoutId);
       setOcrLoading(false);
     }
+  };
+
+  const handleZoomIn = () => setZoomLevel((prev) => Math.min(prev + 0.25, 3.0));
+  const handleZoomOut = () => setZoomLevel((prev) => Math.max(prev - 0.25, 0.5));
+  const handleRotate = () => setRotationAngle((prev) => (prev + 90) % 360);
+  const handleResetTransform = () => {
+    setZoomLevel(1.0);
+    setRotationAngle(0);
   };
 
   const handleDocumentOcr = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -507,46 +520,82 @@ export default function ClientsPage() {
 
             {/* Layout Lado a Lado (Caso tenha enviado documento) */}
             <div className={ocrDocPreview ? 'grid md:grid-cols-12 gap-5 mt-5' : 'mt-5'}>
-              {/* Coluna da Esquerda: Pré-visualização do Documento Enviado */}
+              {/* Coluna da Esquerda: Pré-visualização com Zoom e Rotação Integrados */}
               {ocrDocPreview && (
                 <div className="md:col-span-5 bg-slate-900 rounded-2xl overflow-hidden border border-slate-700 flex flex-col justify-between p-3 relative group shadow-md max-h-[380px]">
                   <div className="flex items-center justify-between text-white text-[11px] font-bold pb-2 border-b border-slate-800 font-heading">
                     <span className="flex items-center gap-1.5 text-blue-400">
                       <Camera className="w-4 h-4" /> Documento Original
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowZoomModal(true)}
-                      className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all font-heading shadow-xs"
-                    >
-                      <ZoomIn className="w-3.5 h-3.5" /> Ampliar
-                    </button>
+                    
+                    {/* Barra de Ferramentas: Zoom (+/-) e Rotação (90°) */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={handleZoomOut}
+                        title="Diminuir Zoom (-)"
+                        className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-bold transition-all shadow-xs"
+                      >
+                        <ZoomOut className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="text-[10px] font-mono text-slate-300 w-8 text-center">{Math.round(zoomLevel * 100)}%</span>
+                      <button
+                        type="button"
+                        onClick={handleZoomIn}
+                        title="Aumentar Zoom (+)"
+                        className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-bold transition-all shadow-xs"
+                      >
+                        <ZoomIn className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRotate}
+                        title="Girar 90°"
+                        className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold transition-all shadow-xs flex items-center gap-1 font-heading"
+                      >
+                        <RotateCw className="w-3 h-3" /> Girar
+                      </button>
+                    </div>
                   </div>
-                  <div className="my-auto py-2 flex items-center justify-center w-full min-h-[250px] max-h-[270px]">
-                    {isPdfDoc ? (
-                      <iframe
-                        src={ocrDocPreview}
-                        className="w-full h-[260px] rounded-lg bg-white border border-slate-700"
-                        title="Documento PDF"
-                      />
-                    ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={ocrDocPreview}
-                        alt="Documento do cliente"
-                        className="max-h-[260px] w-auto object-contain rounded-lg shadow-md cursor-pointer"
-                        onClick={() => setShowZoomModal(true)}
-                      />
-                    )}
+
+                  <div className="my-auto py-2 flex items-center justify-center w-full min-h-[240px] max-h-[260px] overflow-hidden">
+                    <div
+                      style={{
+                        transform: `scale(${zoomLevel}) rotate(${rotationAngle}deg)`,
+                        transformOrigin: 'center center',
+                      }}
+                      className="transition-transform duration-300 ease-in-out flex items-center justify-center max-w-full max-h-full"
+                    >
+                      {isPdfDoc ? (
+                        <iframe
+                          src={ocrDocPreview}
+                          className="w-full h-[250px] rounded-lg bg-white border border-slate-700"
+                          title="Documento PDF"
+                        />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={ocrDocPreview}
+                          alt="Documento do cliente"
+                          className="max-h-[250px] w-auto object-contain rounded-lg shadow-md cursor-pointer"
+                        />
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-[10px] text-slate-400 font-medium">
-                    <span>Conferência visual</span>
+                    <button
+                      type="button"
+                      onClick={handleResetTransform}
+                      className="text-slate-400 hover:text-white underline text-[10px]"
+                    >
+                      Restaurar Vista
+                    </button>
                     <button
                       type="button"
                       onClick={() => setShowZoomModal(true)}
                       className="text-blue-400 hover:underline font-bold"
                     >
-                      Ver em Tela Cheia 🔍
+                      Tela Cheia 🔍
                     </button>
                   </div>
                 </div>
