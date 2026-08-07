@@ -101,12 +101,14 @@ function computeHeadRotation(landmarks: any[]) {
   }
 
   // Combina as 3 métricas 3D de rotação da cabeça
-  const turnScore = Math.max(eyeAsymmetry * 3.5, zDiff * 4.5, cheekAsymmetry * 3.0);
+  const rawTurnScore = Math.max(eyeAsymmetry * 3.5, zDiff * 4.5, cheekAsymmetry * 3.0);
+  // Aplica zona morta (noise floor) de 0.12 para garantir que o rosto parado de frente fique em 0%
+  const netTurnScore = Math.max(0, rawTurnScore - 0.12);
 
   return {
     noseX: nose.x,
     faceWidthRatio: spanX,
-    turnScore: Math.min(1.0, turnScore),
+    turnScore: Math.min(1.0, netTurnScore),
   };
 }
 
@@ -375,24 +377,31 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     // ─────────────────────────────────────────────────────────────
     setCountdownSecs(null);
 
+    // Se estiver na pausa de transição (cooldown de 1.8s entre fotos), segura a seta no centro
+    if (Date.now() < warmupUntilRef.current) {
+      setFrameState('YELLOW');
+      setTurnProgress(0);
+      stabilityCounterRef.current = 0;
+      return;
+    }
+
     const landmarks = results?.multiFaceLandmarks?.[0];
     const faceInfo = landmarks ? computeHeadRotation(landmarks) : null;
     const turnScore = faceInfo ? faceInfo.turnScore : 0;
 
-    // Progresso visual da seta (0% de frente, 100% quando girar a cabeça)
-    // turnScore >= 0.22 corresponde a um giro claro de cabeça (~20 graus)
+    // Progresso visual da seta (0% cravado de frente, 100% quando girar a cabeça ~30 graus)
     const prog = Math.min(100, Math.max(0, (turnScore / 0.22) * 100));
     setTurnProgress(prog);
 
     const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
 
-    // Dispara a foto SOMENTE quando o usuário virar a cabeça para o lado indicado
+    // Dispara a foto SOMENTE quando o usuário virar a cabeça com firmeza e mantiver por 3 quadros (~0.5s)
     if (turnScore >= 0.22) {
       setFrameState('GREEN');
       stabilityCounterRef.current += 1;
       setSelfieInstruction('Excelente! Mantenha a cabeça virada...');
 
-      if (stabilityCounterRef.current >= 2) {
+      if (stabilityCounterRef.current >= 3) {
         triggerAutomaticCapture(currentKey);
       }
     } else {
@@ -465,12 +474,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       if (key === 'center') {
         activeKeyRef.current = 'left';
         setActiveSelfieKey('left');
-        stepStartTimestampRef.current = Date.now();
+        warmupUntilRef.current = Date.now() + 1800; // 1.8s de pausa para trocar para foto da esquerda
         setSelfieInstruction('Ótimo! Agora vire o rosto para a ESQUERDA.');
       } else if (key === 'left') {
         activeKeyRef.current = 'right';
         setActiveSelfieKey('right');
-        stepStartTimestampRef.current = Date.now();
+        warmupUntilRef.current = Date.now() + 1800; // 1.8s de pausa para trocar para foto da direita
         setSelfieInstruction('Perfeito! Agora vire o rosto para a DIREITA.');
       } else if (key === 'right') {
         setSelfieInstruction('✓ Prova de presença concluída com 3 fotos! Confira o resultado.');
