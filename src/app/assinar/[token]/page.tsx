@@ -174,7 +174,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const frontalNoseXRef = useRef<number | null>(null);
   const centeredStartTimeRef = useRef<number | null>(null);
   const stepStartTimestampRef = useRef<number | null>(null);
-  const smoothTurnProgressRef = useRef<number>(0);
+  const awaitingCenterRef = useRef<boolean>(false);
 
   // ── RECUPERAÇÃO DE SESSÃO LOCALSTORAGE ──
   const storageKey = `assinajur_session_${params.token}`;
@@ -361,23 +361,14 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     // ─────────────────────────────────────────────────────────────
-    // FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (PADRÃO ADVANCED DETECÇÃO + TIMER 2s)
+    // FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (MESMA LÓGICA DE DETECÇÃO + TIMER 3s DA FOTO 1)
     // ─────────────────────────────────────────────────────────────
-    if (Date.now() < warmupUntilRef.current) {
-      setFrameState('YELLOW');
-      setTurnProgress(0);
-      setCountdownSecs(null);
-      centeredStartTimeRef.current = null;
-      return;
-    }
-
     const landmarks = results?.multiFaceLandmarks?.[0];
     if (!landmarks) {
       setFrameState('GRAY');
       setSelfieInstruction('Posicione seu rosto dentro da moldura.');
       centeredStartTimeRef.current = null;
       setCountdownSecs(null);
-      setTurnProgress(0);
       return;
     }
 
@@ -387,38 +378,54 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setSelfieInstruction('Rosto dentro da moldura.');
       centeredStartTimeRef.current = null;
       setCountdownSecs(null);
-      setTurnProgress(0);
       return;
     }
 
-    const { isTurned } = faceInfo;
+    const { isTurned, noseX } = faceInfo;
     const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
 
-    // Se o rosto NÃO estiver virado para o lado, fica AMARELO aguardando o giro
+    // Se estiver aguardando o usuário retornar ao centro antes de liberar a foto 3
+    if (awaitingCenterRef.current) {
+      const isFrontalAgain = noseX >= 0.30 && noseX <= 0.70 && !isTurned;
+      if (isFrontalAgain) {
+        awaitingCenterRef.current = false;
+        centeredStartTimeRef.current = null;
+        setCountdownSecs(null);
+        setFrameState('YELLOW');
+        setSelfieInstruction('Perfeito! Agora vire o rosto para a DIREITA →');
+        return;
+      } else {
+        setFrameState('YELLOW');
+        setSelfieInstruction('Olhe para a CÂMERA (de frente) para destravar a foto da DIREITA →');
+        centeredStartTimeRef.current = null;
+        setCountdownSecs(null);
+        return;
+      }
+    }
+
+    // Se o rosto NÃO estiver virado para o lado solicitado, aguarda o giro
     if (!isTurned) {
       setFrameState('YELLOW');
       setSelfieInstruction(`Vire o rosto para a ${dirLabel}`);
       centeredStartTimeRef.current = null;
       setCountdownSecs(null);
-      setTurnProgress(0);
       return;
     }
 
-    // ROSTO VIRADO DETECTADO! Ativa a moldura VERDE, posiciona a seta em 100% e conta 2..1
+    // ROSTO VIRADO DETECTADO! Ativa a moldura VERDE e a contagem regressiva de 3s no centro
     setFrameState('GREEN');
-    setTurnProgress(100);
 
     if (!centeredStartTimeRef.current) {
       centeredStartTimeRef.current = Date.now();
     }
 
     const elapsed = Date.now() - centeredStartTimeRef.current;
-    const secsRemaining = Math.max(1, Math.ceil((1800 - elapsed) / 1000));
+    const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
     setCountdownSecs(secsRemaining);
     setSelfieInstruction(`Excelente! Mantenha a cabeça virada (${secsRemaining}s)...`);
 
-    // Após 1.8s de permanência virado -> CAPTURA A FOTO DE PERFIL
-    if (elapsed >= 1800) {
+    // Após 3.0s de permanência com o rosto virado -> CAPTURA FOTO DE PERFIL
+    if (elapsed >= 3000) {
       setCountdownSecs(null);
       centeredStartTimeRef.current = null;
       triggerAutomaticCapture(currentKey);
@@ -488,13 +495,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       if (key === 'center') {
         activeKeyRef.current = 'left';
         setActiveSelfieKey('left');
-        warmupUntilRef.current = Date.now() + 1800; // 1.8s de pausa para trocar para foto da esquerda
-        setSelfieInstruction('Ótimo! Agora vire o rosto para a ESQUERDA.');
+        setSelfieInstruction('Ótimo! Agora vire o rosto para a ESQUERDA ←');
       } else if (key === 'left') {
         activeKeyRef.current = 'right';
         setActiveSelfieKey('right');
-        warmupUntilRef.current = Date.now() + 1800; // 1.8s de pausa para trocar para foto da direita
-        setSelfieInstruction('Perfeito! Agora vire o rosto para a DIREITA.');
+        awaitingCenterRef.current = true; // Força o retorno ao centro antes da foto 3
+        setSelfieInstruction('Ótimo! Olhe de frente para a CÂMERA para destravar a foto da DIREITA →');
       } else if (key === 'right') {
         setSelfieInstruction('✓ Prova de presença concluída com 3 fotos! Confira o resultado.');
         stopSelfieCamera();
@@ -886,53 +892,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   </div>
                 )}
 
-                {/* ─── LINHA GUIA MINIMALISTA E SETA MÓVEL (COMEÇA NO CENTRO 50%) ─── */}
-                {cameraActive && !capturingSelfie && (
-                  <div className="absolute top-4 left-6 right-6 pointer-events-none z-10">
-                    <div className="relative h-1.5 bg-white/20 backdrop-blur-xs rounded-full overflow-visible">
-                      {/* Marcador central de referência */}
-                      <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white/70 border border-black/40" />
 
-                      {activeSelfieKey !== 'center' && (
-                        <>
-                          {/* Alvo minimalista na ponta de destino */}
-                          <div
-                            className={`absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center transition-all ${
-                              activeSelfieKey === 'left' ? 'left-0' : 'right-0'
-                            } ${
-                              frameState === 'GREEN'
-                                ? 'bg-emerald-400 text-black shadow-lg shadow-emerald-500/50 scale-110'
-                                : 'bg-amber-400/80 text-black animate-pulse'
-                            }`}
-                          >
-                            {frameState === 'GREEN' ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : <Target className="w-3.5 h-3.5" />}
-                          </div>
-
-                          {/* Seta móvel discreta que desliza do CENTRO (50%) até o ALVO com movimento gradual e leve */}
-                          <div
-                            className={`absolute top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center font-extrabold shadow-lg transition-all duration-300 ease-out ${
-                              frameState === 'GREEN'
-                                ? 'bg-emerald-400 text-black scale-110 shadow-emerald-500/50'
-                                : 'bg-amber-400 text-black shadow-amber-500/30'
-                            }`}
-                            style={{
-                              left:
-                                activeSelfieKey === 'left'
-                                  ? `calc(50% - ${(turnProgress * 0.46)}% - 14px)`
-                                  : `calc(50% + ${(turnProgress * 0.46)}% - 14px)`,
-                            }}
-                          >
-                            {activeSelfieKey === 'left' ? (
-                              <ArrowLeft className="w-3.5 h-3.5 stroke-[3]" />
-                            ) : (
-                              <ArrowRight className="w-3.5 h-3.5 stroke-[3]" />
-                            )}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
 
                 {/* Instrução na parte inferior */}
                 <div className="absolute bottom-0 left-0 right-0 bg-black/75 text-emerald-300 text-sm font-semibold text-center py-3 px-4 backdrop-blur-sm flex items-center justify-center gap-2">
