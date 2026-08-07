@@ -13,8 +13,8 @@ export default function SettingsPage() {
     whatsapp: '',
     email: '',
     website: '',
-    primaryColor: '#0B1D3D',
-    secondaryColor: '#D4AF37',
+    primaryColor: '#071B3A',
+    secondaryColor: '#155EEF',
     welcomeMessage: '',
     defaultFooter: '',
     clientEmailMessage: '',
@@ -40,8 +40,8 @@ export default function SettingsPage() {
             whatsapp: data.office.whatsapp || '',
             email: data.office.email || '',
             website: data.office.website || '',
-            primaryColor: data.office.primaryColor || '#0B1D3D',
-            secondaryColor: data.office.secondaryColor || '#D4AF37',
+            primaryColor: data.office.primaryColor || '#071B3A',
+            secondaryColor: data.office.secondaryColor || '#155EEF',
             welcomeMessage: data.office.welcomeMessage || '',
             defaultFooter: data.office.defaultFooter || '',
             clientEmailMessage: data.office.clientEmailMessage || '',
@@ -83,29 +83,29 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="p-12 text-center text-slate-400 text-sm flex items-center justify-center gap-2">
-        <Loader2 className="w-4 h-4 animate-spin text-gold-500" />
+      <div className="p-12 text-center text-slate-400 text-xs font-medium flex items-center justify-center gap-2 font-sans">
+        <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
         Carregando configurações institucionais...
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans">
       <div>
-        <h1 className="text-2xl font-bold text-[#0B1D3D] tracking-tight">Cadastro e Configurações do Escritório</h1>
-        <p className="text-sm text-slate-500 mt-1">Defina a identidade visual, rodapés institucionais e mensagens enviadas aos clientes.</p>
+        <h1 className="font-heading text-2xl font-extrabold text-[#071B3A] tracking-tight">Cadastro e Configurações do Escritório</h1>
+        <p className="text-xs text-slate-500 mt-1 font-medium">Defina a identidade visual, rodapés institucionais e mensagens enviadas aos clientes.</p>
       </div>
 
       {success && (
-        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-center gap-3">
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-3 font-medium">
           <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
           <span>Configurações salvas com sucesso!</span>
         </div>
       )}
 
       {error && (
-        <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-3">
+        <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-3 font-medium">
           <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
           <span>{error}</span>
         </div>
@@ -113,167 +113,167 @@ export default function SettingsPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Seção 1: Dados Cadastrais */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-          <div className="flex items-center gap-2 text-[#0B1D3D] font-bold border-b border-slate-100 pb-3">
-            <Building2 className="w-5 h-5 text-gold-500" />
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+          <div className="flex items-center gap-2 text-[#071B3A] font-extrabold border-b border-slate-100 pb-3 font-heading">
+            <Building2 className="w-5 h-5 text-blue-600" />
             <span>Dados Institucionais</span>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-4 text-sm">
+          <div className="grid md:grid-cols-2 gap-4 text-xs font-medium">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Razão Social / Nome do Escritório *</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Razão Social / Nome do Escritório *</label>
               <input
                 type="text"
                 required
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full p-2.5 border border-slate-300 rounded-xl text-slate-800 focus:border-gold-500 focus:outline-none"
+                className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Nome Fantasia</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Nome Fantasia</label>
               <input
                 type="text"
                 value={formData.tradeName}
                 onChange={(e) => setFormData({ ...formData, tradeName: e.target.value })}
-                className="w-full p-2.5 border border-slate-300 rounded-xl text-slate-800 focus:border-gold-500 focus:outline-none"
+                className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
               />
             </div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-4 text-sm">
+          <div className="grid md:grid-cols-3 gap-4 text-xs font-medium">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">CPF ou CNPJ *</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">CPF ou CNPJ *</label>
               <input
                 type="text"
                 required
                 value={formData.cpfCnpj}
                 onChange={(e) => setFormData({ ...formData, cpfCnpj: e.target.value })}
-                className="w-full p-2.5 border border-slate-300 rounded-xl text-slate-800 focus:border-gold-500 focus:outline-none"
+                className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none font-mono"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Registro OAB da Sociedade</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Registro OAB da Sociedade</label>
               <input
                 type="text"
                 value={formData.oabNumber}
                 onChange={(e) => setFormData({ ...formData, oabNumber: e.target.value })}
-                className="w-full p-2.5 border border-slate-300 rounded-xl text-slate-800 focus:border-gold-500 focus:outline-none"
+                className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Website</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Website</label>
               <input
                 type="text"
                 value={formData.website}
                 onChange={(e) => setFormData({ ...formData, website: e.target.value })}
                 placeholder="https://escritorio.adv.br"
-                className="w-full p-2.5 border border-slate-300 rounded-xl text-slate-800 focus:border-gold-500 focus:outline-none"
+                className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
               />
             </div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-4 text-sm">
+          <div className="grid md:grid-cols-3 gap-4 text-xs font-medium">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Telefone Comercial *</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Telefone Comercial *</label>
               <input
                 type="text"
                 required
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                className="w-full p-2.5 border border-slate-300 rounded-xl text-slate-800 focus:border-gold-500 focus:outline-none"
+                className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">WhatsApp</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">WhatsApp</label>
               <input
                 type="text"
                 value={formData.whatsapp}
                 onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
-                className="w-full p-2.5 border border-slate-300 rounded-xl text-slate-800 focus:border-gold-500 focus:outline-none"
+                className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">E-mail Institucional *</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">E-mail Institucional *</label>
               <input
                 type="email"
                 required
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full p-2.5 border border-slate-300 rounded-xl text-slate-800 focus:border-gold-500 focus:outline-none"
+                className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
               />
             </div>
           </div>
         </div>
 
         {/* Seção 2: Identidade Visual */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-          <div className="flex items-center gap-2 text-[#0B1D3D] font-bold border-b border-slate-100 pb-3">
-            <Palette className="w-5 h-5 text-gold-500" />
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+          <div className="flex items-center gap-2 text-[#071B3A] font-extrabold border-b border-slate-100 pb-3 font-heading">
+            <Palette className="w-5 h-5 text-blue-600" />
             <span>Identidade Visual na Página do Cliente</span>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-4 text-sm">
+          <div className="grid md:grid-cols-2 gap-4 text-xs font-medium">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Cor Primária</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Cor Primária</label>
               <div className="flex items-center gap-3">
                 <input
                   type="color"
                   value={formData.primaryColor}
                   onChange={(e) => setFormData({ ...formData, primaryColor: e.target.value })}
-                  className="w-10 h-10 rounded-xl border border-slate-300 cursor-pointer"
+                  className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer"
                 />
-                <span className="font-mono text-xs font-semibold text-slate-700">{formData.primaryColor}</span>
+                <span className="font-mono text-xs font-bold text-slate-700">{formData.primaryColor}</span>
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Cor Secundária / Destaque</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Cor Secundária / Destaque</label>
               <div className="flex items-center gap-3">
                 <input
                   type="color"
                   value={formData.secondaryColor}
                   onChange={(e) => setFormData({ ...formData, secondaryColor: e.target.value })}
-                  className="w-10 h-10 rounded-xl border border-slate-300 cursor-pointer"
+                  className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer"
                 />
-                <span className="font-mono text-xs font-semibold text-slate-700">{formData.secondaryColor}</span>
+                <span className="font-mono text-xs font-bold text-slate-700">{formData.secondaryColor}</span>
               </div>
             </div>
           </div>
         </div>
 
         {/* Seção 3: Mensagens e Rodapé */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-          <div className="flex items-center gap-2 text-[#0B1D3D] font-bold border-b border-slate-100 pb-3">
-            <FileText className="w-5 h-5 text-gold-500" />
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+          <div className="flex items-center gap-2 text-[#071B3A] font-extrabold border-b border-slate-100 pb-3 font-heading">
+            <FileText className="w-5 h-5 text-blue-600" />
             <span>Mensagens Padrão e Assinatura Institucional</span>
           </div>
 
-          <div className="space-y-4 text-sm">
+          <div className="space-y-4 text-xs font-medium">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Mensagem de Apresentação ao Cliente</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Mensagem de Apresentação ao Cliente</label>
               <textarea
                 rows={2}
                 value={formData.welcomeMessage}
                 onChange={(e) => setFormData({ ...formData, welcomeMessage: e.target.value })}
                 placeholder="Prezado cliente, por favor revise e assine os documentos abaixo para darmos início ao seu processo..."
-                className="w-full p-2.5 border border-slate-300 rounded-xl text-slate-800 focus:border-gold-500 focus:outline-none"
+                className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Rodapé Padrão dos Documentos</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Rodapé Padrão dos Documentos</label>
               <textarea
                 rows={2}
                 value={formData.defaultFooter}
                 onChange={(e) => setFormData({ ...formData, defaultFooter: e.target.value })}
                 placeholder="Rodrigues & Soares Advocacia • OAB/SP 123.456 • Contato: (11) 99999-9999"
-                className="w-full p-2.5 border border-slate-300 rounded-xl text-slate-800 focus:border-gold-500 focus:outline-none"
+                className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
               />
             </div>
           </div>
@@ -283,7 +283,7 @@ export default function SettingsPage() {
           <button
             type="submit"
             disabled={saving}
-            className="px-8 py-3 bg-gold-500 hover:bg-gold-400 text-[#0B1D3D] font-bold rounded-xl shadow-md transition-all flex items-center gap-2 text-sm"
+            className="px-8 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md transition-all flex items-center gap-2 text-xs font-heading"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
             Salvar Configurações do Escritório

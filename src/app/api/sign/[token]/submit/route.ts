@@ -163,7 +163,11 @@ export async function POST(
         },
       });
 
-      await generateFinalPdfCertificate(signer.document.id);
+      try {
+        await generateFinalPdfCertificate(signer.document.id);
+      } catch (pdfErr) {
+        console.error('Erro na compilação imediata do PDF:', pdfErr);
+      }
     }
 
     await logAuditEvent({

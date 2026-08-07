@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { getFileBuffer } from '@/lib/storage';
 
+import { generateFinalPdfCertificate } from '@/lib/pdfCertificate';
+
 export const dynamic = 'force-dynamic';
 
 export async function GET(
@@ -30,8 +32,22 @@ export async function GET(
       return NextResponse.json({ error: 'Documento não encontrado.' }, { status: 404 });
     }
 
-    // Se o documento tiver sido concluído, serve o PDF assinado com Certificado. Caso contrário, o original.
-    const fileToServe = document.signedFile || document.originalFile;
+    // Se o documento estiver concluído ou parcialmente assinado, tenta servir o PDF com Certificado.
+    let fileToServe = document.signedFile;
+
+    if (!fileToServe && (document.status === 'CONCLUIDO' || document.status === 'PARCIALMENTE_ASSINADO')) {
+      try {
+        const certRes = await generateFinalPdfCertificate(document.id);
+        fileToServe = certRes.signedStorageFile as any;
+      } catch (certErr) {
+        console.error('Erro ao gerar certificado sob demanda:', certErr);
+      }
+    }
+
+    if (!fileToServe) {
+      fileToServe = document.originalFile;
+    }
+
     if (!fileToServe) {
       return NextResponse.json({ error: 'Arquivo do documento não encontrado.' }, { status: 404 });
     }

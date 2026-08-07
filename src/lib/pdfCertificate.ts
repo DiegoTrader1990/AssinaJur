@@ -38,9 +38,13 @@ export function generateVerificationCode(): string {
 function safeText(value: any, maximum = 200): string {
   return String(value || '')
     .replace(/[\u0000-\u001f\u007f]/g, ' ')
-    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/[\u2013\u2014\u2212]/g, '-')
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201c\u201d]/g, '"')
+    .replace(/\u2026/g, '...')
+    .replace(/\u2022/g, '*')
+    .replace(/\u2713/g, 'V')
+    .replace(/[^\x00-\xFF]/g, '') // Remove caracteres fora da tabela Latin-1 WinAnsi
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, maximum);
@@ -48,7 +52,7 @@ function safeText(value: any, maximum = 200): string {
 
 function truncate(value: any, max: number): string {
   const clean = safeText(value, 500);
-  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+  return clean.length > max ? `${clean.slice(0, max - 3)}...` : clean;
 }
 
 function wrapText(text: any, maximumCharacters = 88): string[] {
@@ -97,13 +101,16 @@ function addLinkAnnotation(
 async function embedBase64Image(pdfDoc: PDFDocument, base64: string | null | undefined) {
   if (!base64) return null;
   try {
-    const clean = String(base64).replace(/^data:image\/(jpeg|jpg|png);base64,/i, '').trim();
+    const raw = String(base64).trim();
+    const clean = raw.replace(/^data:image\/(jpeg|jpg|png|webp);base64,/i, '').trim();
     const bytes = Buffer.from(clean, 'base64');
-    try {
-      return await pdfDoc.embedJpg(bytes);
-    } catch {
+    if (bytes.length === 0) return null;
+
+    // Detectar cabeçalho PNG: 0x89 0x50 0x4E 0x47
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
       return await pdfDoc.embedPng(bytes);
     }
+    return await pdfDoc.embedJpg(bytes);
   } catch (err) {
     console.error('Erro ao incorporar imagem no certificado PDF:', err);
     return null;
@@ -262,15 +269,16 @@ export async function generateFinalPdfCertificate(documentId: string) {
   let manifestPageCount = 1;
 
   const drawFrame = (p: PDFPage, subtitle: string) => {
+    const cleanSubtitle = safeText(subtitle, 120);
     p.drawRectangle({ x: 20, y: 20, width: 555.28, height: 801.89, borderWidth: 1.2, borderColor: panelBorder });
     p.drawRectangle({ x: 20, y: 760, width: 555.28, height: 61.89, color: navy });
     p.drawRectangle({ x: 20, y: 757, width: 555.28, height: 3, color: gold });
     p.drawText('ASSINAJUR', { x: CX, y: 794, size: 14, font: bold, color: rgb(1, 1, 1) });
-    p.drawText(subtitle, { x: CX, y: 774, size: 9, font: bold, color: rgb(0.88, 0.93, 1) });
+    p.drawText(cleanSubtitle, { x: CX, y: 774, size: 9, font: bold, color: rgb(0.88, 0.93, 1) });
   };
 
   // SEÇÃO 1: CABEÇALHO DO CERTIFICADO
-  drawFrame(page, 'CERTIFICADO DE EVIDÊNCIAS JURÍDICAS — REGISTRO IMUTÁVEL');
+  drawFrame(page, 'CERTIFICADO DE EVIDENCIAS JURIDICAS - REGISTRO IMUTAVEL');
   page.drawText(truncate(doc.title, 55), { x: CX, y: 733, size: 14, font: bold, color: navy });
   page.drawText(`Código de Autenticidade: ${verificationCode}  |  ID: ${doc.id}`, {
     x: CX,
@@ -488,7 +496,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
           page.drawImage(embedded, { x: photoX, y: pTop - 233, width: photoW, height: photoH });
         }
 
-        page.drawText(`✓ ${label}`, { x: photoX, y: pTop - 245, size: 6.5, font: bold, color: green });
+        page.drawText(`[OK] ${safeText(label, 40)}`, { x: photoX, y: pTop - 245, size: 6.5, font: bold, color: green });
         photoX += photoW + gap;
       }
     }
@@ -557,9 +565,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const startTimelinePage = () => {
       timelinePageCount += 1;
       const p = pdfDoc.addPage([PAGE_W, PAGE_H]);
-      drawFrame(p, '6. TRILHA PÚBLICA DE EVENTOS DO DOCUMENTO');
+      drawFrame(p, '6. TRILHA PUBLICA DE EVENTOS DO DOCUMENTO');
       p.drawText(truncate(doc!.title, 65), { x: CX, y: 733, size: 12.5, font: bold, color: navy });
-      p.drawText(`Código: ${verificationCode}${timelinePageCount > 1 ? '  •  continuação' : ''}`, {
+      p.drawText(`Codigo: ${verificationCode}${timelinePageCount > 1 ? ' - continuacao' : ''}`, {
         x: CX,
         y: 718,
         size: 8,
