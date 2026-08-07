@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import Tesseract from 'tesseract.js';
 import { maskCpfCnpj } from '@/lib/formatters';
+import zlib from 'zlib';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +33,28 @@ function extractJpegFromPdfBuffer(pdfBuffer: Buffer): Buffer | null {
   return null;
 }
 
+function decompressPdfStreams(pdfBuffer: Buffer): string {
+  let decompressedText = '';
+  try {
+    const streamMatches = pdfBuffer.toString('latin1').split('stream');
+    for (let i = 1; i < streamMatches.length; i++) {
+      const streamData = streamMatches[i].split('endstream')[0];
+      if (streamData) {
+        try {
+          const buf = Buffer.from(streamData, 'latin1');
+          const unzipped = zlib.inflateSync(buf);
+          decompressedText += ' ' + unzipped.toString('utf-8');
+        } catch {
+          // ignora falhas em streams não-zlib
+        }
+      }
+    }
+  } catch {
+    /* fallback */
+  }
+  return decompressedText;
+}
+
 export async function POST(req: Request) {
   try {
     const user = await getSessionUser();
@@ -56,40 +79,45 @@ export async function POST(req: Request) {
     let targetBufferToRecognize: any = buffer;
 
     if (isPdf) {
+      // 1. Descompacta streams de texto nativos do PDF
+      text += ' ' + decompressPdfStreams(buffer);
+
+      // 2. Extrai imagens JPEG embarcadas (ex: escaneamentos do CamScanner / fotos salvas como PDF)
       const extractedJpeg = extractJpegFromPdfBuffer(buffer);
       if (extractedJpeg) {
         targetBufferToRecognize = extractedJpeg;
       }
     }
 
-    // Executa OCR Tesseract com limite de 6.0s para máxima extração
+    // 3. Executa OCR Tesseract na imagem (foto direta ou imagem extraída do PDF)
     try {
       const ocrResult = await timeoutPromise(
-        6000,
+        8000,
         Tesseract.recognize(targetBufferToRecognize, 'por', {
-          logger: (m) => console.log('Tesseract progress:', m.status, m.progress),
+          logger: (m) => console.log('Tesseract OCR Progress:', m.status, m.progress),
         })
       );
       if (ocrResult?.data?.text) {
         text += '\n' + ocrResult.data.text;
       }
     } catch (e: any) {
-      console.log('OCR Exception:', e?.message);
+      console.log('OCR exception fallback:', e?.message);
     }
 
-    // fallback de leitura de strings puras
+    // Fallback de strings puras em múltiplos encodings
     text += '\n' + buffer.toString('utf-8', 0, Math.min(buffer.length, 300000));
+    text += '\n' + buffer.toString('latin1', 0, Math.min(buffer.length, 300000));
 
-    console.log('=== OCR RESULT TEXT ===\n', text);
+    console.log('=== FINAL PARSED TEXT ===\n', text.substring(0, 500));
 
-    // Extração de padrões de CPF e RG (Ex: 15.420.774-86 ou 1542077486)
-    const allNumbers = text.match(/\b\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?\d{2}\b/g) || [];
+    // Regex de padrões brasileiros de documentos (CPF, RG, Data de Nascimento, Órgão)
+    const cpfMatches = text.match(/\b\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?\d{2}\b/g) || [];
     const rawDigitsMatches = text.match(/\b\d{11}\b/g) || [];
     const birthDateMatches = text.match(/\b(0[1-9]|[12][0-9]|3[01])[\/\.-](0[1-9]|1[012])[\/\.-](19|20)\d\d\b/g) || [];
     const issuingMatches = text.match(/\b(SSP|DETRAN|IFP|SESP|PC|SSP\/[A-Z]{2}|SSP-[A-Z]{2})\b/i);
     const rgMatches = text.match(/\b\d{1,2}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?[0-9X]\b/gi) || [];
 
-    // Nome Inteligente: Procura linhas com 2 ou mais palavras em maiúsculas sem palavras-chave do documento
+    // Nome do Titular do Documento
     const lines = text
       .split('\n')
       .map((l) => l.trim())
@@ -114,7 +142,6 @@ export async function POST(req: Request) {
         const clean = line.replace(/[^a-zA-Z\s]/g, '').trim();
         const words = clean.split(/\s+/);
         if (words.length >= 2 && clean.length >= 7 && !reservedWords.test(clean)) {
-          // Garante que são palavras de nome (sem caracteres estranhos)
           if (words.every((w) => w.length >= 2)) {
             extractedName = clean;
             break;
@@ -123,8 +150,8 @@ export async function POST(req: Request) {
       }
     }
 
-    // CPF e RG formatting
-    let rawCpf = allNumbers[0] ? allNumbers[0].replace(/\D/g, '') : '';
+    // Formata o CPF extraído
+    let rawCpf = cpfMatches[0] ? cpfMatches[0].replace(/\D/g, '') : '';
     if (!rawCpf && rawDigitsMatches[0]) {
       rawCpf = rawDigitsMatches[0];
     }
@@ -154,7 +181,7 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error('Erro na leitura OCR do documento:', error);
     return NextResponse.json(
-      { error: 'Documento carregado para conferência visual.' },
+      { error: 'Documento carregado para conferência visual. Preencha os campos abaixo.' },
       { status: 200 }
     );
   }
