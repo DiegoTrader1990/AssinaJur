@@ -70,32 +70,20 @@ function computeFaceOrientation(landmarks: any[]) {
   const rightEye = landmarks[362] || landmarks[263];
   const edgeA = landmarks[234];
   const edgeB = landmarks[454];
-  const chin = landmarks[CHIN_IDX];
-  const forehead = landmarks[FOREHEAD_IDX];
 
-  if (!nose || !leftEye || !rightEye || !edgeA || !edgeB || !chin || !forehead) return null;
+  if (!nose || !leftEye || !rightEye || !edgeA || !edgeB) return null;
 
-  // Distância 2D do nariz aos olhos
-  const distL = Math.abs(nose.x - leftEye.x);
-  const distR = Math.abs(nose.x - rightEye.x);
-  const totalEyeDist = distL + distR;
-
-  // Largura e centro da face
-  const faceWidth = Math.abs(edgeB.x - edgeA.x);
+  // Centro e largura da face em 2D
   const faceCenter = (edgeA.x + edgeB.x) / 2;
-  const noseOffset = faceWidth > 0 ? Math.abs(nose.x - faceCenter) / faceWidth : 0;
+  const faceWidth = Math.abs(edgeB.x - edgeA.x);
 
-  // Asimetria dos olhos ao girar
-  const eyeAsymmetry = totalEyeDist > 0 ? Math.abs((distL / totalEyeDist) - 0.50) : 0;
-
-  // Indicador consolidado de rotação da cabeça (0.00 de frente, >0.14 virado)
-  const turnAmount = Math.max(eyeAsymmetry * 2.5, noseOffset * 2.0);
+  // Desvio 2D do nariz relativo ao centro do rosto (normalizado)
+  const noseRelOffset = faceWidth > 0 ? (nose.x - faceCenter) / faceWidth : 0;
 
   return {
     noseX: nose.x,
     faceWidthRatio: faceWidth,
-    turnAmount,
-    isTurned: turnAmount >= 0.14, // Giro nítido e calibrado (~20-30 graus)
+    noseRelOffset,
   };
 }
 
@@ -322,7 +310,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
 
-    const { noseX, faceWidthRatio } = faceInfo;
+    const { noseX, faceWidthRatio, noseRelOffset } = faceInfo;
     setCurrentYaw(noseX);
 
     // Valida presença de rosto enquadrado
@@ -336,20 +324,56 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
 
-    // ── ROSTO ENCONTRADO NA CÂMERA ──
-    // Se for foto de perfil (esquerda/direita), exige que o rosto esteja VISIVELMENTE VIRADO para iniciar a contagem
-    if (currentKey === 'left' || currentKey === 'right') {
-      const { isTurned } = faceInfo;
-      if (!isTurned) {
+    // ── FOTO 1: ROSTO FRONTAL (Olhando direto para a câmera) ──
+    if (currentKey === 'center') {
+      const isCentered = Math.abs(noseRelOffset) <= 0.08 && noseX >= 0.28 && noseX <= 0.72;
+
+      if (!isCentered) {
         setFrameState('YELLOW');
-        setSelfieInstruction(`Vire o rosto para a ${currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →'}`);
+        setSelfieInstruction('Olhe para a CÂMERA e centralize o rosto.');
         centeredStartTimeRef.current = null;
         setCountdownSecs(null);
         return;
       }
+
+      // Guarda a referência de rosto frontal da própria pessoa
+      frontalNoseXRef.current = noseRelOffset;
+
+      setFrameState('GREEN');
+      if (!centeredStartTimeRef.current) {
+        centeredStartTimeRef.current = Date.now();
+      }
+
+      const elapsed = Date.now() - centeredStartTimeRef.current;
+      const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
+      setCountdownSecs(secsRemaining);
+      setSelfieInstruction(`Mantenha-se assim! Foto em ${secsRemaining}s...`);
+
+      if (elapsed >= 3000) {
+        setCountdownSecs(null);
+        centeredStartTimeRef.current = null;
+        triggerAutomaticCapture('center');
+      }
+      return;
     }
 
-    // ROSTO NA POSIÇÃO CORRETA: MOLDURA VERDE + CONTAGEM REGRESSIVA (3..2..1)
+    // ── FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (EXIGE GIRO REAL DA CABEÇA) ──
+    const baseline = frontalNoseXRef.current ?? 0;
+    const turnDeviation = Math.abs(noseRelOffset - baseline);
+
+    // Exige desvio de pelo menos 0.09 em relação à posição frontal da pessoa (giro de ~25-30 graus)
+    const isHeadTurned = turnDeviation >= 0.09;
+
+    if (!isHeadTurned) {
+      setFrameState('YELLOW');
+      const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
+      setSelfieInstruction(`Vire o rosto para a ${dirLabel}`);
+      centeredStartTimeRef.current = null;
+      setCountdownSecs(null);
+      return;
+    }
+
+    // GIRO REAL DETECTADO! MOLDURA VERDE + CONTAGEM REGRESSIVA (3..2..1)
     setFrameState('GREEN');
 
     if (!centeredStartTimeRef.current) {
@@ -360,16 +384,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
     setCountdownSecs(secsRemaining);
 
-    const stepLabel =
-      currentKey === 'center'
-        ? `Olhe para a câmera! Foto em ${secsRemaining}s...`
-        : currentKey === 'left'
-        ? `Mantenha o rosto para a ESQUERDA ← (${secsRemaining}s)...`
-        : `Mantenha o rosto para a DIREITA → (${secsRemaining}s)...`;
+    const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
+    setSelfieInstruction(`Excelente! Mantenha a cabeça virada (${secsRemaining}s)...`);
 
-    setSelfieInstruction(stepLabel);
-
-    // Após 3.0s exatos na posição correta -> CAPTURA A FOTO
+    // Após 3.0s exatos com a cabeça virada -> CAPTURA A FOTO DE PERFIL
     if (elapsed >= 3000) {
       setCountdownSecs(null);
       centeredStartTimeRef.current = null;
