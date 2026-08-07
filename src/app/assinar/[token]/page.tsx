@@ -64,7 +64,7 @@ const NOSE_TIP_IDX = 1;
 const CHIN_IDX = 152;
 const FOREHEAD_IDX = 10;
 
-function computeHeadRotation(landmarks: any[]) {
+function computeFaceOrientation(landmarks: any[]) {
   const nose = landmarks[1];
   const leftEye = landmarks[133] || landmarks[33];
   const rightEye = landmarks[362] || landmarks[263];
@@ -296,72 +296,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
     const currentKey = activeKeyRef.current;
 
-    // Para etapas de perfil (left/right), inicializa o timer de passo se ainda não estiver definido
-    if (currentKey !== 'center' && !stepStartTimestampRef.current) {
-      stepStartTimestampRef.current = Date.now();
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // FOTO 1: FRONTAL (3s REAIS COM ROSTO CENTRALIZADO)
-    // ─────────────────────────────────────────────────────────────
-    if (currentKey === 'center') {
-      const landmarks = results?.multiFaceLandmarks?.[0];
-      if (!landmarks) {
-        setFrameState('GRAY');
-        setSelfieInstruction('Posicione seu rosto dentro da moldura.');
-        centeredStartTimeRef.current = null;
-        setCountdownSecs(null);
-        setTurnProgress(0);
-        return;
-      }
-
-      const faceInfo = computeHeadRotation(landmarks);
-      if (!faceInfo) {
-        setFrameState('GRAY');
-        setSelfieInstruction('Rosto dentro da moldura.');
-        centeredStartTimeRef.current = null;
-        setCountdownSecs(null);
-        setTurnProgress(0);
-        return;
-      }
-
-      const { noseX, faceWidthRatio } = faceInfo;
-      setCurrentYaw(noseX);
-
-      const isCentered = noseX >= 0.28 && noseX <= 0.72 && faceWidthRatio >= 0.12 && faceWidthRatio <= 0.80;
-
-      if (!isCentered) {
-        setFrameState('YELLOW');
-        setSelfieInstruction('Olhe para a câmera e centralize o rosto.');
-        centeredStartTimeRef.current = null;
-        setCountdownSecs(null);
-        setTurnProgress(0);
-        return;
-      }
-
-      if (!centeredStartTimeRef.current) {
-        centeredStartTimeRef.current = Date.now();
-      }
-
-      const elapsed = Date.now() - centeredStartTimeRef.current;
-      const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
-
-      setFrameState('GREEN');
-      setCountdownSecs(secsRemaining);
-      setSelfieInstruction(`Mantenha-se assim! Foto em ${secsRemaining}s...`);
-
-      if (elapsed >= 3000) {
-        setCountdownSecs(null);
-        centeredStartTimeRef.current = null;
-        stepStartTimestampRef.current = Date.now();
-        triggerAutomaticCapture('center');
-      }
-      return;
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // FOTOS 2 E 3: PERFIL ESQUERDO E DIREITO (CONTAGEM DE 3s COM TRANSITION PAUSE DE 1.8s)
-    // ─────────────────────────────────────────────────────────────
+    // Se estiver na pausa de transição (cooldown de 1.8s entre fotos para se posicionar)
     if (Date.now() < warmupUntilRef.current) {
       setFrameState('YELLOW');
       setCountdownSecs(null);
@@ -369,22 +304,61 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       return;
     }
 
-    if (!stepStartTimestampRef.current) {
-      stepStartTimestampRef.current = Date.now();
+    const landmarks = results?.multiFaceLandmarks?.[0];
+    if (!landmarks) {
+      setFrameState('GRAY');
+      setSelfieInstruction('Posicione seu rosto dentro da moldura.');
+      centeredStartTimeRef.current = null;
+      setCountdownSecs(null);
+      return;
     }
 
-    const elapsed = Date.now() - stepStartTimestampRef.current;
-    const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
-    const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
+    const faceInfo = computeFaceOrientation(landmarks);
+    if (!faceInfo) {
+      setFrameState('GRAY');
+      setSelfieInstruction('Rosto dentro da moldura.');
+      centeredStartTimeRef.current = null;
+      setCountdownSecs(null);
+      return;
+    }
 
+    const { noseX, faceWidthRatio } = faceInfo;
+    setCurrentYaw(noseX);
+
+    // Valida presença de rosto enquadrado
+    const hasValidFace = noseX >= 0.15 && noseX <= 0.85 && faceWidthRatio >= 0.08 && faceWidthRatio <= 0.85;
+
+    if (!hasValidFace) {
+      setFrameState('YELLOW');
+      setSelfieInstruction('Mantenha seu rosto visível dentro da moldura.');
+      centeredStartTimeRef.current = null;
+      setCountdownSecs(null);
+      return;
+    }
+
+    // ── ROSTO DETECTADO COM SUCESSO! MOLDURA VERDE + CONTAGEM REGRESSIVA (3..2..1) ──
     setFrameState('GREEN');
-    setCountdownSecs(secsRemaining);
-    setSelfieInstruction(`Vire o rosto para a ${dirLabel} (${secsRemaining}s)...`);
 
-    // Após 3.0s de contagem para a foto de perfil -> CAPTURA
+    if (!centeredStartTimeRef.current) {
+      centeredStartTimeRef.current = Date.now();
+    }
+
+    const elapsed = Date.now() - centeredStartTimeRef.current;
+    const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
+    setCountdownSecs(secsRemaining);
+
+    const stepLabel =
+      currentKey === 'center'
+        ? `Olhe para a câmera! Foto em ${secsRemaining}s...`
+        : currentKey === 'left'
+        ? `Mantenha o rosto para a ESQUERDA ← (${secsRemaining}s)...`
+        : `Mantenha o rosto para a DIREITA → (${secsRemaining}s)...`;
+
+    setSelfieInstruction(stepLabel);
+
+    // Após 3.0s exatos com a presença mantida na câmera -> CAPTURA A FOTO
     if (elapsed >= 3000) {
       setCountdownSecs(null);
-      stepStartTimestampRef.current = null;
       centeredStartTimeRef.current = null;
       triggerAutomaticCapture(currentKey);
     }
