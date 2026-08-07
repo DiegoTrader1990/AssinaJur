@@ -42,6 +42,9 @@ export async function GET(req: Request) {
         createdBy: {
           select: { id: true, name: true },
         },
+        tags: {
+          select: { id: true, name: true, color: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -64,6 +67,7 @@ export async function POST(req: Request) {
     const {
       title,
       documentType,
+      signaturePosition,
       originalFileId,
       originalHash,
       clientId,
@@ -87,6 +91,7 @@ export async function POST(req: Request) {
           clientId: clientId || null,
           title,
           documentType: documentType || 'Não informado',
+          signaturePosition: signaturePosition || 'BOTTOM',
           originalFileId,
           originalHash,
           status: 'PRONTO_PARA_ENVIO',

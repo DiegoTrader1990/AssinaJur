@@ -31,6 +31,9 @@ export async function GET(
         createdBy: {
           select: { id: true, name: true, email: true },
         },
+        tags: {
+          select: { id: true, name: true, color: true },
+        },
         events: {
           include: {
             signer: { select: { id: true, name: true, role: true } },
@@ -137,6 +140,29 @@ export async function POST(
         success: true,
         message: 'Documento cancelado com sucesso.',
       });
+    }
+
+    // Define o conjunto de tags do documento (substitui todas de uma vez).
+    // Usado pelo seletor de tags na tela de detalhes do documento — não tem
+    // restrição de status, já que é só organização, não afeta a assinatura.
+    if (action === 'set-tags') {
+      const tagIds: string[] = Array.isArray(body.tagIds) ? body.tagIds : [];
+
+      // Valida que todas as tags pertencem ao mesmo escritório (isolamento de tenant)
+      // antes de vinculá-las, para nunca conectar uma tag de outro escritório.
+      const validTags = tagIds.length
+        ? await prisma.tag.findMany({
+            where: { id: { in: tagIds }, officeId: user.officeId },
+          })
+        : [];
+
+      const updated = await prisma.document.update({
+        where: { id: document.id },
+        data: { tags: { set: validTags.map((t) => ({ id: t.id })) } },
+        include: { tags: { select: { id: true, name: true, color: true } } },
+      });
+
+      return NextResponse.json({ success: true, document: updated });
     }
 
     return NextResponse.json({ error: 'Ação inválida.' }, { status: 400 });

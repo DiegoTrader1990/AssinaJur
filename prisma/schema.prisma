@@ -60,6 +60,7 @@ model Office {
   documents    Document[]
   templates    Template[]
   legalKits    LegalKit[]
+  tags         Tag[]
 }
 
 // Usuário do Escritório
@@ -216,6 +217,7 @@ model Document {
 
   title            String
   documentType     String   @default("DOCUMENTO")
+  signaturePosition String  @default("BOTTOM")
   
   originalFileId   String
   originalFile     StorageFile @relation("OriginalFile", fields: [originalFileId], references: [id])
@@ -240,6 +242,24 @@ model Document {
 
   signers          Signer[]
   events           DocumentEvent[]
+  tags             Tag[]
+}
+
+// Etiquetas coloridas para organizar documentos. A "pasta" por cliente já é
+// automática (agrupamento por Document.clientId na tela de listagem); as tags
+// servem como uma camada extra e opcional de organização, cruzando clientes
+// (ex: "Urgente", "Contrato", "Procuração"), com relação N:N implícita com Document.
+model Tag {
+  id        String   @id @default(uuid())
+  officeId  String
+  office    Office   @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  name      String
+  color     String   @default("#2563EB")
+  createdAt DateTime @default(now())
+
+  documents Document[]
+
+  @@unique([officeId, name])
 }
 
 // Signatários do Documento
