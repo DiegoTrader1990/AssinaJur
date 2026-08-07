@@ -491,13 +491,13 @@ export default function ClientsPage() {
 
       {/* Modal: Novo Cliente com OCR & Leitura por IA */}
       {showModal && mounted && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-2 sm:p-4 overflow-y-auto font-sans relative animate-fade-in">
+        <div className="fixed inset-0 z-[9999] bg-[#071B3A]/40 flex items-center justify-center p-3 sm:p-5 font-sans">
           <div
             onDragEnter={handleOcrDragEnter}
             onDragLeave={handleOcrDragLeave}
             onDragOver={handleOcrDragOver}
             onDrop={handleOcrDrop}
-            className={`bg-white rounded-3xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 relative my-auto max-h-[92vh] overflow-y-auto transition-all ${
+            className={`bg-white rounded-3xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200/90 relative max-h-[88vh] overflow-y-auto transition-all ${
               ocrDocPreview ? 'max-w-5xl' : 'max-w-3xl'
             }`}
           >
@@ -614,7 +614,7 @@ export default function ClientsPage() {
                     </div>
                   </div>
 
-                  <div className="relative my-auto py-1 flex items-center justify-center w-full h-[420px] overflow-hidden bg-white rounded-xl border border-slate-200/80 p-1 shadow-xs select-none">
+                  <div className="relative my-auto py-1 flex items-center justify-center w-full h-[380px] overflow-hidden bg-slate-100/80 rounded-xl border border-slate-200 p-1 shadow-inner select-none">
                     {/* Overlay Transparente de Mãozinha (Ativo quando Zoom > 1.0) */}
                     {zoomLevel > 1.0 && (
                       <div
@@ -627,28 +627,28 @@ export default function ClientsPage() {
                       />
                     )}
 
-                    <div
-                      style={{
-                        transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomLevel}) rotate(${rotationAngle}deg)`,
-                        transformOrigin: 'center center',
-                      }}
-                      className="transition-transform duration-100 ease-out flex items-center justify-center w-full h-full"
-                    >
-                      {isPdfDoc ? (
-                        <iframe
-                          src={`${ocrDocPreview}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-                          className="w-full h-full min-h-[400px] rounded-lg bg-white border border-slate-200"
-                          title="Documento PDF"
-                        />
-                      ) : (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={ocrDocPreview}
-                          alt="Documento do cliente"
-                          className="w-full h-full object-contain rounded-lg pointer-events-none"
-                        />
-                      )}
-                    </div>
+                    {isPdfDoc ? (
+                      <iframe
+                        src={`${ocrDocPreview}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+                        style={{
+                          transform: `scale(${zoomLevel}) rotate(${rotationAngle}deg) translate(${panOffset.x}px, ${panOffset.y}px)`,
+                          transformOrigin: 'center center',
+                        }}
+                        className="w-full h-full min-h-[360px] rounded-lg bg-white border border-slate-200 transition-transform duration-100 ease-out"
+                        title="Documento PDF"
+                      />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={ocrDocPreview}
+                        alt="Documento do cliente"
+                        style={{
+                          transform: `scale(${zoomLevel}) rotate(${rotationAngle}deg) translate(${panOffset.x}px, ${panOffset.y}px)`,
+                          transformOrigin: 'center center',
+                        }}
+                        className="max-w-full max-h-full object-contain rounded-lg pointer-events-none transition-transform duration-100 ease-out"
+                      />
+                    )}
                   </div>
                   <div className="flex items-center justify-between pt-1.5 border-t border-slate-200 text-[10px] text-slate-500 font-medium">
                     {zoomLevel > 1.0 ? (
