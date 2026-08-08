@@ -157,6 +157,46 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, resolvedOffice, matches, officeCandidates });
     }
 
+    if (body.eventType === 'REPAIR_CLIENT_OFFICE' && bridgeAuthenticated) {
+      const clientId = String(body.clientId || '');
+      const fromOfficeId = String(body.fromOfficeId || '');
+      const toOfficeId = String(body.toOfficeId || '');
+      const client = await prisma.client.findFirst({
+        where: { id: clientId, officeId: fromOfficeId },
+        include: { _count: { select: { documents: true } } },
+      });
+      const targetOffice = await prisma.office.findUnique({ where: { id: toOfficeId }, select: { id: true, name: true } });
+      if (!client || !targetOffice) {
+        return NextResponse.json({ error: 'Cliente de origem ou escritório de destino não encontrado.' }, { status: 404 });
+      }
+      if (client._count.documents > 0) {
+        return NextResponse.json({ error: 'O cliente possui documentos associados e não pode ser transferido automaticamente.' }, { status: 409 });
+      }
+      const duplicate = await prisma.client.findUnique({
+        where: { officeId_cpfCnpj: { officeId: toOfficeId, cpfCnpj: client.cpfCnpj } },
+        select: { id: true },
+      });
+      if (duplicate) {
+        return NextResponse.json({ error: 'Já existe cliente com este CPF no escritório de destino.' }, { status: 409 });
+      }
+      const repaired = await prisma.$transaction(async (tx) => {
+        const moved = await tx.client.update({
+          where: { id: client.id },
+          data: { officeId: toOfficeId, lawyerInChargeId: null },
+          select: { id: true, officeId: true, name: true, cpfCnpj: true, phone: true },
+        });
+        await tx.auditLog.create({
+          data: {
+            officeId: toOfficeId,
+            eventType: 'CLIENT_OFFICE_REPAIRED',
+            description: `${moved.name} transferido do escritório de teste após correção do vínculo do WhatsApp.`,
+          },
+        });
+        return moved;
+      });
+      return NextResponse.json({ success: true, targetOffice, repaired });
+    }
+
     if (body.eventType === 'STATUS') {
       const status = ['CONNECTED', 'CONNECTING', 'DISCONNECTED'].includes(body.status)
         ? body.status
