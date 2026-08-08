@@ -25,165 +25,179 @@ if (!fs.existsSync(AUTH_FOLDER)) {
 
 let socketInstance = null;
 let isConnected = false;
+let isConnecting = false;
 
 async function connectToWhatsApp() {
+  if (isConnecting) return;
+  isConnecting = true;
+
   console.log(`\n======================================================`);
   console.log(`🚀 INICIANDO CONECTOR ASSINAJUR IA (24/7)...`);
   console.log(`======================================================\n`);
 
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
+  try {
+    const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
 
-  const sock = makeWASocket({
-    auth: state,
-    printQRInTerminal: false,
-    logger: pino({ level: 'silent' }),
-    browser: ['AssinaJur Office AI', 'Chrome', '1.0.0'],
-    connectTimeoutMs: 60000,
-    keepAliveIntervalMs: 25000,
-  });
+    const sock = makeWASocket({
+      auth: state,
+      printQRInTerminal: false,
+      logger: pino({ level: 'silent' }),
+      browser: ['AssinaJur Office AI', 'Chrome', '1.0.0'],
+      connectTimeoutMs: 60000,
+      keepAliveIntervalMs: 25000,
+    });
 
-  socketInstance = sock;
+    socketInstance = sock;
 
-  sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect, qr } = update;
+    sock.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect, qr } = update;
 
-    if (qr && !isConnected) {
-      console.log('\n📲 QR CODE GERADO! APONTE A CÂMERA DO CELULAR PARA PAREAR:');
-      qrcodeTerminal.generate(qr, { small: true });
+      if (qr && !isConnected) {
+        console.log('\n📲 QR CODE GERADO! APONTE A CÂMERA DO CELULAR PARA PAREAR:');
+        qrcodeTerminal.generate(qr, { small: true });
 
-      try {
-        const qrDataUrl = await qrcode.toDataURL(qr, { width: 350 });
-        const htmlContent = `
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <meta charset="utf-8">
-              <title>Pareamento WhatsApp AssinaJur</title>
-              <style>
-                body { font-family: Arial, sans-serif; background: #075E54; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-                .card { background: white; color: #333; padding: 30px; border-radius: 20px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
-                img { width: 300px; height: 300px; }
-                h2 { color: #075E54; margin-bottom: 10px; }
-                p { color: #666; font-size: 14px; }
-              </style>
-            </head>
-            <body>
-              <div class="card">
-                <h2>🟢 PAREAR WHATSAPP ASSINAJUR</h2>
-                <p>1. Abra o WhatsApp no celular &rarr; Aparelhos Conectados</p>
-                <p>2. Aponte a câmera para o QR Code abaixo:</p>
-                <img src="${qrDataUrl}" alt="QR Code WhatsApp">
-              </div>
-            </body>
-          </html>
-        `;
-        const htmlPath = path.join(__dirname, '..', 'qrcode-pareamento.html');
-        fs.writeFileSync(htmlPath, htmlContent);
-        exec(`start "" "${htmlPath}"`);
-      } catch (e) {}
-    }
-
-    if (connection === 'close') {
-      isConnected = false;
-      const statusCode = lastDisconnect?.error?.output?.statusCode;
-      const isLoggedOut = statusCode === DisconnectReason.loggedOut;
-
-      if (isLoggedOut) {
-        console.log('❌ Sessão deslogada. Limpando credenciais...');
-        fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
-        setTimeout(connectToWhatsApp, 3000);
-      } else {
-        setTimeout(connectToWhatsApp, 3000);
-      }
-    } else if (connection === 'open') {
-      isConnected = true;
-      console.log('\n======================================================');
-      console.log('🎉 WHATSAPP 100% CONECTADO E PRONTO PARA USO!');
-      console.log('Envie mensagens, áudios ou fotos de RG/CNH no seu WhatsApp!');
-      console.log('======================================================\n');
-    }
-  });
-
-  // Ouvir mensagens recebidas no WhatsApp
-  sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    if (type !== 'notify') return;
-
-    for (const msg of messages) {
-      if (!msg.message) continue;
-
-      const rawJid = msg.key.remoteJid || '';
-      const fromNumber = rawJid.replace(/@.*$/, '');
-      const isImage = !!msg.message.imageMessage;
-      const isAudio = !!msg.message.audioMessage;
-      
-      const textMessage = 
-        msg.message.conversation || 
-        msg.message.extendedTextMessage?.text || 
-        (isImage ? 'Foto de documento para cadastro' : isAudio ? 'Áudio de voz enviado' : '');
-
-      // Evitar que o bot responda as proprias respostas (loop)
-      if (
-        textMessage.startsWith('🤖') || 
-        textMessage.startsWith('✅') || 
-        textMessage.startsWith('📌') || 
-        textMessage.startsWith('🎙️')
-      ) {
-        continue;
-      }
-
-      console.log(`\n📩 Mensagem detectada no WhatsApp (${fromNumber}): [${isImage ? 'FOTO' : isAudio ? 'ÁUDIO' : 'TEXTO'}] "${textMessage}"`);
-
-      let mediaBase64 = undefined;
-      let mediaMimeType = undefined;
-
-      if (isImage) {
         try {
-          const buffer = await downloadMediaMessage(msg, 'buffer', {});
-          mediaBase64 = buffer.toString('base64');
-          mediaMimeType = msg.message.imageMessage.mimetype || 'image/jpeg';
-          console.log(`📸 Processando foto (${buffer.length} bytes)...`);
-        } catch (errMedia) {
-          console.error('Erro ao baixar mídia de imagem:', errMedia);
+          const qrDataUrl = await qrcode.toDataURL(qr, { width: 350 });
+          const htmlContent = `
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <meta charset="utf-8">
+                <title>Pareamento WhatsApp AssinaJur</title>
+                <style>
+                  body { font-family: Arial, sans-serif; background: #075E54; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+                  .card { background: white; color: #333; padding: 30px; border-radius: 20px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+                  img { width: 300px; height: 300px; }
+                  h2 { color: #075E54; margin-bottom: 10px; }
+                  p { color: #666; font-size: 14px; }
+                </style>
+              </head>
+              <body>
+                <div class="card">
+                  <h2>🟢 PAREAR WHATSAPP ASSINAJUR</h2>
+                  <p>1. Abra o WhatsApp no celular &rarr; Aparelhos Conectados</p>
+                  <p>2. Aponte a câmera para o QR Code abaixo:</p>
+                  <img src="${qrDataUrl}" alt="QR Code WhatsApp">
+                </div>
+              </body>
+            </html>
+          `;
+          const htmlPath = path.join(__dirname, '..', 'qrcode-pareamento.html');
+          fs.writeFileSync(htmlPath, htmlContent);
+          exec(`start "" "${htmlPath}"`);
+        } catch (e) {}
+      }
+
+      if (connection === 'close') {
+        isConnected = false;
+        isConnecting = false;
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
+        const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+
+        console.log(`ℹ️ Conexão fechada (Código ${statusCode || 'desconhecido'}).`);
+
+        if (isLoggedOut) {
+          console.log('❌ Sessão deslogada. Limpando credenciais...');
+          fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
+          setTimeout(connectToWhatsApp, 5000);
+        } else {
+          console.log('🔄 Reconectando em 5 segundos...');
+          setTimeout(connectToWhatsApp, 5000);
         }
-      } else if (isAudio) {
+      } else if (connection === 'open') {
+        isConnected = true;
+        isConnecting = false;
+        console.log('\n======================================================');
+        console.log('🎉 WHATSAPP 100% CONECTADO E PRONTO PARA USO!');
+        console.log('O robô está ouvindo mensagens, áudios e fotos de RG/CNH!');
+        console.log('======================================================\n');
+      }
+    });
+
+    // Ouvir mensagens recebidas no WhatsApp
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+      if (type !== 'notify') return;
+
+      for (const msg of messages) {
+        if (!msg.message) continue;
+
+        const rawJid = msg.key.remoteJid || '';
+        const fromNumber = rawJid.replace(/@.*$/, '');
+        const isImage = !!msg.message.imageMessage;
+        const isAudio = !!msg.message.audioMessage;
+        
+        const textMessage = 
+          msg.message.conversation || 
+          msg.message.extendedTextMessage?.text || 
+          (isImage ? 'Foto de documento para cadastro' : isAudio ? 'Áudio de voz enviado' : '');
+
+        // Evitar que o bot responda as proprias respostas (loop)
+        if (
+          textMessage.startsWith('🤖') || 
+          textMessage.startsWith('✅') || 
+          textMessage.startsWith('📌') || 
+          textMessage.startsWith('🎙️')
+        ) {
+          continue;
+        }
+
+        console.log(`\n📩 Mensagem detectada no WhatsApp (${fromNumber}): [${isImage ? 'FOTO' : isAudio ? 'ÁUDIO' : 'TEXTO'}] "${textMessage}"`);
+
+        let mediaBase64 = undefined;
+        let mediaMimeType = undefined;
+
+        if (isImage) {
+          try {
+            const buffer = await downloadMediaMessage(msg, 'buffer', {});
+            mediaBase64 = buffer.toString('base64');
+            mediaMimeType = msg.message.imageMessage.mimetype || 'image/jpeg';
+            console.log(`📸 Processando foto (${buffer.length} bytes)...`);
+          } catch (errMedia) {
+            console.error('Erro ao baixar mídia de imagem:', errMedia);
+          }
+        } else if (isAudio) {
+          try {
+            const buffer = await downloadMediaMessage(msg, 'buffer', {});
+            mediaBase64 = buffer.toString('base64');
+            mediaMimeType = msg.message.audioMessage.mimetype || 'audio/ogg; codecs=opus';
+            console.log(`🎙️ Processando áudio (${buffer.length} bytes)...`);
+          } catch (errAudio) {
+            console.error('Erro ao baixar mídia de áudio:', errAudio);
+          }
+        }
+
         try {
-          const buffer = await downloadMediaMessage(msg, 'buffer', {});
-          mediaBase64 = buffer.toString('base64');
-          mediaMimeType = msg.message.audioMessage.mimetype || 'audio/ogg; codecs=opus';
-          console.log(`🎙️ Processando áudio (${buffer.length} bytes)...`);
-        } catch (errAudio) {
-          console.error('Erro ao baixar mídia de áudio:', errAudio);
+          console.log('🤖 Enviando para a Inteligência IA do AssinaJur...');
+          const response = await fetch(ASSINAJUR_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              officeId: 'office_demo',
+              fromNumber: '5573988250201',
+              message: textMessage,
+              messageType: isImage ? 'IMAGE' : isAudio ? 'AUDIO' : 'TEXT',
+              mediaBase64,
+              mediaMimeType,
+            }),
+          });
+
+          const data = await response.json();
+          if (data.reply) {
+            console.log(`💬 Resposta da IA: "${data.reply}"`);
+            await sock.sendMessage(rawJid, { text: data.reply });
+            console.log('✅ Resposta enviada com sucesso no WhatsApp!');
+          }
+        } catch (err) {
+          console.error('Erro ao enviar para a IA do AssinaJur:', err);
         }
       }
-
-      try {
-        console.log('🤖 Enviando para o motor de Inteligência IA do AssinaJur...');
-        const response = await fetch(ASSINAJUR_WEBHOOK_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            officeId: 'office_demo',
-            fromNumber: '5573988250201',
-            message: textMessage,
-            messageType: isImage ? 'IMAGE' : isAudio ? 'AUDIO' : 'TEXT',
-            mediaBase64,
-            mediaMimeType,
-          }),
-        });
-
-        const data = await response.json();
-        if (data.reply) {
-          console.log(`💬 Resposta da IA: "${data.reply}"`);
-          await sock.sendMessage(rawJid, { text: data.reply });
-          console.log('✅ Resposta enviada com sucesso no WhatsApp!');
-        }
-      } catch (err) {
-        console.error('Erro ao enviar para a IA do AssinaJur:', err);
-      }
-    }
-  });
+    });
+  } catch (errConnect) {
+    isConnecting = false;
+    console.error('Erro na inicialização do socket:', errConnect);
+  }
 }
 
 connectToWhatsApp();
