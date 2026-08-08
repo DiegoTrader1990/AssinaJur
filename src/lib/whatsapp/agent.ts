@@ -13,8 +13,8 @@ export const AUTHORIZED_LAWYER_PHONES = [
 const PENDING_PREFIX = 'PENDING_ACTION:';
 const EXECUTED_PREFIX = 'EXECUTED_ACTION:';
 const PENDING_TTL_MS = 15 * 60 * 1000;
-const GEMINI_TEXT_MODEL = 'gemini-2.5-flash';
-const GEMINI_VISION_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] as const;
+const GEMINI_TEXT_MODEL = 'gemini-flash-latest';
+const GEMINI_VISION_MODELS = ['gemini-flash-latest', 'gemini-flash-latest', 'gemini-flash-latest'] as const;
 
 export interface WhatsAppIncomingMessage {
   officeId: string;
@@ -186,8 +186,7 @@ function extractJson(text: string): Record<string, unknown> | null {
 async function callGemini(
   parts: Array<Record<string, unknown>>,
   jsonMode = false,
-  model = GEMINI_TEXT_MODEL,
-  responseSchema?: Record<string, unknown>
+  model = GEMINI_TEXT_MODEL
 ): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
   if (!apiKey) {
@@ -206,7 +205,6 @@ async function callGemini(
           generationConfig: jsonMode
             ? {
                 responseMimeType: 'application/json',
-                ...(responseSchema ? { responseSchema } : {}),
                 temperature: 0,
               }
             : { temperature: 0.2 },
@@ -287,25 +285,6 @@ async function extractClientDraftFromImage(
 ): Promise<ClientDraft | null> {
   const mimeType = mediaMimeType?.startsWith('image/') ? mediaMimeType : 'image/jpeg';
   const cleanBase64 = mediaBase64.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/i, '').trim();
-  const responseSchema = {
-    type: 'object',
-    properties: {
-      name: { type: 'string', description: 'Nome completo do titular, ou vazio se não estiver legível.' },
-      cpfCnpj: { type: 'string', description: 'CPF do titular com 11 dígitos, ou vazio se não estiver legível.' },
-      rg: { type: 'string' },
-      issuingOrgan: { type: 'string' },
-      birthDate: { type: 'string' },
-      nationality: { type: 'string' },
-      maritalStatus: { type: 'string' },
-      profession: { type: 'string' },
-      cep: { type: 'string' },
-      address: { type: 'string' },
-      number: { type: 'string' },
-      neighborhood: { type: 'string' },
-      city: { type: 'string' },
-      state: { type: 'string' },
-    },
-  };
   const collected: Partial<ClientDraft> = {};
 
   for (let attempt = 0; attempt < GEMINI_VISION_MODELS.length; attempt += 1) {
@@ -322,8 +301,7 @@ address, number, neighborhood, city e state.`,
         },
       ],
       true,
-      model,
-      responseSchema
+      model
     );
     const parsed = aiText ? extractJson(aiText) : null;
     if (!parsed) {
