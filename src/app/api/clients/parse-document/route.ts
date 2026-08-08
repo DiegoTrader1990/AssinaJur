@@ -4,13 +4,14 @@ import { maskCpfCnpj } from '@/lib/formatters';
 
 export const dynamic = 'force-dynamic';
 
-const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-latest'];
 
 async function parseWithGeminiVision(base64Image: string, mimeType: string) {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY || process.env.NEXT_PUBLIC_GEMINI_KEY;
   if (!apiKey) return null;
 
   const cleanMime = mimeType && mimeType.startsWith('image/') ? mimeType : 'image/jpeg';
+  const cleanBase64 = base64Image.replace(/^data:image\/(jpeg|jpg|png|webp);base64,/i, '').trim();
 
   const prompt = `Você é um especialista em visão computacional e OCR de documentos de identidade brasileiros (RG, CNH, Passaporte, Certidões).
 Analise a imagem com máxima precisão e extraia os dados do titular. Retorne EXATAMENTE um objeto JSON válido, sem formatação markdown ou textos adicionais:
@@ -43,9 +44,9 @@ Analise a imagem com máxima precisão e extraia os dados do titular. Retorne EX
             {
               parts: [
                 {
-                  inline_data: {
-                    mime_type: cleanMime,
-                    data: base64Image,
+                  inlineData: {
+                    mimeType: cleanMime,
+                    data: cleanBase64,
                   },
                 },
                 { text: prompt },
@@ -123,7 +124,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // 2. Extração de texto embutido em arquivo PDF
+    // 2. Fallback de Leitura Estruturada
     const rawText = buffer.toString('utf-8', 0, Math.min(buffer.length, 300000)) + '\n' + buffer.toString('latin1', 0, Math.min(buffer.length, 300000));
 
     const cpfMatches = rawText.match(/\b\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?\d{2}\b/g) || [];
