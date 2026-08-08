@@ -17,7 +17,9 @@ import {
   FileCheck,
   Search,
   CheckCheck,
-  RefreshCw
+  RefreshCw,
+  Terminal,
+  Server
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -46,6 +48,7 @@ export default function WhatsAppPage() {
   const [searchFilter, setSearchFilter] = useState('');
   const [activeContact, setActiveContact] = useState<string>('bot');
   const [simulating, setSimulating] = useState(false);
+  const [showGuideModal, setShowGuideModal] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
@@ -68,7 +71,7 @@ export default function WhatsAppPage() {
     {
       id: '1',
       sender: 'bot',
-      text: '👋 *Olá, Doutor(a)!* Sou o seu Assistente Jurídico Inteligente do AssinaJur.\n\nVocê e sua equipe podem conversar comigo por texto ou enviar fotos de documentos (RG/CNH) para eu cadastrar automaticamente no sistema!\n\n💡 *Comandos rápidos:* Digite *"status"* para ver procurações pendentes ou *"clientes"* para ver o cadastro recente.',
+      text: '👋 *Olá, Doutor(a)!* Sou o seu Assistente Jurídico Inteligente do AssinaJur no WhatsApp.\n\nVocê e sua equipe podem conversar comigo por texto ou enviar fotos de documentos (RG/CNH) para eu cadastrar automaticamente no sistema!\n\n💡 *Comandos rápidos:* Digite *"status"* para ver procurações pendentes ou *"clientes"* para ver o cadastro recente.',
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -203,30 +206,88 @@ export default function WhatsAppPage() {
 
   return (
     <div className="p-2 sm:p-4 lg:p-6 max-w-7xl mx-auto space-y-4 font-sans">
-      {/* Top Banner Seguro */}
-      <div className="bg-gradient-to-r from-[#071B3A] via-[#0B2545] to-[#134074] p-4 sm:p-6 rounded-3xl text-white shadow-xl flex items-center justify-between border border-white/10">
+      {/* Top Banner da Central de Atendimento */}
+      <div className="bg-gradient-to-r from-[#071B3A] via-[#0B2545] to-[#134074] p-4 sm:p-6 rounded-3xl text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-white/10">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 flex items-center justify-center font-bold">
-            <ShieldCheck className="w-5 h-5" />
+            <Smartphone className="w-5 h-5" />
           </div>
           <div>
             <h1 className="font-heading font-extrabold text-lg sm:text-xl flex items-center gap-2">
-              Assistente IA AssinaJur <span className="bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-0.5 rounded-full border border-emerald-500/30">🟢 Seguro & Ativo</span>
+              WhatsApp Central AI <span className="bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-0.5 rounded-full border border-emerald-500/30">🟢 Estável & Ativo</span>
             </h1>
             <p className="text-slate-300 text-xs">
-              Converse com o Assistente Jurídico do AssinaJur, envie fotos de documentos de clientes para cadastro por IA e gerencie procurações pendentes!
+              Converse com o Assistente Jurídico do AssinaJur, envie fotos de documentos de clientes e gerencie o escritório diretamente pelo WhatsApp!
             </p>
           </div>
         </div>
         
-        <button
-          onClick={fetchClientsAndLogs}
-          className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-all"
-          title="Atualizar Dados"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowGuideModal(true)}
+            className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md transition-all flex items-center gap-1.5"
+          >
+            <Server className="w-4 h-4" /> Conectar Bot Dedicado 24h
+          </button>
+
+          <button
+            onClick={fetchClientsAndLogs}
+            className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+            title="Atualizar Dados"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
+
+      {/* Modal Guia do Bot Dedicado Estável 24h */}
+      {showGuideModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-slate-200 space-y-6 relative animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                  <Server className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-extrabold text-slate-900 text-base">Robô Dedicado AssinaJur 24h</h3>
+                  <p className="text-xs text-slate-500">Conexão contínua para computadores e servidores</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowGuideModal(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-all"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs text-slate-700 leading-relaxed">
+              <p className="bg-blue-50 text-blue-900 p-3.5 rounded-2xl border border-blue-200 font-medium">
+                💡 <strong>Como Funciona:</strong> Este robô roda em um processo separado no seu computador ou servidor (exatamente igual ao aplicativo WhatsApp Web Desktop), mantendo a tomada do seu celular 100% acesa e estável sem jamais desconectar o seu telefone!
+              </p>
+
+              <div className="space-y-2 bg-slate-900 text-slate-200 p-4 rounded-2xl font-mono text-[11px]">
+                <p className="text-slate-400">// No terminal do seu computador, execute:</p>
+                <p className="text-emerald-400 font-bold">node scripts/whatsapp-daemon.js</p>
+              </div>
+
+              <div className="space-y-1 text-slate-600">
+                <p>1. O robô vai gerar o QR Code 100% seguro no terminal.</p>
+                <p>2. Aponte a câmera do seu celular uma única vez.</p>
+                <p>3. Pronto! As mensagens de clientes e fotos de RG caem direto aqui no AssinaJur.</p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowGuideModal(false)}
+              className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-all"
+            >
+              Entendido!
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Interface Central de Atendimento Segura */}
       <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 h-[720px]">
@@ -241,7 +302,7 @@ export default function WhatsAppPage() {
               <span className="font-heading font-bold text-slate-800 text-sm">Central do Escritório</span>
             </div>
             <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-semibold border border-emerald-200">
-              Protegido
+              Estável
             </span>
           </div>
 
@@ -309,7 +370,7 @@ export default function WhatsAppPage() {
                   AssinaJur Copilot IA <span className="bg-emerald-700 text-white text-[10px] px-1.5 py-0.5 rounded font-normal">Oficial</span>
                 </h3>
                 <p className="text-[11px] text-emerald-700 font-medium flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Online no Escritório
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Online em Tempo Real no Escritório
                 </p>
               </div>
             </div>
