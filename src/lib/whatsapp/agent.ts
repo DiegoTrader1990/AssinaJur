@@ -539,10 +539,67 @@ async function findSingleClient(officeId: string, query: string) {
   return clients;
 }
 
+async function routeNaturalLanguageCommand(text: string): Promise<string | null> {
+  const aiText = await callGemini(
+    [{
+      text: `Você é o roteador de comandos do AssinaJur. Identifique a intenção operacional da mensagem.
+Retorne somente JSON válido com:
+{
+  "intent": "HELP|LIST_CLIENTS|SEARCH_CLIENT|STATUS|REMIND|CREATE_CLIENT|GENERATE_TEMPLATE|GENERATE_KIT|CHAT",
+  "client": "nome do cliente ou vazio",
+  "document": "nome do modelo ou kit ou vazio"
+}
+
+Regras:
+- Consultar pendências/assinaturas => STATUS.
+- Procurar cadastro/dados de alguém => SEARCH_CLIENT.
+- Cobrar, lembrar ou reenviar assinatura => REMIND.
+- Cadastrar pessoa com dados => CREATE_CLIENT.
+- Criar documento específico => GENERATE_TEMPLATE.
+- Criar pacote/kit => GENERATE_KIT.
+- Saudação, dúvida geral ou conversa sem ação => CHAT.
+
+Mensagem: ${text}`,
+    }],
+    true
+  );
+  const parsed = aiText ? extractJson(aiText) : null;
+  if (!parsed || typeof parsed.intent !== 'string') return null;
+  const client = cleanOptional(parsed.client) || '';
+  const document = cleanOptional(parsed.document) || '';
+  switch (parsed.intent) {
+    case 'HELP': return 'ajuda';
+    case 'LIST_CLIENTS': return 'clientes';
+    case 'SEARCH_CLIENT': return client ? `buscar cliente ${client}` : null;
+    case 'STATUS': return 'status';
+    case 'REMIND': return client ? `cobrar ${client}` : null;
+    case 'CREATE_CLIENT': return `cadastrar cliente ${text}`;
+    case 'GENERATE_TEMPLATE': return client && document ? `gerar ${document} para ${client}` : null;
+    case 'GENERATE_KIT': return client && document ? `gerar kit ${document} para ${client}` : null;
+    case 'CHAT': return '__CHAT__';
+    default: return null;
+  }
+}
+
+async function answerSafeConversation(text: string): Promise<string> {
+  const answer = await callGemini([{
+    text: `Você é o AssinaJur Copilot, assistente privado do advogado administrador.
+Converse de forma profissional, natural e breve em português brasileiro.
+Você pode orientar sobre o uso do AssinaJur e ajudar a transformar o pedido em um dos recursos:
+cadastro de clientes, consulta, geração por modelo/kit, status e cobrança de assinatura.
+Nunca diga que cadastrou, alterou, gerou ou enviou algo se nenhuma ação operacional foi executada.
+Quando faltar informação, faça uma pergunta objetiva.
+
+Mensagem do advogado: ${text}`,
+  }]);
+  return answer?.trim() || 'Entendi. Diga o que deseja fazer no AssinaJur ou digite *AJUDA* para consultar os recursos.';
+}
+
 async function handleTextCommand(
   officeId: string,
   fromNumber: string,
-  originalBody: string
+  originalBody: string,
+  allowAiRouting = true
 ): Promise<WhatsAppAgentResult> {
   const text = originalBody.trim();
   const normalized = text.toLocaleLowerCase('pt-BR');
@@ -779,8 +836,22 @@ async function handleTextCommand(
     return createPendingClientAction(draft);
   }
 
+  if (allowAiRouting) {
+    try {
+      const routedCommand = await routeNaturalLanguageCommand(text);
+      if (routedCommand === '__CHAT__') {
+        return { replyText: await answerSafeConversation(text), actionTaken: 'SAFE_AI_CONVERSATION' };
+      }
+      if (routedCommand) {
+        return handleTextCommand(officeId, fromNumber, routedCommand, false);
+      }
+    } catch (error) {
+      console.error('Erro ao interpretar intenção do comando:', error);
+    }
+  }
+
   return {
-    replyText: 'Não identifiquei um comando operacional. Digite *AJUDA* para ver os comandos disponíveis.',
+    replyText: 'Não consegui transformar essa mensagem em uma ação. Diga mais detalhes ou digite *AJUDA*.',
     actionTaken: 'COMMAND_NOT_UNDERSTOOD',
   };
 }
