@@ -119,19 +119,26 @@ async function connectToWhatsApp() {
     }
   });
 
-  // Ouvir mensagens recebidas no WhatsApp e enviar para a IA do AssinaJur
+  // Ouvir mensagens recebidas no WhatsApp (incluindo enviadas pelo proprio advogado no celular)
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
 
     for (const msg of messages) {
-      if (!msg.message || msg.key.fromMe) continue;
+      if (!msg.message) continue;
 
-      const fromNumber = msg.key.remoteJid.replace('@s.whatsapp.net', '');
+      const rawJid = msg.key.remoteJid || '';
+      const fromNumber = rawJid.replace('@s.whatsapp.net', '');
+      const isFromMe = msg.key.fromMe;
       const isImage = !!msg.message.imageMessage;
       const isAudio = !!msg.message.audioMessage;
       const textMessage = msg.message.conversation || msg.message.extendedTextMessage?.text || (isImage ? 'Foto de documento para cadastro' : isAudio ? 'Áudio de voz enviado pelo advogado' : '');
 
-      console.log(`📩 Mensagem recebida de ${fromNumber}: [${isImage ? 'FOTO' : isAudio ? 'ÁUDIO DE VOZ' : 'TEXTO'}] "${textMessage}"`);
+      // Evitar responder mensagens enviadas pelo proprio bot no servidor em loop
+      if (isFromMe && textMessage.startsWith('🤖') || textMessage.startsWith('✅') || textMessage.startsWith('📌') || textMessage.startsWith('🎙️')) {
+        continue;
+      }
+
+      console.log(`📩 Mensagem recebida [fromMe=${isFromMe}] de ${fromNumber}: [${isImage ? 'FOTO' : isAudio ? 'ÁUDIO DE VOZ' : 'TEXTO'}] "${textMessage}"`);
 
       let mediaBase64 = undefined;
       let mediaMimeType = undefined;
@@ -162,7 +169,7 @@ async function connectToWhatsApp() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             officeId: 'office_demo',
-            fromNumber,
+            fromNumber: fromNumber || '5573988250201',
             message: textMessage,
             messageType: isImage ? 'IMAGE' : isAudio ? 'AUDIO' : 'TEXT',
             mediaBase64,
@@ -173,7 +180,7 @@ async function connectToWhatsApp() {
         const data = await response.json();
         if (data.reply) {
           console.log(`🤖 Resposta enviada ao Dr. no WhatsApp: "${data.reply}"`);
-          await sock.sendMessage(msg.key.remoteJid, { text: data.reply });
+          await sock.sendMessage(rawJid, { text: data.reply });
         }
       } catch (err) {
         console.error('Erro ao enviar mensagem para a IA do AssinaJur:', err);
