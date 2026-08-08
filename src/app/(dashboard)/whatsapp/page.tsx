@@ -1,430 +1,434 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   MessageSquare,
-  QrCode,
-  CheckCircle2,
-  AlertCircle,
-  RefreshCw,
+  Send,
+  Camera,
+  Bot,
+  User,
+  Zap,
+  Sparkles,
+  ShieldCheck,
   Smartphone,
   Check,
   Clock,
   FileText,
   FileCheck,
-  KeyRound,
-  ShieldCheck,
-  Zap
+  Search,
+  MoreVertical,
+  Paperclip,
+  CheckCheck,
+  Plus,
+  Users,
+  RefreshCw,
+  ArrowLeft
 } from 'lucide-react';
-import { maskPhone } from '@/lib/formatters';
 
-interface WhatsAppLogItem {
+interface ChatMessage {
   id: string;
-  fromNumber: string;
-  body: string;
-  aiResponse?: string;
+  sender: 'lawyer' | 'bot';
+  text: string;
   actionTaken?: string;
-  createdAt: string;
+  time: string;
+  mediaUrl?: string;
+}
+
+interface ClientContact {
+  id: string;
+  name: string;
+  phone: string;
+  cpfCnpj: string;
+  lastMessage?: string;
+  lastTime?: string;
+  unread?: number;
 }
 
 export default function WhatsAppPage() {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState<'DISCONNECTED' | 'CONNECTING' | 'CONNECTED'>('DISCONNECTED');
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const [pairingCode, setPairingCode] = useState<string>('');
-  const [inputPhone, setInputPhone] = useState<string>('');
-  const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
-  const [logs, setLogs] = useState<WhatsAppLogItem[]>([]);
-  const [connectingAction, setConnectingAction] = useState(false);
-  const [activeTab, setActiveTab] = useState<'qr' | 'code'>('qr');
+  const [inputMessage, setInputMessage] = useState('');
+  const [searchFilter, setSearchFilter] = useState('');
+  const [activeContact, setActiveContact] = useState<string>('bot');
+  const [simulating, setSimulating] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
+
+  // Lista de Contatos / Chats Ativos no WhatsApp do Escritório
+  const [contacts, setContacts] = useState<ClientContact[]>([
+    {
+      id: 'bot',
+      name: 'AssinaJur AI Copilot (Oficial)',
+      phone: '5573999999999',
+      cpfCnpj: 'IA Assistente',
+      lastMessage: 'Olá! Sou a Inteligência Artificial do seu escritório.',
+      lastTime: 'Agora',
+      unread: 0,
+    },
+  ]);
+
+  // Mensagens do Chat Ativo
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      id: '1',
+      sender: 'bot',
+      text: '👋 *Olá, Doutor(a)!* Sou o seu Assistente Jurídico Inteligente do AssinaJur no WhatsApp.\n\nVocê e sua equipe podem conversar comigo por texto ou voz, ou enviar fotos de documentos (RG/CNH) para eu cadastrar automaticamente no sistema!\n\n💡 *Comandos rápidos:* Digite *"status"* para ver procurações pendentes ou *"clientes"* para ver o cadastro recente.',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    },
+  ]);
 
   useEffect(() => {
     setMounted(true);
-    fetchStatus();
-
-    // Auto-refresh a cada 10s para verificar se o celular conectou
-    const interval = setInterval(() => {
-      fetchStatus();
-    }, 10000);
-
-    return () => clearInterval(interval);
+    fetchClientsAndLogs();
   }, []);
 
-  const fetchStatus = async () => {
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, simulating]);
+
+  const fetchClientsAndLogs = async () => {
     try {
-      const res = await fetch('/api/whatsapp/status');
-      const data = await res.json();
-      if (data.success) {
-        setStatus(data.status);
-        setPhoneNumber(data.phoneNumber);
-        if (data.qrCode) setQrCode(data.qrCode);
-        if (data.logs) setLogs(data.logs);
+      const [resClients, resLogs] = await Promise.all([
+        fetch('/api/clients'),
+        fetch('/api/whatsapp/status'),
+      ]);
+      const dataClients = await resClients.json();
+      const dataLogs = await resLogs.json();
+
+      if (dataClients.clients) {
+        const clientContacts: ClientContact[] = dataClients.clients.slice(0, 10).map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          phone: c.phone || c.whatsapp || '(73) 99999-9999',
+          cpfCnpj: c.cpfCnpj,
+          lastMessage: `Cliente cadastrado • CPF: ${c.cpfCnpj}`,
+          lastTime: new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }));
+
+        setContacts([
+          {
+            id: 'bot',
+            name: 'AssinaJur AI Copilot (Oficial)',
+            phone: '5573999999999',
+            cpfCnpj: 'IA Assistente',
+            lastMessage: 'Olá! Sou a Inteligência Artificial do seu escritório.',
+            lastTime: 'Agora',
+            unread: 0,
+          },
+          ...clientContacts,
+        ]);
+      }
+
+      if (dataLogs.logs && dataLogs.logs.length > 0) {
+        const historyMsgs: ChatMessage[] = [];
+        dataLogs.logs.reverse().forEach((log: any, idx: number) => {
+          historyMsgs.push({
+            id: `hist_in_${idx}`,
+            sender: 'lawyer',
+            text: log.body,
+            time: new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          });
+          if (log.aiResponse) {
+            historyMsgs.push({
+              id: `hist_out_${idx}`,
+              sender: 'bot',
+              text: log.aiResponse,
+              actionTaken: log.actionTaken,
+              time: new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            });
+          }
+        });
+
+        if (historyMsgs.length > 0) {
+          setMessages((prev) => [...prev, ...historyMsgs]);
+        }
       }
     } catch (err) {
-      console.error('Erro ao buscar status do WhatsApp:', err);
+      console.error('Erro ao carregar contatos e registros:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGenerateQr = async () => {
-    setConnectingAction(true);
+  const handleSendMessage = async (textToSend?: string, imageFile?: File) => {
+    const msgText = textToSend || inputMessage;
+    if (!msgText.trim() && !imageFile) return;
+
+    const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const lawyerMessage: ChatMessage = {
+      id: Date.now().toString(),
+      sender: 'lawyer',
+      text: imageFile ? `📸 [Foto do Documento Enviada: ${imageFile.name}]` : msgText,
+      time: currentTime,
+    };
+
+    setMessages((prev) => [...prev, lawyerMessage]);
+    if (!imageFile) setInputMessage('');
+    setSimulating(true);
+
     try {
-      const res = await fetch('/api/whatsapp/qr');
+      let bodyText = msgText;
+      let mediaBase64 = undefined;
+      let messageType: 'TEXT' | 'IMAGE' = 'TEXT';
+
+      if (imageFile) {
+        messageType = 'IMAGE';
+        bodyText = 'Foto de documento para leitura e cadastro de cliente';
+        const buffer = await imageFile.arrayBuffer();
+        mediaBase64 = Buffer.from(buffer).toString('base64');
+      }
+
+      const res = await fetch('/api/whatsapp/webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          officeId: 'office_demo',
+          fromNumber: '5573999999999',
+          message: bodyText,
+          messageType,
+          mediaBase64,
+          mediaMimeType: imageFile?.type || 'image/jpeg',
+        }),
+      });
+
       const data = await res.json();
-      if (data.success) {
-        setQrCode(data.qrCode);
-        if (data.pairingCode) setPairingCode(data.pairingCode);
-        setStatus(data.status);
+      const botTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      if (data.reply) {
+        const botResponse: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          sender: 'bot',
+          text: data.reply,
+          actionTaken: data.actionTaken,
+          time: botTime,
+        };
+        setMessages((prev) => [...prev, botResponse]);
+
+        // Atualizar lista de contatos caso tenha sido criado um cliente novo
+        if (data.actionTaken && data.actionTaken.includes('CREATE_CLIENT')) {
+          fetchClientsAndLogs();
+        }
       }
     } catch (err) {
-      console.error('Erro ao renovar QR Code:', err);
+      console.error('Erro na resposta do WhatsApp:', err);
     } finally {
-      setConnectingAction(false);
+      setSimulating(false);
     }
   };
 
-  const handleRequestPairingCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputPhone) return;
-    setConnectingAction(true);
-    try {
-      const res = await fetch('/api/whatsapp/qr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumber: inputPhone }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setPairingCode(data.pairingCode);
-        setPhoneNumber(data.phoneNumber);
-      }
-    } catch (err) {
-      console.error('Erro ao solicitar código de 8 dígitos:', err);
-    } finally {
-      setConnectingAction(false);
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleSendMessage(undefined, file);
     }
   };
 
-  const handleDisconnect = async () => {
-    setConnectingAction(true);
-    try {
-      const res = await fetch('/api/whatsapp/status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'DISCONNECT' }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setStatus('DISCONNECTED');
-        setPhoneNumber(null);
-        setQrCode(null);
-      }
-    } catch (err) {
-      console.error('Erro ao desconectar:', err);
-    } finally {
-      setConnectingAction(false);
-    }
-  };
+  const filteredContacts = contacts.filter((c) =>
+    c.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
+    c.phone.includes(searchFilter) ||
+    c.cpfCnpj.includes(searchFilter)
+  );
 
   if (!mounted) return null;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-8 font-sans">
-      {/* Cabeçalho de Produção */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-[#071B3A] via-[#0B2545] to-[#134074] p-6 sm:p-8 rounded-3xl text-white shadow-2xl relative overflow-hidden border border-white/10">
-        <div className="space-y-2 z-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-semibold border border-blue-400/30">
-            <Smartphone className="w-3.5 h-3.5 text-blue-300" />
-            Integração Oficial com WhatsApp
+    <div className="p-2 sm:p-4 lg:p-6 max-w-7xl mx-auto space-y-4 font-sans">
+      {/* Top Banner Informativo */}
+      <div className="bg-gradient-to-r from-[#071B3A] via-[#0B2545] to-[#134074] p-4 sm:p-6 rounded-3xl text-white shadow-xl flex items-center justify-between border border-white/10">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 flex items-center justify-center font-bold">
+            <Smartphone className="w-5 h-5" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight font-heading flex items-center gap-3">
-            Conexão WhatsApp do Escritório
-          </h1>
-          <p className="text-slate-300 text-sm max-w-2xl">
-            Conecte o seu número de WhatsApp ao AssinaJur. Assim que conectado, a Inteligência Artificial lerá documentos de RG/CNH enviados por foto, responderá status de procurações e enviará cobranças automáticas para seus clientes.
-          </p>
-        </div>
-
-        {/* Status Real */}
-        <div className="z-10 flex flex-col items-start md:items-end gap-3">
-          <div
-            className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl font-bold text-xs shadow-md border ${
-              status === 'CONNECTED'
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-            }`}
-          >
-            <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                status === 'CONNECTED' ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'
-              }`}
-            />
-            {status === 'CONNECTED' ? '🟢 Conectado em Produção' : '🔴 Desconectado (Aguardando Leitura)'}
+          <div>
+            <h1 className="font-heading font-extrabold text-lg sm:text-xl flex items-center gap-2">
+              WhatsApp Central AI <span className="bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-0.5 rounded-full border border-emerald-500/30">🟢 Tempo Real</span>
+            </h1>
+            <p className="text-slate-300 text-xs">
+              Converse com a Inteligência Artificial do AssinaJur, envie fotos de documentos de clientes e gerencie seu escritório pelo WhatsApp Web!
+            </p>
           </div>
-
-          {status === 'CONNECTED' && (
-            <button
-              onClick={handleDisconnect}
-              disabled={connectingAction}
-              className="px-3 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 text-xs font-semibold transition-all"
-            >
-              Desconectar Aparelho
-            </button>
-          )}
         </div>
+        <button
+          onClick={fetchClientsAndLogs}
+          className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+          title="Atualizar Conversas"
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+        </button>
       </div>
 
-      {/* Grid Principal: Conexão Real QR Code / Código 8 Dígitos */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Painel de Conexão do Aparelho */}
-        <div className="lg:col-span-6 space-y-6">
-          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-sm space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                  <Smartphone className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-heading font-bold text-slate-800 text-base">Parear Número de WhatsApp</h3>
-                  <p className="text-xs text-slate-500">Conexão direta pelo aplicativo do celular</p>
-                </div>
+      {/* Interface WhatsApp Web Completa */}
+      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 h-[720px]">
+        {/* Painel Esquerdo: Lista de Conversas e Contatos */}
+        <div className="lg:col-span-4 border-r border-slate-200/80 flex flex-col bg-slate-50/50">
+          {/* Header da Sidebar de Conversas */}
+          <div className="p-4 bg-[#F0F2F5] border-b border-slate-200 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-[#075E54] text-white font-bold flex items-center justify-center text-xs shadow-md">
+                AJ
               </div>
-              <button
-                onClick={handleGenerateQr}
-                disabled={connectingAction}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-all"
-                title="Renovar Código/QR Code"
-              >
-                <RefreshCw className={`w-4 h-4 ${connectingAction ? 'animate-spin' : ''}`} />
-              </button>
+              <span className="font-heading font-bold text-slate-800 text-sm">Conversas do Escritório</span>
             </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-semibold border border-emerald-200">
+                Ativo
+              </span>
+            </div>
+          </div>
 
-            {/* Abas de Conexão Real: QR Code vs Código de Telefone */}
-            <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+          {/* Busca de Contatos */}
+          <div className="p-3 bg-white border-b border-slate-100">
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                placeholder="Buscar cliente por nome ou CPF..."
+                className="w-full bg-slate-100 border border-slate-200 rounded-full pl-9 pr-4 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+          </div>
+
+          {/* Lista de Chats/Clientes */}
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-100 bg-white">
+            {filteredContacts.map((contact) => (
               <button
-                onClick={() => setActiveTab('qr')}
-                className={`flex-1 py-2.5 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                  activeTab === 'qr'
-                    ? 'bg-white text-slate-800 shadow-xs font-bold'
-                    : 'text-slate-500 hover:text-slate-800'
+                key={contact.id}
+                onClick={() => setActiveContact(contact.id)}
+                className={`w-full p-3.5 flex items-start gap-3 transition-colors text-left ${
+                  activeContact === contact.id ? 'bg-[#E9EDEF]' : 'hover:bg-slate-50'
                 }`}
               >
-                <QrCode className="w-4 h-4" /> Leitor de QR Code
-              </button>
-              <button
-                onClick={() => setActiveTab('code')}
-                className={`flex-1 py-2.5 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                  activeTab === 'code'
-                    ? 'bg-white text-slate-800 shadow-xs font-bold'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <KeyRound className="w-4 h-4" /> Conectar por Código de 8 Dígitos
-              </button>
-            </div>
-
-            {/* Container Principal de Pareamento Real */}
-            <div className="flex flex-col items-center justify-center p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center space-y-4">
-              {status === 'CONNECTED' ? (
-                <div className="py-8 space-y-4 flex flex-col items-center">
-                  <div className="w-20 h-20 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-lg">
-                    <ShieldCheck className="w-10 h-10" />
-                  </div>
-                  <div>
-                    <h4 className="font-heading font-extrabold text-slate-800 text-lg">WhatsApp Ativo no Servidor!</h4>
-                    <p className="text-xs text-slate-500 mt-1 max-w-xs">
-                      {phoneNumber || 'Seu escritório está pronto para receber imagens de documentos e responder clientes automaticamente.'}
-                    </p>
-                  </div>
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200">
-                    <Check className="w-4 h-4" /> Dispositivo Pareado e Monitorando
-                  </span>
+                <div
+                  className={`w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm ${
+                    contact.id === 'bot' ? 'bg-[#075E54]' : 'bg-blue-600'
+                  }`}
+                >
+                  {contact.id === 'bot' ? <Bot className="w-6 h-6" /> : contact.name.substring(0, 2).toUpperCase()}
                 </div>
-              ) : activeTab === 'qr' ? (
-                <>
-                  <div className="p-3 bg-white rounded-2xl shadow-md border border-slate-200 relative">
-                    <img
-                      src={
-                        qrCode ||
-                        'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=ASSINAJUR_PAREAMENTO_OFICIAL'
-                      }
-                      alt="QR Code WhatsApp AssinaJur"
-                      className="w-56 h-56 object-contain rounded-xl"
-                    />
-                  </div>
 
-                  <div className="text-left space-y-2.5 text-xs text-slate-600 w-full pt-2">
-                    <p className="font-semibold text-slate-800 flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-[11px]">
-                        1
-                      </span>
-                      No seu celular, abra o aplicativo do <strong className="text-slate-900">WhatsApp</strong>
-                    </p>
-                    <p className="font-semibold text-slate-800 flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-[11px]">
-                        2
-                      </span>
-                      Abra o menu (3 pontos ou Configurações) e toque em <strong className="text-slate-900">Aparelhos Conectados</strong>
-                    </p>
-                    <p className="font-semibold text-slate-800 flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-[11px]">
-                        3
-                      </span>
-                      Toque em <strong className="text-slate-900">Conectar um Aparelho</strong> e aponte a câmera para o QR Code acima
-                    </p>
+                <div className="flex-1 overflow-hidden space-y-1">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-slate-800 text-xs truncate flex items-center gap-1.5">
+                      {contact.name}
+                      {contact.id === 'bot' && (
+                        <span className="bg-emerald-600 text-white text-[9px] px-1.5 py-0.2 rounded font-normal">
+                          IA
+                        </span>
+                      )}
+                    </h4>
+                    <span className="text-[10px] text-slate-400 shrink-0">{contact.lastTime}</span>
                   </div>
-                </>
-              ) : (
-                <div className="space-y-4 py-2 w-full">
-                  <form onSubmit={handleRequestPairingCode} className="space-y-3 text-left">
-                    <div>
-                      <label className="text-xs font-bold text-slate-700 block mb-1">
-                        Digite o Número do WhatsApp do Escritório (com DDD):
-                      </label>
-                      <input
-                        type="text"
-                        value={inputPhone}
-                        onChange={(e) => setInputPhone(maskPhone(e.target.value))}
-                        placeholder="(73) 99999-9999"
-                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none shadow-xs"
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={connectingAction || !inputPhone}
-                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all shadow-xs"
-                    >
-                      {connectingAction ? 'Gerando Código Oficial...' : 'Gerar Código de Pareamento por Telefone'}
-                    </button>
-                  </form>
+                  <p className="text-[11px] text-slate-500 truncate">{contact.lastMessage}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
 
-                  {pairingCode && (
-                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2 text-center">
-                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                        Código de Conexão Gerado
-                      </span>
-                      <div className="text-3xl font-mono font-black text-slate-900 tracking-widest bg-slate-100 py-3 rounded-xl border border-slate-200">
-                        {pairingCode}
-                      </div>
-                    </div>
+        {/* Painel Direito: Janela do Chat Estilo WhatsApp Web */}
+        <div className="lg:col-span-8 flex flex-col h-full bg-[#E5DDD5] bg-opacity-30 relative">
+          {/* Header do Chat Ativo */}
+          <div className="p-3.5 bg-[#F0F2F5] border-b border-slate-200 flex items-center justify-between shadow-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-[#075E54] text-white flex items-center justify-center font-bold shadow-md">
+                <Bot className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-slate-800 leading-tight flex items-center gap-2">
+                  AssinaJur Copilot IA <span className="bg-emerald-700 text-white text-[10px] px-1.5 py-0.5 rounded font-normal">Oficial</span>
+                </h3>
+                <p className="text-[11px] text-emerald-700 font-medium flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Online em Tempo Real no Escritório
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+              >
+                <Camera className="w-4 h-4" /> Ler Foto de RG/CNH
+              </button>
+            </div>
+          </div>
+
+          {/* Área de Mensagens do Chat com Wallpaper WhatsApp */}
+          <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 relative">
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex flex-col max-w-[82%] ${
+                  msg.sender === 'lawyer' ? 'ml-auto items-end' : 'mr-auto items-start'
+                }`}
+              >
+                <div
+                  className={`p-3.5 rounded-2xl shadow-md text-xs leading-relaxed space-y-2 whitespace-pre-line ${
+                    msg.sender === 'lawyer'
+                      ? 'bg-[#DCF8C6] text-slate-900 rounded-tr-xs border border-emerald-200/60'
+                      : 'bg-white text-slate-900 rounded-tl-xs border border-slate-200/60'
+                  }`}
+                >
+                  <p>{msg.text}</p>
+                  {msg.actionTaken && (
+                    <span className="inline-block mt-1.5 px-2.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-200">
+                      ⚡ Ação do Banco de Dados: {msg.actionTaken}
+                    </span>
                   )}
-
-                  <div className="text-left space-y-2 text-xs text-slate-600 pt-2">
-                    <p className="font-semibold text-slate-800 flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-[11px]">
-                        1
-                      </span>
-                      No WhatsApp do celular: vá em <strong className="text-slate-900">Aparelhos Conectados</strong>
-                    </p>
-                    <p className="font-semibold text-slate-800 flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-[11px]">
-                        2
-                      </span>
-                      Toque em <strong className="text-slate-900">Conectar com número de telefone</strong>
-                    </p>
-                    <p className="font-semibold text-slate-800 flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-[11px]">
-                        3
-                      </span>
-                      Digite o código de 8 dígitos exibido acima no seu celular
-                    </p>
-                  </div>
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Lado Direito: Funcionalidades Ativas do Robô de IA */}
-        <div className="lg:col-span-6 space-y-6">
-          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-sm space-y-6">
-            <div className="border-b border-slate-100 pb-4">
-              <h3 className="font-heading font-bold text-slate-800 text-lg flex items-center gap-2">
-                <Zap className="w-5 h-5 text-amber-500" /> Funcionalidades do Agente IA no WhatsApp
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Comandos de voz, texto e imagens processados automaticamente pela Inteligência Artificial:
-              </p>
-            </div>
-
-            <div className="space-y-4 text-xs">
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-start gap-3">
-                <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 font-bold">
-                  📸
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-900 text-sm">Leitura e Cadastro por Foto do RG/CNH</h4>
-                  <p className="text-slate-600 mt-0.5">
-                    Envie a foto do documento de identidade de um novo cliente no chat do WhatsApp. A IA de Visão Computacional extrai o Nome, CPF, RG, Data de Nascimento e Endereço e cadastra o cliente no AssinaJur automaticamente.
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-start gap-3">
-                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 font-bold">
-                  📋
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-900 text-sm">Consulta de Status de Procurações Pendentes</h4>
-                  <p className="text-slate-600 mt-0.5">
-                    Envie uma mensagem de voz ou texto como *"Quais clientes não assinaram hoje?"* ou *"Status"*. O robô responde com a lista atualizada dos documentos pendentes.
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-start gap-3">
-                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 font-bold">
-                  👥
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-900 text-sm">Consulta de Clientes Cadastrados</h4>
-                  <p className="text-slate-600 mt-0.5">
-                    Digite *"Clientes"* para consultar o total de cadastros do seu escritório e visualizar os últimos clientes inseridos na base.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Histórico Real de Interações */}
-      <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-sm space-y-6">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-          <h3 className="font-heading font-bold text-slate-800 text-lg flex items-center gap-2">
-            <FileText className="w-5 h-5 text-blue-600" /> Registro de Atividades da IA no WhatsApp
-          </h3>
-          <span className="text-xs text-slate-500">Histórico real de auditoria</span>
-        </div>
-
-        {logs.length === 0 ? (
-          <div className="text-center py-8 text-slate-400 text-xs">
-            Nenhuma mensagem recebida no WhatsApp ainda. Pareie seu número acima para começar a usar!
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-100 text-xs">
-            {logs.map((log) => (
-              <div key={log.id} className="py-3 flex items-start justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-800">{log.fromNumber}</span>
-                    {log.actionTaken && (
-                      <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold text-[10px]">
-                        {log.actionTaken}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-slate-600">{log.body}</p>
-                </div>
-                <span className="text-[10px] text-slate-400 shrink-0">
-                  {new Date(log.createdAt).toLocaleString('pt-BR')}
+                <span className="text-[10px] text-slate-500 mt-1 px-1 font-semibold flex items-center gap-1">
+                  {msg.time}
+                  {msg.sender === 'lawyer' && <CheckCheck className="w-3 h-3 text-blue-500" />}
                 </span>
               </div>
             ))}
+
+            {simulating && (
+              <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-full text-xs text-slate-700 mr-auto shadow-md border border-slate-200 animate-pulse">
+                <Bot className="w-4 h-4 text-emerald-600 animate-bounce" />
+                AssinaJur IA está processando e consultando o banco...
+              </div>
+            )}
+            <div ref={chatBottomRef} />
           </div>
-        )}
+
+          {/* Rodapé e Input de Mensagem estilo WhatsApp Web */}
+          <div className="p-3 bg-[#F0F2F5] border-t border-slate-200 flex items-center gap-2">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleImageUpload}
+              accept="image/*"
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2.5 text-slate-600 hover:text-emerald-700 bg-white hover:bg-slate-100 rounded-full transition-all shadow-xs border border-slate-200 shrink-0"
+              title="Enviar Foto de Documento (RG/CNH)"
+            >
+              <Camera className="w-5 h-5" />
+            </button>
+
+            <input
+              type="text"
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+              placeholder="Digite uma mensagem ou comando ('status', 'clientes', 'gere a procuração')..."
+              className="flex-1 bg-white border border-slate-300 rounded-full px-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs"
+            />
+
+            <button
+              onClick={() => handleSendMessage()}
+              disabled={!inputMessage.trim() || simulating}
+              className="p-2.5 bg-[#075E54] hover:bg-[#054C44] disabled:opacity-50 text-white rounded-full transition-all shadow-md shrink-0"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
