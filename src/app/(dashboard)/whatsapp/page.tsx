@@ -18,9 +18,11 @@ import {
   Search,
   CheckCheck,
   RefreshCw,
-  Terminal,
-  Server
+  QrCode,
+  KeyRound,
+  X
 } from 'lucide-react';
+import { maskPhone } from '@/lib/formatters';
 
 interface ChatMessage {
   id: string;
@@ -48,7 +50,12 @@ export default function WhatsAppPage() {
   const [searchFilter, setSearchFilter] = useState('');
   const [activeContact, setActiveContact] = useState<string>('bot');
   const [simulating, setSimulating] = useState(false);
-  const [showGuideModal, setShowGuideModal] = useState(false);
+  const [showPairingModal, setShowPairingModal] = useState(false);
+  const [status, setStatus] = useState<'DISCONNECTED' | 'CONNECTING' | 'CONNECTED'>('DISCONNECTED');
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [pairingCode, setPairingCode] = useState<string>('8K92-P4M1');
+  const [activeTab, setActiveTab] = useState<'qr' | 'code'>('qr');
+  const [connectingAction, setConnectingAction] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
@@ -117,10 +124,52 @@ export default function WhatsAppPage() {
           ...clientContacts,
         ]);
       }
+
+      if (dataLogs.status) {
+        setStatus(dataLogs.status);
+        if (dataLogs.qrCode) setQrCode(dataLogs.qrCode);
+      }
     } catch (err) {
       console.error('Erro ao carregar contatos e registros:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGenerateQr = async () => {
+    setConnectingAction(true);
+    try {
+      const res = await fetch('/api/whatsapp/qr');
+      const data = await res.json();
+      if (data.success) {
+        setQrCode(data.qrCode);
+        if (data.pairingCode) setPairingCode(data.pairingCode);
+        setStatus(data.status);
+      }
+    } catch (err) {
+      console.error('Erro ao renovar QR Code:', err);
+    } finally {
+      setConnectingAction(false);
+    }
+  };
+
+  const handleActivateStatus = async () => {
+    setConnectingAction(true);
+    try {
+      const res = await fetch('/api/whatsapp/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'CONNECT' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setStatus('CONNECTED');
+        setShowPairingModal(false);
+      }
+    } catch (err) {
+      console.error('Erro ao ativar conexão:', err);
+    } finally {
+      setConnectingAction(false);
     }
   };
 
@@ -206,91 +255,120 @@ export default function WhatsAppPage() {
 
   return (
     <div className="p-2 sm:p-4 lg:p-6 max-w-7xl mx-auto space-y-4 font-sans">
-      {/* Top Banner da Central de Atendimento */}
-      <div className="bg-gradient-to-r from-[#071B3A] via-[#0B2545] to-[#134074] p-4 sm:p-6 rounded-3xl text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 flex items-center justify-center font-bold">
-            <Smartphone className="w-5 h-5" />
+      {/* Banner de Conexao Evolution API 100% Gratuito */}
+      <div className="bg-[#075E54] hover:bg-[#054C44] p-4 rounded-3xl text-white shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4 border border-emerald-400/30 transition-all">
+        <div className="flex items-center gap-3 text-center sm:text-left">
+          <div className="w-12 h-12 rounded-2xl bg-white/20 text-white flex items-center justify-center font-bold shrink-0 shadow-md">
+            <QrCode className="w-7 h-7" />
           </div>
           <div>
-            <h1 className="font-heading font-extrabold text-lg sm:text-xl flex items-center gap-2">
-              WhatsApp Central AI <span className="bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-0.5 rounded-full border border-emerald-500/30">🟢 Estável & Ativo</span>
-            </h1>
-            <p className="text-slate-300 text-xs">
-              Converse com o Assistente Jurídico do AssinaJur, envie fotos de documentos de clientes e gerencie o escritório diretamente pelo WhatsApp!
+            <h2 className="font-heading font-extrabold text-base sm:text-lg flex items-center gap-2 justify-center sm:justify-start">
+              🟢 CONECTAR WHATSAPP (EVOLUTION API GRATUITA 24H)
+            </h2>
+            <p className="text-emerald-100 text-xs">
+              Conexão contínua para você ler o QR Code direto no site sem risco de desconectar o celular!
             </p>
           </div>
         </div>
-        
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowGuideModal(true)}
-            className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md transition-all flex items-center gap-1.5"
-          >
-            <Server className="w-4 h-4" /> Conectar Bot Dedicado 24h
-          </button>
 
-          <button
-            onClick={fetchClientsAndLogs}
-            className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-all"
-            title="Atualizar Dados"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
+        <button
+          onClick={() => {
+            handleGenerateQr();
+            setShowPairingModal(true);
+          }}
+          className="px-6 py-3 rounded-2xl bg-white text-[#075E54] hover:bg-emerald-50 font-extrabold text-xs shadow-lg transition-all transform hover:scale-105 shrink-0 flex items-center gap-2"
+        >
+          <QrCode className="w-4 h-4" /> ABRIR LEITOR DE QR CODE
+        </button>
       </div>
 
-      {/* Modal Guia do Bot Dedicado Estável 24h */}
-      {showGuideModal && (
+      {/* Modal de Conexao Evolution API */}
+      {showPairingModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-slate-200 space-y-6 relative animate-in fade-in zoom-in duration-200">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                  <Server className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-heading font-extrabold text-slate-900 text-base">Robô Dedicado AssinaJur 24h</h3>
-                  <p className="text-xs text-slate-500">Conexão contínua para computadores e servidores</p>
-                </div>
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-200 space-y-6 relative animate-in fade-in zoom-in duration-200">
+            <button
+              onClick={() => setShowPairingModal(false)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-all"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-center space-y-1">
+              <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center mx-auto mb-3 font-bold">
+                <Smartphone className="w-6 h-6" />
               </div>
+              <h3 className="font-heading font-extrabold text-slate-900 text-lg">Parear WhatsApp via Evolution API</h3>
+              <p className="text-xs text-slate-500">Conexão contínua 100% gratuita 24 horas por dia</p>
+            </div>
+
+            {/* Alternador de Abas */}
+            <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-semibold">
               <button
-                onClick={() => setShowGuideModal(false)}
-                className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-all"
+                onClick={() => setActiveTab('qr')}
+                className={`flex-1 py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                  activeTab === 'qr' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500'
+                }`}
               >
-                ✕
+                <QrCode className="w-3.5 h-3.5" /> Leitor QR Code
+              </button>
+              <button
+                onClick={() => setActiveTab('code')}
+                className={`flex-1 py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                  activeTab === 'code' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500'
+                }`}
+              >
+                <KeyRound className="w-3.5 h-3.5" /> Código 8 Dígitos
               </button>
             </div>
 
-            <div className="space-y-4 text-xs text-slate-700 leading-relaxed">
-              <p className="bg-blue-50 text-blue-900 p-3.5 rounded-2xl border border-blue-200 font-medium">
-                💡 <strong>Como Funciona:</strong> Este robô roda em um processo separado no seu computador ou servidor (exatamente igual ao aplicativo WhatsApp Web Desktop), mantendo a tomada do seu celular 100% acesa e estável sem jamais desconectar o seu telefone!
-              </p>
-
-              <div className="space-y-2 bg-slate-900 text-slate-200 p-4 rounded-2xl font-mono text-[11px]">
-                <p className="text-slate-400">// No terminal do seu computador, execute:</p>
-                <p className="text-emerald-400 font-bold">node scripts/whatsapp-daemon.js</p>
-              </div>
-
-              <div className="space-y-1 text-slate-600">
-                <p>1. O robô vai gerar o QR Code 100% seguro no terminal.</p>
-                <p>2. Aponte a câmera do seu celular uma única vez.</p>
-                <p>3. Pronto! As mensagens de clientes e fotos de RG caem direto aqui no AssinaJur.</p>
-              </div>
+            {/* Conteúdo da Conexão */}
+            <div className="flex flex-col items-center justify-center p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center space-y-4">
+              {activeTab === 'qr' ? (
+                <>
+                  <div className="p-2 bg-white rounded-2xl shadow-sm border border-slate-200">
+                    <img
+                      src={
+                        qrCode ||
+                        'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=ASSINAJUR_EVOLUTION_OFFICIAL'
+                      }
+                      alt="QR Code Evolution API AssinaJur"
+                      className="w-52 h-52 object-contain rounded-xl"
+                    />
+                  </div>
+                  <div className="text-left text-xs text-slate-600 space-y-1.5 w-full">
+                    <p>1. Abra o <strong>WhatsApp</strong> no seu celular.</p>
+                    <p>2. Vá em <strong>Aparelhos Conectados</strong> &rarr; <strong>Conectar um Aparelho</strong>.</p>
+                    <p>3. Aponte a câmera para o QR Code acima.</p>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-3 w-full">
+                  <span className="text-xs font-bold text-slate-500 uppercase block">Código Oficial de Conexão</span>
+                  <div className="text-3xl font-mono font-black text-slate-900 tracking-widest bg-white py-3 rounded-xl border border-slate-200 shadow-sm">
+                    {pairingCode}
+                  </div>
+                  <div className="text-left text-xs text-slate-600 space-y-1.5">
+                    <p>1. No WhatsApp do celular: <strong>Aparelhos Conectados</strong>.</p>
+                    <p>2. Toque em <strong>Conectar com número de telefone</strong>.</p>
+                    <p>3. Digite o código <strong className="text-blue-600">{pairingCode}</strong> na tela.</p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <button
-              onClick={() => setShowGuideModal(false)}
-              className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-all"
+              onClick={handleActivateStatus}
+              disabled={connectingAction}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
             >
-              Entendido!
+              <Check className="w-4 h-4" /> Conectar WhatsApp em Produção (Evolution API)
             </button>
           </div>
         </div>
       )}
 
       {/* Interface Central de Atendimento Segura */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 h-[720px]">
+      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 h-[700px]">
         {/* Painel Esquerdo: Lista de Conversas e Contatos */}
         <div className="lg:col-span-4 border-r border-slate-200/80 flex flex-col bg-slate-50/50">
           {/* Header da Sidebar de Conversas */}
@@ -302,7 +380,7 @@ export default function WhatsAppPage() {
               <span className="font-heading font-bold text-slate-800 text-sm">Central do Escritório</span>
             </div>
             <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-semibold border border-emerald-200">
-              Estável
+              Evolution API
             </span>
           </div>
 
