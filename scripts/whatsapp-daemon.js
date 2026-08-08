@@ -19,24 +19,26 @@ const { exec } = require('child_process');
 const ASSINAJUR_WEBHOOK_URL = process.env.ASSINAJUR_WEBHOOK_URL || 'https://www.assinajur.com.br/api/whatsapp/webhook';
 const AUTH_FOLDER = process.env.WHATSAPP_AUTH_DIR || path.join(__dirname, '..', 'whatsapp-auth');
 
-if (!fs.existsSync(AUTH_FOLDER)) {
-  fs.mkdirSync(AUTH_FOLDER, { recursive: true });
-}
-
 let socketInstance = null;
 let isConnected = false;
 let isConnecting = false;
+let conflictCount = 0;
 
 async function connectToWhatsApp() {
   if (isConnecting) return;
   isConnecting = true;
 
   console.log(`\n======================================================`);
-  console.log(`🚀 INICIANDO CONECTOR ASSINAJUR IA (24/7)...`);
+  console.log(`🚀 INICIANDO CONECTOR DEDICADO ASSINAJUR IA (24/7)...`);
   console.log(`======================================================\n`);
 
   try {
+    if (!fs.existsSync(AUTH_FOLDER)) {
+      fs.mkdirSync(AUTH_FOLDER, { recursive: true });
+    }
+
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
+    const isAlreadyLoggedIn = !!(state && state.creds && state.creds.me);
 
     const sock = makeWASocket({
       auth: state,
@@ -55,7 +57,7 @@ async function connectToWhatsApp() {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr && !isConnected) {
-        console.log('\n📲 QR CODE GERADO! APONTE A CÂMERA DO CELULAR PARA PAREAR:');
+        console.log('\n📲 NOVO QR CODE LIMPO GERADO! APONTE A CÂMERA DO CELULAR PARA ESTABILIZAR:');
         qrcodeTerminal.generate(qr, { small: true });
 
         try {
@@ -76,9 +78,9 @@ async function connectToWhatsApp() {
               </head>
               <body>
                 <div class="card">
-                  <h2>🟢 PAREAR WHATSAPP ASSINAJUR</h2>
+                  <h2>🟢 PAREAR WHATSAPP ASSINAJUR (SESSÃO LIMPA)</h2>
                   <p>1. Abra o WhatsApp no celular &rarr; Aparelhos Conectados</p>
-                  <p>2. Aponte a câmera para o QR Code abaixo:</p>
+                  <p>2. Aponte a câmera para o QR Code abaixo para estabilizar 100%:</p>
                   <img src="${qrDataUrl}" alt="QR Code WhatsApp">
                 </div>
               </body>
@@ -94,24 +96,30 @@ async function connectToWhatsApp() {
         isConnected = false;
         isConnecting = false;
         const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const isLoggedOut = statusCode === DisconnectReason.loggedOut;
 
-        console.log(`ℹ️ Conexão fechada (Código ${statusCode || 'desconhecido'}).`);
+        if (statusCode === 440 || statusCode === 428) {
+          conflictCount++;
+          console.log(`⚠️ Conflito de sessão residual (Código ${statusCode}). Tentativa ${conflictCount}/2...`);
+        }
 
-        if (isLoggedOut) {
-          console.log('❌ Sessão deslogada. Limpando credenciais...');
-          fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
-          setTimeout(connectToWhatsApp, 5000);
+        // Se houver conflito persistente ou deslogamento, resetar chaves velhas para conexao limpa
+        if (statusCode === DisconnectReason.loggedOut || conflictCount >= 2) {
+          console.log('🧹 Limpando chaves antigas para garantir sessão 100% estável e sem loops...');
+          conflictCount = 0;
+          try {
+            fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
+          } catch (eRm) {}
+          setTimeout(connectToWhatsApp, 2000);
         } else {
-          console.log('🔄 Reconectando em 5 segundos...');
-          setTimeout(connectToWhatsApp, 5000);
+          setTimeout(connectToWhatsApp, 3000);
         }
       } else if (connection === 'open') {
         isConnected = true;
         isConnecting = false;
+        conflictCount = 0;
         console.log('\n======================================================');
-        console.log('🎉 WHATSAPP 100% CONECTADO E PRONTO PARA USO!');
-        console.log('O robô está ouvindo mensagens, áudios e fotos de RG/CNH!');
+        console.log('🎉 WHATSAPP 100% CONECTADO E ESTÁVEL NO ASSINAJUR!');
+        console.log('O robô de IA está ativo ouvindo suas mensagens, áudios e fotos!');
         console.log('======================================================\n');
       }
     });
