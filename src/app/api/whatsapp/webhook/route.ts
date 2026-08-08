@@ -126,7 +126,8 @@ export async function POST(req: Request) {
 
     if (body.eventType === 'DIAGNOSTIC_CLIENT' && bridgeAuthenticated) {
       const cpfCnpj = String(body.cpfCnpj || '').replace(/\D/g, '');
-      const [resolvedOffice, matches] = await Promise.all([
+      const officePhone = String(body.officePhone || '').replace(/\D/g, '');
+      const [resolvedOffice, matches, officeCandidates] = await Promise.all([
         prisma.office.findUnique({
           where: { id: targetOfficeId },
           select: { id: true, name: true },
@@ -141,8 +142,19 @@ export async function POST(req: Request) {
             office: { select: { name: true } },
           },
         }),
+        prisma.office.findMany({
+          where: officePhone
+            ? {
+                OR: [
+                  { phone: { contains: officePhone } },
+                  { whatsapp: { contains: officePhone } },
+                ],
+              }
+            : { id: targetOfficeId },
+          select: { id: true, name: true, phone: true, whatsapp: true, email: true },
+        }),
       ]);
-      return NextResponse.json({ success: true, resolvedOffice, matches });
+      return NextResponse.json({ success: true, resolvedOffice, matches, officeCandidates });
     }
 
     if (body.eventType === 'STATUS') {
