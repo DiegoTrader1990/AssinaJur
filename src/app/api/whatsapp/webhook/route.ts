@@ -31,7 +31,7 @@ async function resolveBridgeOfficeId(fromNumber: string): Promise<string | null>
   const configuredOfficeId = process.env.WHATSAPP_OFFICE_ID;
   if (configuredOfficeId) {
     const office = await prisma.office.findFirst({ where: { id: configuredOfficeId, active: true }, select: { id: true } });
-    return office?.id || null;
+    if (office) return office.id;
   }
 
   const users = await prisma.user.findMany({
