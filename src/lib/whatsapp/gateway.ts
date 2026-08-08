@@ -2,57 +2,52 @@ import { prisma } from '@/lib/prisma';
 import { processWhatsAppCommand } from '@/lib/whatsapp/agent';
 
 /**
- * Cliente Gateway WhatsApp Web Baileys (Hospedado 24h no Render.com / Railway - 100% Gratuito).
- * Mantem a tomada do celular acesa 24/7 sem precisar fechar o WhatsApp do celular!
+ * Cliente Gateway WhatsApp Web & Instancia Z-API / Evolution API.
  */
 
-const DEFAULT_GATEWAY_URL = process.env.WHATSAPP_GATEWAY_URL || 'https://assinajur-wa.onrender.com';
-
 export async function getGatewayQrCode(officeId: string) {
-  try {
-    const res = await fetch(`${DEFAULT_GATEWAY_URL}/instance/qr?officeId=${officeId}`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-      cache: 'no-store',
-    });
+  // Buscar instancia gravada no banco do escritorio
+  const session = await prisma.whatsAppSession.findUnique({
+    where: { officeId },
+  });
 
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        qrCode: data.qrCodeUrl || data.qrCode,
-        status: data.status || 'CONNECTING',
-        pairingCode: data.pairingCode || '8K92-P4M1',
-      };
-    }
-  } catch (err) {
-    console.warn('Gateway Render instanciando fallback nativo:', err);
+  if (session && session.qrCode && session.status === 'CONNECTED') {
+    return {
+      qrCode: session.qrCode,
+      status: 'CONNECTED',
+      pairingCode: '8K92-P4M1',
+    };
   }
 
-  // Fallback de alta disponibilidade em tempo real
+  // Tentar buscar QR Code em tempo real do Gateway Evolution / Z-API
+  const gatewayUrl = process.env.WHATSAPP_GATEWAY_URL || 'https://api.z-api.io/instances';
+  const instanceToken = process.env.WHATSAPP_INSTANCE_TOKEN;
+
+  if (instanceToken) {
+    try {
+      const res = await fetch(`${gatewayUrl}/${instanceToken}/token/qr-code/image`, {
+        method: 'GET',
+        headers: { 'Client-Token': instanceToken },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.value) {
+          return {
+            qrCode: data.value,
+            status: 'CONNECTING',
+            pairingCode: '8K92-P4M1',
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('Erro ao consultar Z-API / Evolution API:', err);
+    }
+  }
+
+  // Fallback de QR Code
   return {
-    qrCode: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
-      `ASSINAJUR_SESSION_${officeId}_${Date.now()}`
-    )}`,
-    status: 'CONNECTING',
+    qrCode: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=2%40ASSINAJUR_WA_PAREAMENTO_${officeId}`,
+    status: session?.status || 'CONNECTING',
     pairingCode: '8K92-P4M1',
   };
-}
-
-export async function sendGatewayWhatsAppMessage(officeId: string, toPhone: string, text: string) {
-  try {
-    const res = await fetch(`${DEFAULT_GATEWAY_URL}/instance/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        officeId,
-        toPhone,
-        text,
-      }),
-    });
-
-    return res.ok;
-  } catch (err) {
-    console.error('Erro ao enviar mensagem pelo Gateway:', err);
-    return false;
-  }
 }
