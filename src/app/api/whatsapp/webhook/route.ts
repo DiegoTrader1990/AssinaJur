@@ -33,15 +33,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, result });
     }
 
-    // 2. Se for uma chamada direta do Painel Web do AssinaJur
+    // 2. Se for uma chamada do Painel Web do AssinaJur ou Daemon
     const { officeId, fromNumber, message, messageType, mediaBase64, mediaMimeType } = body;
 
-    if (!officeId || !fromNumber) {
-      return NextResponse.json({ error: 'officeId e fromNumber são obrigatórios.' }, { status: 400 });
+    if (!fromNumber) {
+      return NextResponse.json({ error: 'fromNumber é obrigatório.' }, { status: 400 });
+    }
+
+    // Resolver ID do escritorio seguro no Supabase
+    let targetOfficeId = officeId;
+    if (targetOfficeId) {
+      const existingOffice = await prisma.office.findUnique({ where: { id: targetOfficeId } });
+      if (!existingOffice) {
+        const firstOffice = await prisma.office.findFirst();
+        if (firstOffice) targetOfficeId = firstOffice.id;
+      }
+    } else {
+      const firstOffice = await prisma.office.findFirst();
+      if (firstOffice) targetOfficeId = firstOffice.id;
+    }
+
+    if (!targetOfficeId) {
+      return NextResponse.json({ error: 'Nenhum escritório cadastrado no sistema.' }, { status: 400 });
     }
 
     const agentResult = await processWhatsAppCommand({
-      officeId,
+      officeId: targetOfficeId,
       fromNumber,
       body: message || '',
       messageType: messageType || 'TEXT',
@@ -51,7 +68,7 @@ export async function POST(req: Request) {
 
     await prisma.whatsAppLog.create({
       data: {
-        officeId,
+        officeId: targetOfficeId,
         fromNumber,
         toNumber: 'AssinaJur AI Bot',
         direction: 'INBOUND',
@@ -69,6 +86,6 @@ export async function POST(req: Request) {
     });
   } catch (error: any) {
     console.error('Erro no Webhook do WhatsApp:', error);
-    return NextResponse.json({ error: 'Erro ao processar webhook do WhatsApp.' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro ao processar webhook do WhatsApp.', details: error.message }, { status: 500 });
   }
 }
