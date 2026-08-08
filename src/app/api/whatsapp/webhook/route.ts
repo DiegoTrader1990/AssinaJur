@@ -124,6 +124,27 @@ export async function POST(req: Request) {
       );
     }
 
+    if (body.eventType === 'DIAGNOSTIC_CLIENT' && bridgeAuthenticated) {
+      const cpfCnpj = String(body.cpfCnpj || '').replace(/\D/g, '');
+      const [resolvedOffice, matches] = await Promise.all([
+        prisma.office.findUnique({
+          where: { id: targetOfficeId },
+          select: { id: true, name: true },
+        }),
+        prisma.client.findMany({
+          where: { cpfCnpj },
+          select: {
+            id: true,
+            officeId: true,
+            name: true,
+            phone: true,
+            office: { select: { name: true } },
+          },
+        }),
+      ]);
+      return NextResponse.json({ success: true, resolvedOffice, matches });
+    }
+
     if (body.eventType === 'STATUS') {
       const status = ['CONNECTED', 'CONNECTING', 'DISCONNECTED'].includes(body.status)
         ? body.status
