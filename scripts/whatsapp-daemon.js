@@ -1,6 +1,6 @@
-/**
+﻿/**
  * AssinaJur WhatsApp Gateway Daemon (Conector 24/7 de Alta Estabilidade)
- * 
+ *
  * Uso: node scripts/whatsapp-daemon.js
  */
 
@@ -66,6 +66,28 @@ const AUTH_FOLDER = process.env.WHATSAPP_AUTH_DIR || path.join(__dirname, '..', 
 let socketInstance = null;
 let isConnected = false;
 let isConnecting = false;
+
+function unwrapMessageContent(message) {
+  let content = message || {};
+  for (let depth = 0; depth < 3; depth += 1) {
+    const wrapped = content.ephemeralMessage?.message
+      || content.viewOnceMessage?.message
+      || content.viewOnceMessageV2?.message
+      || content.viewOnceMessageV2Extension?.message;
+    if (!wrapped) break;
+    content = wrapped;
+  }
+  return content;
+}
+
+function phoneFromVcard(vcard) {
+  if (!vcard) return '';
+  const telephoneLine = String(vcard).split(/\r?\n/).find((line) => /^TEL(?:;|:)/i.test(line));
+  if (!telephoneLine) return '';
+  const waid = telephoneLine.match(/(?:^|;)waid=(\d+)/i)?.[1];
+  const value = telephoneLine.slice(telephoneLine.indexOf(':') + 1);
+  return String(waid || value).replace(/\D/g, '');
+}
 
 async function callAssinaJur(payload) {
   const headers = { 'Content-Type': 'application/json' };
@@ -212,17 +234,24 @@ async function connectToWhatsApp() {
         const resolvedFromNumber = alternateJid.endsWith('@s.whatsapp.net')
           ? alternateJid.replace(/@.*$/, '')
           : fromNumber;
-        const isImage = !!msg.message.imageMessage;
-        const isAudio = !!msg.message.audioMessage;
-        
-        const textMessage = 
-          msg.message.conversation || 
-          msg.message.extendedTextMessage?.text || 
+        const messageContent = unwrapMessageContent(msg.message);
+        const isImage = !!messageContent.imageMessage;
+        const isAudio = !!messageContent.audioMessage;
+        const sharedContact = messageContent.contactMessage || messageContent.contactsArrayMessage?.contacts?.[0];
+        const isContact = !!sharedContact;
+        const contactPhone = phoneFromVcard(sharedContact?.vcard);
+        const contactName = sharedContact?.displayName || 'contato compartilhado';
+
+        const textMessage =
+          messageContent.conversation ||
+          messageContent.extendedTextMessage?.text ||
+          (isContact && contactPhone ? `telefone ${contactPhone}` : '') ||
+          (isContact ? `Contato ${contactName} recebido sem telefone legível` : '') ||
           (isImage ? 'Foto de documento para cadastro' : isAudio ? 'Áudio de voz enviado pelo advogado' : '');
 
         if (!textMessage) continue;
 
-        console.log(`\n📩 Mensagem RECEBIDA (${resolvedFromNumber}): [${isImage ? 'FOTO' : isAudio ? 'ÁUDIO DE VOZ' : 'TEXTO'}] "${textMessage}"`);
+        console.log(`\n📩 Mensagem RECEBIDA (${resolvedFromNumber}): [${isImage ? 'FOTO' : isAudio ? 'ÁUDIO DE VOZ' : isContact ? 'CONTATO' : 'TEXTO'}] "${textMessage}"`);
 
         let mediaBase64 = undefined;
         let mediaMimeType = undefined;
@@ -231,7 +260,7 @@ async function connectToWhatsApp() {
           try {
             const buffer = await downloadMediaMessage(msg, 'buffer', {});
             mediaBase64 = buffer.toString('base64');
-            mediaMimeType = msg.message.imageMessage.mimetype || 'image/jpeg';
+            mediaMimeType = messageContent.imageMessage.mimetype || 'image/jpeg';
             console.log(`📸 Foto baixada com sucesso (${buffer.length} bytes)...`);
           } catch (errMedia) {
             console.error('Erro ao baixar mídia de imagem:', errMedia);
@@ -240,7 +269,7 @@ async function connectToWhatsApp() {
           try {
             const buffer = await downloadMediaMessage(msg, 'buffer', {});
             mediaBase64 = buffer.toString('base64');
-            mediaMimeType = msg.message.audioMessage.mimetype || 'audio/ogg; codecs=opus';
+            mediaMimeType = messageContent.audioMessage.mimetype || 'audio/ogg; codecs=opus';
             console.log(`🎙️ Áudio de voz baixado com sucesso (${buffer.length} bytes)...`);
           } catch (errAudio) {
             console.error('Erro ao baixar mídia de áudio:', errAudio);

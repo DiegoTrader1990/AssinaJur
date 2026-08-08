@@ -13,6 +13,8 @@ export const AUTHORIZED_LAWYER_PHONES = [
 const PENDING_PREFIX = 'PENDING_ACTION:';
 const EXECUTED_PREFIX = 'EXECUTED_ACTION:';
 const PENDING_TTL_MS = 15 * 60 * 1000;
+const GEMINI_TEXT_MODEL = 'gemini-2.5-flash';
+const GEMINI_VISION_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] as const;
 
 export interface WhatsAppIncomingMessage {
   officeId: string;
@@ -117,6 +119,33 @@ function isValidCpfCnpjLength(value: string): boolean {
   return value.length === 11 || value.length === 14;
 }
 
+function hasValidCpfCnpjCheckDigits(value: string): boolean {
+  const digits = normalizeCpfCnpj(value);
+  if (!isValidCpfCnpjLength(digits) || /^(\d)\1+$/.test(digits)) return false;
+
+  if (digits.length === 11) {
+    const calculateCpfDigit = (length: number) => {
+      let sum = 0;
+      for (let index = 0; index < length; index += 1) {
+        sum += Number(digits[index]) * (length + 1 - index);
+      }
+      const remainder = (sum * 10) % 11;
+      return remainder === 10 ? 0 : remainder;
+    };
+    return calculateCpfDigit(9) === Number(digits[9]) && calculateCpfDigit(10) === Number(digits[10]);
+  }
+
+  const calculateCnpjDigit = (length: number) => {
+    const weights = length === 12
+      ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+      : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    const sum = weights.reduce((total, weight, index) => total + Number(digits[index]) * weight, 0);
+    const remainder = sum % 11;
+    return remainder < 2 ? 0 : 11 - remainder;
+  };
+  return calculateCnpjDigit(12) === Number(digits[12]) && calculateCnpjDigit(13) === Number(digits[13]);
+}
+
 function cleanOptional(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const clean = value.trim();
@@ -154,27 +183,54 @@ function extractJson(text: string): Record<string, unknown> | null {
   }
 }
 
-async function callGemini(parts: Array<Record<string, unknown>>, jsonMode = false): Promise<string | null> {
+async function callGemini(
+  parts: Array<Record<string, unknown>>,
+  jsonMode = false,
+  model = GEMINI_TEXT_MODEL,
+  responseSchema?: Record<string, unknown>
+): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) {
+    console.error('[Gemini] Chave da API não configurada.');
+    return null;
+  }
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts }],
-        generationConfig: jsonMode
-          ? { responseMimeType: 'application/json', temperature: 0.1 }
-          : { temperature: 0.2 },
-      }),
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts }],
+          generationConfig: jsonMode
+            ? {
+                responseMimeType: 'application/json',
+                ...(responseSchema ? { responseSchema } : {}),
+                temperature: 0,
+              }
+            : { temperature: 0.2 },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`[Gemini] Modelo ${model} respondeu HTTP ${response.status}.`);
+      return null;
     }
-  );
 
-  if (!response.ok) return null;
-  const json = await response.json();
-  return json?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+    const json = await response.json();
+    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      const reason = json?.candidates?.[0]?.finishReason || json?.promptFeedback?.blockReason || 'resposta vazia';
+      console.error(`[Gemini] Modelo ${model} não retornou conteúdo (${reason}).`);
+      return null;
+    }
+    return text;
+  } catch (error) {
+    console.error(`[Gemini] Falha de comunicação com o modelo ${model}:`, error instanceof Error ? error.message : error);
+    return null;
+  }
 }
 
 async function extractClientDraftFromText(text: string, fallbackPhone: string): Promise<ClientDraft | null> {
@@ -231,42 +287,94 @@ async function extractClientDraftFromImage(
 ): Promise<ClientDraft | null> {
   const mimeType = mediaMimeType?.startsWith('image/') ? mediaMimeType : 'image/jpeg';
   const cleanBase64 = mediaBase64.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/i, '').trim();
-  const aiText = await callGemini(
-    [
-      { inlineData: { mimeType, data: cleanBase64 } },
-      {
-        text: `Leia este RG ou CNH brasileiro e extraia apenas os dados visíveis. Não invente dados.
-Retorne JSON válido com: name, cpfCnpj, rg, issuingOrgan, birthDate, nationality, maritalStatus,
-profession, cep, address, number, neighborhood, city e state.`,
-      },
-    ],
-    true
-  );
-  const parsed = aiText ? extractJson(aiText) : null;
-  if (!parsed) return null;
-
-  const name = cleanOptional(parsed.name);
-  const cpfCnpj = normalizeCpfCnpj(cleanOptional(parsed.cpfCnpj));
-  if (!name || !isValidCpfCnpjLength(cpfCnpj)) return null;
-
-  return {
-    name,
-    cpfCnpj,
-    phone: normalizePhone(fallbackPhone),
-    whatsapp: normalizePhone(fallbackPhone),
-    rg: cleanOptional(parsed.rg),
-    issuingOrgan: cleanOptional(parsed.issuingOrgan),
-    birthDate: cleanOptional(parsed.birthDate),
-    nationality: cleanOptional(parsed.nationality) || 'Brasileira',
-    maritalStatus: cleanOptional(parsed.maritalStatus),
-    profession: cleanOptional(parsed.profession),
-    cep: cleanOptional(parsed.cep),
-    address: cleanOptional(parsed.address),
-    number: cleanOptional(parsed.number),
-    neighborhood: cleanOptional(parsed.neighborhood),
-    city: cleanOptional(parsed.city),
-    state: cleanOptional(parsed.state)?.toUpperCase(),
+  const responseSchema = {
+    type: 'object',
+    properties: {
+      name: { type: 'string', description: 'Nome completo do titular, ou vazio se não estiver legível.' },
+      cpfCnpj: { type: 'string', description: 'CPF do titular com 11 dígitos, ou vazio se não estiver legível.' },
+      rg: { type: 'string' },
+      issuingOrgan: { type: 'string' },
+      birthDate: { type: 'string' },
+      nationality: { type: 'string' },
+      maritalStatus: { type: 'string' },
+      profession: { type: 'string' },
+      cep: { type: 'string' },
+      address: { type: 'string' },
+      number: { type: 'string' },
+      neighborhood: { type: 'string' },
+      city: { type: 'string' },
+      state: { type: 'string' },
+    },
   };
+  const collected: Partial<ClientDraft> = {};
+
+  for (let attempt = 0; attempt < GEMINI_VISION_MODELS.length; attempt += 1) {
+    const model = GEMINI_VISION_MODELS[attempt];
+    const aiText = await callGemini(
+      [
+        { inlineData: { mimeType, data: cleanBase64 } },
+        {
+          text: `Analise cuidadosamente este documento de identidade brasileiro (RG ou CNH), inclusive se estiver rotacionado.
+Extraia somente dados realmente visíveis do titular. Diferencie CPF do número do RG e não invente nenhum dígito.
+Confira o CPF uma segunda vez antes de responder. Para campos ausentes ou ilegíveis, retorne uma string vazia.
+Retorne: name, cpfCnpj, rg, issuingOrgan, birthDate, nationality, maritalStatus, profession, cep,
+address, number, neighborhood, city e state.`,
+        },
+      ],
+      true,
+      model,
+      responseSchema
+    );
+    const parsed = aiText ? extractJson(aiText) : null;
+    if (!parsed) {
+      console.error(`[WhatsApp Vision] Tentativa ${attempt + 1} não retornou JSON válido (${model}).`);
+      continue;
+    }
+
+    const extractedCpfCnpj = normalizeCpfCnpj(cleanOptional(parsed.cpfCnpj));
+    if (extractedCpfCnpj && !hasValidCpfCnpjCheckDigits(extractedCpfCnpj)) {
+      console.error(`[WhatsApp Vision] Tentativa ${attempt + 1} retornou CPF/CNPJ com dígitos verificadores inválidos (${model}).`);
+    }
+
+    const candidate: Partial<ClientDraft> = {
+      name: cleanOptional(parsed.name),
+      cpfCnpj: hasValidCpfCnpjCheckDigits(extractedCpfCnpj) ? extractedCpfCnpj : undefined,
+      rg: cleanOptional(parsed.rg),
+      issuingOrgan: cleanOptional(parsed.issuingOrgan),
+      birthDate: cleanOptional(parsed.birthDate),
+      nationality: cleanOptional(parsed.nationality),
+      maritalStatus: cleanOptional(parsed.maritalStatus),
+      profession: cleanOptional(parsed.profession),
+      cep: cleanOptional(parsed.cep),
+      address: cleanOptional(parsed.address),
+      number: cleanOptional(parsed.number),
+      neighborhood: cleanOptional(parsed.neighborhood),
+      city: cleanOptional(parsed.city),
+      state: cleanOptional(parsed.state)?.toUpperCase(),
+    };
+
+    for (const [key, value] of Object.entries(candidate)) {
+      if (value && !collected[key as keyof ClientDraft]) {
+        (collected as Record<string, string>)[key] = value;
+      }
+    }
+
+    if (collected.name && collected.cpfCnpj) {
+      if (attempt > 0) console.info(`[WhatsApp Vision] Documento recuperado na tentativa ${attempt + 1} com ${model}.`);
+      const phone = normalizePhone(fallbackPhone);
+      return {
+        ...collected,
+        name: collected.name,
+        cpfCnpj: collected.cpfCnpj,
+        phone,
+        whatsapp: phone,
+        nationality: collected.nationality || 'Brasileira',
+      };
+    }
+  }
+
+  console.error('[WhatsApp Vision] Todas as tentativas terminaram sem nome e CPF válidos.');
+  return null;
 }
 
 async function transcribeAudio(mediaBase64: string, mediaMimeType?: string): Promise<string | null> {
