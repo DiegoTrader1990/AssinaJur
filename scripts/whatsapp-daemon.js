@@ -89,6 +89,83 @@ function phoneFromVcard(vcard) {
   return String(waid || value).replace(/\D/g, '');
 }
 
+function hasValidCpfCnpjCheckDigits(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if ((digits.length !== 11 && digits.length !== 14) || /^(\d)\1+$/.test(digits)) return false;
+  if (digits.length === 11) {
+    const calculate = (length) => {
+      let sum = 0;
+      for (let index = 0; index < length; index += 1) {
+        sum += Number(digits[index]) * (length + 1 - index);
+      }
+      const remainder = (sum * 10) % 11;
+      return remainder === 10 ? 0 : remainder;
+    };
+    return calculate(9) === Number(digits[9]) && calculate(10) === Number(digits[10]);
+  }
+  const calculate = (length) => {
+    const weights = length === 12
+      ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+      : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    const sum = weights.reduce((total, weight, index) => total + Number(digits[index]) * weight, 0);
+    const remainder = sum % 11;
+    return remainder < 2 ? 0 : 11 - remainder;
+  };
+  return calculate(12) === Number(digits[12]) && calculate(13) === Number(digits[13]);
+}
+
+function parseGeminiJson(text) {
+  try {
+    return JSON.parse(String(text || '').replace(/```json/gi, '').replace(/```/g, '').trim());
+  } catch {
+    return null;
+  }
+}
+
+async function analyzeDocumentLocally(mediaBase64, mediaMimeType) {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
+  if (!apiKey || !mediaBase64) return null;
+  const mimeType = mediaMimeType?.startsWith('image/') ? mediaMimeType : 'image/jpeg';
+  const prompt = `Analise cuidadosamente este RG ou CNH brasileiro, inclusive se estiver rotacionado.
+Extraia somente os dados visíveis do titular. Diferencie CPF do número do RG e não invente dígitos.
+Retorne somente JSON válido com: name, cpfCnpj, rg, issuingOrgan, birthDate, nationality,
+maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await customFetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ inlineData: { mimeType, data: mediaBase64 } }, { text: prompt }] }],
+            generationConfig: { responseMimeType: 'application/json', temperature: 0 },
+          }),
+        }
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        console.error(`Leitura local do documento: Gemini respondeu HTTP ${response.status} na tentativa ${attempt}.`);
+        if (response.status === 429 && attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
+        }
+        continue;
+      }
+      const parsed = parseGeminiJson(payload?.candidates?.[0]?.content?.parts?.[0]?.text);
+      const name = typeof parsed?.name === 'string' ? parsed.name.trim() : '';
+      const cpfCnpj = String(parsed?.cpfCnpj || '').replace(/\D/g, '');
+      if (name && hasValidCpfCnpjCheckDigits(cpfCnpj)) {
+        return { ...parsed, name, cpfCnpj };
+      }
+      console.error(`Leitura local do documento incompleta na tentativa ${attempt}; tentando novamente.`);
+    } catch (error) {
+      console.error(`Falha na leitura local do documento na tentativa ${attempt}:`, error?.message || error);
+    }
+  }
+  return null;
+}
+
 async function callAssinaJur(payload) {
   const headers = { 'Content-Type': 'application/json' };
   if (BOT_SECRET) headers['x-assinajur-bot-secret'] = BOT_SECRET;
@@ -255,6 +332,7 @@ async function connectToWhatsApp() {
 
         let mediaBase64 = undefined;
         let mediaMimeType = undefined;
+        let documentData = undefined;
 
         if (isImage) {
           try {
@@ -262,6 +340,11 @@ async function connectToWhatsApp() {
             mediaBase64 = buffer.toString('base64');
             mediaMimeType = messageContent.imageMessage.mimetype || 'image/jpeg';
             console.log(`📸 Foto baixada com sucesso (${buffer.length} bytes)...`);
+            console.log('🔎 Analisando o documento localmente no computador...');
+            documentData = await analyzeDocumentLocally(mediaBase64, mediaMimeType);
+            console.log(documentData
+              ? '✅ Documento identificado localmente; enviando dados validados ao AssinaJur.'
+              : '⚠️ Leitura local inconclusiva; acionando a contingência do servidor.');
           } catch (errMedia) {
             console.error('Erro ao baixar mídia de imagem:', errMedia);
           }
@@ -282,8 +365,9 @@ async function connectToWhatsApp() {
             fromNumber: resolvedFromNumber,
             message: textMessage,
             messageType: isImage ? 'IMAGE' : isAudio ? 'AUDIO' : 'TEXT',
-            mediaBase64,
+            mediaBase64: documentData ? undefined : mediaBase64,
             mediaMimeType,
+            documentData,
           });
           if (data.reply) {
             console.log(`💬 Resposta enviada ao WhatsApp: "${data.reply}"`);

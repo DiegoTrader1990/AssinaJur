@@ -153,6 +153,9 @@ export async function POST(req: Request) {
       messageType,
       mediaBase64: typeof body.mediaBase64 === 'string' ? body.mediaBase64 : undefined,
       mediaMimeType: typeof body.mediaMimeType === 'string' ? body.mediaMimeType : undefined,
+      documentData: body.documentData && typeof body.documentData === 'object' && !Array.isArray(body.documentData)
+        ? body.documentData as Record<string, unknown>
+        : undefined,
       trustedSource: Boolean(sessionUser),
     });
 

@@ -23,6 +23,7 @@ export interface WhatsAppIncomingMessage {
   messageType: 'TEXT' | 'AUDIO' | 'IMAGE' | 'DOCUMENT';
   mediaBase64?: string;
   mediaMimeType?: string;
+  documentData?: Record<string, unknown>;
   trustedSource?: boolean;
 }
 
@@ -943,7 +944,7 @@ async function handleTextCommand(
 }
 
 export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Promise<WhatsAppAgentResult> {
-  const { officeId, fromNumber, body, messageType, mediaBase64, mediaMimeType, trustedSource } = input;
+  const { officeId, fromNumber, body, messageType, mediaBase64, mediaMimeType, documentData, trustedSource } = input;
   if (!trustedSource && !isAuthorizedLawyerPhone(fromNumber)) {
     return {
       replyText: 'Este número não possui autorização para administrar o AssinaJur.',
@@ -961,6 +962,33 @@ export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Pr
       console.error('Erro ao interpretar áudio do WhatsApp:', error);
       return { replyText: 'Não consegui compreender o áudio. Tente novamente ou envie o comando em texto.', actionTaken: 'AUDIO_ERROR' };
     }
+  }
+
+  if (messageType === 'IMAGE' && documentData) {
+    const name = cleanOptional(documentData.name);
+    const cpfCnpj = normalizeCpfCnpj(cleanOptional(documentData.cpfCnpj));
+    if (name && hasValidCpfCnpjCheckDigits(cpfCnpj)) {
+      const draft: ClientDraft = {
+        name,
+        cpfCnpj,
+        phone: '',
+        whatsapp: '',
+        rg: cleanOptional(documentData.rg),
+        issuingOrgan: cleanOptional(documentData.issuingOrgan),
+        birthDate: cleanOptional(documentData.birthDate),
+        nationality: cleanOptional(documentData.nationality) || 'Brasileira',
+        maritalStatus: cleanOptional(documentData.maritalStatus),
+        profession: cleanOptional(documentData.profession),
+        cep: cleanOptional(documentData.cep),
+        address: cleanOptional(documentData.address),
+        number: cleanOptional(documentData.number),
+        neighborhood: cleanOptional(documentData.neighborhood),
+        city: cleanOptional(documentData.city),
+        state: cleanOptional(documentData.state)?.toUpperCase(),
+      };
+      return createPendingClientAction(draft);
+    }
+    console.error('[WhatsApp Vision] Leitura local recebida sem nome e CPF válidos; acionando contingência do servidor.');
   }
 
   if (messageType === 'IMAGE' && mediaBase64) {
