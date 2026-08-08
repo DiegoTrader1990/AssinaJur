@@ -18,10 +18,22 @@ const { exec } = require('child_process');
 
 const ASSINAJUR_WEBHOOK_URL = process.env.ASSINAJUR_WEBHOOK_URL || 'https://www.assinajur.com.br/api/whatsapp/webhook';
 const AUTH_FOLDER = process.env.WHATSAPP_AUTH_DIR || path.join(__dirname, '..', 'whatsapp-auth');
+const LOCK_FILE = path.join(AUTH_FOLDER, 'daemon.lock');
 
 if (!fs.existsSync(AUTH_FOLDER)) {
   fs.mkdirSync(AUTH_FOLDER, { recursive: true });
 }
+
+// Garantir instancia unica para evitar erro 440 (sessao duplicada)
+try {
+  if (fs.existsSync(LOCK_FILE)) {
+    const oldPid = fs.readFileSync(LOCK_FILE, 'utf8').trim();
+    if (oldPid && oldPid !== process.pid.toString()) {
+      try { process.kill(parseInt(oldPid), 'SIGKILL'); } catch (e) {}
+    }
+  }
+  fs.writeFileSync(LOCK_FILE, process.pid.toString());
+} catch (eLock) {}
 
 let socketInstance = null;
 let isConnected = false;
@@ -98,16 +110,18 @@ async function connectToWhatsApp() {
       isConnected = false;
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+      const isReplaced = statusCode === DisconnectReason.connectionReplaced || statusCode === 440;
       
-      console.log(`ℹ️ Reconexão de rotina (Código ${statusCode || '515'}). Reconectando silenciosamente...`);
-
       if (isLoggedOut) {
         console.log('❌ Sessão deslogada pelo usuário. Limpando chaves...');
         fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
         qrOpened = false;
         setTimeout(connectToWhatsApp, 3000);
+      } else if (isReplaced) {
+        console.log('⚠️ Conexão duplicada detectada (Código 440). Aguardando estabilização da instância única...');
+        setTimeout(connectToWhatsApp, 10000);
       } else {
-        setTimeout(connectToWhatsApp, 2000);
+        setTimeout(connectToWhatsApp, 3000);
       }
     } else if (connection === 'open') {
       isConnected = true;
@@ -134,7 +148,7 @@ async function connectToWhatsApp() {
       const textMessage = msg.message.conversation || msg.message.extendedTextMessage?.text || (isImage ? 'Foto de documento para cadastro' : isAudio ? 'Áudio de voz enviado pelo advogado' : '');
 
       // Evitar responder mensagens enviadas pelo proprio bot no servidor em loop
-      if (isFromMe && textMessage.startsWith('🤖') || textMessage.startsWith('✅') || textMessage.startsWith('📌') || textMessage.startsWith('🎙️')) {
+      if (isFromMe && (textMessage.startsWith('🤖') || textMessage.startsWith('✅') || textMessage.startsWith('📌') || textMessage.startsWith('🎙️'))) {
         continue;
       }
 
