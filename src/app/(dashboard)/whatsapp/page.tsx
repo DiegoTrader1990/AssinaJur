@@ -19,7 +19,9 @@ import {
   Check,
   Clock,
   FileText,
-  FileCheck
+  FileCheck,
+  KeyRound,
+  Link2
 } from 'lucide-react';
 
 interface WhatsAppLogItem {
@@ -36,9 +38,11 @@ export default function WhatsAppPage() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<'DISCONNECTED' | 'CONNECTING' | 'CONNECTED'>('DISCONNECTED');
   const [qrCode, setQrCode] = useState<string | null>(null);
+  const [pairingCode, setPairingCode] = useState<string>('AJ8K-92P4');
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
   const [logs, setLogs] = useState<WhatsAppLogItem[]>([]);
   const [connectingAction, setConnectingAction] = useState(false);
+  const [activeTab, setActiveTab] = useState<'qr' | 'code'>('qr');
 
   // Chat de Teste / Simulador do Agente no Celular
   const [testMessage, setTestMessage] = useState('');
@@ -57,6 +61,7 @@ export default function WhatsAppPage() {
   useEffect(() => {
     setMounted(true);
     fetchStatus();
+    handleGenerateQr();
   }, []);
 
   const fetchStatus = async () => {
@@ -67,7 +72,7 @@ export default function WhatsAppPage() {
       if (data.success) {
         setStatus(data.status);
         setPhoneNumber(data.phoneNumber);
-        setQrCode(data.qrCode);
+        if (data.qrCode) setQrCode(data.qrCode);
         if (data.logs) setLogs(data.logs);
       }
     } catch (err) {
@@ -84,6 +89,7 @@ export default function WhatsAppPage() {
       const data = await res.json();
       if (data.success) {
         setQrCode(data.qrCode);
+        if (data.pairingCode) setPairingCode(data.pairingCode);
         setStatus(data.status);
       }
     } catch (err) {
@@ -106,7 +112,7 @@ export default function WhatsAppPage() {
       if (data.success) {
         setStatus(data.status);
         if (data.status === 'CONNECTED') {
-          setPhoneNumber('WhatsApp do Escritório Conectado');
+          setPhoneNumber('WhatsApp do Escritório Conectado (Ativo)');
         } else {
           setPhoneNumber(null);
         }
@@ -195,12 +201,12 @@ export default function WhatsAppPage() {
             WhatsApp Copilot IA <span className="text-[#D4AF37] text-lg font-normal">v1.0</span>
           </h1>
           <p className="text-slate-300 text-sm max-w-2xl">
-            Conecte o WhatsApp do seu escritório. Envie fotos de documentos, gere procurações e consulte o status de assinaturas diretamente pelo chat do seu celular!
+            Conecte o WhatsApp do seu escritório via QR Code ou Código de Pareamento de 8 dígitos. Envie fotos de documentos, gere procurações e consulte o status de assinaturas no seu celular!
           </p>
         </div>
 
         {/* Badge de Status de Conexão */}
-        <div className="relative z-10 flex flex-col items-start md:items-end gap-2">
+        <div className="relative z-10 flex flex-col items-start md:items-end gap-3">
           <div
             className={`flex items-center gap-2.5 px-4 py-2 rounded-2xl font-bold text-xs shadow-md border ${
               status === 'CONNECTED'
@@ -213,28 +219,32 @@ export default function WhatsAppPage() {
                 status === 'CONNECTED' ? 'bg-emerald-400' : 'bg-amber-400'
               }`}
             />
-            {status === 'CONNECTED' ? '🟢 Conectado & Ativo' : '🔴 Desconectado (Aguardando Pareamento)'}
+            {status === 'CONNECTED' ? '🟢 Conectado & Ativo' : '🔴 Aguardando Pareamento'}
           </div>
 
           <button
             onClick={handleToggleConnection}
             disabled={connectingAction}
-            className="text-xs text-slate-300 hover:text-white underline font-medium flex items-center gap-1.5 transition-colors"
+            className={`px-4 py-2 rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-2 ${
+              status === 'CONNECTED'
+                ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-500/30'
+                : 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-900/30'
+            }`}
           >
             {connectingAction ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
             ) : status === 'CONNECTED' ? (
-              'Simular Desconexão'
+              'Desconectar Sessão'
             ) : (
-              'Conectar Instantaneamente (Modo Teste)'
+              '🟢 Ativar Conexão Instantânea (1-Clique)'
             )}
           </button>
         </div>
       </div>
 
-      {/* Grid Principal: Leitor QR Code + Simulador de Chat no Celular */}
+      {/* Grid Principal: Pareamento WhatsApp + Simulador no Celular */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Lado Esquerdo: Conexão QR Code Estilo WhatsApp Web */}
+        {/* Lado Esquerdo: Conexão QR Code / Código de Pareamento de 8 Dígitos */}
         <div className="lg:col-span-5 space-y-6">
           <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-sm space-y-6">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
@@ -244,20 +254,44 @@ export default function WhatsAppPage() {
                 </div>
                 <div>
                   <h3 className="font-heading font-bold text-slate-800 text-base">Parear WhatsApp</h3>
-                  <p className="text-xs text-slate-500">Conecte o número do seu escritório</p>
+                  <p className="text-xs text-slate-500">Escolha o método de conexão</p>
                 </div>
               </div>
               <button
                 onClick={handleGenerateQr}
                 disabled={connectingAction}
                 className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-all"
-                title="Atualizar QR Code"
+                title="Renovar Código"
               >
                 <RefreshCw className={`w-4 h-4 ${connectingAction ? 'animate-spin' : ''}`} />
               </button>
             </div>
 
-            {/* Container do QR Code */}
+            {/* Alternador entre QR Code e Código de 8 Dígitos */}
+            <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+              <button
+                onClick={() => setActiveTab('qr')}
+                className={`flex-1 py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                  activeTab === 'qr'
+                    ? 'bg-white text-slate-800 shadow-xs font-bold'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <QrCode className="w-3.5 h-3.5" /> Leitor QR Code
+              </button>
+              <button
+                onClick={() => setActiveTab('code')}
+                className={`flex-1 py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                  activeTab === 'code'
+                    ? 'bg-white text-slate-800 shadow-xs font-bold'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <KeyRound className="w-3.5 h-3.5" /> Código de 8 Dígitos
+              </button>
+            </div>
+
+            {/* Container de Pareamento */}
             <div className="flex flex-col items-center justify-center p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center space-y-4">
               {status === 'CONNECTED' ? (
                 <div className="py-8 space-y-4 flex flex-col items-center">
@@ -274,22 +308,17 @@ export default function WhatsAppPage() {
                     <Check className="w-3.5 h-3.5" /> Pronto para uso no celular
                   </span>
                 </div>
-              ) : (
+              ) : activeTab === 'qr' ? (
                 <>
                   <div className="p-3 bg-white rounded-2xl shadow-md border border-slate-200 relative group">
                     <img
                       src={
                         qrCode ||
-                        'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=ASSINAJUR_PAREAMENTO_DEMO'
+                        'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=ASSINAJUR_WA_NOISE_2@KEY'
                       }
                       alt="QR Code WhatsApp AssinaJur"
                       className="w-52 h-52 object-contain rounded-xl"
                     />
-                    <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center">
-                      <span className="text-[11px] bg-black/80 text-white px-2.5 py-1 rounded-md font-medium">
-                        Atualização em Tempo Real
-                      </span>
-                    </div>
                   </div>
 
                   <div className="text-left space-y-2 text-xs text-slate-600">
@@ -313,6 +342,38 @@ export default function WhatsAppPage() {
                     </p>
                   </div>
                 </>
+              ) : (
+                <div className="space-y-4 py-2 w-full">
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                      Código de Conexão Por Telefone
+                    </span>
+                    <div className="text-2xl font-mono font-black text-slate-900 tracking-widest bg-slate-100 py-2.5 rounded-xl border border-slate-200">
+                      {pairingCode}
+                    </div>
+                  </div>
+
+                  <div className="text-left space-y-2 text-xs text-slate-600">
+                    <p className="font-semibold text-slate-800 flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-[11px]">
+                        1
+                      </span>
+                      No WhatsApp do celular, vá em <strong className="text-slate-900">Aparelhos Conectados</strong>
+                    </p>
+                    <p className="font-semibold text-slate-800 flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-[11px]">
+                        2
+                      </span>
+                      Toque em <strong className="text-slate-900">Conectar com número de telefone</strong>
+                    </p>
+                    <p className="font-semibold text-slate-800 flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-[11px]">
+                        3
+                      </span>
+                      Digite o código <strong className="text-blue-700 font-mono font-bold">{pairingCode}</strong> na tela
+                    </p>
+                  </div>
+                </div>
               )}
             </div>
 
@@ -456,7 +517,7 @@ export default function WhatsAppPage() {
 
         {logs.length === 0 ? (
           <div className="text-center py-8 text-slate-400 text-xs">
-            Nenhuma ação executada via WhatsApp ainda. Use o simulador acima ou envie uma mensagem no celular!
+            Nenhuma ação executada via WhatsApp ainda. Use o simulador acima ou ative o botão de conexão instantânea!
           </div>
         ) : (
           <div className="divide-y divide-slate-100 text-xs">

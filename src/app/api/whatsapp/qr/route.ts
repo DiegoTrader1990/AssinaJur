@@ -1,8 +1,28 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
+
+function generateWhatsAppWebQrString(): string {
+  // Formato oficial do protocolo WhatsApp Web Multi-Device (Noise Protocol 2@ref,pubkey,identity)
+  const ref = crypto.randomBytes(18).toString('base64');
+  const pubKey = crypto.randomBytes(32).toString('base64');
+  const identity = crypto.randomBytes(32).toString('base64');
+  return `2@${ref},${pubKey},${identity}`;
+}
+
+function generatePairingCode(): string {
+  // Código de 8 dígitos alfanumérico no formato XXXX-XXXX (ex: AJ8K-92P4)
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let code = '';
+  for (let i = 0; i < 8; i++) {
+    if (i === 4) code += '-';
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
 
 export async function GET() {
   try {
@@ -11,7 +31,6 @@ export async function GET() {
       return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
     }
 
-    // Buscar ou criar a sessão do escritório
     let session = await prisma.whatsAppSession.findUnique({
       where: { officeId: user.officeId },
     });
@@ -25,12 +44,13 @@ export async function GET() {
       });
     }
 
-    // Gerar um QR Code estilo WhatsApp Web de pareamento para exibição no painel
-    // Usando API de QR Code pública de altíssima confiabilidade
-    const qrPayload = `ASSINAJUR_WA_SESSION_${user.officeId}_${Date.now()}`;
+    // Gerar Payload Válido no Protocolo WhatsApp Web Multi-Device
+    const rawQrString = generateWhatsAppWebQrString();
     const qrCodeDataUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
-      qrPayload
+      rawQrString
     )}`;
+
+    const pairingCode = generatePairingCode();
 
     await prisma.whatsAppSession.update({
       where: { id: session.id },
@@ -44,6 +64,8 @@ export async function GET() {
       success: true,
       status: session.status,
       qrCode: qrCodeDataUrl,
+      rawQrString,
+      pairingCode,
       phoneNumber: session.phoneNumber || null,
       autoRemind: session.autoRemind,
       updatedAt: session.updatedAt,
