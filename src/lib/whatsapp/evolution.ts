@@ -7,7 +7,7 @@ import { processWhatsAppCommand } from '@/lib/whatsapp/agent';
  */
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'https://evolution-api-production.up.railway.app';
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || 'ASSINAJUR_EVOLUTION_SECRET_KEY';
+const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
 
 export interface EvolutionQrResult {
   qrCodeUrl: string;
@@ -19,6 +19,9 @@ export interface EvolutionQrResult {
  * Busca ou cria uma instancia oficial da Evolution API para o escritorio
  */
 export async function getEvolutionInstanceQr(officeId: string): Promise<EvolutionQrResult> {
+  if (!EVOLUTION_API_KEY) {
+    return { qrCodeUrl: '', status: 'DISCONNECTED' };
+  }
   const instanceName = `assinajur_${officeId.replace(/[^a-zA-Z0-9]/g, '')}`;
 
   try {
@@ -69,11 +72,10 @@ export async function getEvolutionInstanceQr(officeId: string): Promise<Evolutio
     console.warn('Conectando ao gateway Evolution API:', err);
   }
 
-  // Fallback seguro de alta disponibilidade
+  // Sem QR real não simulamos uma conexão.
   return {
-    qrCodeUrl: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=2%40ASSINAJUR_EVOLUTION_${officeId}`,
-    pairingCode: '8K92-P4M1',
-    status: 'CONNECTING',
+    qrCodeUrl: '',
+    status: 'DISCONNECTED',
   };
 }
 
@@ -81,6 +83,7 @@ export async function getEvolutionInstanceQr(officeId: string): Promise<Evolutio
  * Envia mensagens de texto via Evolution API
  */
 export async function sendEvolutionMessage(officeId: string, toPhone: string, text: string) {
+  if (!EVOLUTION_API_KEY) return false;
   const instanceName = `assinajur_${officeId.replace(/[^a-zA-Z0-9]/g, '')}`;
   const cleanPhone = toPhone.replace(/\D/g, '');
 

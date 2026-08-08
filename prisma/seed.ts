@@ -6,8 +6,13 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('--- Iniciando Seed do AssinaJur (Atualização de Senhas) ---');
 
+  const seedPassword = process.env.SEED_ADMIN_PASSWORD;
+  if (!seedPassword || seedPassword.length < 12) {
+    throw new Error('Defina SEED_ADMIN_PASSWORD com pelo menos 12 caracteres antes de executar o seed.');
+  }
+
   const salt = await bcrypt.genSalt(10);
-  const userPasswordHash = await bcrypt.hash('Cemav@123', salt);
+  const userPasswordHash = await bcrypt.hash(seedPassword, salt);
 
   // 1. Criar ou Atualizar Super Admin da Plataforma AssinaJur
   const platformAdmin = await prisma.platformUser.upsert({
@@ -171,8 +176,7 @@ async function main() {
   }
 
   console.log('✅ Atualização de Senhas Concluída!');
-  console.log(`- Usuário Escritório: diegocrs.adv@gmail.com / Senha: Cemav@123`);
-  console.log(`- Super Admin: diegocrs.adv@gmail.com / Senha: Cemav@123`);
+  console.log('- Credenciais atualizadas usando SEED_ADMIN_PASSWORD (valor não exibido).');
 }
 
 main()

@@ -48,7 +48,7 @@ export default function WhatsAppPage() {
   const [searchFilter, setSearchFilter] = useState('');
   const [activeContact, setActiveContact] = useState<string>('bot');
   const [simulating, setSimulating] = useState(false);
-  const [status, setStatus] = useState<'DISCONNECTED' | 'CONNECTING' | 'CONNECTED'>('CONNECTED');
+  const [status, setStatus] = useState<'DISCONNECTED' | 'CONNECTING' | 'CONNECTED'>('DISCONNECTED');
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
@@ -71,7 +71,7 @@ export default function WhatsAppPage() {
     {
       id: '1',
       sender: 'bot',
-      text: '👋 *Olá, Doutor(a)!* O seu WhatsApp está *100% Conectado e Ativo* no AssinaJur!\n\nVocê e sua equipe podem conversar comigo por texto ou enviar fotos de documentos (RG/CNH) para eu cadastrar automaticamente no sistema!\n\n💡 *Comandos rápidos:* Digite *"status"* para ver procurações pendentes ou *"clientes"* para ver o cadastro recente.',
+      text: '👋 *Olá, Doutor(a)!* Este é o controle remoto do AssinaJur.\n\nDigite *AJUDA* para consultar os comandos. Cadastros e alterações serão mostrados em uma prévia antes da confirmação.',
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -155,16 +155,19 @@ export default function WhatsAppPage() {
       if (imageFile) {
         messageType = 'IMAGE';
         bodyText = 'Foto de documento para leitura e cadastro de cliente';
-        const buffer = await imageFile.arrayBuffer();
-        mediaBase64 = Buffer.from(buffer).toString('base64');
+        mediaBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(imageFile);
+        });
       }
 
       const res = await fetch('/api/whatsapp/webhook', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          officeId: 'office_demo',
-          fromNumber: '5573999999999',
+          fromNumber: 'PAINEL_ASSINAJUR',
           message: bodyText,
           messageType,
           mediaBase64,
@@ -221,10 +224,16 @@ export default function WhatsAppPage() {
           </div>
           <div>
             <h2 className="font-heading font-extrabold text-base sm:text-lg flex items-center gap-2">
-              🟢 WHATSAPP CONECTADO E ATIVO (24/7)
+              {status === 'CONNECTED'
+                ? '🟢 WHATSAPP CONECTADO PELO COMPUTADOR'
+                : status === 'CONNECTING'
+                  ? '🟡 CONECTANDO AO WHATSAPP'
+                  : '⚪ WHATSAPP DESCONECTADO'}
             </h2>
             <p className="text-emerald-100 text-xs">
-              Sessão pareada e sincronizada com o robô de Inteligência Artificial do escritório!
+              {status === 'CONNECTED'
+                ? 'Heartbeat recebido: o bot local está online e sincronizado com o AssinaJur.'
+                : 'Inicie o AssinaJur-Bot.bat no computador para ativar o controle remoto.'}
             </p>
           </div>
         </div>
@@ -317,8 +326,9 @@ export default function WhatsAppPage() {
                 <h3 className="font-bold text-sm text-slate-800 leading-tight flex items-center gap-2">
                   AssinaJur Copilot IA <span className="bg-emerald-700 text-white text-[10px] px-1.5 py-0.5 rounded font-normal">Oficial</span>
                 </h3>
-                <p className="text-[11px] text-emerald-700 font-medium flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Online em Tempo Real no Escritório
+                <p className={`text-[11px] font-medium flex items-center gap-1 ${status === 'CONNECTED' ? 'text-emerald-700' : 'text-slate-500'}`}>
+                  <span className={`w-2 h-2 rounded-full ${status === 'CONNECTED' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                  {status === 'CONNECTED' ? 'Online em tempo real' : 'Aguardando bot local'}
                 </p>
               </div>
             </div>
@@ -394,7 +404,7 @@ export default function WhatsAppPage() {
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder="Digite uma mensagem ou comando ('status', 'clientes', 'gere a procuração')..."
+              placeholder="Digite um comando ('ajuda', 'status', 'clientes', 'cadastrar cliente...')..."
               className="flex-1 bg-white border border-slate-300 rounded-full px-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs"
             />
 

@@ -12,14 +12,34 @@ const path = require('path');
 const fs = require('fs');
 const { exec } = require('child_process');
 
+// Carrega apenas configurações locais do bot. O arquivo .env.bot nunca deve ser versionado.
+for (const envFile of ['.env.bot', '.env']) {
+  const envPath = path.join(__dirname, '..', envFile);
+  if (!fs.existsSync(envPath)) continue;
+  for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!match || process.env[match[1]]) continue;
+    process.env[match[1]] = match[2].trim().replace(/^(['"])(.*)\1$/, '$2');
+  }
+}
+
 // Trava de instancia unica para evitar conflito de 2 processos (Código 440 connectionReplaced)
 const LOCK_FILE = path.join(__dirname, '..', 'whatsapp-daemon.lock');
 if (fs.existsSync(LOCK_FILE)) {
   try {
     const pid = fs.readFileSync(LOCK_FILE, 'utf8');
-    if (pid && pid.trim()) {
-      console.log(`⚠️ Já existe outro processo do robô rodando (PID ${pid.trim()}). Encerrando duplicata para manter estabilidade.`);
-      process.exit(0);
+    const existingPid = Number(pid.trim());
+    if (Number.isInteger(existingPid) && existingPid > 0) {
+      try {
+        process.kill(existingPid, 0);
+        console.log(`⚠️ Já existe outro processo do robô rodando (PID ${existingPid}). Encerrando duplicata para manter estabilidade.`);
+        process.exit(0);
+      } catch {
+        // O arquivo ficou para trás após queda/reinício do Windows. Pode ser removido com segurança.
+        fs.unlinkSync(LOCK_FILE);
+      }
+    } else {
+      fs.unlinkSync(LOCK_FILE);
     }
   } catch (e) {}
 }
@@ -28,7 +48,11 @@ if (fs.existsSync(LOCK_FILE)) {
 fs.writeFileSync(LOCK_FILE, String(process.pid));
 process.on('exit', () => { try { fs.unlinkSync(LOCK_FILE); } catch (e) {} });
 process.on('SIGINT', () => { try { fs.unlinkSync(LOCK_FILE); } catch (e) {} process.exit(0); });
-process.on('uncaughtException', (err) => { console.error('Exceção não tratada:', err); });
+process.on('uncaughtException', (err) => {
+  console.error('Exceção não tratada:', err);
+  try { fs.unlinkSync(LOCK_FILE); } catch (e) {}
+  process.exit(1);
+});
 
 const customFetch = globalThis.fetch || (async (url, opts) => {
   const mod = await import('node-fetch');
@@ -36,11 +60,40 @@ const customFetch = globalThis.fetch || (async (url, opts) => {
 });
 
 const ASSINAJUR_WEBHOOK_URL = process.env.ASSINAJUR_WEBHOOK_URL || 'https://www.assinajur.com.br/api/whatsapp/webhook';
+const BOT_SECRET = process.env.WHATSAPP_BOT_SECRET || '';
 const AUTH_FOLDER = process.env.WHATSAPP_AUTH_DIR || path.join(__dirname, '..', 'whatsapp-auth');
 
 let socketInstance = null;
 let isConnected = false;
 let isConnecting = false;
+
+async function callAssinaJur(payload) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (BOT_SECRET) headers['x-assinajur-bot-secret'] = BOT_SECRET;
+  const response = await customFetch(ASSINAJUR_WEBHOOK_URL, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || `AssinaJur respondeu HTTP ${response.status}`);
+  }
+  return data;
+}
+
+async function publishConnectionStatus(status, phoneNumber) {
+  try {
+    await callAssinaJur({
+      eventType: 'STATUS',
+      status,
+      fromNumber: process.env.WHATSAPP_ADMIN_PHONE || phoneNumber || '5573988250201',
+      phoneNumber: phoneNumber || null,
+    });
+  } catch (error) {
+    console.error(`Não foi possível atualizar o status ${status} no site:`, error.message);
+  }
+}
 
 async function connectToWhatsApp() {
   if (isConnecting) return;
@@ -49,6 +102,12 @@ async function connectToWhatsApp() {
   console.log(`\n======================================================`);
   console.log(`🚀 CONECTANDO AGENTE IA DO ASSINAJUR (24/7)...`);
   console.log(`======================================================\n`);
+
+  if (!BOT_SECRET) {
+    console.log('⚠️ WHATSAPP_BOT_SECRET não configurado. O servidor publicado recusará a conexão segura.');
+  }
+
+  await publishConnectionStatus('CONNECTING');
 
   try {
     if (!fs.existsSync(AUTH_FOLDER)) {
@@ -117,6 +176,7 @@ async function connectToWhatsApp() {
         isConnected = false;
         isConnecting = false;
         const statusCode = lastDisconnect?.error?.output?.statusCode;
+        await publishConnectionStatus('DISCONNECTED');
 
         if (statusCode === DisconnectReason.loggedOut) {
           console.log('❌ Sessão deslogada pelo usuário no celular. Gerando nova chave...');
@@ -133,6 +193,8 @@ async function connectToWhatsApp() {
         console.log('🎉 WHATSAPP 100% CONECTADO E PRONTO PARA USO!');
         console.log('O robô está ouvindo mensagens, áudios e fotos de RG/CNH!');
         console.log('======================================================\n');
+        const connectedPhone = (sock.user?.id || '').replace(/@.*$/, '').replace(/:\d+$/, '');
+        await publishConnectionStatus('CONNECTED', connectedPhone);
       }
     });
 
@@ -144,7 +206,12 @@ async function connectToWhatsApp() {
         if (msg.key.fromMe) continue;
 
         const rawJid = msg.key.remoteJid || '';
+        if (rawJid.endsWith('@g.us') || rawJid === 'status@broadcast' || rawJid.endsWith('@newsletter')) continue;
         const fromNumber = rawJid.replace(/@.*$/, '');
+        const alternateJid = msg.key.remoteJidAlt || msg.key.participantAlt || '';
+        const resolvedFromNumber = alternateJid.endsWith('@s.whatsapp.net')
+          ? alternateJid.replace(/@.*$/, '')
+          : fromNumber;
         const isImage = !!msg.message.imageMessage;
         const isAudio = !!msg.message.audioMessage;
         
@@ -155,7 +222,7 @@ async function connectToWhatsApp() {
 
         if (!textMessage) continue;
 
-        console.log(`\n📩 Mensagem RECEBIDA de cliente/advogado (${fromNumber}): [${isImage ? 'FOTO' : isAudio ? 'ÁUDIO DE VOZ' : 'TEXTO'}] "${textMessage}"`);
+        console.log(`\n📩 Mensagem RECEBIDA (${resolvedFromNumber}): [${isImage ? 'FOTO' : isAudio ? 'ÁUDIO DE VOZ' : 'TEXTO'}] "${textMessage}"`);
 
         let mediaBase64 = undefined;
         let mediaMimeType = undefined;
@@ -182,24 +249,30 @@ async function connectToWhatsApp() {
 
         try {
           console.log('🤖 Processando com a Inteligência IA do AssinaJur...');
-          const response = await customFetch(ASSINAJUR_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              officeId: 'd5eeac12-c73b-43e4-93f8-03d3d8fb255f',
-              fromNumber: fromNumber || '5573988250201',
-              message: textMessage,
-              messageType: isImage ? 'IMAGE' : isAudio ? 'AUDIO' : 'TEXT',
-              mediaBase64,
-              mediaMimeType,
-            }),
+          const data = await callAssinaJur({
+            fromNumber: resolvedFromNumber,
+            message: textMessage,
+            messageType: isImage ? 'IMAGE' : isAudio ? 'AUDIO' : 'TEXT',
+            mediaBase64,
+            mediaMimeType,
           });
-
-          const data = await response.json();
           if (data.reply) {
             console.log(`💬 Resposta enviada ao WhatsApp: "${data.reply}"`);
             await sock.sendMessage(rawJid, { text: data.reply });
             console.log('✅ Mensagem entregue com sucesso!');
+          }
+
+          for (const outbound of data.outboundMessages || []) {
+            const cleanTo = String(outbound.to || '').replace(/\D/g, '');
+            if (!cleanTo || !outbound.text) continue;
+            const candidates = [cleanTo];
+            if (cleanTo.startsWith('55') && cleanTo.length === 13) {
+              candidates.push(`${cleanTo.slice(0, 4)}${cleanTo.slice(5)}`);
+            }
+            const [jidResult] = await sock.onWhatsApp(...candidates);
+            const destinationJid = jidResult?.jid || `${cleanTo}@s.whatsapp.net`;
+            await sock.sendMessage(destinationJid, { text: outbound.text });
+            console.log(`📤 Ação externa entregue para ${cleanTo}.`);
           }
         } catch (err) {
           console.error('Erro ao enviar requisição para a IA do AssinaJur:', err);
@@ -213,3 +286,10 @@ async function connectToWhatsApp() {
 }
 
 connectToWhatsApp();
+
+// Heartbeat: permite que o painel diferencie conexão real de um status antigo no banco.
+setInterval(() => {
+  if (!isConnected) return;
+  const connectedPhone = (socketInstance?.user?.id || '').replace(/@.*$/, '').replace(/:\d+$/, '');
+  publishConnectionStatus('CONNECTED', connectedPhone);
+}, 60_000);

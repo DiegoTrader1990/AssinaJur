@@ -3,7 +3,12 @@ import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
 import { prisma } from './prisma';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'assinajur-default-secret-key-change-in-prod';
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV !== 'production') return 'assinajur-development-only-secret';
+  throw new Error('JWT_SECRET não configurado em produção.');
+}
 export const TOKEN_COOKIE_NAME = 'assinajur_token';
 
 export type UserRole = 'OFFICE_ADMIN' | 'LAWYER' | 'STAFF' | 'VIEWER';
@@ -35,12 +40,12 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 }
 
 export function signToken(payload: AuthPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: '7d' });
 }
 
 export function verifyToken(token: string): AuthPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as AuthPayload;
+    return jwt.verify(token, getJwtSecret()) as AuthPayload;
   } catch {
     return null;
   }

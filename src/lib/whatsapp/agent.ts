@@ -1,10 +1,18 @@
+import { randomUUID } from 'crypto';
 import { prisma } from '@/lib/prisma';
-import { maskCpfCnpj } from '@/lib/formatters';
+import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
+import { compileTemplateToPdf } from '@/lib/templateCompiler';
 
-const EMBEDDED_KEY = 'AQ.Ab8RN6JIqr0M3p967Yc' + '238RHeAH5l40cDAEPgz1sUDDfmmEEMw';
+export const AUTHORIZED_LAWYER_PHONES = [
+  '5573988250201',
+  '73988250201',
+  '557388250201',
+  '7388250201',
+];
 
-// Numero oficial do advogado administrador para controle exclusivo do site (incluindo JID legado sem 9 da Meta)
-export const AUTHORIZED_LAWYER_PHONES = ['5573988250201', '73988250201', '557388250201', '7388250201'];
+const PENDING_PREFIX = 'PENDING_ACTION:';
+const EXECUTED_PREFIX = 'EXECUTED_ACTION:';
+const PENDING_TTL_MS = 15 * 60 * 1000;
 
 export interface WhatsAppIncomingMessage {
   officeId: string;
@@ -13,292 +21,806 @@ export interface WhatsAppIncomingMessage {
   messageType: 'TEXT' | 'AUDIO' | 'IMAGE' | 'DOCUMENT';
   mediaBase64?: string;
   mediaMimeType?: string;
+  trustedSource?: boolean;
+}
+
+export interface OutboundWhatsAppMessage {
+  to: string;
+  text: string;
 }
 
 export interface WhatsAppAgentResult {
   replyText: string;
   actionTaken: string;
   mediaUrl?: string;
+  outboundMessages?: OutboundWhatsAppMessage[];
 }
 
-/**
- * Agente de Inteligencia Artificial AssinaJur para WhatsApp.
- * Suporta conversas fluidas em texto, notas de VOZ (AUDIO) e visao computacional (leitura de fotos de RG/CNH).
- * Exclusivamente configurado para atender as instrucoes do Advogado Dr. (73) 98825-0201.
- */
-export async function processWhatsAppCommand(
-  input: WhatsAppIncomingMessage
-): Promise<WhatsAppAgentResult> {
-  const { fromNumber, body, messageType, mediaBase64, mediaMimeType } = input;
-  const officeId = (input.officeId && input.officeId !== 'office_demo') 
-    ? input.officeId 
-    : 'd5eeac12-c73b-43e4-93f8-03d3d8fb255f';
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY || EMBEDDED_KEY;
+interface ClientDraft {
+  name: string;
+  cpfCnpj: string;
+  rg?: string;
+  issuingOrgan?: string;
+  birthDate?: string;
+  nationality?: string;
+  maritalStatus?: string;
+  profession?: string;
+  phone: string;
+  whatsapp?: string;
+  email?: string;
+  cep?: string;
+  address?: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  legalArea?: string;
+  notes?: string;
+}
 
-  // 1. Processamento de MENSAGEM DE VOZ (AUDIO) enviada pelo celular do advogado
-  if (messageType === 'AUDIO' && mediaBase64) {
-    try {
-      const cleanMime = mediaMimeType || 'audio/ogg; codecs=opus';
-      const cleanBase64 = mediaBase64.replace(/^data:audio\/(ogg|mp3|wav|m4a|aac);base64,/i, '').trim();
+interface PendingClientAction {
+  id: string;
+  type: 'CREATE_OR_UPDATE_CLIENT';
+  createdAt: string;
+  data: ClientDraft;
+}
 
-      const promptAudio = `Você é o AssinaJur Copilot, o assistente virtual de inteligência jurídica para o Dr. do escritório Rodrigues & Soares Advocacia (número 73 98825-0201).
-Ouça este áudio de voz enviado pelo advogado no WhatsApp.
-Entenda o pedido falado dele, analise o que ele quer fazer no sistema e responda de forma fluida, extremamente profissional, cortês e direta, chamando-o de Dr. e usando formatação markdown do WhatsApp (*negrito*, _itálico_).`;
+interface PendingKitAction {
+  id: string;
+  type: 'GENERATE_KIT';
+  createdAt: string;
+  data: { clientId: string; clientName: string; kitId: string; kitName: string };
+}
 
-      const resAudio = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { inlineData: { mimeType: cleanMime, data: cleanBase64 } },
-                  { text: promptAudio },
-                ],
-              },
-            ],
-          }),
-        }
-      );
+interface PendingTemplateAction {
+  id: string;
+  type: 'GENERATE_TEMPLATE';
+  createdAt: string;
+  data: { clientId: string; clientName: string; templateId: string; templateName: string };
+}
 
-      if (resAudio.ok) {
-        const jsonAudio = await resAudio.json();
-        const aiReply = jsonAudio?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (aiReply) {
-          return {
-            replyText: `🎙️ *Transcrição & Atendimento por Voz:*\n\n${aiReply}`,
-            actionTaken: 'GEMINI_AUDIO_VOICE_REPLY',
-          };
-        }
-      }
-    } catch (errAudio) {
-      console.error('Erro no processamento de áudio WhatsApp:', errAudio);
-    }
+type PendingAction = PendingClientAction | PendingKitAction | PendingTemplateAction;
+
+function normalizePhone(value?: string | null): string {
+  return (value || '').replace(/\D/g, '');
+}
+
+export function isAuthorizedLawyerPhone(value: string): boolean {
+  const configured = (process.env.WHATSAPP_AUTHORIZED_PHONES || '')
+    .split(',')
+    .map(normalizePhone)
+    .filter(Boolean);
+  const allowed = configured.length > 0 ? configured : AUTHORIZED_LAWYER_PHONES;
+  const normalized = normalizePhone(value);
+  return allowed.some((phone) => normalized === phone || normalized.endsWith(phone) || phone.endsWith(normalized));
+}
+
+function encodePendingAction(action: PendingAction): string {
+  return `${PENDING_PREFIX}${Buffer.from(JSON.stringify(action), 'utf8').toString('base64url')}`;
+}
+
+function decodePendingAction(value?: string | null): PendingAction | null {
+  if (!value?.startsWith(PENDING_PREFIX)) return null;
+  try {
+    return JSON.parse(Buffer.from(value.slice(PENDING_PREFIX.length), 'base64url').toString('utf8')) as PendingAction;
+  } catch {
+    return null;
   }
+}
 
-  // 2. Processamento de FOTO de Documento de Identidade (RG/CNH) enviada pelo celular do advogado
-  if (messageType === 'IMAGE' && mediaBase64) {
-    try {
-      const cleanMime = mediaMimeType || 'image/jpeg';
-      const cleanBase64 = mediaBase64.replace(/^data:image\/(jpeg|jpg|png|webp);base64,/i, '').trim();
+function normalizeCpfCnpj(value?: string): string {
+  return (value || '').replace(/\D/g, '');
+}
 
-      const prompt = `Você é um especialista em visão computacional de documentos jurídicos brasileiros (CNH, RG).
-Analise esta foto enviada via WhatsApp pelo advogado Dr. (73) 98825-0201 e extraia os dados para cadastrar o cliente no site AssinaJur.
-Retorne EXATAMENTE um JSON válido:
-{
-  "name": "Nome Completo do Titular",
-  "cpfCnpj": "000.000.000-00",
-  "rg": "Número do RG com órgão emissor",
-  "birthDate": "DD/MM/AAAA",
-  "city": "Cidade",
-  "state": "UF"
-}`;
+function isValidCpfCnpjLength(value: string): boolean {
+  return value.length === 11 || value.length === 14;
+}
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { inlineData: { mimeType: cleanMime, data: cleanBase64 } },
-                  { text: prompt },
-                ],
-              },
-            ],
-            generationConfig: { responseMimeType: 'application/json', temperature: 0.1 },
-          }),
-        }
-      );
+function cleanOptional(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const clean = value.trim();
+  return clean || undefined;
+}
 
-      if (res.ok) {
-        const json = await res.json();
-        const responseText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+function clientPreview(data: ClientDraft): string {
+  const optional = [
+    data.rg ? `🪪 *RG:* ${data.rg}` : null,
+    data.birthDate ? `🎂 *Nascimento:* ${data.birthDate}` : null,
+    data.phone ? `📱 *Telefone:* ${maskPhone(data.phone)}` : null,
+    data.address ? `📍 *Endereço:* ${data.address}${data.number ? `, ${data.number}` : ''}${data.city ? ` — ${data.city}/${data.state || ''}` : ''}` : null,
+    data.profession ? `💼 *Profissão:* ${data.profession}` : null,
+    data.maritalStatus ? `💍 *Estado civil:* ${data.maritalStatus}` : null,
+  ].filter(Boolean);
 
-        if (responseText) {
-          const parsed = JSON.parse(responseText);
-          const cleanCpf = parsed.cpfCnpj ? parsed.cpfCnpj.replace(/\D/g, '') : '';
+  return [
+    '📝 *Prévia do cadastro*',
+    '',
+    `👤 *Nome:* ${data.name}`,
+    `🪪 *CPF/CNPJ:* ${maskCpfCnpj(data.cpfCnpj)}`,
+    ...optional,
+    '',
+    'Responda *CONFIRMAR* para gravar no AssinaJur ou *CANCELAR* para descartar.',
+    '_Esta confirmação expira em 15 minutos._',
+  ].join('\n');
+}
 
-          // Upsert do cliente no banco de dados Supabase do escritorio
-          const client = await prisma.client.upsert({
-            where: {
-              officeId_cpfCnpj: {
-                officeId,
-                cpfCnpj: cleanCpf || '00000000000',
-              },
-            },
-            update: {
-              name: parsed.name,
-              rg: parsed.rg || null,
-              birthDate: parsed.birthDate || null,
-              city: parsed.city || null,
-              state: parsed.state || null,
-            },
-            create: {
-              officeId,
-              name: parsed.name,
-              cpfCnpj: cleanCpf,
-              rg: parsed.rg || null,
-              birthDate: parsed.birthDate || null,
-              phone: fromNumber,
-              whatsapp: fromNumber,
-              city: parsed.city || null,
-              state: parsed.state || null,
-            },
-          });
-
-          // Analisar se o advogado fez um pedido especifico junto com a foto (ex: criar procuracao, checar dados faltantes)
-          let extraInstructionReply = '';
-          const hasCustomInstruction = body && body.trim() && !body.includes('Foto de documento para cadastro');
-
-          if (hasCustomInstruction) {
-            try {
-              const resInstr = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    contents: [
-                      {
-                        parts: [
-                          {
-                            text: `Você é o AssinaJur Copilot do escritório Rodrigues & Soares Advocacia.
-O Dr. te enviou a foto da CNH/RG do cliente ${client.name} (CPF: ${client.cpfCnpj}, RG: ${client.rg || 'não informado'}, Cidade/UF: ${client.city || ''} ${client.state || ''}) acompanhada da seguinte instrução em texto:
-"${body}"
-
-Responda de forma altamente profissional, prestativa e direta ao pedido do Dr., indicando os próximos passos ou o que falta para atender a solicitação dele.`,
-                          },
-                        ],
-                      },
-                    ],
-                  }),
-                }
-              );
-
-              if (resInstr.ok) {
-                const jsonInstr = await resInstr.json();
-                extraInstructionReply = jsonInstr?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-              }
-            } catch (eInstr) {}
-          }
-
-          const baseReply = `✅ *Dr., Cliente Cadastrado via Foto com Sucesso!*\n\n👤 *Nome:* ${client.name}\n🪪 *CPF:* ${client.cpfCnpj}\n📄 *RG:* ${client.rg || 'Não informado'}\n📍 *Cidade/UF:* ${client.city || ''} ${client.state || ''}\n\n*AssinaJur:* O cadastro já está disponível no seu painel web!`;
-
-          return {
-            replyText: extraInstructionReply ? `${baseReply}\n\n💬 *Atendimento ao seu Pedido:*\n${extraInstructionReply}` : baseReply,
-            actionTaken: 'CREATE_CLIENT_IMAGE_WITH_INSTRUCTION',
-          };
-        }
-      }
-    } catch (err) {
-      console.error('Erro no processamento de imagem WhatsApp:', err);
-    }
+function extractJson(text: string): Record<string, unknown> | null {
+  try {
+    const clean = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+    return JSON.parse(clean) as Record<string, unknown>;
+  } catch {
+    return null;
   }
+}
 
-  // 3. Processamento por Heuristica de Intencao e Inteligencia Gemini
-  const textBody = body ? body.trim().toLowerCase() : '';
+async function callGemini(parts: Array<Record<string, unknown>>, jsonMode = false): Promise<string | null> {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
+  if (!apiKey) return null;
 
-  // Comando: Status de assinaturas ou quem nao assinou
-  if (textBody.includes('status') || textBody.includes('não assinou') || textBody.includes('pendent')) {
-    const pendingDocs = await prisma.document.findMany({
-      where: { officeId, status: { in: ['ENVIADO', 'PENDENTE'] } },
-      take: 5,
-      orderBy: { createdAt: 'desc' },
-      include: { client: true },
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts }],
+        generationConfig: jsonMode
+          ? { responseMimeType: 'application/json', temperature: 0.1 }
+          : { temperature: 0.2 },
+      }),
+    }
+  );
+
+  if (!response.ok) return null;
+  const json = await response.json();
+  return json?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+}
+
+async function extractClientDraftFromText(text: string, fallbackPhone: string): Promise<ClientDraft | null> {
+  const aiText = await callGemini(
+    [
+      {
+        text: `Extraia somente os dados explicitamente informados para cadastro de cliente jurídico brasileiro.
+Não invente dados. Retorne JSON válido com: name, cpfCnpj, rg, issuingOrgan, birthDate, nationality,
+maritalStatus, profession, phone, whatsapp, email, cep, address, number, complement, neighborhood,
+city, state, legalArea e notes.
+
+Mensagem: ${text}`,
+      },
+    ],
+    true
+  );
+
+  const parsed = aiText ? extractJson(aiText) : null;
+  if (!parsed) return null;
+
+  const name = cleanOptional(parsed.name);
+  const cpfCnpj = normalizeCpfCnpj(cleanOptional(parsed.cpfCnpj));
+  const phone = normalizePhone(cleanOptional(parsed.phone)) || normalizePhone(fallbackPhone);
+  if (!name || !isValidCpfCnpjLength(cpfCnpj)) return null;
+
+  return {
+    name,
+    cpfCnpj,
+    phone,
+    whatsapp: normalizePhone(cleanOptional(parsed.whatsapp)) || phone,
+    rg: cleanOptional(parsed.rg),
+    issuingOrgan: cleanOptional(parsed.issuingOrgan),
+    birthDate: cleanOptional(parsed.birthDate),
+    nationality: cleanOptional(parsed.nationality) || 'Brasileira',
+    maritalStatus: cleanOptional(parsed.maritalStatus),
+    profession: cleanOptional(parsed.profession),
+    email: cleanOptional(parsed.email),
+    cep: cleanOptional(parsed.cep),
+    address: cleanOptional(parsed.address),
+    number: cleanOptional(parsed.number),
+    complement: cleanOptional(parsed.complement),
+    neighborhood: cleanOptional(parsed.neighborhood),
+    city: cleanOptional(parsed.city),
+    state: cleanOptional(parsed.state)?.toUpperCase(),
+    legalArea: cleanOptional(parsed.legalArea),
+    notes: cleanOptional(parsed.notes),
+  };
+}
+
+async function extractClientDraftFromImage(
+  mediaBase64: string,
+  mediaMimeType: string | undefined,
+  fallbackPhone: string
+): Promise<ClientDraft | null> {
+  const mimeType = mediaMimeType?.startsWith('image/') ? mediaMimeType : 'image/jpeg';
+  const cleanBase64 = mediaBase64.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/i, '').trim();
+  const aiText = await callGemini(
+    [
+      { inlineData: { mimeType, data: cleanBase64 } },
+      {
+        text: `Leia este RG ou CNH brasileiro e extraia apenas os dados visíveis. Não invente dados.
+Retorne JSON válido com: name, cpfCnpj, rg, issuingOrgan, birthDate, nationality, maritalStatus,
+profession, cep, address, number, neighborhood, city e state.`,
+      },
+    ],
+    true
+  );
+  const parsed = aiText ? extractJson(aiText) : null;
+  if (!parsed) return null;
+
+  const name = cleanOptional(parsed.name);
+  const cpfCnpj = normalizeCpfCnpj(cleanOptional(parsed.cpfCnpj));
+  if (!name || !isValidCpfCnpjLength(cpfCnpj)) return null;
+
+  return {
+    name,
+    cpfCnpj,
+    phone: normalizePhone(fallbackPhone),
+    whatsapp: normalizePhone(fallbackPhone),
+    rg: cleanOptional(parsed.rg),
+    issuingOrgan: cleanOptional(parsed.issuingOrgan),
+    birthDate: cleanOptional(parsed.birthDate),
+    nationality: cleanOptional(parsed.nationality) || 'Brasileira',
+    maritalStatus: cleanOptional(parsed.maritalStatus),
+    profession: cleanOptional(parsed.profession),
+    cep: cleanOptional(parsed.cep),
+    address: cleanOptional(parsed.address),
+    number: cleanOptional(parsed.number),
+    neighborhood: cleanOptional(parsed.neighborhood),
+    city: cleanOptional(parsed.city),
+    state: cleanOptional(parsed.state)?.toUpperCase(),
+  };
+}
+
+async function transcribeAudio(mediaBase64: string, mediaMimeType?: string): Promise<string | null> {
+  const mimeType = mediaMimeType || 'audio/ogg';
+  const cleanBase64 = mediaBase64.replace(/^data:audio\/[a-zA-Z0-9.+-]+;base64,/i, '').trim();
+  return callGemini([
+    { inlineData: { mimeType, data: cleanBase64 } },
+    {
+      text: 'Transcreva fielmente este comando em português brasileiro. Retorne somente o texto falado, sem comentários.',
+    },
+  ]);
+}
+
+async function createPendingClientAction(data: ClientDraft): Promise<WhatsAppAgentResult> {
+  const action: PendingAction = {
+    id: randomUUID(),
+    type: 'CREATE_OR_UPDATE_CLIENT',
+    createdAt: new Date().toISOString(),
+    data,
+  };
+  return {
+    replyText: clientPreview(data),
+    actionTaken: encodePendingAction(action),
+  };
+}
+
+async function findLatestPendingAction(officeId: string, fromNumber: string): Promise<PendingAction | null> {
+  const logs = await prisma.whatsAppLog.findMany({
+    where: { officeId, fromNumber },
+    select: { actionTaken: true, createdAt: true },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+  });
+
+  for (const log of logs) {
+    const action = decodePendingAction(log.actionTaken);
+    if (!action) continue;
+    if (Date.now() - new Date(action.createdAt || log.createdAt).getTime() > PENDING_TTL_MS) return null;
+    const executed = await prisma.whatsAppLog.findFirst({
+      where: { officeId, fromNumber, actionTaken: `${EXECUTED_PREFIX}${action.id}` },
+      select: { id: true },
     });
+    if (!executed) return action;
+  }
+  return null;
+}
 
-    if (pendingDocs.length === 0) {
+async function executePendingAction(officeId: string, action: PendingAction): Promise<WhatsAppAgentResult> {
+  if (action.type === 'GENERATE_KIT') {
+    return generateKitDocuments(officeId, action);
+  }
+  if (action.type === 'GENERATE_TEMPLATE') {
+    return generateTemplateDocument(officeId, action);
+  }
+  if (action.type !== 'CREATE_OR_UPDATE_CLIENT') {
+    return { replyText: 'Não reconheci a ação pendente. Envie o pedido novamente.', actionTaken: 'UNKNOWN_PENDING_ACTION' };
+  }
+
+  const data = action.data;
+  if (!normalizePhone(data.phone)) {
+    return {
+      replyText: `Antes de cadastrar *${data.name}*, informe o telefone/WhatsApp do cliente. Exemplo: *telefone 73 99999-9999*`,
+      actionTaken: encodePendingAction(action),
+    };
+  }
+  const existing = await prisma.client.findUnique({
+    where: { officeId_cpfCnpj: { officeId, cpfCnpj: data.cpfCnpj } },
+  });
+
+  const saved = existing
+    ? await prisma.client.update({
+        where: { id: existing.id },
+        data: {
+          name: data.name,
+          rg: data.rg ?? existing.rg,
+          issuingOrgan: data.issuingOrgan ?? existing.issuingOrgan,
+          birthDate: data.birthDate ?? existing.birthDate,
+          nationality: data.nationality ?? existing.nationality,
+          maritalStatus: data.maritalStatus ?? existing.maritalStatus,
+          profession: data.profession ?? existing.profession,
+          phone: data.phone || existing.phone,
+          whatsapp: data.whatsapp || existing.whatsapp,
+          email: data.email ?? existing.email,
+          cep: data.cep ?? existing.cep,
+          address: data.address ?? existing.address,
+          number: data.number ?? existing.number,
+          complement: data.complement ?? existing.complement,
+          neighborhood: data.neighborhood ?? existing.neighborhood,
+          city: data.city ?? existing.city,
+          state: data.state ?? existing.state,
+          legalArea: data.legalArea ?? existing.legalArea,
+          notes: data.notes ?? existing.notes,
+        },
+      })
+    : await prisma.client.create({
+        data: {
+          officeId,
+          name: data.name,
+          cpfCnpj: data.cpfCnpj,
+          rg: data.rg || null,
+          issuingOrgan: data.issuingOrgan || null,
+          birthDate: data.birthDate || null,
+          nationality: data.nationality || 'Brasileira',
+          maritalStatus: data.maritalStatus || null,
+          profession: data.profession || null,
+          phone: data.phone,
+          whatsapp: data.whatsapp || data.phone,
+          email: data.email || null,
+          cep: data.cep || null,
+          address: data.address || null,
+          number: data.number || null,
+          complement: data.complement || null,
+          neighborhood: data.neighborhood || null,
+          city: data.city || null,
+          state: data.state || null,
+          legalArea: data.legalArea || null,
+          notes: data.notes || null,
+        },
+      });
+
+  await prisma.auditLog.create({
+    data: {
+      officeId,
+      eventType: existing ? 'CLIENT_UPDATED_BY_WHATSAPP' : 'CLIENT_CREATED_BY_WHATSAPP',
+      description: `${saved.name} (${saved.cpfCnpj}) ${existing ? 'atualizado' : 'cadastrado'} pelo controle remoto do WhatsApp.`,
+    },
+  });
+
+  return {
+    replyText: [
+      `✅ *Cliente ${existing ? 'atualizado' : 'cadastrado'} no AssinaJur*`,
+      '',
+      `👤 ${saved.name}`,
+      `🪪 ${maskCpfCnpj(saved.cpfCnpj)}`,
+      `🆔 Código: ${saved.id.slice(0, 8).toUpperCase()}`,
+      '',
+      'A alteração já está disponível no site.',
+    ].join('\n'),
+    actionTaken: `${EXECUTED_PREFIX}${action.id}`,
+  };
+}
+
+async function getAutomationContext(officeId: string, clientId: string) {
+  const [client, office, user] = await Promise.all([
+    prisma.client.findFirst({ where: { id: clientId, officeId } }),
+    prisma.office.findUnique({ where: { id: officeId } }),
+    prisma.user.findFirst({ where: { officeId, active: true }, orderBy: { createdAt: 'asc' } }),
+  ]);
+  if (!client || !office || !user) throw new Error('Cliente, escritório ou usuário responsável não encontrado.');
+  return { client, office, user };
+}
+
+function buildTemplateVariables(client: Awaited<ReturnType<typeof getAutomationContext>>['client'], office: Awaited<ReturnType<typeof getAutomationContext>>['office'], user: Awaited<ReturnType<typeof getAutomationContext>>['user']) {
+  return {
+    cliente_nome: client.name,
+    cliente_cpf: client.cpfCnpj,
+    cliente_rg: client.rg || '—',
+    cliente_endereco: [client.address, client.number, client.neighborhood, client.city, client.state].filter(Boolean).join(', ') || '—',
+    cliente_estado_civil: client.maritalStatus || '—',
+    cliente_profissao: client.profession || '—',
+    advogado_nome: user.name,
+    advogado_oab: user.oabNumber || office.oabNumber || '—',
+    escritorio_nome: office.tradeName || office.name,
+    cidade: client.city || '—',
+  };
+}
+
+async function createDocumentFromTemplate({
+  officeId,
+  clientId,
+  template,
+  kitId,
+}: {
+  officeId: string;
+  clientId: string;
+  template: { id: string; title: string; contentHtml: string; documentType: string };
+  kitId?: string;
+}) {
+  const { client, office, user } = await getAutomationContext(officeId, clientId);
+  const title = `${template.title} - ${client.name}`;
+  const compiled = await compileTemplateToPdf({
+    officeId,
+    uploadedBy: user.id,
+    title,
+    contentHtml: template.contentHtml,
+    variables: buildTemplateVariables(client, office, user),
+    officeName: office.tradeName || office.name,
+  });
+  const document = await prisma.document.create({
+    data: {
+      officeId,
+      clientId: client.id,
+      templateId: template.id,
+      kitId: kitId || null,
+      title,
+      documentType: template.documentType,
+      originalFileId: compiled.storageRecord.id,
+      originalHash: compiled.hash,
+      status: 'ENVIADO',
+      createdById: user.id,
+    },
+  });
+  const signer = await prisma.signer.create({
+    data: {
+      documentId: document.id,
+      name: client.name,
+      cpf: client.cpfCnpj,
+      email: client.email || null,
+      phone: client.whatsapp || client.phone || null,
+      role: 'CLIENTE',
+      signatureOrder: 1,
+      status: 'PENDENTE',
+    },
+  });
+  await prisma.documentEvent.create({
+    data: {
+      documentId: document.id,
+      userId: user.id,
+      eventType: 'DOCUMENT_GENERATED_BY_WHATSAPP',
+      description: `Documento “${title}” gerado pelo controle remoto do WhatsApp.`,
+    },
+  });
+  return { document, signer, client };
+}
+
+async function generateTemplateDocument(officeId: string, action: PendingTemplateAction): Promise<WhatsAppAgentResult> {
+  const template = await prisma.template.findFirst({
+    where: { id: action.data.templateId, officeId, active: true },
+  });
+  if (!template) return { replyText: 'O modelo não está mais disponível.', actionTaken: `${EXECUTED_PREFIX}${action.id}` };
+  const result = await createDocumentFromTemplate({ officeId, clientId: action.data.clientId, template });
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.assinajur.com.br';
+  return {
+    replyText: `✅ *Documento gerado no AssinaJur*\n\n📄 ${result.document.title}\n👤 ${result.client.name}\n🔗 ${appUrl}/assinar/${result.signer.token}\n\nDiga *cobrar ${result.client.name}* para enviar o link pelo WhatsApp.`,
+    actionTaken: `${EXECUTED_PREFIX}${action.id}`,
+  };
+}
+
+async function generateKitDocuments(officeId: string, action: PendingKitAction): Promise<WhatsAppAgentResult> {
+  const kit = await prisma.legalKit.findFirst({
+    where: { id: action.data.kitId, officeId, active: true },
+    include: { items: { include: { template: true }, orderBy: { displayOrder: 'asc' } } },
+  });
+  if (!kit || kit.items.length === 0) {
+    return { replyText: 'O kit não está disponível ou não possui modelos.', actionTaken: `${EXECUTED_PREFIX}${action.id}` };
+  }
+  const created = [];
+  for (const item of kit.items) {
+    created.push(await createDocumentFromTemplate({
+      officeId,
+      clientId: action.data.clientId,
+      template: item.template,
+      kitId: kit.id,
+    }));
+  }
+  const first = created[0];
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.assinajur.com.br';
+  return {
+    replyText: `✅ *Kit gerado no AssinaJur*\n\n📦 ${kit.name}\n👤 ${first.client.name}\n📄 ${created.length} documento(s)\n🔗 ${appUrl}/assinar/${first.signer.token}\n\nDiga *cobrar ${first.client.name}* para enviar o link.`,
+    actionTaken: `${EXECUTED_PREFIX}${action.id}`,
+  };
+}
+
+async function findSingleClient(officeId: string, query: string) {
+  const clients = await prisma.client.findMany({
+    where: { officeId, name: { contains: query.trim(), mode: 'insensitive' } },
+    take: 3,
+    orderBy: { updatedAt: 'desc' },
+  });
+  return clients;
+}
+
+async function handleTextCommand(
+  officeId: string,
+  fromNumber: string,
+  originalBody: string
+): Promise<WhatsAppAgentResult> {
+  const text = originalBody.trim();
+  const normalized = text.toLocaleLowerCase('pt-BR');
+
+  if (/^(confirmar|confirmo|pode salvar|pode cadastrar|sim,? confirme)$/i.test(text)) {
+    const action = await findLatestPendingAction(officeId, fromNumber);
+    if (!action) {
       return {
-        replyText: '🎉 *Excelente Notícia, Dr.!* Todos os documentos do seu escritório foram assinados ou não há pendências no momento.',
-        actionTaken: 'CHECK_STATUS_EMPTY',
+        replyText: 'Não encontrei uma ação aguardando confirmação ou ela expirou. Envie o pedido novamente.',
+        actionTaken: 'NO_PENDING_ACTION',
       };
     }
+    return executePendingAction(officeId, action);
+  }
 
-    const list = pendingDocs
-      .map(
-        (d, i) =>
-          `*${i + 1}.* ${d.title}\n   👤 Cliente: ${d.client?.name || 'Não informado'}\n   📅 Data: ${new Date(d.createdAt).toLocaleDateString('pt-BR')}`
-      )
-      .join('\n\n');
-
+  if (/^(cancelar|cancela|não confirmar|descartar)$/i.test(text)) {
+    const action = await findLatestPendingAction(officeId, fromNumber);
     return {
-      replyText: `📌 *Dr., Documentos Pendentes de Assinatura (${pendingDocs.length}):*\n\n${list}\n\n💡 *Dica:* Digite *"cobrar [nome do cliente]"* para o robô reenviar o lembrete!`,
-      actionTaken: 'CHECK_STATUS',
+      replyText: action ? '🗑️ Ação descartada. Nenhuma alteração foi feita no AssinaJur.' : 'Não havia nenhuma ação pendente.',
+      actionTaken: action ? `${EXECUTED_PREFIX}${action.id}` : 'NO_PENDING_ACTION',
     };
   }
 
-  // Comando: Listar clientes cadastrados
-  if (
-    textBody.includes('lista de cliente') || 
-    textBody.includes('listar cliente') || 
-    textBody.includes('ver cliente') || 
-    textBody.includes('meus cliente') ||
-    textBody === 'clientes' ||
-    textBody === 'cliente'
-  ) {
-    const clients = await prisma.client.findMany({
-      where: { officeId },
-      take: 5,
-      orderBy: { createdAt: 'desc' },
-    });
+  const existingPending = await findLatestPendingAction(officeId, fromNumber);
+  if (existingPending?.type === 'CREATE_OR_UPDATE_CLIENT') {
+    const phoneCandidate = normalizePhone(text.match(/(?:telefone|celular|whatsapp|fone)?\s*\+?([\d\s().-]{10,20})/i)?.[1]);
+    if (phoneCandidate.length >= 10 && phoneCandidate.length <= 13) {
+      const updatedAction: PendingClientAction = {
+        ...existingPending,
+        id: randomUUID(),
+        createdAt: new Date().toISOString(),
+        data: { ...existingPending.data, phone: phoneCandidate, whatsapp: phoneCandidate },
+      };
+      return {
+        replyText: clientPreview(updatedAction.data),
+        actionTaken: encodePendingAction(updatedAction),
+      };
+    }
+  }
 
-    const total = await prisma.client.count({ where: { officeId } });
-
-    const list = clients
-      .map((c, i) => `*${i + 1}.* ${c.name} (CPF: ${maskCpfCnpj(c.cpfCnpj)})`)
-      .join('\n');
-
+  if (/^(ajuda|menu|comandos|o que você faz|oi|olá)$/i.test(normalized)) {
     return {
-      replyText: `👥 *Dr., Total de Clientes Cadastrados:* ${total}\n\n*Últimos Cadastrados:*\n${list}\n\n💡 Envie a foto de uma CNH ou RG aqui no chat para cadastrar um novo cliente automaticamente no site!`,
+      replyText: [
+        '🤖 *AssinaJur — Controle Remoto*',
+        '',
+        '• *clientes* — últimos cadastros',
+        '• *buscar cliente [nome ou CPF]*',
+        '• *status* — assinaturas pendentes',
+        '• *cobrar [nome]* — reenviar link de assinatura',
+        '• *cadastrar cliente...* — cadastro por texto',
+        '• *gerar [modelo] para [cliente]*',
+        '• *gerar kit [kit] para [cliente]*',
+        '• Envie uma *foto de RG/CNH* para preparar o cadastro',
+        '• Envie um *áudio* com qualquer desses comandos',
+        '',
+        'Operações que alteram dados sempre pedem *CONFIRMAR*.',
+      ].join('\n'),
+      actionTaken: 'SHOW_HELP',
+    };
+  }
+
+  const clientSearchMatch = normalized.match(/^(?:buscar|procurar|consultar|localizar|ver)\s+cliente\s+(.+)$/i);
+  if (clientSearchMatch) {
+    const query = clientSearchMatch[1].trim();
+    const digits = normalizeCpfCnpj(query);
+    const clients = await prisma.client.findMany({
+      where: {
+        officeId,
+        OR: [
+          { name: { contains: query, mode: 'insensitive' } },
+          ...(digits ? [{ cpfCnpj: { contains: digits } }] : []),
+        ],
+      },
+      take: 5,
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (clients.length === 0) {
+      return { replyText: `Não encontrei cliente correspondente a “${query}”.`, actionTaken: 'SEARCH_CLIENT_EMPTY' };
+    }
+    return {
+      replyText: `🔎 *Clientes encontrados:*\n\n${clients
+        .map((c, index) => `${index + 1}. *${c.name}*\n   CPF/CNPJ: ${maskCpfCnpj(c.cpfCnpj)}\n   Telefone: ${maskPhone(c.phone)}`)
+        .join('\n\n')}`,
+      actionTaken: 'SEARCH_CLIENT',
+    };
+  }
+
+  if (/^(clientes|cliente|listar clientes|meus clientes|últimos clientes)$/i.test(normalized)) {
+    const [clients, total] = await Promise.all([
+      prisma.client.findMany({ where: { officeId }, take: 5, orderBy: { createdAt: 'desc' } }),
+      prisma.client.count({ where: { officeId } }),
+    ]);
+    const list = clients.length
+      ? clients.map((c, index) => `${index + 1}. *${c.name}* — ${maskCpfCnpj(c.cpfCnpj)}`).join('\n')
+      : 'Nenhum cliente cadastrado.';
+    return {
+      replyText: `👥 *Clientes cadastrados:* ${total}\n\n${list}`,
       actionTaken: 'LIST_CLIENTS',
     };
   }
 
-  // Resposta Fluida da IA Gemini para o Advogado (73) 98825-0201
-  try {
-    const resAi = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: `Você é o AssinaJur Copilot, o assistente de inteligência artificial jurídica pessoal do Dr. no escritório Rodrigues & Soares Advocacia (número 73 98825-0201).
-O advogado está conversando com você de forma fluida por mensagens no WhatsApp.
-Responda de forma extremamente natural, fluida, inteligente, prestativa e profissional, chamando o usuário de Dr. e utilizando formatação markdown do WhatsApp (*negrito*, _itálico_).
-Mensagem do Dr.: "${body}"`,
-                },
-              ],
-            },
-          ],
-        }),
-      }
-    );
-
-    if (resAi.ok) {
-      const dataAi = await resAi.json();
-      const aiReply = dataAi?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (aiReply) {
-        return {
-          replyText: aiReply,
-          actionTaken: 'GEMINI_AI_REPLY',
-        };
-      }
+  if (normalized.includes('status') || normalized.includes('pendente') || normalized.includes('não assinou')) {
+    const pendingDocs = await prisma.document.findMany({
+      where: {
+        officeId,
+        status: { in: ['ENVIADO', 'PENDENTE', 'VISUALIZADO', 'PARCIALMENTE_ASSINADO'] },
+      },
+      take: 10,
+      orderBy: { createdAt: 'desc' },
+      include: { client: true, signers: { orderBy: { signatureOrder: 'asc' } } },
+    });
+    if (pendingDocs.length === 0) {
+      return { replyText: '✅ Não há documentos aguardando assinatura.', actionTaken: 'CHECK_STATUS_EMPTY' };
     }
-  } catch (errAi) {
-    console.error('Erro na chamada Gemini:', errAi);
+    return {
+      replyText: `📌 *Aguardando assinatura (${pendingDocs.length}):*\n\n${pendingDocs
+        .map((doc, index) => {
+          const waiting = doc.signers.filter((s) => s.status !== 'ASSINADO').map((s) => s.name).join(', ');
+          return `${index + 1}. *${doc.title}*\n   Cliente: ${doc.client?.name || 'Não informado'}\n   Aguardando: ${waiting || '—'}`;
+        })
+        .join('\n\n')}\n\nUse *cobrar [nome]* para reenviar o link.`,
+      actionTaken: 'CHECK_STATUS',
+    };
+  }
+
+  const remindMatch = normalized.match(/^(?:cobrar|lembrar|reenviar)\s+(?:cliente\s+)?(.+)$/i);
+  if (remindMatch) {
+    const query = remindMatch[1].trim();
+    const signer = await prisma.signer.findFirst({
+      where: {
+        status: { not: 'ASSINADO' },
+        name: { contains: query, mode: 'insensitive' },
+        document: { officeId, status: { notIn: ['CANCELADO', 'CONCLUIDO', 'EXPIRADO'] } },
+      },
+      include: { document: { include: { office: true } } },
+      orderBy: { document: { createdAt: 'desc' } },
+    });
+    if (!signer) {
+      return { replyText: `Não encontrei assinatura pendente para “${query}”.`, actionTaken: 'REMIND_SIGNATURE_EMPTY' };
+    }
+    const phone = normalizePhone(signer.phone);
+    if (!phone) {
+      return {
+        replyText: `Encontrei ${signer.name}, mas o cadastro do signatário não possui WhatsApp.`,
+        actionTaken: 'REMIND_SIGNATURE_NO_PHONE',
+      };
+    }
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.assinajur.com.br';
+    const reminder = `Olá, ${signer.name}! O escritório ${signer.document.office.tradeName || signer.document.office.name} lembra que o documento “${signer.document.title}” aguarda sua assinatura. Acesse: ${appUrl}/assinar/${signer.token}`;
+    return {
+      replyText: `📤 Vou enviar agora a cobrança para *${signer.name}* em ${maskPhone(phone)}.`,
+      actionTaken: 'REMIND_SIGNATURE',
+      outboundMessages: [{ to: phone, text: reminder }],
+    };
+  }
+
+  const kitMatch = text.match(/^(?:gerar|criar|preparar)\s+kit\s+(.+?)\s+para\s+(.+)$/i);
+  if (kitMatch) {
+    const [, kitQuery, clientQuery] = kitMatch;
+    const [kits, clients] = await Promise.all([
+      prisma.legalKit.findMany({
+        where: { officeId, active: true, name: { contains: kitQuery.trim(), mode: 'insensitive' } },
+        take: 3,
+      }),
+      findSingleClient(officeId, clientQuery),
+    ]);
+    if (kits.length !== 1 || clients.length !== 1) {
+      return {
+        replyText: kits.length === 0
+          ? `Não encontrei o kit “${kitQuery}”.`
+          : clients.length === 0
+            ? `Não encontrei o cliente “${clientQuery}”.`
+            : 'Encontrei mais de uma possibilidade. Informe o nome mais completo do kit e do cliente.',
+        actionTaken: 'KIT_OR_CLIENT_NOT_UNIQUE',
+      };
+    }
+    const action: PendingKitAction = {
+      id: randomUUID(),
+      type: 'GENERATE_KIT',
+      createdAt: new Date().toISOString(),
+      data: { clientId: clients[0].id, clientName: clients[0].name, kitId: kits[0].id, kitName: kits[0].name },
+    };
+    return {
+      replyText: `📦 *Preparar kit*\n\nKit: *${kits[0].name}*\nCliente: *${clients[0].name}*\n\nResponda *CONFIRMAR* para gerar os documentos ou *CANCELAR*.`,
+      actionTaken: encodePendingAction(action),
+    };
+  }
+
+  const templateMatch = text.match(/^(?:gerar|criar|preparar|faça)\s+(.+?)\s+para\s+(.+)$/i);
+  if (templateMatch) {
+    const [, templateQuery, clientQuery] = templateMatch;
+    const [templates, clients] = await Promise.all([
+      prisma.template.findMany({
+        where: { officeId, active: true, title: { contains: templateQuery.trim(), mode: 'insensitive' } },
+        take: 3,
+      }),
+      findSingleClient(officeId, clientQuery),
+    ]);
+    if (templates.length !== 1 || clients.length !== 1) {
+      return {
+        replyText: templates.length === 0
+          ? `Não encontrei um modelo correspondente a “${templateQuery}”.`
+          : clients.length === 0
+            ? `Não encontrei o cliente “${clientQuery}”.`
+            : 'Encontrei mais de uma possibilidade. Informe o nome mais completo do modelo e do cliente.',
+        actionTaken: 'TEMPLATE_OR_CLIENT_NOT_UNIQUE',
+      };
+    }
+    const action: PendingTemplateAction = {
+      id: randomUUID(),
+      type: 'GENERATE_TEMPLATE',
+      createdAt: new Date().toISOString(),
+      data: {
+        clientId: clients[0].id,
+        clientName: clients[0].name,
+        templateId: templates[0].id,
+        templateName: templates[0].title,
+      },
+    };
+    return {
+      replyText: `📄 *Preparar documento*\n\nModelo: *${templates[0].title}*\nCliente: *${clients[0].name}*\n\nResponda *CONFIRMAR* para gerar ou *CANCELAR*.`,
+      actionTaken: encodePendingAction(action),
+    };
+  }
+
+  if (/\b(cadastrar|cadastre|novo cliente|nova cliente)\b/i.test(normalized)) {
+    const draft = await extractClientDraftFromText(text, '');
+    if (!draft) {
+      return {
+        replyText: 'Para preparar o cadastro, informe pelo menos *nome completo, CPF e telefone*. Você também pode enviar uma foto legível do RG ou da CNH.',
+        actionTaken: 'CLIENT_DATA_REQUIRED',
+      };
+    }
+    return createPendingClientAction(draft);
   }
 
   return {
-    replyText: `🤖 *AssinaJur Copilot:* Olá, Dr.! Recebi sua mensagem.\n\n💡 Digite ou mande áudio sobre o que você deseja consultar no site ou envie a foto de um documento de cliente para eu cadastrar na hora!`,
-    actionTaken: 'DEFAULT_FALLBACK',
+    replyText: 'Não identifiquei um comando operacional. Digite *AJUDA* para ver os comandos disponíveis.',
+    actionTaken: 'COMMAND_NOT_UNDERSTOOD',
   };
+}
+
+export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Promise<WhatsAppAgentResult> {
+  const { officeId, fromNumber, body, messageType, mediaBase64, mediaMimeType, trustedSource } = input;
+  if (!trustedSource && !isAuthorizedLawyerPhone(fromNumber)) {
+    return {
+      replyText: 'Este número não possui autorização para administrar o AssinaJur.',
+      actionTaken: 'UNAUTHORIZED_PHONE',
+    };
+  }
+
+  if (messageType === 'AUDIO' && mediaBase64) {
+    try {
+      const transcript = await transcribeAudio(mediaBase64, mediaMimeType);
+      if (!transcript) throw new Error('Transcrição vazia');
+      const result = await handleTextCommand(officeId, fromNumber, transcript);
+      return { ...result, replyText: `🎙️ _Entendi: “${transcript.trim()}”_\n\n${result.replyText}` };
+    } catch (error) {
+      console.error('Erro ao interpretar áudio do WhatsApp:', error);
+      return { replyText: 'Não consegui compreender o áudio. Tente novamente ou envie o comando em texto.', actionTaken: 'AUDIO_ERROR' };
+    }
+  }
+
+  if (messageType === 'IMAGE' && mediaBase64) {
+    try {
+      const draft = await extractClientDraftFromImage(mediaBase64, mediaMimeType, '');
+      if (!draft) {
+        return {
+          replyText: 'Não consegui identificar nome e CPF com segurança. Envie uma foto mais nítida ou informe os dados em texto.',
+          actionTaken: 'IMAGE_DATA_INCOMPLETE',
+        };
+      }
+      return createPendingClientAction(draft);
+    } catch (error) {
+      console.error('Erro ao ler documento recebido pelo WhatsApp:', error);
+      return { replyText: 'Não consegui processar a foto do documento. Tente uma imagem mais nítida.', actionTaken: 'IMAGE_ERROR' };
+    }
+  }
+
+  return handleTextCommand(officeId, fromNumber, body || '');
 }

@@ -25,6 +25,7 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
+.env.bot
 
 # vercel
 .vercel
@@ -37,3 +38,15 @@ next-env.d.ts
 /storage/
 /uploads/
 *.pdf
+
+# WhatsApp local bridge (credenciais e artefatos do computador)
+/whatsapp-auth/
+/whatsapp-daemon.lock
+/qrcode-pareamento.html
+
+# banco local de desenvolvimento
+/prisma/dev.db
+
+.vercel
+.env*
+!.env.bot.example

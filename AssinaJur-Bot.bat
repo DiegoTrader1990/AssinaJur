@@ -1,6 +1,23 @@
 @echo off
+chcp 65001 >nul
 title AssinaJur WhatsApp Bot 24/7 (Sessao Continua)
 cd /d "%~dp0"
+
+if not exist .env.bot (
+    echo.
+    echo ============================================================
+    echo CONFIGURACAO NECESSARIA
+    echo ============================================================
+    echo Copie .env.bot.example para .env.bot e preencha:
+    echo - WHATSAPP_BOT_SECRET
+    echo - WHATSAPP_ADMIN_PHONE
+    echo.
+    echo O mesmo WHATSAPP_BOT_SECRET precisa estar configurado na Vercel.
+    echo Consulte WHATSAPP_CONTROLE_REMOTO.md.
+    echo.
+    pause
+    exit /b 1
+)
 
 if not exist node_modules\@whiskeysockets\baileys (
     echo.

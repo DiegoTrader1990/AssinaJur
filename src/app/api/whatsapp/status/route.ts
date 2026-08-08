@@ -21,12 +21,22 @@ export async function GET() {
       take: 10,
     });
 
+    const heartbeatFresh = session
+      ? Date.now() - new Date(session.updatedAt).getTime() < 2 * 60 * 1000
+      : false;
+    const realStatus = session?.status === 'CONNECTED' && heartbeatFresh
+      ? 'CONNECTED'
+      : session?.status === 'CONNECTING' && heartbeatFresh
+        ? 'CONNECTING'
+        : 'DISCONNECTED';
+
     return NextResponse.json({
       success: true,
-      status: session?.status || 'DISCONNECTED',
-      phoneNumber: session?.phoneNumber || null,
+      status: realStatus,
+      phoneNumber: realStatus === 'CONNECTED' ? session?.phoneNumber || null : null,
       autoRemind: session?.autoRemind ?? true,
       qrCode: session?.qrCode || null,
+      lastHeartbeatAt: session?.updatedAt || null,
       logs: logs.map((l) => ({
         id: l.id,
         fromNumber: l.fromNumber,
@@ -49,34 +59,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { action } = body;
-
-    if (action === 'CONNECT') {
-      const session = await prisma.whatsAppSession.upsert({
-        where: { officeId: user.officeId },
-        update: { status: 'CONNECTED', phoneNumber: user.officeName ? `WhatsApp ${user.officeName}` : 'Conectado' },
-        create: {
-          officeId: user.officeId,
-          status: 'CONNECTED',
-          phoneNumber: `WhatsApp ${user.officeName}`,
-        },
-      });
-
-      return NextResponse.json({ success: true, status: 'CONNECTED', session });
-    }
-
-    if (action === 'DISCONNECT') {
-      const session = await prisma.whatsAppSession.upsert({
-        where: { officeId: user.officeId },
-        update: { status: 'DISCONNECTED', phoneNumber: null, qrCode: null },
-        create: { officeId: user.officeId, status: 'DISCONNECTED' },
-      });
-
-      return NextResponse.json({ success: true, status: 'DISCONNECTED', session });
-    }
-
-    return NextResponse.json({ error: 'Ação inválida.' }, { status: 400 });
+    await req.json().catch(() => ({}));
+    return NextResponse.json(
+      { error: 'A conexão é controlada pelo AssinaJur-Bot no computador. Inicie ou encerre o bot local.' },
+      { status: 409 }
+    );
   } catch (error: any) {
     console.error('Erro ao alterar estado do WhatsApp:', error);
     return NextResponse.json({ error: 'Erro ao alterar estado.' }, { status: 500 });

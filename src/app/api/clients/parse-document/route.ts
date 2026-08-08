@@ -4,9 +4,6 @@ import { maskCpfCnpj } from '@/lib/formatters';
 
 export const dynamic = 'force-dynamic';
 
-// Chave validada do Google AI Studio incorporada dinamicamente para garantia total em produção
-const EMBEDDED_KEY = 'AQ.Ab8RN6JIqr0M3p967Yc' + '238RHeAH5l40cDAEPgz1sUDDfmmEEMw';
-
 const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
 function formatToInputDate(dateStr?: string): string {
@@ -24,7 +21,7 @@ function formatToInputDate(dateStr?: string): string {
 }
 
 async function parseWithGeminiVision(base64Image: string, mimeType: string) {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY || EMBEDDED_KEY;
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
   if (!apiKey) return null;
 
   const cleanMime = mimeType && mimeType.startsWith('image/') ? mimeType : (mimeType && mimeType.includes('pdf') ? 'application/pdf' : 'image/jpeg');
