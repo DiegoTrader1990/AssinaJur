@@ -16,15 +16,15 @@ async function testLive() {
 
   console.log(`👤 Usuário encontrado: ${user.name} (${user.email}) | Escritório ID: ${user.officeId}`);
 
-  // Testar Webhook do Agente IA com comando "status"
-  console.log('\n2. Chamando Webhook do Agente IA com comando "status"...');
+  // Testar Webhook do Agente IA com comando "clientes"
+  console.log('\n2. Chamando Webhook do Agente IA com comando "clientes"...');
   const resWebhook = await fetch('https://www.assinajur.com.br/api/whatsapp/webhook', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       officeId: user.officeId,
       fromNumber: '5573981351319',
-      message: 'status',
+      message: 'clientes',
       messageType: 'TEXT',
     }),
   });

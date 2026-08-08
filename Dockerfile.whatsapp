@@ -1,0 +1,23 @@
+# Imagem oficial do Node.js leve
+FROM node:18-alpine
+
+# Criar diretorio do app
+WORKDIR /app
+
+# Copiar definicoes de pacotes
+COPY package*.json ./
+
+# Instalar dependencias
+RUN npm ci --only=production
+
+# Copiar codigo do projeto e scripts
+COPY . .
+
+# Criar pasta de autenticacao persistente do WhatsApp
+RUN mkdir -p /app/whatsapp-auth
+
+# Expor porta opcional de monitoramento
+EXPOSE 3001
+
+# Executar o conector dedicado do WhatsApp 24/7
+CMD ["node", "scripts/whatsapp-daemon.js"]
