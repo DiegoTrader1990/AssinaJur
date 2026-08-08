@@ -1,19 +1,45 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { processWhatsAppCommand } from '@/lib/whatsapp/agent';
+import { handleMetaWebhookPayload } from '@/lib/whatsapp/meta';
 
 export const dynamic = 'force-dynamic';
 
+// GET: Verificacao do Webhook Oficial da Meta WhatsApp Cloud API
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const mode = searchParams.get('hub.mode');
+  const token = searchParams.get('hub.verify_token');
+  const challenge = searchParams.get('hub.challenge');
+
+  const VERIFY_TOKEN = process.env.META_WA_VERIFY_TOKEN || 'assinajur_token';
+
+  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+    console.log('Webhook Meta WhatsApp Verificado com Sucesso!');
+    return new Response(challenge, { status: 200 });
+  }
+
+  return NextResponse.json({ error: 'Token de verificação inválido.' }, { status: 403 });
+}
+
+// POST: Recebe eventos de mensagens da Meta WhatsApp API ou do Painel AssinaJur
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+
+    // 1. Se for um Webhook vindo da Meta WhatsApp API
+    if (body.object === 'whatsapp_business_account') {
+      const result = await handleMetaWebhookPayload(body);
+      return NextResponse.json({ success: true, result });
+    }
+
+    // 2. Se for uma chamada direta do Painel Web do AssinaJur
     const { officeId, fromNumber, message, messageType, mediaBase64, mediaMimeType } = body;
 
     if (!officeId || !fromNumber) {
       return NextResponse.json({ error: 'officeId e fromNumber são obrigatórios.' }, { status: 400 });
     }
 
-    // 1. Processar a mensagem pelo Agente IA do AssinaJur
     const agentResult = await processWhatsAppCommand({
       officeId,
       fromNumber,
@@ -23,7 +49,6 @@ export async function POST(req: Request) {
       mediaMimeType,
     });
 
-    // 2. Gravar o log da mensagem no banco de dados para auditoria do escritorio
     await prisma.whatsAppLog.create({
       data: {
         officeId,
@@ -31,7 +56,7 @@ export async function POST(req: Request) {
         toNumber: 'AssinaJur AI Bot',
         direction: 'INBOUND',
         messageType: messageType || 'TEXT',
-        body: message || (messageType === 'IMAGE' ? 'Foto de documento enviada' : 'Mensagem de voz/mídia'),
+        body: message || (messageType === 'IMAGE' ? 'Foto de documento enviada' : 'Mensagem de mídia'),
         aiResponse: agentResult.replyText,
         actionTaken: agentResult.actionTaken,
       },
