@@ -3,6 +3,9 @@ import { maskCpfCnpj } from '@/lib/formatters';
 
 const EMBEDDED_KEY = 'AQ.Ab8RN6JIqr0M3p967Yc' + '238RHeAH5l40cDAEPgz1sUDDfmmEEMw';
 
+// Numero oficial do advogado administrador para controle exclusivo do site
+export const AUTHORIZED_LAWYER_PHONES = ['5573988250201', '73988250201', '55739988250201'];
+
 export interface WhatsAppIncomingMessage {
   officeId: string;
   fromNumber: string;
@@ -20,8 +23,7 @@ export interface WhatsAppAgentResult {
 
 /**
  * Agente de Inteligencia Artificial AssinaJur para WhatsApp.
- * Suporta execucao de comandos por texto, voz e visao computacional (leitura de fotos de RG/CNH).
- * Exclusivo para controle do site pelo advogado cadastrado.
+ * Exclusivamente configurado para atender as instrucoes do Advogado (73) 98825-0201.
  */
 export async function processWhatsAppCommand(
   input: WhatsAppIncomingMessage
@@ -29,14 +31,16 @@ export async function processWhatsAppCommand(
   const { officeId, fromNumber, body, messageType, mediaBase64, mediaMimeType } = input;
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY || EMBEDDED_KEY;
 
-  // 1. Processamento de FOTO de Documento de Identidade (RG/CNH) enviada pelo celular
+  const cleanFrom = fromNumber.replace(/\D/g, '');
+
+  // 1. Processamento de FOTO de Documento de Identidade (RG/CNH) enviada pelo celular do advogado
   if (messageType === 'IMAGE' && mediaBase64) {
     try {
       const cleanMime = mediaMimeType || 'image/jpeg';
       const cleanBase64 = mediaBase64.replace(/^data:image\/(jpeg|jpg|png|webp);base64,/i, '').trim();
 
       const prompt = `Você é um especialista em visão computacional de documentos jurídicos brasileiros (CNH, RG).
-Analise esta foto enviada via WhatsApp pelo advogado e extraia os dados para cadastrar o cliente.
+Analise esta foto enviada via WhatsApp pelo advogado Dr. (73) 98825-0201 e extraia os dados para cadastrar o cliente no site AssinaJur.
 Retorne EXATAMENTE um JSON válido:
 {
   "name": "Nome Completo do Titular",
@@ -103,7 +107,7 @@ Retorne EXATAMENTE um JSON válido:
           });
 
           return {
-            replyText: `✅ *Cliente Cadastrado via Foto com Sucesso!*\n\n👤 *Nome:* ${client.name}\n🪪 *CPF:* ${client.cpfCnpj}\n📄 *RG:* ${client.rg || 'Não informado'}\n📍 *Cidade/UF:* ${client.city || ''} ${client.state || ''}\n\n*AssinaJur:* O cadastro já está disponível no seu painel web!`,
+            replyText: `✅ *Dr., Cliente Cadastrado via Foto com Sucesso!*\n\n👤 *Nome:* ${client.name}\n🪪 *CPF:* ${client.cpfCnpj}\n📄 *RG:* ${client.rg || 'Não informado'}\n📍 *Cidade/UF:* ${client.city || ''} ${client.state || ''}\n\n*AssinaJur:* O cadastro já está disponível no seu painel web!`,
             actionTaken: 'CREATE_CLIENT_IMAGE',
           };
         }
@@ -127,7 +131,7 @@ Retorne EXATAMENTE um JSON válido:
 
     if (pendingDocs.length === 0) {
       return {
-        replyText: '🎉 *Excelente Notícia!* Todos os documentos do seu escritório foram assinados ou não há pendências no momento.',
+        replyText: '🎉 *Excelente Notícia, Dr.!* Todos os documentos do seu escritório foram assinados ou não há pendências no momento.',
         actionTaken: 'CHECK_STATUS_EMPTY',
       };
     }
@@ -140,7 +144,7 @@ Retorne EXATAMENTE um JSON válido:
       .join('\n\n');
 
     return {
-      replyText: `📌 *Documentos Pendentes de Assinatura (${pendingDocs.length}):*\n\n${list}\n\n💡 *Dica:* Digite *"cobrar [nome do cliente]"* para o robô reenviar o lembrete!`,
+      replyText: `📌 *Dr., Documentos Pendentes de Assinatura (${pendingDocs.length}):*\n\n${list}\n\n💡 *Dica:* Digite *"cobrar [nome do cliente]"* para o robô reenviar o lembrete!`,
       actionTaken: 'CHECK_STATUS',
     };
   }
@@ -160,12 +164,12 @@ Retorne EXATAMENTE um JSON válido:
       .join('\n');
 
     return {
-      replyText: `👥 *Total de Clientes Cadastrados:* ${total}\n\n*Últimos Cadastrados:*\n${list}\n\n💡 Envie a foto de uma CNH ou RG aqui no chat para cadastrar um novo cliente automaticamente!`,
+      replyText: `👥 *Dr., Total de Clientes Cadastrados:* ${total}\n\n*Últimos Cadastrados:*\n${list}\n\n💡 Envie a foto de uma CNH ou RG aqui no chat para cadastrar um novo cliente automaticamente no site!`,
       actionTaken: 'LIST_CLIENTS',
     };
   }
 
-  // Resposta Padrão da IA Gemini
+  // Resposta Padrão da IA Gemini para o Advogado (73) 98825-0201
   try {
     const resAi = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
@@ -177,9 +181,9 @@ Retorne EXATAMENTE um JSON válido:
             {
               parts: [
                 {
-                  text: `Você é o AssinaJur Copilot, o assistente virtual de inteligência jurídica para o advogado administrador do escritório.
-Responda de forma sucinta, extremamente profissional e útil com formatação markdown do WhatsApp (*negrito*, _itálico_).
-Solicitação do advogado: "${body}"`,
+                  text: `Você é o AssinaJur Copilot, o assistente virtual de inteligência jurídica para o Dr. do escritório Rodrigues & Soares Advocacia (número 73 98825-0201).
+Responda de forma sucinta, extremamente profissional, chamando o usuário de Dr. e utilizando formatação markdown do WhatsApp (*negrito*, _itálico_).
+Solicitação do Dr.: "${body}"`,
                 },
               ],
             },
@@ -203,7 +207,7 @@ Solicitação do advogado: "${body}"`,
   }
 
   return {
-    replyText: `🤖 *AssinaJur Copilot:* Recebi sua mensagem!\n\n💡 Digite *"status"* para ver documentos pendentes, *"clientes"* para ver o cadastro ou envie a foto de um RG/CNH para cadastrar na hora no site!`,
+    replyText: `🤖 *AssinaJur Copilot:* Olá, Dr.! Recebi sua mensagem.\n\n💡 Digite *"status"* para ver documentos pendentes no site, *"clientes"* para ver o cadastro ou envie a foto de um RG/CNH para eu cadastrar na hora no painel!`,
     actionTaken: 'DEFAULT_FALLBACK',
   };
 }
