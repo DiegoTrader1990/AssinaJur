@@ -46,6 +46,10 @@ interface DocumentInfo {
   status: string;
   officeName: string;
   officeLogo?: string;
+  isIlliterate?: boolean;
+  rogoName?: string;
+  rogoCpf?: string;
+  rogoRelationship?: string;
   signers: Array<{ name: string; role: string; status: string }>;
 }
 
@@ -191,7 +195,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [confirmingCpf, setConfirmingCpf] = useState(false);
 
   // Termos e Assinatura
-  const [signatureMode, setSignatureMode] = useState<'DESENHADA' | 'DIGITADA'>('DESENHADA');
+  const [signatureMode, setSignatureMode] = useState<'SELO_DIGITAL' | 'DESENHADA' | 'DIGITADA'>('SELO_DIGITAL');
   const [typedName, setTypedName] = useState('');
   const [agreedConsent, setAgreedConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -1100,7 +1104,30 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </button>
             </div>
 
+            {/* Banner de Rogo se for Cliente Analfabeto */}
+            {document?.rogoName && (
+              <div className="p-3.5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl space-y-1 text-xs shadow-2xs">
+                <div className="font-heading font-black text-emerald-900 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  Assinatura a Rogo (Art. 595 do Código Civil)
+                </div>
+                <p className="text-[11px] text-emerald-800 font-medium leading-tight">
+                  Outorgante: <strong>{signer?.name}</strong> <br />
+                  Acompanhante a Rogo: <strong>{document.rogoName}</strong> ({document.rogoRelationship || 'Acompanhante'}) • CPF: {maskCpfCnpj(document.rogoCpf || '')}
+                </p>
+              </div>
+            )}
+
             <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-heading">
+              <button
+                type="button"
+                onClick={() => setSignatureMode('SELO_DIGITAL')}
+                className={`flex-1 py-2.5 rounded-xl font-extrabold transition-all flex items-center justify-center gap-1.5 ${
+                  signatureMode === 'SELO_DIGITAL' ? 'bg-[#071B3A] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Selo Digital (1 Clique)
+              </button>
               <button
                 type="button"
                 onClick={() => setSignatureMode('DESENHADA')}
@@ -1108,7 +1135,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   signatureMode === 'DESENHADA' ? 'bg-[#071B3A] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Edit3 className="w-3.5 h-3.5" /> Desenhar no Touch
+                <Edit3 className="w-3.5 h-3.5" /> Desenhar
               </button>
               <button
                 type="button"
@@ -1117,11 +1144,23 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   signatureMode === 'DIGITADA' ? 'bg-[#071B3A] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <PenTool className="w-3.5 h-3.5" /> Nome Digitado
+                <PenTool className="w-3.5 h-3.5" /> Nome
               </button>
             </div>
 
-            {signatureMode === 'DESENHADA' ? (
+            {signatureMode === 'SELO_DIGITAL' ? (
+              <div className="p-5 bg-gradient-to-b from-slate-50 to-white rounded-2xl border-2 border-emerald-200 text-center space-y-2 shadow-xs">
+                <div className="w-10 h-10 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <h3 className="font-heading font-black text-xs text-[#071B3A] uppercase tracking-wider">
+                  Selo Digital de Autenticidade Registrada
+                </h3>
+                <p className="text-[11px] text-slate-500 font-medium leading-relaxed max-w-xs mx-auto">
+                  Sua assinatura será vinculada com 1 clique à prova de presença biométrica ao vivo, com selo jurídico respaldado pela MP 2.200-2 e Lei 14.063/2020.
+                </p>
+              </div>
+            ) : signatureMode === 'DESENHADA' ? (
               <div className="bg-white rounded-2xl overflow-hidden border-2 border-slate-300 focus-within:border-[#071B3A] relative touch-none shadow-inner">
                 <canvas
                   ref={canvasRef}

@@ -74,6 +74,10 @@ export async function POST(req: Request) {
       expirationDate,
       customMessage,
       signers,
+      isIlliterate,
+      rogoName,
+      rogoCpf,
+      rogoRelationship,
     } = body;
 
     if (!title || !originalFileId || !originalHash || !signers || !Array.isArray(signers) || signers.length === 0) {
@@ -98,6 +102,10 @@ export async function POST(req: Request) {
           expirationDate: expirationDate ? new Date(expirationDate) : null,
           customMessage: customMessage || null,
           createdById: user.id,
+          isIlliterate: !!isIlliterate,
+          rogoName: rogoName || null,
+          rogoCpf: rogoCpf ? rogoCpf.replace(/\D/g, '') : null,
+          rogoRelationship: rogoRelationship || null,
         },
       });
 

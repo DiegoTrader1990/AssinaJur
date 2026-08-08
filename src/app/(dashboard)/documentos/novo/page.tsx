@@ -68,6 +68,12 @@ export default function NewDocumentPage() {
   const [signaturePosition, setSignaturePosition] = useState<'BOTTOM' | 'TOP' | 'RIGHT_MARGIN' | 'LEFT_MARGIN'>('BOTTOM');
   const [customMessage, setCustomMessage] = useState('');
 
+  // Assinatura a Rogo (Clientes Analfabetos / com Limitação)
+  const [isIlliterate, setIsIlliterate] = useState(false);
+  const [rogoName, setRogoName] = useState('');
+  const [rogoCpf, setRogoCpf] = useState('');
+  const [rogoRelationship, setRogoRelationship] = useState('Acompanhante / Familiar');
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [createdDocument, setCreatedDocument] = useState<any | null>(null);
@@ -203,6 +209,10 @@ export default function NewDocumentPage() {
           signaturePosition,
           customMessage,
           signers,
+          isIlliterate,
+          rogoName: isIlliterate ? rogoName : null,
+          rogoCpf: isIlliterate ? rogoCpf : null,
+          rogoRelationship: isIlliterate ? rogoRelationship : null,
         }),
       });
 
@@ -499,6 +509,66 @@ export default function NewDocumentPage() {
                 </div>
               </div>
             ))}
+          </div>
+
+          {/* Configuração de Cliente Analfabeto / Assinatura a Rogo */}
+          <div className="p-5 bg-gradient-to-r from-blue-50/80 via-white to-blue-50/40 rounded-2xl border border-blue-200 space-y-3">
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isIlliterate}
+                onChange={(e) => setIsIlliterate(e.target.checked)}
+                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+              />
+              <span className="font-heading font-extrabold text-xs text-[#071B3A]">
+                Cliente Analfabeto ou com Dificuldade de Leitura/Assinatura? (Exigir Assinante a Rogo - Art. 595 CC)
+              </span>
+            </label>
+
+            {isIlliterate && (
+              <div className="pt-3 border-t border-blue-100 space-y-3 animate-in fade-in duration-300">
+                <p className="text-[11px] text-slate-600 font-medium">
+                  Cadastre o acompanhante de confiança (familiar ou amigo) que assinará a rogo pelo cliente no mesmo celular.
+                </p>
+
+                <div className="grid md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Nome do Acompanhante a Rogo *</label>
+                    <input
+                      type="text"
+                      required={isIlliterate}
+                      value={rogoName}
+                      onChange={(e) => setRogoName(e.target.value)}
+                      placeholder="Ex: Maria da Silva"
+                      className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">CPF do Acompanhante *</label>
+                    <input
+                      type="text"
+                      required={isIlliterate}
+                      value={rogoCpf}
+                      onChange={(e) => setRogoCpf(maskCpfCnpj(e.target.value))}
+                      placeholder="000.000.000-00"
+                      className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Relação com o Cliente</label>
+                    <input
+                      type="text"
+                      value={rogoRelationship}
+                      onChange={(e) => setRogoRelationship(e.target.value)}
+                      placeholder="Ex: Filha, Cônjuge, Irmão"
+                      className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-between pt-4 border-t border-slate-100">

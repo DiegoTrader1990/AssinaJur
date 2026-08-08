@@ -104,6 +104,10 @@ export async function GET(
         customMessage: document.customMessage,
         status: document.status,
         originalHash: document.originalHash,
+        isIlliterate: document.isIlliterate,
+        rogoName: document.rogoName,
+        rogoCpf: document.rogoCpf,
+        rogoRelationship: document.rogoRelationship,
         signers: document.signers,
       },
     });
