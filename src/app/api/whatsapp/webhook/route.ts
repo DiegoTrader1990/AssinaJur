@@ -27,6 +27,21 @@ function hasValidMetaSignature(req: Request, rawBody: string): boolean {
   return Boolean(supplied && safeEqual(supplied, expected));
 }
 
+function brazilianPhoneVariants(value: string): Set<string> {
+  const digits = value.replace(/\D/g, '');
+  const withCountry = digits.startsWith('55') ? digits : `55${digits}`;
+  const variants = new Set<string>([digits, withCountry]);
+
+  // A infraestrutura do WhatsApp ainda pode entregar números brasileiros no formato
+  // legado sem o nono dígito. Consideramos as duas representações equivalentes.
+  if (withCountry.length === 13 && withCountry[4] === '9') {
+    variants.add(`${withCountry.slice(0, 4)}${withCountry.slice(5)}`);
+  } else if (withCountry.length === 12) {
+    variants.add(`${withCountry.slice(0, 4)}9${withCountry.slice(4)}`);
+  }
+  return variants;
+}
+
 async function resolveBridgeOfficeId(fromNumber: string): Promise<string | null> {
   const configuredOfficeId = process.env.WHATSAPP_OFFICE_ID;
   if (configuredOfficeId) {
@@ -38,10 +53,10 @@ async function resolveBridgeOfficeId(fromNumber: string): Promise<string | null>
     where: { active: true, office: { active: true }, phone: { not: null } },
     select: { officeId: true, phone: true },
   });
-  const normalizedFrom = fromNumber.replace(/\D/g, '');
+  const fromVariants = brazilianPhoneVariants(fromNumber);
   const matchingUser = users.find((user) => {
-    const phone = (user.phone || '').replace(/\D/g, '');
-    return phone && (phone === normalizedFrom || normalizedFrom.endsWith(phone) || phone.endsWith(normalizedFrom));
+    const userVariants = brazilianPhoneVariants(user.phone || '');
+    return [...fromVariants].some((phone) => userVariants.has(phone));
   });
   if (matchingUser) return matchingUser.officeId;
 
