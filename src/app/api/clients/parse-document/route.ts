@@ -9,6 +9,20 @@ const EMBEDDED_KEY = 'AQ.Ab8RN6JIqr0M3p967Yc' + '238RHeAH5l40cDAEPgz1sUDDfmmEEMw
 
 const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
+function formatToInputDate(dateStr?: string): string {
+  if (!dateStr) return '';
+  const clean = dateStr.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
+  const parts = clean.split(/[\/\.-]/);
+  if (parts.length === 3) {
+    if (parts[0].length === 2 && parts[2].length === 4) {
+      // Converte DD/MM/YYYY para o formato HTML YYYY-MM-DD exigido pelo <input type="date" />
+      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+  }
+  return clean;
+}
+
 async function parseWithGeminiVision(base64Image: string, mimeType: string) {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY || EMBEDDED_KEY;
   if (!apiKey) return null;
@@ -23,7 +37,7 @@ Identifique e extraia todos os campos visíveis no documento:
 1. NOME COMPLETO do titular (ex: JUDSON DIAS DE ARAUJO)
 2. CPF (número de 11 dígitos no formato 000.000.000-00)
 3. NÚMERO DO RG / DOC IDENTIDADE com Órgão Emissor e UF (ex: 163861323 SSP BA)
-4. DATA DE NASCIMENTO (formato DD/MM/AAAA)
+4. DATA DE NASCIMENTO no formato DD/MM/AAAA (ex: 30/11/1959)
 5. NACIONALIDADE (ex: Brasileira)
 6. ESTADO CIVIL (ex: Solteiro(a), Casado(a))
 7. PROFISSÃO
@@ -122,7 +136,7 @@ export async function POST(req: Request) {
           cpfCnpj: geminiParsed.cpfCnpj ? maskCpfCnpj(geminiParsed.cpfCnpj) : '',
           rg: geminiParsed.rg || '',
           issuingOrgan: geminiParsed.issuingOrgan || '',
-          birthDate: geminiParsed.birthDate || '',
+          birthDate: formatToInputDate(geminiParsed.birthDate),
           nationality: geminiParsed.nationality || 'Brasileira',
           maritalStatus: geminiParsed.maritalStatus || '',
           profession: geminiParsed.profession || '',
@@ -157,7 +171,7 @@ export async function POST(req: Request) {
     const birthMatch = rawText.match(/(?:NASCIMENTO|NASC|DATA NASC)[:\s]+(\d{2}\/\d{2}\/\d{4})/i);
     let detectedBirthDate = '';
     if (birthMatch && birthMatch[1]) {
-      detectedBirthDate = birthMatch[1];
+      detectedBirthDate = formatToInputDate(birthMatch[1]);
     }
 
     return NextResponse.json({

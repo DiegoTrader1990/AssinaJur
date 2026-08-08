@@ -209,13 +209,30 @@ export default function ClientsPage() {
       if (result && result.extracted) {
         const hasData = result.extracted.name || result.extracted.cpfCnpj || result.extracted.rg || result.extracted.birthDate;
         if (hasData) {
+          const rawBirth = result.extracted.birthDate || '';
+          let formattedBirth = rawBirth;
+          if (rawBirth.includes('/')) {
+            const parts = rawBirth.split('/');
+            if (parts.length === 3 && parts[2].length === 4) {
+              formattedBirth = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
+          }
           setFormData((prev) => ({
             ...prev,
             name: result.extracted.name || prev.name,
             cpfCnpj: result.extracted.cpfCnpj || prev.cpfCnpj,
             rg: result.extracted.rg || prev.rg,
             issuingOrgan: result.extracted.issuingOrgan || prev.issuingOrgan,
-            birthDate: result.extracted.birthDate || prev.birthDate,
+            birthDate: formattedBirth || prev.birthDate,
+            nationality: result.extracted.nationality || prev.nationality,
+            maritalStatus: result.extracted.maritalStatus || prev.maritalStatus,
+            profession: result.extracted.profession || prev.profession,
+            address: result.extracted.address || prev.address,
+            number: result.extracted.number || prev.number,
+            neighborhood: result.extracted.neighborhood || prev.neighborhood,
+            city: result.extracted.city || prev.city,
+            state: result.extracted.state || prev.state,
+            cep: result.extracted.cep || prev.cep,
           }));
           setOcrSuccess(true);
         }
