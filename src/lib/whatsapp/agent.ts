@@ -21,6 +21,7 @@ export interface WhatsAppAgentResult {
 /**
  * Agente de Inteligencia Artificial AssinaJur para WhatsApp.
  * Suporta execucao de comandos por texto, voz e visao computacional (leitura de fotos de RG/CNH).
+ * Exclusivo para controle do site pelo advogado cadastrado.
  */
 export async function processWhatsAppCommand(
   input: WhatsAppIncomingMessage
@@ -60,20 +61,27 @@ Retorne EXATAMENTE um JSON válido:
                 ],
               },
             ],
-            generationConfig: { temperature: 0.1, response_mime_type: 'application/json' },
+            generationConfig: { responseMimeType: 'application/json', temperature: 0.1 },
           }),
         }
       );
 
-      const data = await res.json();
-      const responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (responseText) {
-        const parsed = JSON.parse(responseText.replace(/```json/gi, '').replace(/```/g, '').trim());
-        if (parsed && parsed.name && parsed.cpfCnpj) {
-          // Cadastrar o cliente no banco de dados do escritório automaticamente!
-          const cleanCpf = maskCpfCnpj(parsed.cpfCnpj.replace(/\D/g, ''));
+      if (res.ok) {
+        const json = await res.json();
+        const responseText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (responseText) {
+          const parsed = JSON.parse(responseText);
+          const cleanCpf = parsed.cpfCnpj ? parsed.cpfCnpj.replace(/\D/g, '') : '';
+
+          // Upsert do cliente no banco de dados Supabase do escritorio
           const client = await prisma.client.upsert({
-            where: { officeId_cpfCnpj: { officeId, cpfCnpj: cleanCpf } },
+            where: {
+              officeId_cpfCnpj: {
+                officeId,
+                cpfCnpj: cleanCpf || '00000000000',
+              },
+            },
             update: {
               name: parsed.name,
               rg: parsed.rg || null,
@@ -105,7 +113,7 @@ Retorne EXATAMENTE um JSON válido:
     }
   }
 
-  // 2. Processamento por Heuristica de Intenção e Inteligencia Gemini
+  // 2. Processamento por Heuristica de Intencao e Inteligencia Gemini
   const textBody = body ? body.trim().toLowerCase() : '';
 
   // Comando: Status de assinaturas ou quem nao assinou
@@ -138,57 +146,64 @@ Retorne EXATAMENTE um JSON válido:
   }
 
   // Comando: Listar clientes cadastrados
-  if (textBody.includes('cliente') || textBody.includes('listar')) {
-    const count = await prisma.client.count({ where: { officeId } });
-    const lastClients = await prisma.client.findMany({
+  if (textBody.includes('cliente') || textBody.includes('lista')) {
+    const clients = await prisma.client.findMany({
       where: { officeId },
-      take: 3,
+      take: 5,
       orderBy: { createdAt: 'desc' },
     });
 
-    const clientList = lastClients.map((c) => `• *${c.name}* (CPF: ${c.cpfCnpj})`).join('\n');
+    const total = await prisma.client.count({ where: { officeId } });
+
+    const list = clients
+      .map((c, i) => `*${i + 1}.* ${c.name} (CPF: ${maskCpfCnpj(c.cpfCnpj)})`)
+      .join('\n');
 
     return {
-      replyText: `👥 *Total de Clientes Cadastrados:* ${count}\n\n*Últimos Cadastrados:*\n${clientList}\n\n💡 Envie a foto de uma CNH ou RG aqui no chat para cadastrar um novo cliente automaticamente!`,
+      replyText: `👥 *Total de Clientes Cadastrados:* ${total}\n\n*Últimos Cadastrados:*\n${list}\n\n💡 Envie a foto de uma CNH ou RG aqui no chat para cadastrar um novo cliente automaticamente!`,
       actionTaken: 'LIST_CLIENTS',
     };
   }
 
-  // Resposta Padrão Inteligente da IA AssinaJur
+  // Resposta Padrão da IA Gemini
   try {
-    const aiPrompt = `Você é o AssinaJur Copilot, o assistente virtual jurídico inteligente via WhatsApp para advogados.
-O advogado do escritório enviou esta mensagem: "${body}".
-Responda de forma extremamente prestativa, elegante e curta em português.
-Informe quais comandos ele pode usar:
-1. Enviar foto do RG/CNH para cadastrar cliente automático.
-2. Digitar "status" para ver documentos pendentes.
-3. Digitar "clientes" para ver lista de clientes.`;
-
-    const res = await fetch(
+    const resAi = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: aiPrompt }] }],
+          contents: [
+            {
+              parts: [
+                {
+                  text: `Você é o AssinaJur Copilot, o assistente virtual de inteligência jurídica para o advogado administrador do escritório.
+Responda de forma sucinta, extremamente profissional e útil com formatação markdown do WhatsApp (*negrito*, _itálico_).
+Solicitação do advogado: "${body}"`,
+                },
+              ],
+            },
+          ],
         }),
       }
     );
 
-    const data = await res.json();
-    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (reply) {
-      return {
-        replyText: reply,
-        actionTaken: 'AI_CHAT_REPLY',
-      };
+    if (resAi.ok) {
+      const dataAi = await resAi.json();
+      const aiReply = dataAi?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (aiReply) {
+        return {
+          replyText: aiReply,
+          actionTaken: 'GEMINI_AI_REPLY',
+        };
+      }
     }
-  } catch (err) {
-    console.error('Erro na IA do WhatsApp:', err);
+  } catch (errAi) {
+    console.error('Erro na chamada Gemini:', errAi);
   }
 
   return {
-    replyText: `🤖 *AssinaJur WhatsApp AI Copilot*\n\nOlá! Como posso ajudar seu escritório hoje?\n\n📸 *Enviar Foto de RG/CNH:* Cadastra o cliente automaticamente na hora.\n📌 *Status:* Digite "status" para ver documentos pendentes de assinatura.\n👥 *Clientes:* Digite "clientes" para ver cadastros recentes.`,
-    actionTaken: 'DEFAULT_HELP',
+    replyText: `🤖 *AssinaJur Copilot:* Recebi sua mensagem!\n\n💡 Digite *"status"* para ver documentos pendentes, *"clientes"* para ver o cadastro ou envie a foto de um RG/CNH para cadastrar na hora no site!`,
+    actionTaken: 'DEFAULT_FALLBACK',
   };
 }
