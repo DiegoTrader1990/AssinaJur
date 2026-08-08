@@ -132,17 +132,30 @@ export default function ClientsPage() {
     if (searchParams.get('novo') === 'true') {
       setShowModal(true);
     }
+    
+    // Atualização em tempo real para exibir novos cadastros vindos do WhatsApp
+    const interval = setInterval(fetchClients, 6000);
+    const onFocus = () => fetchClients();
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   const fetchClients = async () => {
-    setLoading(true);
     try {
       const url = new URL('/api/clients', window.location.origin);
+      url.searchParams.set('_t', Date.now().toString());
       if (searchQuery) url.searchParams.set('q', searchQuery);
       if (areaFilter) url.searchParams.set('legalArea', areaFilter);
 
-      const res = await fetch(url.toString());
+      const res = await fetch(url.toString(), {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' },
+      });
       const data = await res.json();
       if (data.clients) {
         setClients(data.clients);

@@ -3,8 +3,8 @@ import { maskCpfCnpj } from '@/lib/formatters';
 
 const EMBEDDED_KEY = 'AQ.Ab8RN6JIqr0M3p967Yc' + '238RHeAH5l40cDAEPgz1sUDDfmmEEMw';
 
-// Numero oficial do advogado administrador para controle exclusivo do site
-export const AUTHORIZED_LAWYER_PHONES = ['5573988250201', '73988250201', '55739988250201'];
+// Numero oficial do advogado administrador para controle exclusivo do site (incluindo JID legado sem 9 da Meta)
+export const AUTHORIZED_LAWYER_PHONES = ['5573988250201', '73988250201', '557388250201', '7388250201'];
 
 export interface WhatsAppIncomingMessage {
   officeId: string;
@@ -29,7 +29,10 @@ export interface WhatsAppAgentResult {
 export async function processWhatsAppCommand(
   input: WhatsAppIncomingMessage
 ): Promise<WhatsAppAgentResult> {
-  const { officeId, fromNumber, body, messageType, mediaBase64, mediaMimeType } = input;
+  const { fromNumber, body, messageType, mediaBase64, mediaMimeType } = input;
+  const officeId = (input.officeId && input.officeId !== 'office_demo') 
+    ? input.officeId 
+    : 'd5eeac12-c73b-43e4-93f8-03d3d8fb255f';
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY || EMBEDDED_KEY;
 
   // 1. Processamento de MENSAGEM DE VOZ (AUDIO) enviada pelo celular do advogado
@@ -148,9 +151,47 @@ Retorne EXATAMENTE um JSON válido:
             },
           });
 
+          // Analisar se o advogado fez um pedido especifico junto com a foto (ex: criar procuracao, checar dados faltantes)
+          let extraInstructionReply = '';
+          const hasCustomInstruction = body && body.trim() && !body.includes('Foto de documento para cadastro');
+
+          if (hasCustomInstruction) {
+            try {
+              const resInstr = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    contents: [
+                      {
+                        parts: [
+                          {
+                            text: `Você é o AssinaJur Copilot do escritório Rodrigues & Soares Advocacia.
+O Dr. te enviou a foto da CNH/RG do cliente ${client.name} (CPF: ${client.cpfCnpj}, RG: ${client.rg || 'não informado'}, Cidade/UF: ${client.city || ''} ${client.state || ''}) acompanhada da seguinte instrução em texto:
+"${body}"
+
+Responda de forma altamente profissional, prestativa e direta ao pedido do Dr., indicando os próximos passos ou o que falta para atender a solicitação dele.`,
+                          },
+                        ],
+                      },
+                    ],
+                  }),
+                }
+              );
+
+              if (resInstr.ok) {
+                const jsonInstr = await resInstr.json();
+                extraInstructionReply = jsonInstr?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+              }
+            } catch (eInstr) {}
+          }
+
+          const baseReply = `✅ *Dr., Cliente Cadastrado via Foto com Sucesso!*\n\n👤 *Nome:* ${client.name}\n🪪 *CPF:* ${client.cpfCnpj}\n📄 *RG:* ${client.rg || 'Não informado'}\n📍 *Cidade/UF:* ${client.city || ''} ${client.state || ''}\n\n*AssinaJur:* O cadastro já está disponível no seu painel web!`;
+
           return {
-            replyText: `✅ *Dr., Cliente Cadastrado via Foto com Sucesso!*\n\n👤 *Nome:* ${client.name}\n🪪 *CPF:* ${client.cpfCnpj}\n📄 *RG:* ${client.rg || 'Não informado'}\n📍 *Cidade/UF:* ${client.city || ''} ${client.state || ''}\n\n*AssinaJur:* O cadastro já está disponível no seu painel web!`,
-            actionTaken: 'CREATE_CLIENT_IMAGE',
+            replyText: extraInstructionReply ? `${baseReply}\n\n💬 *Atendimento ao seu Pedido:*\n${extraInstructionReply}` : baseReply,
+            actionTaken: 'CREATE_CLIENT_IMAGE_WITH_INSTRUCTION',
           };
         }
       }
@@ -192,7 +233,14 @@ Retorne EXATAMENTE um JSON válido:
   }
 
   // Comando: Listar clientes cadastrados
-  if (textBody.includes('cliente') || textBody.includes('lista')) {
+  if (
+    textBody.includes('lista de cliente') || 
+    textBody.includes('listar cliente') || 
+    textBody.includes('ver cliente') || 
+    textBody.includes('meus cliente') ||
+    textBody === 'clientes' ||
+    textBody === 'cliente'
+  ) {
     const clients = await prisma.client.findMany({
       where: { officeId },
       take: 5,

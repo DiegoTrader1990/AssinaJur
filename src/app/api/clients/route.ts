@@ -4,6 +4,7 @@ import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(req: Request) {
   try {
@@ -23,10 +24,10 @@ export async function GET(req: Request) {
           query
             ? {
                 OR: [
-                  { name: { contains: query } },
-                  { cpfCnpj: { contains: query } },
-                  { phone: { contains: query } },
-                  { email: { contains: query } },
+                  { name: { contains: query, mode: 'insensitive' } },
+                  { cpfCnpj: { contains: query, mode: 'insensitive' } },
+                  { phone: { contains: query, mode: 'insensitive' } },
+                  { email: { contains: query, mode: 'insensitive' } },
                 ],
               }
             : {},
