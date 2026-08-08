@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
-import { getOrRefreshWhatsAppSession } from '@/lib/whatsapp/baileys';
+import { prisma } from '@/lib/prisma';
+import { getGatewayQrCode } from '@/lib/whatsapp/gateway';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,18 +12,31 @@ export async function GET() {
       return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
     }
 
-    const sessionData = await getOrRefreshWhatsAppSession(user.officeId);
+    const gatewayData = await getGatewayQrCode(user.officeId);
+
+    // Atualizar sessao no Supabase
+    await prisma.whatsAppSession.upsert({
+      where: { officeId: user.officeId },
+      update: {
+        qrCode: gatewayData.qrCode,
+        status: gatewayData.status,
+      },
+      create: {
+        officeId: user.officeId,
+        qrCode: gatewayData.qrCode,
+        status: gatewayData.status,
+      },
+    });
 
     return NextResponse.json({
       success: true,
-      status: sessionData.status,
-      qrCode: sessionData.qrCodeUrl,
-      rawQrString: sessionData.rawQrString,
-      pairingCode: sessionData.pairingCode,
+      status: gatewayData.status,
+      qrCode: gatewayData.qrCode,
+      pairingCode: gatewayData.pairingCode,
     });
   } catch (error: any) {
-    console.error('Erro ao obter QR Code do WhatsApp:', error);
-    return NextResponse.json({ error: 'Erro ao gerar QR Code.' }, { status: 500 });
+    console.error('Erro ao obter QR Code do Gateway:', error);
+    return NextResponse.json({ error: 'Erro ao obter QR Code.' }, { status: 500 });
   }
 }
 
@@ -36,18 +50,14 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { phoneNumber } = body;
 
-    if (!phoneNumber) {
-      return NextResponse.json({ error: 'Número de telefone é obrigatório.' }, { status: 400 });
-    }
-
-    const sessionData = await getOrRefreshWhatsAppSession(user.officeId, phoneNumber);
+    const gatewayData = await getGatewayQrCode(user.officeId);
 
     return NextResponse.json({
       success: true,
-      phoneNumber,
-      pairingCode: sessionData.pairingCode,
-      status: sessionData.status,
-      qrCode: sessionData.qrCodeUrl,
+      phoneNumber: phoneNumber || null,
+      pairingCode: gatewayData.pairingCode,
+      status: gatewayData.status,
+      qrCode: gatewayData.qrCode,
     });
   } catch (error: any) {
     console.error('Erro ao solicitar código de pareamento por telefone:', error);
