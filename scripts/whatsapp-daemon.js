@@ -30,7 +30,6 @@ let qrOpened = false;
 async function connectToWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
 
-  // Se ja possui credenciais registradas, nao precisa abrir QR Code
   const isAlreadyLoggedIn = !!(state && state.creds && state.creds.me);
   if (isAlreadyLoggedIn) {
     console.log('✅ Credenciais salvas encontradas! Reconectando de forma silenciosa...');
@@ -108,7 +107,6 @@ async function connectToWhatsApp() {
         qrOpened = false;
         setTimeout(connectToWhatsApp, 3000);
       } else {
-        // Reconexao silenciosa de rotina sem abrir paginas nem limpar senhas
         setTimeout(connectToWhatsApp, 2000);
       }
     } else if (connection === 'open') {
@@ -116,17 +114,8 @@ async function connectToWhatsApp() {
       qrOpened = false;
       console.log('\n======================================================');
       console.log('🎉 WHATSAPP CONECTADO COM SUCESSO E ESTÁVEL NO ASSINAJUR!');
-      console.log('O robô de IA do escritório está ativo 24h/dia atendendo clientes e fotos de RG!');
+      console.log('O robô de IA do Dr. (73) 98825-0201 está ativo 24h/dia para texto, notas de VOZ e fotos de RG!');
       console.log('======================================================\n');
-
-      // Notificar status CONNECTED para a API do AssinaJur
-      try {
-        await fetch('https://www.assinajur.com.br/api/whatsapp/status', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'CONNECT', status: 'CONNECTED' }),
-        });
-      } catch (e) {}
     }
   });
 
@@ -139,9 +128,10 @@ async function connectToWhatsApp() {
 
       const fromNumber = msg.key.remoteJid.replace('@s.whatsapp.net', '');
       const isImage = !!msg.message.imageMessage;
-      const textMessage = msg.message.conversation || msg.message.extendedTextMessage?.text || (isImage ? 'Foto de documento para cadastro' : '');
+      const isAudio = !!msg.message.audioMessage;
+      const textMessage = msg.message.conversation || msg.message.extendedTextMessage?.text || (isImage ? 'Foto de documento para cadastro' : isAudio ? 'Áudio de voz enviado pelo advogado' : '');
 
-      console.log(`📩 Mensagem recebida de ${fromNumber}: [${isImage ? 'FOTO DE DOCUMENTO' : 'TEXTO'}] "${textMessage}"`);
+      console.log(`📩 Mensagem recebida de ${fromNumber}: [${isImage ? 'FOTO' : isAudio ? 'ÁUDIO DE VOZ' : 'TEXTO'}] "${textMessage}"`);
 
       let mediaBase64 = undefined;
       let mediaMimeType = undefined;
@@ -153,12 +143,20 @@ async function connectToWhatsApp() {
           mediaMimeType = msg.message.imageMessage.mimetype || 'image/jpeg';
           console.log(`📸 Foto baixada com sucesso (${buffer.length} bytes). Enviando para Gemini Vision OCR...`);
         } catch (errMedia) {
-          console.error('Erro ao baixar mídia do WhatsApp:', errMedia);
+          console.error('Erro ao baixar mídia de imagem:', errMedia);
+        }
+      } else if (isAudio) {
+        try {
+          const buffer = await downloadMediaMessage(msg, 'buffer', {});
+          mediaBase64 = buffer.toString('base64');
+          mediaMimeType = msg.message.audioMessage.mimetype || 'audio/ogg; codecs=opus';
+          console.log(`🎙️ Áudio de voz baixado com sucesso (${buffer.length} bytes). Enviando para transcrição e Gemini Audio...`);
+        } catch (errAudio) {
+          console.error('Erro ao baixar mídia de áudio:', errAudio);
         }
       }
 
       try {
-        // Enviar para o Webhook da IA do AssinaJur no Vercel
         const response = await fetch(ASSINAJUR_WEBHOOK_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -166,7 +164,7 @@ async function connectToWhatsApp() {
             officeId: 'office_demo',
             fromNumber,
             message: textMessage,
-            messageType: isImage ? 'IMAGE' : 'TEXT',
+            messageType: isImage ? 'IMAGE' : isAudio ? 'AUDIO' : 'TEXT',
             mediaBase64,
             mediaMimeType,
           }),
@@ -174,7 +172,7 @@ async function connectToWhatsApp() {
 
         const data = await response.json();
         if (data.reply) {
-          console.log(`🤖 Resposta enviada ao cliente no WhatsApp: "${data.reply}"`);
+          console.log(`🤖 Resposta enviada ao Dr. no WhatsApp: "${data.reply}"`);
           await sock.sendMessage(msg.key.remoteJid, { text: data.reply });
         }
       } catch (err) {

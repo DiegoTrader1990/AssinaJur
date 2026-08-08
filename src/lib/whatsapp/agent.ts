@@ -23,7 +23,8 @@ export interface WhatsAppAgentResult {
 
 /**
  * Agente de Inteligencia Artificial AssinaJur para WhatsApp.
- * Exclusivamente configurado para atender as instrucoes do Advogado (73) 98825-0201.
+ * Suporta conversas fluidas em texto, notas de VOZ (AUDIO) e visao computacional (leitura de fotos de RG/CNH).
+ * Exclusivamente configurado para atender as instrucoes do Advogado Dr. (73) 98825-0201.
  */
 export async function processWhatsAppCommand(
   input: WhatsAppIncomingMessage
@@ -31,9 +32,50 @@ export async function processWhatsAppCommand(
   const { officeId, fromNumber, body, messageType, mediaBase64, mediaMimeType } = input;
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY || EMBEDDED_KEY;
 
-  const cleanFrom = fromNumber.replace(/\D/g, '');
+  // 1. Processamento de MENSAGEM DE VOZ (AUDIO) enviada pelo celular do advogado
+  if (messageType === 'AUDIO' && mediaBase64) {
+    try {
+      const cleanMime = mediaMimeType || 'audio/ogg; codecs=opus';
+      const cleanBase64 = mediaBase64.replace(/^data:audio\/(ogg|mp3|wav|m4a|aac);base64,/i, '').trim();
 
-  // 1. Processamento de FOTO de Documento de Identidade (RG/CNH) enviada pelo celular do advogado
+      const promptAudio = `Você é o AssinaJur Copilot, o assistente virtual de inteligência jurídica para o Dr. do escritório Rodrigues & Soares Advocacia (número 73 98825-0201).
+Ouça este áudio de voz enviado pelo advogado no WhatsApp.
+Entenda o pedido falado dele, analise o que ele quer fazer no sistema e responda de forma fluida, extremamente profissional, cortês e direta, chamando-o de Dr. e usando formatação markdown do WhatsApp (*negrito*, _itálico_).`;
+
+      const resAudio = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { inlineData: { mimeType: cleanMime, data: cleanBase64 } },
+                  { text: promptAudio },
+                ],
+              },
+            ],
+          }),
+        }
+      );
+
+      if (resAudio.ok) {
+        const jsonAudio = await resAudio.json();
+        const aiReply = jsonAudio?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (aiReply) {
+          return {
+            replyText: `🎙️ *Transcrição & Atendimento por Voz:*\n\n${aiReply}`,
+            actionTaken: 'GEMINI_AUDIO_VOICE_REPLY',
+          };
+        }
+      }
+    } catch (errAudio) {
+      console.error('Erro no processamento de áudio WhatsApp:', errAudio);
+    }
+  }
+
+  // 2. Processamento de FOTO de Documento de Identidade (RG/CNH) enviada pelo celular do advogado
   if (messageType === 'IMAGE' && mediaBase64) {
     try {
       const cleanMime = mediaMimeType || 'image/jpeg';
@@ -117,7 +159,7 @@ Retorne EXATAMENTE um JSON válido:
     }
   }
 
-  // 2. Processamento por Heuristica de Intencao e Inteligencia Gemini
+  // 3. Processamento por Heuristica de Intencao e Inteligencia Gemini
   const textBody = body ? body.trim().toLowerCase() : '';
 
   // Comando: Status de assinaturas ou quem nao assinou
@@ -169,7 +211,7 @@ Retorne EXATAMENTE um JSON válido:
     };
   }
 
-  // Resposta Padrão da IA Gemini para o Advogado (73) 98825-0201
+  // Resposta Fluida da IA Gemini para o Advogado (73) 98825-0201
   try {
     const resAi = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
@@ -181,9 +223,10 @@ Retorne EXATAMENTE um JSON válido:
             {
               parts: [
                 {
-                  text: `Você é o AssinaJur Copilot, o assistente virtual de inteligência jurídica para o Dr. do escritório Rodrigues & Soares Advocacia (número 73 98825-0201).
-Responda de forma sucinta, extremamente profissional, chamando o usuário de Dr. e utilizando formatação markdown do WhatsApp (*negrito*, _itálico_).
-Solicitação do Dr.: "${body}"`,
+                  text: `Você é o AssinaJur Copilot, o assistente de inteligência artificial jurídica pessoal do Dr. no escritório Rodrigues & Soares Advocacia (número 73 98825-0201).
+O advogado está conversando com você de forma fluida por mensagens no WhatsApp.
+Responda de forma extremamente natural, fluida, inteligente, prestativa e profissional, chamando o usuário de Dr. e utilizando formatação markdown do WhatsApp (*negrito*, _itálico_).
+Mensagem do Dr.: "${body}"`,
                 },
               ],
             },
@@ -207,7 +250,7 @@ Solicitação do Dr.: "${body}"`,
   }
 
   return {
-    replyText: `🤖 *AssinaJur Copilot:* Olá, Dr.! Recebi sua mensagem.\n\n💡 Digite *"status"* para ver documentos pendentes no site, *"clientes"* para ver o cadastro ou envie a foto de um RG/CNH para eu cadastrar na hora no painel!`,
+    replyText: `🤖 *AssinaJur Copilot:* Olá, Dr.! Recebi sua mensagem.\n\n💡 Digite ou mande áudio sobre o que você deseja consultar no site ou envie a foto de um documento de cliente para eu cadastrar na hora!`,
     actionTaken: 'DEFAULT_FALLBACK',
   };
 }
