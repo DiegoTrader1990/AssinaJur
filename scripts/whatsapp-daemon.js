@@ -1,7 +1,7 @@
 /**
  * AssinaJur WhatsApp Gateway Daemon (Conector de Alta Estabilidade 24/7)
  * 
- * Este conector roda como um servico dedicado Node.js no computador do escritorio,
+ * Este conector roda de forma silenciosa e continua no computador do escritorio,
  * mantendo a sessao do WhatsApp Web 100% estavel, exatamente como o WhatsApp Web Desktop!
  * 
  * Uso: node scripts/whatsapp-daemon.js
@@ -24,10 +24,17 @@ if (!fs.existsSync(AUTH_FOLDER)) {
 }
 
 let socketInstance = null;
+let isConnected = false;
+let qrOpened = false;
 
 async function connectToWhatsApp() {
-  console.log(`🚀 Iniciando AssinaJur WhatsApp Daemon 24/7 em: ${AUTH_FOLDER}`);
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
+
+  // Se ja possui credenciais registradas, nao precisa abrir QR Code
+  const isAlreadyLoggedIn = !!(state && state.creds && state.creds.me);
+  if (isAlreadyLoggedIn) {
+    console.log('✅ Credenciais salvas encontradas! Reconectando de forma silenciosa...');
+  }
 
   const sock = makeWASocket({
     auth: state,
@@ -45,16 +52,15 @@ async function connectToWhatsApp() {
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
 
-    if (qr) {
+    if (qr && !isConnected && !isAlreadyLoggedIn && !qrOpened) {
+      qrOpened = true;
       console.log('\n======================================================');
       console.log('📲 QR CODE DEDICADO 24/7 GERADO COM SUCESSO!');
       console.log('APONTE A CÂMERA DO CELULAR PARA PAREAR O ESCRITÓRIO:');
       console.log('======================================================\n');
 
-      // 1. Renderizar no terminal em caracteres grandes
       qrcodeTerminal.generate(qr, { small: true });
 
-      // 2. Gerar arquivo HTML e abrir no navegador automaticamente
       try {
         const qrDataUrl = await qrcode.toDataURL(qr, { width: 350 });
         const htmlContent = `
@@ -83,8 +89,6 @@ async function connectToWhatsApp() {
         `;
         const htmlPath = path.join(__dirname, '..', 'qrcode-pareamento.html');
         fs.writeFileSync(htmlPath, htmlContent);
-
-        // Abrir navegador padrao no Windows
         exec(`start "" "${htmlPath}"`);
       } catch (errHtml) {
         console.error('Erro ao abrir QR Code no navegador:', errHtml);
@@ -92,19 +96,37 @@ async function connectToWhatsApp() {
     }
 
     if (connection === 'close') {
+      isConnected = false;
       const statusCode = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      console.log(`⚠️ Conexão fechada (Código ${statusCode}). Reconectando automaticamente: ${shouldReconnect}`);
-      if (shouldReconnect) {
+      const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+      
+      console.log(`ℹ️ Reconexão de rotina (Código ${statusCode || '515'}). Reconectando silenciosamente...`);
+
+      if (isLoggedOut) {
+        console.log('❌ Sessão deslogada pelo usuário. Limpando chaves...');
+        fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
+        qrOpened = false;
         setTimeout(connectToWhatsApp, 3000);
       } else {
-        console.log('❌ Sessão deslogada. Limpando credenciais para novo pareamento...');
-        fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
-        setTimeout(connectToWhatsApp, 3000);
+        // Reconexao silenciosa de rotina sem abrir paginas nem limpar senhas
+        setTimeout(connectToWhatsApp, 2000);
       }
     } else if (connection === 'open') {
-      console.log('\n🎉 WHATSAPP CONECTADO COM SUCESSO 24/7 AO ASSINAJUR!');
-      console.log('O robô de IA do escritório está ativo 24h/dia recebendo fotos de RG e atendendo clientes!\n');
+      isConnected = true;
+      qrOpened = false;
+      console.log('\n======================================================');
+      console.log('🎉 WHATSAPP CONECTADO COM SUCESSO E ESTÁVEL NO ASSINAJUR!');
+      console.log('O robô de IA do escritório está ativo 24h/dia atendendo clientes e fotos de RG!');
+      console.log('======================================================\n');
+
+      // Notificar status CONNECTED para a API do AssinaJur
+      try {
+        await fetch('https://www.assinajur.com.br/api/whatsapp/status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'CONNECT', status: 'CONNECTED' }),
+        });
+      } catch (e) {}
     }
   });
 
