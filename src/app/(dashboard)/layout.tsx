@@ -124,7 +124,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="flex flex-col h-full overflow-y-auto">
           {/* Header da Sidebar */}
           <div className="p-5 border-b border-white/10 flex items-center justify-between">
-            <Link href="/dashboard" className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setSidebarOpen(false);
+                router.push('/dashboard');
+              }}
+              className="flex items-center gap-3 text-left cursor-pointer"
+            >
               <div className="w-9 h-9 rounded-xl bg-blue-600 text-white font-heading font-extrabold flex items-center justify-center text-lg shadow-md shrink-0 border border-white/10">
                 AJ
               </div>
@@ -136,7 +143,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   {user?.officeName || 'Escritório de Advocacia'}
                 </p>
               </div>
-            </Link>
+            </button>
             <button
               onClick={() => setSidebarOpen(false)}
               className="md:hidden text-slate-400 hover:text-white"
@@ -147,14 +154,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           {/* Botão de Destaque Primário */}
           <div className="p-4">
-            <Link
-              href="/kits/enviar"
-              onClick={() => setSidebarOpen(false)}
-              className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl shadow-lg hover:shadow-blue-600/25 transition-all flex items-center justify-center gap-2 text-xs tracking-wide uppercase font-heading"
+            <button
+              type="button"
+              onClick={() => {
+                setSidebarOpen(false);
+                router.push('/kits/enviar');
+              }}
+              className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl shadow-lg hover:shadow-blue-600/25 transition-all flex items-center justify-center gap-2 text-xs tracking-wide uppercase font-heading cursor-pointer"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
               Novo Documento / Kit
-            </Link>
+            </button>
           </div>
 
           {/* Categorias de Menu */}
@@ -168,11 +178,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   const Icon = item.icon;
                   const isActive = pathname === item.href;
                   return (
-                    <Link
+                    <button
                       key={item.href}
-                      href={item.href}
-                      onClick={() => setSidebarOpen(false)}
-                      className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setSidebarOpen(false);
+                        router.push(item.href);
+                      }}
+                      className={`w-full text-left flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                         isActive
                           ? 'bg-blue-600/25 text-white font-extrabold border-l-4 border-blue-500 shadow-sm'
                           : 'text-slate-300 hover:bg-white/10 hover:text-white'
@@ -187,7 +202,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                           {item.badge}
                         </span>
                       )}
-                    </Link>
+                    </button>
                   );
                 })}
               </div>
