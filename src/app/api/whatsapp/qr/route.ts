@@ -1,28 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
-import crypto from 'crypto';
+import { getOrRefreshWhatsAppSession } from '@/lib/whatsapp/baileys';
 
 export const dynamic = 'force-dynamic';
-
-function generateWhatsAppWebQrString(): string {
-  // Formato oficial do protocolo WhatsApp Web Multi-Device (Noise Protocol 2@ref,pubkey,identity)
-  const ref = crypto.randomBytes(18).toString('base64');
-  const pubKey = crypto.randomBytes(32).toString('base64');
-  const identity = crypto.randomBytes(32).toString('base64');
-  return `2@${ref},${pubKey},${identity}`;
-}
-
-function generatePairingCode(): string {
-  // Código de 8 dígitos alfanumérico no formato XXXX-XXXX (ex: AJ8K-92P4)
-  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-  let code = '';
-  for (let i = 0; i < 8; i++) {
-    if (i === 4) code += '-';
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-}
 
 export async function GET() {
   try {
@@ -31,47 +11,46 @@ export async function GET() {
       return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
     }
 
-    let session = await prisma.whatsAppSession.findUnique({
-      where: { officeId: user.officeId },
-    });
-
-    if (!session) {
-      session = await prisma.whatsAppSession.create({
-        data: {
-          officeId: user.officeId,
-          status: 'CONNECTING',
-        },
-      });
-    }
-
-    // Gerar Payload Válido no Protocolo WhatsApp Web Multi-Device
-    const rawQrString = generateWhatsAppWebQrString();
-    const qrCodeDataUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
-      rawQrString
-    )}`;
-
-    const pairingCode = generatePairingCode();
-
-    await prisma.whatsAppSession.update({
-      where: { id: session.id },
-      data: {
-        qrCode: qrCodeDataUrl,
-        status: session.status === 'CONNECTED' ? 'CONNECTED' : 'CONNECTING',
-      },
-    });
+    const sessionData = await getOrRefreshWhatsAppSession(user.officeId);
 
     return NextResponse.json({
       success: true,
-      status: session.status,
-      qrCode: qrCodeDataUrl,
-      rawQrString,
-      pairingCode,
-      phoneNumber: session.phoneNumber || null,
-      autoRemind: session.autoRemind,
-      updatedAt: session.updatedAt,
+      status: sessionData.status,
+      qrCode: sessionData.qrCodeUrl,
+      rawQrString: sessionData.rawQrString,
+      pairingCode: sessionData.pairingCode,
     });
   } catch (error: any) {
     console.error('Erro ao obter QR Code do WhatsApp:', error);
     return NextResponse.json({ error: 'Erro ao gerar QR Code.' }, { status: 500 });
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const user = await getSessionUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { phoneNumber } = body;
+
+    if (!phoneNumber) {
+      return NextResponse.json({ error: 'Número de telefone é obrigatório.' }, { status: 400 });
+    }
+
+    const sessionData = await getOrRefreshWhatsAppSession(user.officeId, phoneNumber);
+
+    return NextResponse.json({
+      success: true,
+      phoneNumber,
+      pairingCode: sessionData.pairingCode,
+      status: sessionData.status,
+      qrCode: sessionData.qrCodeUrl,
+    });
+  } catch (error: any) {
+    console.error('Erro ao solicitar código de pareamento por telefone:', error);
+    return NextResponse.json({ error: 'Erro ao solicitar código de pareamento.' }, { status: 500 });
   }
 }
