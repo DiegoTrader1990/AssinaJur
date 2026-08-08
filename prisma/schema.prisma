@@ -4,11 +4,6 @@ generator client {
 
 datasource db {
   provider  = "postgresql"
-  // Nomes usados pela integração Vercel + Neon (Storage -> Neon):
-  // POSTGRES_PRISMA_URL = conexão via pooler (pgbouncer), usada em runtime.
-  // POSTGRES_URL_NON_POOLING = conexão direta, usada por "prisma migrate"/"prisma db push".
-  // Em desenvolvimento local, o .env define essas mesmas variáveis (ou DATABASE_URL/DIRECT_URL
-  // como fallback, conforme comentário no .env.example).
   url       = env("POSTGRES_PRISMA_URL")
   directUrl = env("POSTGRES_URL_NON_POOLING")
 }
@@ -53,14 +48,16 @@ model Office {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  users        User[]
-  clients      Client[]
-  storageFiles StorageFile[]
-  auditLogs    AuditLog[]
-  documents    Document[]
-  templates    Template[]
-  legalKits    LegalKit[]
-  tags         Tag[]
+  users           User[]
+  clients         Client[]
+  storageFiles    StorageFile[]
+  auditLogs       AuditLog[]
+  documents       Document[]
+  templates       Template[]
+  legalKits       LegalKit[]
+  tags            Tag[]
+  whatsAppSession WhatsAppSession?
+  whatsAppLogs    WhatsAppLog[]
 }
 
 // Usuário do Escritório
@@ -250,10 +247,7 @@ model Document {
   tags             Tag[]
 }
 
-// Etiquetas coloridas para organizar documentos. A "pasta" por cliente já é
-// automática (agrupamento por Document.clientId na tela de listagem); as tags
-// servem como uma camada extra e opcional de organização, cruzando clientes
-// (ex: "Urgente", "Contrato", "Procuração"), com relação N:N implícita com Document.
+// Etiquetas coloridas para organizar documentos
 model Tag {
   id        String   @id @default(uuid())
   officeId  String
@@ -291,12 +285,12 @@ model Signer {
   signatureImage   String?
   signedConsentText String?
 
-  // Prova de presença ao vivo (3 selfies: centro, vira para um lado, vira para o outro)
+  // Prova de presença ao vivo
   selfieCenterImage String?
   selfieLeftImage   String?
   selfieRightImage  String?
 
-  // Geolocalização (best-effort, obtida no navegador do signatário)
+  // Geolocalização
   geoLat           Float?
   geoLng           Float?
   geoAccuracy      Float?
@@ -340,5 +334,34 @@ model AuditLog {
   ipAddress   String?
   userAgent   String?
   metadata    String?
+  createdAt   DateTime @default(now())
+}
+
+// Sessão de Conexão WhatsApp por Escritório
+model WhatsAppSession {
+  id          String   @id @default(uuid())
+  officeId    String   @unique
+  office      Office   @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  phoneNumber String?
+  sessionData String?  // Dados da sessão Baileys JSON
+  status      String   @default("DISCONNECTED") // DISCONNECTED, CONNECTING, CONNECTED
+  qrCode      String?  // Data URL do QR Code gerado
+  autoRemind  Boolean  @default(true) // Lembretes automáticos diários ativados
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Histórico de Comandos e Respostas da IA no WhatsApp
+model WhatsAppLog {
+  id          String   @id @default(uuid())
+  officeId    String
+  office      Office   @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  fromNumber  String
+  toNumber    String
+  direction   String   @default("INBOUND") // INBOUND (Advogado/Cliente -> AssinaJur), OUTBOUND (AssinaJur -> Advogado/Cliente)
+  messageType String   @default("TEXT") // TEXT, AUDIO, IMAGE, DOCUMENT
+  body        String
+  aiResponse  String?
+  actionTaken String?  // CREATE_CLIENT, SEND_DOC, CHECK_STATUS, REMIND_SIGNATURE
   createdAt   DateTime @default(now())
 }

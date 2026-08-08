@@ -25,7 +25,8 @@ import {
   Sparkles,
   HelpCircle,
   ExternalLink,
-  ChevronDown
+  ChevronDown,
+  MessageSquare
 } from 'lucide-react';
 
 interface AuthUser {
@@ -74,6 +75,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       group: 'CONTRATAÇÃO E ASSINATURA',
       items: [
         { label: 'Documentos', href: '/documentos', icon: FileCheck2 },
+        { label: 'WhatsApp IA', href: '/whatsapp', icon: MessageSquare, badge: 'IA Robô' },
         { label: 'Kits Jurídicos', href: '/kits', icon: FolderArchive, badge: 'Diferencial' },
         { label: 'Modelos & Tags', href: '/modelos', icon: FileText },
       ],
