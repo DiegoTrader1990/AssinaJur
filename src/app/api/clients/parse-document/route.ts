@@ -120,7 +120,7 @@ export async function POST(req: Request) {
     // Expressões regulares de CPF
     const cpfMatches = text.match(/\b\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?\d{2}\b/g) || [];
     let detectedCpf = '';
-    if (cpfMatches.length > 0) {
+    if (cpfMatches.length > 0 && cpfMatches[0]) {
       detectedCpf = maskCpfCnpj(cpfMatches[0].replace(/\D/g, ''));
     }
 
