@@ -333,7 +333,7 @@ export default function WhatsAppPage() {
                   </div>
                   <div className="text-left text-xs text-slate-600 space-y-1.5 w-full">
                     <p>1. Abra o <strong>WhatsApp</strong> no seu celular.</p>
-                    <p>2. Vá em <strong>Aparelhos Conectados</strong> -> <strong>Conectar um Aparelho</strong>.</p>
+                    <p>2. Vá em <strong>Aparelhos Conectados</strong> &rarr; <strong>Conectar um Aparelho</strong>.</p>
                     <p>3. Aponte a câmera para o QR Code acima.</p>
                   </div>
                 </>
