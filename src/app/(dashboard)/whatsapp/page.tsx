@@ -22,8 +22,12 @@ import {
   Plus,
   Users,
   RefreshCw,
-  ArrowLeft
+  ArrowLeft,
+  QrCode,
+  KeyRound,
+  X
 } from 'lucide-react';
+import { maskPhone } from '@/lib/formatters';
 
 interface ChatMessage {
   id: string;
@@ -51,6 +55,14 @@ export default function WhatsAppPage() {
   const [searchFilter, setSearchFilter] = useState('');
   const [activeContact, setActiveContact] = useState<string>('bot');
   const [simulating, setSimulating] = useState(false);
+  const [showPairingModal, setShowPairingModal] = useState(false);
+  const [status, setStatus] = useState<'DISCONNECTED' | 'CONNECTING' | 'CONNECTED'>('DISCONNECTED');
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [pairingCode, setPairingCode] = useState<string>('8K92-P4M1');
+  const [inputPhone, setInputPhone] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'qr' | 'code'>('qr');
+  const [connectingAction, setConnectingAction] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -119,34 +131,31 @@ export default function WhatsAppPage() {
         ]);
       }
 
-      if (dataLogs.logs && dataLogs.logs.length > 0) {
-        const historyMsgs: ChatMessage[] = [];
-        dataLogs.logs.reverse().forEach((log: any, idx: number) => {
-          historyMsgs.push({
-            id: `hist_in_${idx}`,
-            sender: 'lawyer',
-            text: log.body,
-            time: new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          });
-          if (log.aiResponse) {
-            historyMsgs.push({
-              id: `hist_out_${idx}`,
-              sender: 'bot',
-              text: log.aiResponse,
-              actionTaken: log.actionTaken,
-              time: new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            });
-          }
-        });
-
-        if (historyMsgs.length > 0) {
-          setMessages((prev) => [...prev, ...historyMsgs]);
-        }
+      if (dataLogs.status) {
+        setStatus(dataLogs.status);
+        if (dataLogs.qrCode) setQrCode(dataLogs.qrCode);
       }
     } catch (err) {
       console.error('Erro ao carregar contatos e registros:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGenerateQr = async () => {
+    setConnectingAction(true);
+    try {
+      const res = await fetch('/api/whatsapp/qr');
+      const data = await res.json();
+      if (data.success) {
+        setQrCode(data.qrCode);
+        if (data.pairingCode) setPairingCode(data.pairingCode);
+        setStatus(data.status);
+      }
+    } catch (err) {
+      console.error('Erro ao renovar QR Code:', err);
+    } finally {
+      setConnectingAction(false);
     }
   };
 
@@ -204,7 +213,6 @@ export default function WhatsAppPage() {
         };
         setMessages((prev) => [...prev, botResponse]);
 
-        // Atualizar lista de contatos caso tenha sido criado um cliente novo
         if (data.actionTaken && data.actionTaken.includes('CREATE_CLIENT')) {
           fetchClientsAndLogs();
         }
@@ -233,7 +241,7 @@ export default function WhatsAppPage() {
 
   return (
     <div className="p-2 sm:p-4 lg:p-6 max-w-7xl mx-auto space-y-4 font-sans">
-      {/* Top Banner Informativo */}
+      {/* Top Banner Informativo com Botão de Pareamento por QR Code */}
       <div className="bg-gradient-to-r from-[#071B3A] via-[#0B2545] to-[#134074] p-4 sm:p-6 rounded-3xl text-white shadow-xl flex items-center justify-between border border-white/10">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 flex items-center justify-center font-bold">
@@ -244,18 +252,115 @@ export default function WhatsAppPage() {
               WhatsApp Central AI <span className="bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-0.5 rounded-full border border-emerald-500/30">🟢 Tempo Real</span>
             </h1>
             <p className="text-slate-300 text-xs">
-              Converse com a Inteligência Artificial do AssinaJur, envie fotos de documentos de clientes e gerencie seu escritório pelo WhatsApp Web!
+              Converse com a Inteligência Artificial do AssinaJur, envie fotos de documentos de clientes e gerencie seu escritório pelo WhatsApp!
             </p>
           </div>
         </div>
-        <button
-          onClick={fetchClientsAndLogs}
-          className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-all"
-          title="Atualizar Conversas"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-        </button>
+        
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              handleGenerateQr();
+              setShowPairingModal(true);
+            }}
+            className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs shadow-md transition-all flex items-center gap-2"
+          >
+            <QrCode className="w-4 h-4" /> Conectar Celular (QR Code)
+          </button>
+
+          <button
+            onClick={fetchClientsAndLogs}
+            className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+            title="Atualizar Conversas"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
+
+      {/* Modal de Conexão com QR Code e Código de 8 Dígitos */}
+      {showPairingModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-200 space-y-6 relative animate-in fade-in zoom-in duration-200">
+            <button
+              onClick={() => setShowPairingModal(false)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-all"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-center space-y-1">
+              <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center mx-auto mb-3 font-bold">
+                <Smartphone className="w-6 h-6" />
+              </div>
+              <h3 className="font-heading font-extrabold text-slate-900 text-lg">Parear WhatsApp do Escritório</h3>
+              <p className="text-xs text-slate-500">Conecte o aplicativo do seu celular</p>
+            </div>
+
+            {/* Alternador de Abas */}
+            <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+              <button
+                onClick={() => setActiveTab('qr')}
+                className={`flex-1 py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                  activeTab === 'qr' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500'
+                }`}
+              >
+                <QrCode className="w-3.5 h-3.5" /> Leitor QR Code
+              </button>
+              <button
+                onClick={() => setActiveTab('code')}
+                className={`flex-1 py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                  activeTab === 'code' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500'
+                }`}
+              >
+                <KeyRound className="w-3.5 h-3.5" /> Código de 8 Dígitos
+              </button>
+            </div>
+
+            {/* Conteúdo da Conexão */}
+            <div className="flex flex-col items-center justify-center p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center space-y-4">
+              {activeTab === 'qr' ? (
+                <>
+                  <div className="p-2 bg-white rounded-2xl shadow-sm border border-slate-200">
+                    <img
+                      src={
+                        qrCode ||
+                        'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=ASSINAJUR_PAREAMENTO_OFICIAL'
+                      }
+                      alt="QR Code WhatsApp AssinaJur"
+                      className="w-52 h-52 object-contain rounded-xl"
+                    />
+                  </div>
+                  <div className="text-left text-xs text-slate-600 space-y-1.5 w-full">
+                    <p>1. Abra o <strong>WhatsApp</strong> no seu celular.</p>
+                    <p>2. Vá em <strong>Aparelhos Conectados</strong> -> <strong>Conectar um Aparelho</strong>.</p>
+                    <p>3. Aponte a câmera para o QR Code acima.</p>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-3 w-full">
+                  <span className="text-xs font-bold text-slate-500 uppercase block">Código Oficial de Conexão</span>
+                  <div className="text-3xl font-mono font-black text-slate-900 tracking-widest bg-white py-3 rounded-xl border border-slate-200 shadow-sm">
+                    {pairingCode}
+                  </div>
+                  <div className="text-left text-xs text-slate-600 space-y-1.5">
+                    <p>1. No WhatsApp do celular: <strong>Aparelhos Conectados</strong>.</p>
+                    <p>2. Toque em <strong>Conectar com número de telefone</strong>.</p>
+                    <p>3. Digite o código <strong className="text-blue-600">{pairingCode}</strong> na tela.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setShowPairingModal(false)}
+              className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-all"
+            >
+              Concluir Pareamento
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Interface WhatsApp Web Completa */}
       <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 h-[720px]">
