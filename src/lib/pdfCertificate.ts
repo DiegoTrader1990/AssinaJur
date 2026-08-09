@@ -398,7 +398,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
   });
 
   // ── 2. CERTIFICADO COMPACTO: UMA FOLHA DE EVIDÊNCIAS POR DOCUMENTO ──
-  const compactCertificate = true;
+  const compactCertificate = doc.signers.length === 1;
   if (compactCertificate) {
     const certificatePage = pdfDoc.addPage([PAGE_W, PAGE_H]);
     const signer = doc.signers[0];
