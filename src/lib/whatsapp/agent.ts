@@ -57,6 +57,7 @@ interface LegalDraftRequest {
   instructions?: string;
   suggestedDocuments?: string[];
   generic?: boolean;
+  askMissingBeforeDraft?: boolean;
 }
 
 interface LegalDraftDocument {
@@ -792,6 +793,54 @@ async function findSingleClient(officeId: string, query: string) {
   return clients;
 }
 
+type FoundClient = Awaited<ReturnType<typeof findSingleClient>>[number];
+
+function clientQualification(client: FoundClient) {
+  const address = [client.address, client.number, client.complement, client.neighborhood, client.city, client.state]
+    .filter(Boolean)
+    .join(', ');
+  const values = [
+    ['Nome', client.name],
+    ['CPF/CNPJ', maskCpfCnpj(client.cpfCnpj)],
+    ['RG', client.rg],
+    ['Órgão expedidor', client.issuingOrgan],
+    ['Nascimento', client.birthDate],
+    ['Nacionalidade', client.nationality],
+    ['Estado civil', client.maritalStatus],
+    ['Profissão', client.profession],
+    ['Endereço', address],
+    ['Telefone/WhatsApp', maskPhone(client.whatsapp || client.phone)],
+    ['E-mail', client.email],
+  ] as const;
+  return {
+    present: values.filter(([, value]) => Boolean(value && value !== '—')),
+    missing: values.filter(([, value]) => !value || value === '—').map(([label]) => label),
+  };
+}
+
+function qualificationReply(client: FoundClient, intro = 'Qualificação consultada diretamente no AssinaJur') {
+  const qualification = clientQualification(client);
+  return [
+    `📋 *${intro}*`,
+    '',
+    `👤 *${client.name}*`,
+    ...qualification.present.map(([label, value]) => `✅ *${label}:* ${value}`),
+    '',
+    qualification.missing.length
+      ? `⚠️ *Ainda não cadastrados:* ${qualification.missing.join(', ')}.`
+      : '✅ A qualificação cadastral está completa.',
+  ].join('\n');
+}
+
+function asksAboutClientQualification(text: string): boolean {
+  return /\b(?:quais?|que|os)?\s*(?:dados|informa[cç][oõ]es|qualifica[cç][aã]o|cadastro)\b.*\b(?:tem|possui|encontrou|cadastrad[oa]s?|faltam?|falta|est[aã]o)|\b(?:o que|quais?)\s+faltam?\b.*\b(?:dados|qualifica[cç][aã]o|cadastro)?/i.test(text);
+}
+
+function qualificationClientQuery(text: string): string {
+  const match = text.match(/\b(?:d[oa]|de)\s+(?:cliente\s+)?([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ' -]{2,100})(?:[?.!,]|$)/i)?.[1]?.trim() || '';
+  return /^(?:ela|ele|cliente)$/i.test(match) ? '' : match;
+}
+
 function inferDraftClientQuery(text: string, fallback: string): string {
   const explicitlyNamed = text.match(/\b(?:d[oa]\s+)?cliente\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ' -]{1,120})(?:[,.]|$)/i)?.[1]?.trim();
   return explicitlyNamed || fallback.trim().replace(/^(?:o|a)\s+cliente\s+/i, '');
@@ -922,6 +971,20 @@ async function prepareLegalDraftTask(officeId: string, request: LegalDraftReques
     };
   }
   const client = clients[0];
+  const shouldAskMissing = request.askMissingBeforeDraft === true
+    || /\b(?:se|caso)\s+(?:estiver|estiverem|houver|faltar|faltarem).*\b(?:pergunte|perguntar|confirme|confirmar)\b|\bantes\s+de\s+(?:redigir|fazer|preparar|criar).*\b(?:dados|qualifica[cç][aã]o)\b/i.test(request.instructions || '');
+  const qualification = clientQualification(client);
+  if (shouldAskMissing && qualification.missing.length > 0) {
+    return {
+      replyText: [
+        qualificationReply(client, 'Conferência antes da minuta'),
+        '',
+        'Parei a elaboração, como você pediu. Envie os dados faltantes ou uma foto do documento. Depois diga *CONTINUE A MINUTA* ou repita o pedido.',
+        'Não vou preencher informações por suposição.',
+      ].join('\n'),
+      actionTaken: 'LEGAL_DRAFT_WAITING_FOR_QUALIFICATION',
+    };
+  }
   const clientContext: Record<string, string> = {
     nome: client.name,
     cpfCnpj: client.cpfCnpj,
@@ -949,6 +1012,7 @@ async function prepareLegalDraftTask(officeId: string, request: LegalDraftReques
           ? request.suggestedDocuments.map((item) => cleanDraftText(item, 160)).filter(Boolean).slice(0, 6)
           : [],
         generic: false,
+        askMissingBeforeDraft: shouldAskMissing,
       },
     },
   };
@@ -1203,6 +1267,15 @@ async function handleTextCommand(
 
   const existingPending = await findLatestPendingAction(officeId, fromNumber);
   if (existingPending?.type === 'GENERATE_LEGAL_DRAFT') {
+    if (asksAboutClientQualification(text) && existingPending.data.clientId) {
+      const client = await prisma.client.findFirst({ where: { id: existingPending.data.clientId, officeId } });
+      if (client) {
+        return {
+          replyText: qualificationReply(client),
+          actionTaken: 'SHOW_CLIENT_QUALIFICATION',
+        };
+      }
+    }
     const linkClientMatch = text.match(/^(?:vincular|associar)\s+(?:a\s+minuta\s+)?(?:ao|a)\s+cliente\s+(.+)$/i);
     if (linkClientMatch) {
       const clients = await findSingleClient(officeId, linkClientMatch[1].trim());
@@ -1326,6 +1399,26 @@ async function handleTextCommand(
   if (existingPending?.type === 'DELETE_CLIENT' && !existingPending.data.clientId) {
     const startsAnotherAction = /\b(cadastrar|cadastre|buscar|procurar|status|cobrar|gerar|criar|ajuda|menu|listar)\b/i.test(normalized);
     if (!startsAnotherAction) return prepareClientDeletion(officeId, text);
+  }
+
+  if (asksAboutClientQualification(text)) {
+    const query = qualificationClientQuery(text);
+    if (!query) {
+      return {
+        replyText: 'Claro. Informe o nome ou CPF do cliente e consultarei no cadastro exatamente quais dados existem e quais ainda faltam.',
+        actionTaken: 'QUALIFICATION_CLIENT_REQUIRED',
+      };
+    }
+    const clients = await findSingleClient(officeId, query);
+    if (clients.length !== 1) {
+      return {
+        replyText: clients.length === 0
+          ? `Não encontrei cliente correspondente a “${query}”.`
+          : `Encontrei mais de um cliente para “${query}”. Informe o nome completo ou CPF.`,
+        actionTaken: 'QUALIFICATION_CLIENT_NOT_UNIQUE',
+      };
+    }
+    return { replyText: qualificationReply(clients[0]), actionTaken: 'SHOW_CLIENT_QUALIFICATION' };
   }
 
   if (localRouting?.draftRequest) {
@@ -1686,14 +1779,14 @@ export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Pr
       const draft = await extractClientDraftFromImage(mediaBase64, mediaMimeType, '');
       if (!draft) {
         return {
-          replyText: 'Não consegui identificar nome e CPF com segurança. Envie uma foto mais nítida ou informe os dados em texto.',
+          replyText: 'A foto foi recebida, mas os leitores automáticos não confirmaram nome e CPF com segurança. Isso pode ser indisponibilidade momentânea do serviço, não necessariamente problema na imagem. Tente novamente em instantes ou informe os dados em texto.',
           actionTaken: 'IMAGE_DATA_INCOMPLETE',
         };
       }
       return createPendingClientAction(draft);
     } catch (error) {
       console.error('Erro ao ler documento recebido pelo WhatsApp:', error);
-      return { replyText: 'Não consegui processar a foto do documento. Tente uma imagem mais nítida.', actionTaken: 'IMAGE_ERROR' };
+      return { replyText: 'A foto foi recebida, mas a leitura automática ficou temporariamente indisponível. Tente novamente em instantes ou informe os dados em texto.', actionTaken: 'IMAGE_ERROR' };
     }
   }
 

@@ -144,14 +144,14 @@ function parseGeminiJson(text) {
 
 async function analyzeDocumentLocally(mediaBase64, mediaMimeType) {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
-  if (!apiKey || !mediaBase64) return null;
+  if (!mediaBase64) return null;
   const mimeType = mediaMimeType?.startsWith('image/') ? mediaMimeType : 'image/jpeg';
   const prompt = `Analise cuidadosamente este RG ou CNH brasileiro, inclusive se estiver rotacionado.
 Extraia somente os dados visíveis do titular. Diferencie CPF do número do RG e não invente dígitos.
 Retorne somente JSON válido com: name, cpfCnpj, rg, issuingOrgan, birthDate, nationality,
 maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
 
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
+  if (apiKey) for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       const response = await customFetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(apiKey)}`,
@@ -167,9 +167,8 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         console.error(`Leitura local do documento: Gemini respondeu HTTP ${response.status} na tentativa ${attempt}.`);
-        if (response.status === 429 && attempt < 3) {
-          await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
-        }
+        // Limite de uso não é defeito da fotografia. Acionamos imediatamente o leitor alternativo.
+        if (response.status === 429) break;
         continue;
       }
       const parsed = parseGeminiJson(payload?.candidates?.[0]?.content?.parts?.[0]?.text);
@@ -181,6 +180,45 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
       console.error(`Leitura local do documento incompleta na tentativa ${attempt}; tentando novamente.`);
     } catch (error) {
       console.error(`Falha na leitura local do documento na tentativa ${attempt}:`, error?.message || error);
+    }
+  }
+
+  const groqKey = String(process.env.GROQ_API_KEY || '').trim();
+  if (!groqKey) return null;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const response = await customFetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'qwen/qwen3.6-27b',
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'text', text: `${prompt}\nNão confunda número do documento com CPF. Se um campo não estiver visível, retorne string vazia.` },
+              { type: 'image_url', image_url: { url: `data:${mimeType};base64,${mediaBase64}` } },
+            ],
+          }],
+          temperature: 0.05,
+          max_completion_tokens: 1800,
+          response_format: { type: 'json_object' },
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        console.error(`Leitura alternativa do documento: Groq Vision respondeu HTTP ${response.status} na tentativa ${attempt}.`);
+        continue;
+      }
+      const parsed = parseGeminiJson(payload?.choices?.[0]?.message?.content);
+      const name = typeof parsed?.name === 'string' ? parsed.name.trim() : '';
+      const cpfCnpj = String(parsed?.cpfCnpj || '').replace(/\D/g, '');
+      if (name && hasValidCpfCnpjCheckDigits(cpfCnpj)) {
+        console.log('✅ Documento lido pelo leitor visual alternativo.');
+        return { ...parsed, name, cpfCnpj };
+      }
+      console.error(`Leitura alternativa incompleta na tentativa ${attempt}.`);
+    } catch (error) {
+      console.error(`Falha na leitura alternativa na tentativa ${attempt}:`, error?.message || error);
     }
   }
   return null;
@@ -214,8 +252,9 @@ async function callGroqJson(prompt, { model = 'openai/gpt-oss-120b', maxTokens =
                       instructions: { type: 'string' },
                       suggestedDocuments: { type: 'array', items: { type: 'string' } },
                       generic: { type: 'boolean' },
+                      askMissingBeforeDraft: { type: 'boolean' },
                     },
-                    required: ['kind', 'clientQuery', 'title', 'legalArea', 'instructions', 'suggestedDocuments', 'generic'],
+                    required: ['kind', 'clientQuery', 'title', 'legalArea', 'instructions', 'suggestedDocuments', 'generic', 'askMissingBeforeDraft'],
                     additionalProperties: false,
                   },
                 ],
@@ -272,6 +311,7 @@ function normalizeConversationRouting(parsed) {
         legalArea: String(parsed.draftRequest.legalArea || '').trim().slice(0, 120),
         instructions: String(parsed.draftRequest.instructions || '').trim().slice(0, 3000),
         generic: parsed.draftRequest.generic === true,
+        askMissingBeforeDraft: parsed.draftRequest.askMissingBeforeDraft === true,
         suggestedDocuments: Array.isArray(parsed.draftRequest.suggestedDocuments)
           ? parsed.draftRequest.suggestedDocuments.map((item) => String(item || '').trim().slice(0, 160)).filter(Boolean).slice(0, 6)
           : [],
@@ -306,9 +346,10 @@ Use command apenas quando houver uma ação operacional. Formatos permitidos:
 - gerar kit KIT para CLIENTE
 
 Quando o advogado pedir para REDIGIR, ELABORAR, CRIAR, FAZER, PREPARAR ou MONTAR uma procuração, contrato, declaração, petição, termo ou outro conteúdo jurídico novo, não use command. Preencha draftRequest:
-{"kind":"DOCUMENT" ou "KIT","clientQuery":"nome ou CPF","title":"tipo/título","legalArea":"área","instructions":"todos os termos pedidos","suggestedDocuments":["nomes, se for kit"],"generic":false}
+{"kind":"DOCUMENT" ou "KIT","clientQuery":"nome ou CPF","title":"tipo/título","legalArea":"área","instructions":"todos os termos pedidos","suggestedDocuments":["nomes, se for kit"],"generic":false,"askMissingBeforeDraft":false}
 Use KIT quando ele pedir para montar um conjunto inteligente de documentos. Use DOCUMENT para uma única procuração, contrato, declaração, termo, petição ou outra minuta.
 Use o command "gerar MODELO para CLIENTE" somente quando ele disser claramente que quer usar um modelo já existente/salvo no AssinaJur.
+Defina askMissingBeforeDraft como true quando o advogado pedir para perguntar, conferir ou completar dados/qualificação faltantes antes de redigir.
 Extraia o cliente e os requisitos também do histórico recente quando a mensagem atual for continuação, como "então crie um modelo" ou apenas "procuração". Considere especialmente o cliente que acabou de ser cadastrado e citado pelo AssinaJur.
 Se ele pedir somente uma minuta genérica, sem cadastrar ou vincular cliente, deixe clientQuery vazio e defina generic como true. Se faltar o cliente sem essa intenção, deixe clientQuery vazio e generic como false; o servidor explicará as opções.
 
@@ -397,7 +438,7 @@ Retorne o clientId exatamente como recebido.`;
   };
 
   const groqDraft = normalizeDraft(await callGroqJson(prompt, {
-    model: 'llama-3.3-70b-versatile',
+    model: 'qwen/qwen3.6-27b',
     maxTokens: 8000,
   }));
   if (groqDraft) return groqDraft;
