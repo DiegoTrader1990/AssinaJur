@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { handleMetaWebhookPayload } from '@/lib/whatsapp/meta';
 import { isAuthorizedLawyerPhone, processWhatsAppCommand } from '@/lib/whatsapp/agent';
+import { brazilianPhoneVariants } from '@/lib/whatsapp/conversation';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,21 +26,6 @@ function hasValidMetaSignature(req: Request, rawBody: string): boolean {
   const supplied = req.headers.get('x-hub-signature-256') || '';
   const expected = `sha256=${createHmac('sha256', appSecret).update(rawBody).digest('hex')}`;
   return Boolean(supplied && safeEqual(supplied, expected));
-}
-
-function brazilianPhoneVariants(value: string): Set<string> {
-  const digits = value.replace(/\D/g, '');
-  const withCountry = digits.startsWith('55') ? digits : `55${digits}`;
-  const variants = new Set<string>([digits, withCountry]);
-
-  // A infraestrutura do WhatsApp ainda pode entregar números brasileiros no formato
-  // legado sem o nono dígito. Consideramos as duas representações equivalentes.
-  if (withCountry.length === 13 && withCountry[4] === '9') {
-    variants.add(`${withCountry.slice(0, 4)}${withCountry.slice(5)}`);
-  } else if (withCountry.length === 12) {
-    variants.add(`${withCountry.slice(0, 4)}9${withCountry.slice(4)}`);
-  }
-  return variants;
 }
 
 function parseSessionMetadata(value?: string | null): Record<string, any> {
@@ -68,9 +54,9 @@ async function resolveBridgeOfficeId(fromNumber: string): Promise<string | null>
     where: { active: true, office: { active: true }, phone: { not: null } },
     select: { officeId: true, phone: true },
   });
-  const fromVariants = brazilianPhoneVariants(fromNumber);
+  const fromVariants = new Set(brazilianPhoneVariants(fromNumber));
   const matchingUser = users.find((user) => {
-    const userVariants = brazilianPhoneVariants(user.phone || '');
+    const userVariants = new Set(brazilianPhoneVariants(user.phone || ''));
     return [...fromVariants].some((phone) => userVariants.has(phone));
   });
   if (matchingUser) return matchingUser.officeId;
@@ -140,7 +126,7 @@ export async function POST(req: Request) {
     }
 
     if (body.eventType === 'CONTEXT') {
-      const phoneVariants = Array.from(brazilianPhoneVariants(fromNumber));
+      const phoneVariants = brazilianPhoneVariants(fromNumber);
       const logs = await prisma.whatsAppLog.findMany({
         where: { officeId: targetOfficeId, fromNumber: { in: phoneVariants } },
         select: { fromNumber: true, body: true, aiResponse: true, createdAt: true },

@@ -64,7 +64,7 @@ const ASSINAJUR_WEBHOOK_URL = process.env.ASSINAJUR_WEBHOOK_URL || 'https://www.
 const BOT_SECRET = process.env.WHATSAPP_BOT_SECRET || '';
 const AUTH_FOLDER = process.env.WHATSAPP_AUTH_DIR || path.join(__dirname, '..', 'whatsapp-auth');
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
-const BOT_VERSION = '2026.08.09.2';
+const BOT_VERSION = '2026.08.09.3';
 const DAEMON_STARTED_AT = new Date().toISOString();
 
 let socketInstance = null;
@@ -571,6 +571,7 @@ Extraia o cliente e os requisitos também do histórico recente quando a mensage
 Se ele pedir somente uma minuta genérica, sem cadastrar ou vincular cliente, deixe clientQuery vazio e defina generic como true. Se faltar o cliente sem essa intenção, deixe clientQuery vazio e generic como false; o servidor explicará as opções.
 
 Quando já houver uma prévia/minuta em andamento e a mensagem acrescentar, corrigir ou retirar informações dela, coloque a mensagem completa em revision e mantenha draftRequest null. Exemplos: "ela é solteira e advogada", "troque para 25%", "a procuração é geral", "retire os poderes para receber valores".
+Se o advogado pedir claramente um NOVO documento diferente, mesmo com uma minuta em andamento, crie um novo draftRequest. Exemplos: "agora faça um contrato", "deixe essa procuração e prepare uma declaração". Não classifique esses casos como revision.
 Nunca amplie, presuma ou invente conteúdo em revision. Esse campo serve apenas para classificar; o sistema utilizará literalmente a mensagem original do advogado.
 
 Se for conversa, dúvida, continuação sem dados suficientes ou discussão de ideias, deixe command vazio e responda em reply de forma natural, profissional e breve. Faça uma pergunta objetiva quando faltar informação.

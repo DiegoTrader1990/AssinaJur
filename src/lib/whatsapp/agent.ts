@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
 import { compileTemplatePreviewToPdf, compileTemplateToPdf } from '@/lib/templateCompiler';
+import { brazilianPhoneVariants, extractClientConversationCorrections } from '@/lib/whatsapp/conversation';
 
 export const AUTHORIZED_LAWYER_PHONES = [
   '5573988250201',
@@ -449,8 +450,9 @@ async function createPendingClientAction(data: ClientDraft): Promise<WhatsAppAge
 }
 
 async function findLatestPendingAction(officeId: string, fromNumber: string): Promise<PendingAction | null> {
+  const fromNumbers = brazilianPhoneVariants(fromNumber);
   const logs = await prisma.whatsAppLog.findMany({
-    where: { officeId, fromNumber },
+    where: { officeId, fromNumber: { in: fromNumbers.length ? fromNumbers : [fromNumber] } },
     select: { actionTaken: true, createdAt: true },
     orderBy: { createdAt: 'desc' },
     take: 20,
@@ -462,7 +464,11 @@ async function findLatestPendingAction(officeId: string, fromNumber: string): Pr
     const ttl = action.type === 'GENERATE_LEGAL_DRAFT' ? LEGAL_DRAFT_TTL_MS : PENDING_TTL_MS;
     if (Date.now() - new Date(action.createdAt || log.createdAt).getTime() > ttl) return null;
     const executed = await prisma.whatsAppLog.findFirst({
-      where: { officeId, fromNumber, actionTaken: `${EXECUTED_PREFIX}${action.id}` },
+      where: {
+        officeId,
+        fromNumber: { in: fromNumbers.length ? fromNumbers : [fromNumber] },
+        actionTaken: `${EXECUTED_PREFIX}${action.id}`,
+      },
       select: { id: true },
     });
     if (!executed) return action;
@@ -1228,8 +1234,9 @@ Mensagem: ${text}`,
 }
 
 async function answerSafeConversation(officeId: string, fromNumber: string, text: string): Promise<string> {
+  const fromNumbers = brazilianPhoneVariants(fromNumber);
   const recentLogs = await prisma.whatsAppLog.findMany({
-    where: { officeId, fromNumber },
+    where: { officeId, fromNumber: { in: fromNumbers.length ? fromNumbers : [fromNumber] } },
     orderBy: { createdAt: 'desc' },
     take: 8,
     select: { body: true, aiResponse: true },
@@ -1264,8 +1271,9 @@ async function handleTextCommand(
   const text = originalBody.trim();
   const normalized = text.toLocaleLowerCase('pt-BR');
   const generateLinkIntent = !text.endsWith('?')
-    && /\b(?:link|links|documento definitivo|documentos definitivos)\b/i.test(text)
-    && /\b(?:gerar|gere|gera|criar|crie|cria|emitir|emita|preparar|prepare|pode|fa[cç]a|quero|preciso|produzir|produza|disponibilizar|disponibilize)\b/i.test(text);
+    && /\b(?:link|links|documento definitivo|documentos definitivos|para assinatura)\b/i.test(text)
+    && /\b(?:gerar|gere|gera|criar|crie|cria|emitir|emita|preparar|prepare|enviar|envie|finalizar|finalize|pode|fa[cç]a|quero|preciso|produzir|produza|disponibilizar|disponibilize)\b/i.test(text);
+  const cancelIntent = !text.endsWith('?') && /^(?:cancelar|cancela|cancele(?:\s+(?:isso|essa\s+(?:minuta|ação)|esse\s+(?:cadastro|documento)))?|não\s+(?:quero|preciso)\s+mais|deixa\s+(?:isso\s+)?pra\s+l[aá]|pode\s+descartar|descartar)(?:[.!])?$/i.test(text);
   const approvalIntent = !text.endsWith('?') && (
     /^(?:sim|certo|ok|pode seguir|est[aá] certo)[.!]?$/i.test(text)
     || /^(?:sim[,!]?\s*)?(?:eu\s+)?(?:aprovo|aprovar|confirmo|confirmar|confirme|aprovad[oa]|confirmad[oa]|minuta\s+aprovada|pode\s+(?:aprovar|salvar|prosseguir|seguir)|est[aá]\s+(?:corret[oa]|aprovad[oa])|pode\s+cadastrar)(?:\s+(?:a|o|essa|esta|minha)?\s*(?:minuta|procura[cç][aã]o|contrato|documento|cadastro))?[.!]?$/i.test(text)
@@ -1357,7 +1365,7 @@ async function handleTextCommand(
     return executeLegalDraftLinkSafely(officeId, action);
   }
 
-  if (/^(cancelar|cancela|não confirmar|descartar)$/i.test(text)) {
+  if (cancelIntent || /^(?:não confirmar)$/i.test(text)) {
     const action = await findLatestPendingAction(officeId, fromNumber);
     return {
       replyText: action ? '🗑️ Ação descartada. Nenhuma alteração foi feita no AssinaJur.' : 'Não havia nenhuma ação pendente.',
@@ -1367,6 +1375,21 @@ async function handleTextCommand(
 
   const existingPending = await findLatestPendingAction(officeId, fromNumber);
   if (existingPending?.type === 'GENERATE_LEGAL_DRAFT') {
+    // Um novo pedido documental substitui a minuta corrente. Sem esta prioridade,
+    // “agora faça um contrato” podia ser tratado como revisão da procuração anterior.
+    if (localRouting?.draftRequest) {
+      return prepareLegalDraftTask(officeId, localRouting.draftRequest);
+    }
+    const deterministicNewDraft = text.match(/^(?:(?:agora|então)\s+)?(?:faça|faca|crie|prepare|redija|elabore|monte)\s+(?:(?:um|uma|outro|outra|novo|nova)\s+)?(kit|procura[cç][aã]o|contrato|declara[cç][aã]o|peti[cç][aã]o|termo|minuta|modelo)\b/i);
+    if (deterministicNewDraft) {
+      return prepareLegalDraftTask(officeId, {
+        kind: deterministicNewDraft[1].toLocaleLowerCase('pt-BR') === 'kit' ? 'KIT' : 'DOCUMENT',
+        clientQuery: existingPending.data.clientId ? existingPending.data.clientName : '',
+        title: deterministicNewDraft[1],
+        instructions: text,
+        generic: !existingPending.data.clientId,
+      });
+    }
     if (asksAboutClientQualification(text) && existingPending.data.clientId) {
       const client = await prisma.client.findFirst({ where: { id: existingPending.data.clientId, officeId } });
       if (client) {
@@ -1481,7 +1504,40 @@ async function handleTextCommand(
     }
   }
   if (existingPending?.type === 'CREATE_OR_UPDATE_CLIENT') {
-    const phoneCandidate = normalizePhone(text.match(/(?:telefone|celular|whatsapp|fone)?\s*\+?([\d\s().-]{10,20})/i)?.[1]);
+    const correction = extractClientConversationCorrections(text);
+    if (correction.requestedWithoutValue.length > 0) {
+      return {
+        replyText: `Claro. Informe o novo valor de *${correction.requestedWithoutValue.join(', ')}* para eu corrigir a prévia.`,
+        actionTaken: encodePendingAction(existingPending),
+      };
+    }
+    if (correction.changes.cpfCnpj && !hasValidCpfCnpjCheckDigits(correction.changes.cpfCnpj)) {
+      return {
+        replyText: 'O CPF/CNPJ informado não passou na validação dos dígitos. Confira o número e envie novamente.',
+        actionTaken: encodePendingAction(existingPending),
+      };
+    }
+    if (correction.changes.phone && (correction.changes.phone.length < 10 || correction.changes.phone.length > 13)) {
+      return {
+        replyText: 'O telefone precisa ter DDD e número. Exemplo: *73 99999-9999*.',
+        actionTaken: encodePendingAction(existingPending),
+      };
+    }
+    if (Object.keys(correction.changes).length > 0) {
+      const updatedAction: PendingClientAction = {
+        ...existingPending,
+        id: randomUUID(),
+        createdAt: new Date().toISOString(),
+        data: { ...existingPending.data, ...correction.changes },
+      };
+      return {
+        replyText: `✅ Corrigi a prévia sem gravar no site ainda.\n\n${clientPreview(updatedAction.data)}`,
+        actionTaken: encodePendingAction(updatedAction),
+      };
+    }
+
+    // Mantém a resposta curta com apenas o número, usada quando o bot acabou de pedir telefone.
+    const phoneCandidate = normalizePhone(text.match(/^\s*\+?([\d\s().-]{10,20})\s*$/)?.[1]);
     if (phoneCandidate.length >= 10 && phoneCandidate.length <= 13) {
       const updatedAction: PendingClientAction = {
         ...existingPending,
@@ -1489,10 +1545,7 @@ async function handleTextCommand(
         createdAt: new Date().toISOString(),
         data: { ...existingPending.data, phone: phoneCandidate, whatsapp: phoneCandidate },
       };
-      return {
-        replyText: clientPreview(updatedAction.data),
-        actionTaken: encodePendingAction(updatedAction),
-      };
+      return { replyText: clientPreview(updatedAction.data), actionTaken: encodePendingAction(updatedAction) };
     }
   }
 
