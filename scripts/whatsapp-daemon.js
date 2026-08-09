@@ -232,7 +232,9 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
     let worker;
     try {
       const { createWorker } = require('tesseract.js');
-      worker = await createWorker('por');
+      const ocrCachePath = path.join(process.env.LOCALAPPDATA || path.join(__dirname, '..'), 'AssinaJur', 'tesseract-cache');
+      fs.mkdirSync(ocrCachePath, { recursive: true });
+      worker = await createWorker('por', 1, { cachePath: ocrCachePath });
       const result = await worker.recognize(Buffer.from(mediaBase64, 'base64'));
       const rawText = String(result?.data?.text || '').replace(/\s+/g, ' ').trim().slice(0, 6000);
       if (rawText && groqKey) {
