@@ -335,9 +335,9 @@ export default function WhatsAppPage() {
       </div>
 
       {/* Interface Central de Atendimento Segura */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 h-[700px]">
+      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 grid-rows-[minmax(0,1fr)] h-[700px] min-h-0">
         {/* Painel Esquerdo: Lista de Conversas e Contatos */}
-        <div className="lg:col-span-4 border-r border-slate-200/80 flex flex-col bg-slate-50/50">
+        <div className="lg:col-span-4 border-r border-slate-200/80 flex flex-col bg-slate-50/50 min-h-0 overflow-hidden">
           {/* Header da Sidebar de Conversas */}
           <div className="p-4 bg-[#F0F2F5] border-b border-slate-200 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -366,7 +366,7 @@ export default function WhatsAppPage() {
           </div>
 
           {/* Lista de Chats/Clientes */}
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-100 bg-white">
+          <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 bg-white">
             {filteredContacts.map((contact) => (
               <button
                 key={contact.id}
@@ -403,7 +403,7 @@ export default function WhatsAppPage() {
         </div>
 
         {/* Painel Direito: Janela do Chat Estilo WhatsApp Web */}
-        <div className="lg:col-span-8 flex flex-col h-full bg-[#E5DDD5] bg-opacity-30 relative">
+        <div className="lg:col-span-8 flex flex-col h-full min-h-0 overflow-hidden bg-[#E5DDD5] bg-opacity-30 relative">
           {/* Header do Chat Ativo */}
           <div className="p-3.5 bg-[#F0F2F5] border-b border-slate-200 flex items-center justify-between shadow-xs">
             <div className="flex items-center gap-3">
@@ -432,7 +432,7 @@ export default function WhatsAppPage() {
           </div>
 
           {/* Área de Mensagens do Chat com Wallpaper WhatsApp */}
-          <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 relative">
+          <div className="flex-1 min-h-0 p-4 sm:p-6 overflow-y-auto space-y-4 relative">
             {messages.map((msg) => (
               <div
                 key={msg.id}
