@@ -538,13 +538,46 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     try {
+      // Geramos uma foto 4:3 sem redimensionar o quadro inteiro da câmera.
+      // Celulares normalmente entregam vídeo 16:9; esticá-lo diretamente para
+      // 640x480 deformava o rosto. Aqui recortamos o centro e preservamos a
+      // proporção original antes de desenhar no canvas.
       canvas.width = 640;
       canvas.height = 480;
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        const sourceWidth = video.videoWidth;
+        const sourceHeight = video.videoHeight;
+        const targetRatio = canvas.width / canvas.height;
+        const sourceRatio = sourceWidth / sourceHeight;
+        let sourceX = 0;
+        let sourceY = 0;
+        let cropWidth = sourceWidth;
+        let cropHeight = sourceHeight;
+
+        if (sourceRatio > targetRatio) {
+          cropWidth = sourceHeight * targetRatio;
+          sourceX = (sourceWidth - cropWidth) / 2;
+        } else if (sourceRatio < targetRatio) {
+          cropHeight = sourceWidth / targetRatio;
+          sourceY = (sourceHeight - cropHeight) / 2;
+        }
+
+        ctx.save();
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(
+          video,
+          sourceX,
+          sourceY,
+          cropWidth,
+          cropHeight,
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+        ctx.restore();
       }
 
       const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
@@ -1036,7 +1069,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                           <img
                             src={selfieImages[s.key] as string}
                             alt={s.label}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-contain"
                           />
                         )}
                         <span className="absolute top-1.5 right-1.5 bg-emerald-500 text-white rounded-full p-0.5 shadow-sm">

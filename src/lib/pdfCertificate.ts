@@ -50,11 +50,6 @@ function safeText(value: any, maximum = 200): string {
     .slice(0, maximum);
 }
 
-function truncate(value: any, max: number): string {
-  const clean = safeText(value, 500);
-  return clean.length > max ? `${clean.slice(0, max - 3)}...` : clean;
-}
-
 function wrapText(text: any, maximumCharacters = 88): string[] {
   const words = safeText(text, 2000).split(' ');
   const lines: string[] = [];
@@ -70,6 +65,39 @@ function wrapText(text: any, maximumCharacters = 88): string[] {
   }
   if (current) lines.push(current);
   return lines;
+}
+
+function wrapTextToWidth(text: any, font: any, size: number, maximumWidth: number): string[] {
+  const clean = safeText(text, 5000) || 'Não informado';
+  const words = clean.split(' ');
+  const lines: string[] = [];
+  let current = '';
+
+  const pushLongWord = (word: string) => {
+    let piece = '';
+    for (const character of word) {
+      const candidate = `${piece}${character}`;
+      if (piece && font.widthOfTextAtSize(candidate, size) > maximumWidth) {
+        lines.push(piece);
+        piece = character;
+      } else {
+        piece = candidate;
+      }
+    }
+    return piece;
+  };
+
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (font.widthOfTextAtSize(candidate, size) <= maximumWidth) {
+      current = candidate;
+      continue;
+    }
+    if (current) lines.push(current);
+    current = font.widthOfTextAtSize(word, size) <= maximumWidth ? word : pushLongWord(word);
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : ['Não informado'];
 }
 
 function addLinkAnnotation(
@@ -204,16 +232,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
   // ── 1. FAIXA / CARIMBO NAS PÁGINAS DO DOCUMENTO ORIGINAL (Grampo Escolhido) ──
   const originalPages = pdfDoc.getPages();
   const totalOrigPages = originalPages.length;
-  const primarySignerName = doc.signers[0]?.name || 'Signatário';
-  const signerSummaryText = doc.signers.length > 1
-    ? `${primarySignerName} e outros (${doc.signers.length} signatários)`
-    : primarySignerName;
-
   const sigPos = (doc as any).signaturePosition || 'BOTTOM';
 
   originalPages.forEach((p, idx) => {
     const { width: pW, height: pH } = p.getSize();
-    const stampText = `Documento assinado eletronicamente  |  Signatário: ${truncate(signerSummaryText, 35)}  |  Código: ${verificationCode}  |  Pág ${idx + 1}/${totalOrigPages}  |  AssinaJur`;
+    // O carimbo precisa caber em qualquer página sem abreviar dados com "...".
+    // Os nomes completos permanecem no certificado de evidências.
+    const stampText = `Documento assinado eletronicamente  |  Código: ${verificationCode}  |  Página ${idx + 1}/${totalOrigPages}  |  AssinaJur`;
 
     if (sigPos === 'TOP') {
       const stripH = 22;
@@ -331,13 +356,15 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
   // SEÇÃO 1: CABEÇALHO DO CERTIFICADO
   drawFrame(page, 'CERTIFICADO DE EVIDENCIAS JURIDICAS - REGISTRO IMUTAVEL');
-  page.drawText(truncate(doc.title, 42), { x: CX, y: 733, size: 13, font: bold, color: navy });
-  page.drawText(`Código de Autenticidade: ${verificationCode}  |  ID: ${truncate(doc.id, 20)}`, {
-    x: CX,
-    y: 716,
-    size: 7.5,
-    font: mono,
-    color: muted,
+  const certificateTitleLines = wrapTextToWidth(doc.title, bold, 11.5, 330);
+  certificateTitleLines.forEach((line, index) => {
+    page.drawText(line, { x: CX, y: 736 - index * 13, size: 11.5, font: bold, color: navy });
+  });
+  page.drawText(`Código de Autenticidade: ${verificationCode}`, {
+    x: CX, y: 696, size: 7.5, font: mono, color: muted,
+  });
+  page.drawText(`ID completo: ${safeText(doc.id, 200)}`, {
+    x: CX, y: 685, size: 7.5, font: mono, color: muted,
   });
 
   // Selo "ASSINADO E AUTÊNTICO" elegante sem sobreposição
@@ -381,9 +408,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
     color: muted,
   });
 
-  page.drawLine({ start: { x: CX, y: 705 }, end: { x: CR, y: 705 }, thickness: 0.8, color: panelBorder });
+  page.drawLine({ start: { x: CX, y: 676 }, end: { x: CR, y: 676 }, thickness: 0.8, color: panelBorder });
 
-  let y = 695;
+  let y = 666;
   const padX = CX + 14;
 
   const ensureSpace = (minRemaining: number) => {
@@ -399,7 +426,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     page.drawText(safeText(label, 60).toUpperCase(), { x, y: yPos, size: 6.5, font: bold, color: muted });
   };
   const fieldValue = (x: number, yPos: number, value: any, options: any = {}) => {
-    page.drawText(safeText(value, options.max || 80), {
+    page.drawText(safeText(value, options.max || 5000), {
       x,
       y: yPos,
       size: options.size || 9.5,
@@ -408,39 +435,99 @@ export async function generateFinalPdfCertificate(documentId: string) {
     });
   };
 
+  const fieldLines = (value: any, width: number, options: any = {}) =>
+    wrapTextToWidth(value, options.font || regular, options.size || 8, width);
+
+  const drawFieldBlock = (
+    x: number,
+    top: number,
+    width: number,
+    label: string,
+    value: any,
+    options: any = {}
+  ) => {
+    const size = options.size || 8;
+    const lineHeight = options.lineHeight || size + 2;
+    const lines = fieldLines(value, width, options);
+    fieldLabel(x, top, label);
+    lines.forEach((line: string, index: number) => {
+      fieldValue(x, top - 12 - index * lineHeight, line, { ...options, max: 5000 });
+    });
+    return 12 + lines.length * lineHeight + 5;
+  };
+
   // SEÇÃO 2: DADOS DO DOCUMENTO
-  ensureSpace(95);
+  const documentHalfWidth = 220;
+  const documentGap = 54;
+  const officeText = `${doc.office.name} (${doc.office.cpfCnpj})`;
+  const officeLines = fieldLines(officeText, documentHalfWidth, { font: bold, size: 8.5 });
+  const createdLines = fieldLines(formatBrasiliaDateTime(doc.createdAt), documentHalfWidth, { size: 7.2 });
+  const typeLines = fieldLines(doc.documentType || 'Não informado', documentHalfWidth, { font: bold, size: 8.2 });
+  const completedLines = fieldLines(formatBrasiliaDateTime(doc.completedAt || new Date()), documentHalfWidth, { font: bold, size: 7.2 });
+  const documentRowHeight = (leftLines: number, rightLines: number, size: number) =>
+    12 + Math.max(leftLines, rightLines) * (size + 2) + 6;
+  const documentFirstRowH = documentRowHeight(officeLines.length, createdLines.length, 8.5);
+  const documentSecondRowH = documentRowHeight(typeLines.length, completedLines.length, 8.2);
+  const docPanelH = 25 + documentFirstRowH + documentSecondRowH + 8;
+  ensureSpace(docPanelH + 14);
   const docPanelTop = y;
-  const docPanelH = 82;
   const docPanelY = docPanelTop - docPanelH;
   page.drawRectangle({ x: CX, y: docPanelY, width: CW, height: docPanelH, color: panelBg, borderWidth: 0.9, borderColor: panelBorder });
   page.drawText('1. DADOS DO DOCUMENTO E ESCRITÓRIO RESPONSÁVEL', { x: padX, y: docPanelTop - 15, size: 7.5, font: bold, color: navy });
 
-  fieldLabel(padX, docPanelTop - 32, 'Escritório responsável');
-  fieldValue(padX, docPanelTop - 43, `${doc.office.name} (${doc.office.cpfCnpj})`, { font: bold, size: 9.5 });
-
-  fieldLabel(padX, docPanelTop - 59, 'Tipo de documento');
-  fieldValue(padX, docPanelTop - 70, doc.documentType || 'Não informado', { font: bold, size: 9 });
-
-  fieldLabel(padX + 260, docPanelTop - 32, 'Data de criação');
-  fieldValue(padX + 260, docPanelTop - 43, formatBrasiliaDateTime(doc.createdAt), { size: 8.5 });
-
-  fieldLabel(padX + 260, docPanelTop - 59, 'Data de conclusão');
-  fieldValue(padX + 260, docPanelTop - 70, formatBrasiliaDateTime(doc.completedAt || new Date()), { font: bold, size: 8.5, color: green });
+  const documentCol2X = padX + documentHalfWidth + documentGap;
+  let documentCursor = docPanelTop - 32;
+  drawFieldBlock(padX, documentCursor, documentHalfWidth, 'Escritório responsável', officeText, { font: bold, size: 8.5 });
+  drawFieldBlock(documentCol2X, documentCursor, documentHalfWidth, 'Data de criação', formatBrasiliaDateTime(doc.createdAt), { size: 7.2, lineHeight: 9.2 });
+  documentCursor -= documentFirstRowH;
+  drawFieldBlock(padX, documentCursor, documentHalfWidth, 'Tipo de documento', doc.documentType || 'Não informado', { font: bold, size: 8.2 });
+  drawFieldBlock(documentCol2X, documentCursor, documentHalfWidth, 'Data de conclusão', formatBrasiliaDateTime(doc.completedAt || new Date()), { font: bold, size: 7.2, lineHeight: 9.2, color: green });
 
   y = docPanelY - 14;
 
   // SEÇÃO 3 & 4: DADOS DO SIGNATÁRIO E EVIDÊNCIAS COLETADAS
   for (const signer of doc.signers) {
     const hasPhotos = Boolean(signer.selfieCenterImage || signer.selfieLeftImage || signer.selfieRightImage);
-    const panelH = 155 + (hasPhotos ? 140 : 0);
+    const hasLocation = signer.geoLat != null && signer.geoLng != null;
+    const locationText = hasLocation
+      ? `${signer.geoCity ? `${safeText(signer.geoCity, 200)}${signer.geoState ? '/' + signer.geoState : ''} - ` : ''}${Number(
+          signer.geoLat
+        ).toFixed(6)}, ${Number(signer.geoLng).toFixed(6)}${
+          signer.geoAccuracy != null ? ` (precisão aproximada: ${Math.round(signer.geoAccuracy)} m)` : ''
+        }`
+      : 'Não coletada (permissão não concedida)';
+    const authenticationText = 'CPF + Prova de presença ao vivo (3 fotos) + Geolocalização do dispositivo';
+    const innerWidth = CW - 28;
+    const halfWidth = 226;
+    const gapWidth = 34;
+    const rowHeight = (leftLines: number, rightLines: number, size = 9) =>
+      12 + Math.max(leftLines, rightLines) * (size + 2) + 5;
+    const nameLines = fieldLines(signer.name, halfWidth, { font: bold, size: 9.5 });
+    const cpfLines = fieldLines(formatFullCpf(signer.cpf), halfWidth, { font: bold, size: 9.5 });
+    const phoneLines = fieldLines(formatFullPhone(signer.phone), halfWidth, { size: 9 });
+    const dateLines = fieldLines(formatBrasiliaDateTime(signer.signedAt), halfWidth, { font: bold, size: 8.5 });
+    const ipLines = fieldLines(signer.ipAddress || 'Não informado', halfWidth, { font: mono, size: 8 });
+    const roleLines = fieldLines(signer.role || 'Signatário', halfWidth, { size: 8.5 });
+    const userAgentLines = fieldLines(signer.userAgent || 'Não informado', innerWidth, { size: 7.2 });
+    const locationLines = fieldLines(locationText, innerWidth, { size: 7.8 });
+    const authenticationLines = fieldLines(authenticationText, innerWidth, { size: 7.8 });
+    const dataHeight =
+      rowHeight(nameLines.length, cpfLines.length, 9.5) +
+      rowHeight(phoneLines.length, dateLines.length, 9) +
+      rowHeight(ipLines.length, roleLines.length, 8.5) +
+      (12 + userAgentLines.length * 9.2 + 5) +
+      (12 + locationLines.length * 9.8 + 5) +
+      (12 + authenticationLines.length * 9.8 + 5) +
+      (signer.signatureImage ? 65 : 0);
+    const photosHeight = hasPhotos ? 150 : 0;
+    const panelH = 28 + dataHeight + photosHeight + 10;
     ensureSpace(panelH + 10);
 
     const pTop = y;
     const pY = pTop - panelH;
     page.drawRectangle({ x: CX, y: pY, width: CW, height: panelH, color: panelBg, borderWidth: 0.9, borderColor: panelBorder });
     
-    page.drawText(`2. DADOS DO SIGNATÁRIO — ${safeText(signer.role, 30).toUpperCase()}`, {
+    page.drawText('2. DADOS COMPLETOS DO SIGNATÁRIO', {
       x: padX,
       y: pTop - 15,
       size: 7.5,
@@ -448,63 +535,62 @@ export async function generateFinalPdfCertificate(documentId: string) {
       color: navy,
     });
 
-    const col2X = CX + 260;
-    
-    // Nome e CPF COMPLETOS (SEM MASCARAMENTO)
-    fieldLabel(padX, pTop - 32, 'Nome completo');
-    fieldValue(padX, pTop - 43, signer.name, { font: bold, size: 10.5 });
+    const col2X = padX + halfWidth + gapWidth;
+    let cursor = pTop - 32;
 
-    fieldLabel(col2X, pTop - 32, 'CPF do signatário (Completo)');
-    fieldValue(col2X, pTop - 43, formatFullCpf(signer.cpf), { font: bold, size: 10 });
+    const drawTwoColumns = (
+      left: { label: string; value: any; options?: any },
+      right: { label: string; value: any; options?: any },
+      height: number
+    ) => {
+      drawFieldBlock(padX, cursor, halfWidth, left.label, left.value, left.options);
+      drawFieldBlock(col2X, cursor, halfWidth, right.label, right.value, right.options);
+      cursor -= height;
+    };
 
-    // Telefone COMPLETO (SEM MASCARAMENTO)
-    fieldLabel(padX, pTop - 59, 'Telefone');
-    fieldValue(padX, pTop - 70, formatFullPhone(signer.phone), { size: 9 });
+    drawTwoColumns(
+      { label: 'Nome completo', value: signer.name, options: { font: bold, size: 9.5 } },
+      { label: 'CPF completo', value: formatFullCpf(signer.cpf), options: { font: bold, size: 9.5 } },
+      rowHeight(nameLines.length, cpfLines.length, 9.5)
+    );
+    drawTwoColumns(
+      { label: 'Telefone completo', value: formatFullPhone(signer.phone), options: { size: 9 } },
+      { label: 'Data e hora da assinatura', value: formatBrasiliaDateTime(signer.signedAt), options: { font: bold, size: 8.5 } },
+      rowHeight(phoneLines.length, dateLines.length, 9)
+    );
+    drawTwoColumns(
+      { label: 'Endereço IP', value: signer.ipAddress || 'Não informado', options: { font: mono, size: 8 } },
+      { label: 'Qualificação', value: signer.role || 'Signatário', options: { size: 8.5 } },
+      rowHeight(ipLines.length, roleLines.length, 8.5)
+    );
 
-    // Data/hora no Horário de Brasília
-    fieldLabel(col2X, pTop - 59, 'Data e hora da assinatura');
-    fieldValue(col2X, pTop - 70, formatBrasiliaDateTime(signer.signedAt), { font: bold, size: 8.5 });
-
-    fieldLabel(padX, pTop - 86, 'Endereço IP');
-    fieldValue(padX, pTop - 97, signer.ipAddress || '127.0.0.1', { font: mono, size: 8.5 });
-
-    fieldLabel(col2X, pTop - 86, 'Dispositivo e navegador');
-    fieldValue(col2X, pTop - 97, signer.userAgent || 'Mobile Browser', { size: 7.5, max: 48 });
-
-    const hasLocation = signer.geoLat != null && signer.geoLng != null;
-    const locationText = hasLocation
-      ? `${signer.geoCity ? `${safeText(signer.geoCity, 25)}${signer.geoState ? '/' + signer.geoState : ''} — ` : ''}${Number(
-          signer.geoLat
-        ).toFixed(6)}, ${Number(signer.geoLng).toFixed(6)}${
-          signer.geoAccuracy != null ? ` (±${Math.round(signer.geoAccuracy)} m)` : ''
-        }`
-      : 'Não coletada (permissão não concedida)';
-
-    fieldLabel(padX, pTop - 114, 'Geolocalização do dispositivo');
-    fieldValue(padX, pTop - 125, locationText, { size: 8, color: hasLocation ? linkBlue : muted, max: 70 });
+    cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Dispositivo e navegador completos', signer.userAgent || 'Não informado', { size: 7.2, lineHeight: 9.2 });
+    const locationTop = cursor;
+    cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Geolocalização completa do dispositivo', locationText, { size: 7.8, lineHeight: 9.8, color: hasLocation ? linkBlue : muted });
 
     if (hasLocation) {
       const mapsUrl = `https://www.google.com/maps?q=${Number(signer.geoLat)},${Number(signer.geoLng)}`;
-      const locWidth = regular.widthOfTextAtSize(truncate(locationText, 70), 8);
-      page.drawLine({
-        start: { x: padX, y: pTop - 127 },
-        end: { x: padX + locWidth, y: pTop - 127 },
-        thickness: 0.6,
-        color: linkBlue,
+      const locationBlockHeight = 12 + locationLines.length * 9.8;
+      addLinkAnnotation(pdfDoc, page, {
+        x: padX,
+        y: locationTop - locationBlockHeight,
+        width: innerWidth,
+        height: locationBlockHeight,
+        url: mapsUrl,
       });
-      addLinkAnnotation(pdfDoc, page, { x: padX, y: pTop - 128, width: locWidth, height: 10, url: mapsUrl });
     }
 
-    fieldLabel(col2X, pTop - 114, 'Método de autenticação');
-    fieldValue(col2X, pTop - 125, 'CPF + Prova de presença ao vivo (3 selfies) + Geolocalização', { size: 7.2, max: 48 });
+    cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Método de autenticação completo', authenticationText, { size: 7.8, lineHeight: 9.8 });
 
     // Assinatura gráfica
     if (signer.signatureImage && signer.signatureImage.startsWith('data:image/png;base64,')) {
       try {
         const base64Data = signer.signatureImage.replace(/^data:image\/png;base64,/, '');
         const sigPng = await pdfDoc.embedPng(Buffer.from(base64Data, 'base64'));
-        page.drawText('ASSINATURA GRÁFICA', { x: padX + 375, y: pTop - 32, size: 6.5, font: bold, color: muted });
-        page.drawImage(sigPng, { x: padX + 375, y: pTop - 85, width: 100, height: 48 });
+        page.drawText('ASSINATURA GRÁFICA', { x: padX, y: cursor, size: 6.5, font: bold, color: muted });
+        const sigScale = Math.min(160 / sigPng.width, 48 / sigPng.height);
+        page.drawImage(sigPng, { x: padX, y: cursor - 52, width: sigPng.width * sigScale, height: sigPng.height * sigScale });
+        cursor -= 65;
       } catch (sigErr) {
         console.error('Erro ao renderizar assinatura gráfica no PDF:', sigErr);
       }
@@ -514,7 +600,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     if (hasPhotos) {
       page.drawText('3. PROVA DE PRESENÇA AO VIVO (PROPORÇÃO PRESERVADA)', {
         x: padX,
-        y: pTop - 146,
+        y: cursor,
         size: 7.5,
         font: bold,
         color: navy,
@@ -534,7 +620,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
       for (const [label, img] of photoLabels) {
         const embedded = await embedBase64Image(pdfDoc, img);
-        const cardY = pTop - 268;
+        const cardY = cursor - 124;
 
         page.drawRectangle({
           x: photoX - 2,
@@ -608,7 +694,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
   ensureSpace(120);
   const qrSize = 92;
   const qrY = y - qrSize - 10;
-  page.drawText('5. VALIDAÇÃO PÚBLICA E CONFORMIDADE LEGL', { x: CX, y: y - 10, size: 8, font: bold, color: navy });
+  page.drawText('5. VALIDAÇÃO PÚBLICA E CONFORMIDADE LEGAL', { x: CX, y: y - 10, size: 8, font: bold, color: navy });
   page.drawImage(qrImage, { x: CX, y: qrY, width: qrSize, height: qrSize });
 
   const qrTextX = CX + qrSize + 16;
@@ -641,7 +727,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
       timelinePageCount += 1;
       const p = pdfDoc.addPage([PAGE_W, PAGE_H]);
       drawFrame(p, '6. TRILHA PUBLICA DE EVENTOS DO DOCUMENTO');
-      p.drawText(truncate(doc!.title, 65), { x: CX, y: 733, size: 12.5, font: bold, color: navy });
+      const timelineTitleLines = wrapTextToWidth(doc!.title, bold, 11, CW);
+      timelineTitleLines.forEach((line, index) => {
+        p.drawText(line, { x: CX, y: 736 - index * 12, size: 11, font: bold, color: navy });
+      });
       p.drawText(`Codigo: ${verificationCode}${timelinePageCount > 1 ? ' - continuacao' : ''}`, {
         x: CX,
         y: 718,
@@ -684,8 +773,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const rows = doc.events.map((ev) => {
       const dateText = formatBrasiliaDateTime(ev.createdAt, true).replace(' (Horário de Brasília — UTC−3)', '');
       const eventLabel = PUBLIC_EVENT_LABELS[ev.eventType] || ev.eventType;
-      const eventLines = wrapText(eventLabel, 22).slice(0, 3);
-      const descLines = wrapText(ev.description, 55).slice(0, 4);
+      const eventLines = wrapText(eventLabel, 22);
+      const descLines = wrapText(ev.description, 55);
       const lineCount = Math.max(1, eventLines.length, descLines.length);
       const height = Math.max(26, 15 + lineCount * 9.5);
       return { dateText, eventLines, descLines, height };
