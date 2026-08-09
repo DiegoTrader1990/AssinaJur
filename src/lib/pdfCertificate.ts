@@ -541,7 +541,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       certificatePage.drawRectangle({ x: itemX, y: itemY, width: 8, height: 8, color: gold });
       certificatePage.drawText(milestone, { x: itemX + 15, y: itemY + 1, size: 6.4, font: bold, color: navy });
     });
-    certificatePage.drawText(`Concluído em ${formatBrasiliaDateTime(doc.completedAt || new Date())}`, { x: CX + 16, y: auditY + 7, size: 5.7, font: italic, color: muted });
+    certificatePage.drawText(safeText(`Concluído em ${formatBrasiliaDateTime(doc.completedAt || new Date())}`, 220), { x: CX + 16, y: auditY + 7, size: 5.7, font: italic, color: muted });
   }
 
   if (!compactCertificate) {
