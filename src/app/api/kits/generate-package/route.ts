@@ -55,6 +55,8 @@ export async function POST(req: Request) {
       cliente_nome: client.name,
       cliente_cpf: client.cpfCnpj,
       cliente_rg: client.rg || '—',
+      cliente_nacionalidade: client.nationality || 'Brasileira',
+      cliente_telefone: client.whatsapp || client.phone,
       cliente_endereco: client.address || '—',
       cliente_estado_civil: client.maritalStatus || '—',
       cliente_profissao: client.profession || '—',

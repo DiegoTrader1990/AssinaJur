@@ -8,6 +8,7 @@ import { brazilianPhoneVariants } from '@/lib/whatsapp/conversation';
 import { getFileBuffer } from '@/lib/storage';
 import { queueSignatureCompletionMessages } from '@/lib/whatsapp/signatureCompletion';
 import { generateFinalPdfCertificate } from '@/lib/pdfCertificate';
+import { ensureDefaultLegalLibrary } from '@/lib/defaultLegalLibrary';
 
 export const dynamic = 'force-dynamic';
 
@@ -198,6 +199,11 @@ export async function POST(req: Request) {
         mimeType: document.signedFile.mimeType,
         documentBase64: file.toString('base64'),
       });
+    }
+
+    if (body.eventType === 'ENSURE_DEFAULT_LEGAL_LIBRARY') {
+      const library = await ensureDefaultLegalLibrary(targetOfficeId);
+      return NextResponse.json({ success: true, library });
     }
 
     if (body.eventType === 'OUTBOX_PULL') {

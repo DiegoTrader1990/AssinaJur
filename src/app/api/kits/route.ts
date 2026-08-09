@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
+import { ensureDefaultLegalLibrary } from '@/lib/defaultLegalLibrary';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,8 @@ export async function GET(req: Request) {
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
     }
+
+    await ensureDefaultLegalLibrary(user.officeId);
 
     const kits = await prisma.legalKit.findMany({
       where: {

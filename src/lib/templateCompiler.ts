@@ -6,6 +6,8 @@ export interface VariableValues {
   cliente_nome?: string;
   cliente_cpf?: string;
   cliente_rg?: string;
+  cliente_nacionalidade?: string;
+  cliente_telefone?: string;
   cliente_endereco?: string;
   cliente_estado_civil?: string;
   cliente_profissao?: string;
@@ -37,7 +39,7 @@ export function replaceTemplateVariables(contentHtml: string, variables: Variabl
     const regex = new RegExp(`{{\\s*${key}\\s*}}`, 'gi');
     compiled = compiled.replace(regex, val || '________________');
   }
-  return compiled;
+  return compiled.replace(/{{\s*[a-zA-Z0-9_]+\s*}}/g, '________________');
 }
 
 type ParagraphKind = 'BODY' | 'H1' | 'H2' | 'LIST';

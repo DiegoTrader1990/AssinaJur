@@ -107,6 +107,8 @@ export default function TemplatesPage() {
     'cliente_nome',
     'cliente_cpf',
     'cliente_rg',
+    'cliente_nacionalidade',
+    'cliente_telefone',
     'cliente_endereco',
     'cliente_estado_civil',
     'cliente_profissao',

@@ -755,27 +755,42 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
   y = integY - 14;
 
-  // SEÇÃO 6: VALIDAÇÃO PÚBLICA & QR CODE
-  ensureSpace(120);
-  const qrSize = 92;
-  const qrY = y - qrSize - 10;
-  page.drawRectangle({ x: CX, y: qrY - 7, width: CW, height: qrSize + 34, color: rgb(1, 1, 1), borderWidth: 0.9, borderColor: panelBorder });
-  page.drawText('5. VALIDAÇÃO PÚBLICA E CONFORMIDADE LEGAL', { x: CX, y: y - 10, size: 8, font: bold, color: navy });
-  page.drawImage(qrImage, { x: CX, y: qrY, width: qrSize, height: qrSize });
+  // SEÇÃO 5: VALIDAÇÃO PÚBLICA & QR CODE
+  ensureSpace(150);
+  const validationTop = y;
+  const validationH = 140;
+  const validationY = validationTop - validationH;
+  const validationHeaderH = 25;
+  const qrSize = 88;
+  const qrY = validationY + 13;
+  page.drawRectangle({ x: CX, y: validationY, width: CW, height: validationH, color: rgb(1, 1, 1), borderWidth: 0.9, borderColor: panelBorder });
+  page.drawRectangle({ x: CX, y: validationTop - validationHeaderH, width: CW, height: validationHeaderH, color: navy });
+  page.drawRectangle({ x: CX, y: validationTop - 3, width: CW, height: 3, color: gold });
+  page.drawText('5. VALIDAÇÃO PÚBLICA E CONFORMIDADE LEGAL', { x: padX, y: validationTop - 17, size: 7.7, font: bold, color: rgb(1, 1, 1) });
+  page.drawText('VERIFICAÇÃO INDEPENDENTE', { x: CR - 112, y: validationTop - 17, size: 6.1, font: bold, color: rgb(0.72, 0.79, 0.9) });
+  page.drawImage(qrImage, { x: padX, y: qrY, width: qrSize, height: qrSize });
 
-  const qrTextX = CX + qrSize + 16;
-  page.drawText('Escaneie o QR Code ao lado ou acesse o portal público:', { x: qrTextX, y: y - 26, size: 8, font: regular, color: text });
-  page.drawText(verificationUrl, { x: qrTextX, y: y - 40, size: 9, font: bold, color: linkBlue });
-  page.drawText(`Código Digitável: ${verificationCode}`, { x: qrTextX, y: y - 54, size: 8.5, font: mono, color: navy });
+  const qrTextX = padX + qrSize + 16;
+  page.drawText('AUTENTICIDADE CONSULTÁVEL A QUALQUER MOMENTO', { x: qrTextX, y: validationTop - 43, size: 6.4, font: bold, color: muted });
+  page.drawText('Escaneie o QR Code ou acesse o portal público:', { x: qrTextX, y: validationTop - 57, size: 8, font: regular, color: text });
+  page.drawText(verificationUrl, { x: qrTextX, y: validationTop - 72, size: 8.6, font: bold, color: linkBlue });
+  page.drawText(`Código digitável: ${verificationCode}`, { x: qrTextX, y: validationTop - 88, size: 8.2, font: mono, color: navy });
 
-  page.drawText(
-    'Este documento possui validade jurídica respaldada pelo Art. 10, § 2º da MP nº 2.200-2/2001 e pela Lei nº 14.063/2020.',
-    { x: qrTextX, y: y - 72, size: 7.2, font: regular, color: muted }
+  const legalValidationLines = wrapTextToWidth(
+    'Validade jurídica respaldada pelo Art. 10, § 2º da MP nº 2.200-2/2001 e pela Lei nº 14.063/2020.',
+    regular,
+    7,
+    CR - qrTextX - 8
   );
+  legalValidationLines.slice(0, 2).forEach((line, index) => {
+    page.drawText(line, { x: qrTextX, y: validationTop - 103 - index * 9, size: 7, font: regular, color: muted });
+  });
   page.drawText(
     'Certificado emitido pela plataforma AssinaJur — Especializada para Advocacia.',
-    { x: qrTextX, y: y - 84, size: 7.2, font: bold, color: navy }
+    { x: qrTextX, y: validationTop - 124, size: 7.1, font: bold, color: navy }
   );
+
+  y = validationY - 14;
 
   // SEÇÃO DE TRILHA PÚBLICA DE EVENTOS (SEM OTP)
   if (doc.events.length > 0) {
@@ -794,13 +809,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
     const startTimelinePage = () => {
       timelinePageCount += 1;
-      const reuseIntegrityPage = timelinePageCount === 1 && qrY > 250;
+      const reuseIntegrityPage = timelinePageCount === 1 && y > 250;
       const p = reuseIntegrityPage ? page : pdfDoc.addPage([PAGE_W, PAGE_H]);
       let introY: number;
       if (reuseIntegrityPage) {
-        p.drawText('6. TRILHA CRONOLÓGICA DE EVIDÊNCIAS', { x: CX, y: qrY - 25, size: 8, font: bold, color: navy });
-        p.drawLine({ start: { x: CX, y: qrY - 32 }, end: { x: CR, y: qrY - 32 }, thickness: 0.8, color: panelBorder });
-        introY = qrY - 49;
+        p.drawText('6. TRILHA CRONOLÓGICA DE EVIDÊNCIAS', { x: CX, y: y - 10, size: 8, font: bold, color: navy });
+        p.drawLine({ start: { x: CX, y: y - 17 }, end: { x: CR, y: y - 17 }, thickness: 0.8, color: panelBorder });
+        introY = y - 34;
       } else {
         drawFrame(p, `6. TRILHA PÚBLICA DE EVENTOS${timelinePageCount > 1 ? ' - CONTINUAÇÃO' : ''}`);
         const timelineTitleLines = wrapTextToWidth(doc!.title, bold, 11, CW);
