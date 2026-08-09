@@ -10,8 +10,30 @@ const qrcode = require('qrcode');
 const pino = require('pino');
 const path = require('path');
 const fs = require('fs');
-const { exec } = require('child_process');
+const { exec, execFileSync } = require('child_process');
 const sharp = require('sharp');
+
+function isWhatsAppDaemonProcess(pid) {
+  try {
+    if (process.platform === 'win32') {
+      const commandLine = execFileSync(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          `(Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}").CommandLine`,
+        ],
+        { encoding: 'utf8', windowsHide: true, timeout: 5000 }
+      );
+      return /\bnode(?:\.exe)?\b/i.test(commandLine) && /whatsapp-daemon\.js/i.test(commandLine);
+    }
+    const commandLine = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').replace(/\0/g, ' ');
+    return /\bnode\b/i.test(commandLine) && /whatsapp-daemon\.js/i.test(commandLine);
+  } catch {
+    return false;
+  }
+}
 
 // Carrega apenas configurações locais do bot. O arquivo .env.bot nunca deve ser versionado.
 for (const envFile of ['.env.bot', '.env']) {
@@ -33,8 +55,12 @@ if (fs.existsSync(LOCK_FILE)) {
     if (Number.isInteger(existingPid) && existingPid > 0) {
       try {
         process.kill(existingPid, 0);
-        console.log(`⚠️ Já existe outro processo do robô rodando (PID ${existingPid}). Encerrando duplicata para manter estabilidade.`);
-        process.exit(0);
+        if (isWhatsAppDaemonProcess(existingPid)) {
+          console.log(`⚠️ Já existe outro processo do robô rodando (PID ${existingPid}). Encerrando duplicata para manter estabilidade.`);
+          process.exit(20);
+        }
+        console.log(`🧹 Trava antiga removida: o PID ${existingPid} agora pertence a outro programa.`);
+        fs.unlinkSync(LOCK_FILE);
       } catch {
         // O arquivo ficou para trás após queda/reinício do Windows. Pode ser removido com segurança.
         fs.unlinkSync(LOCK_FILE);
@@ -64,7 +90,7 @@ const ASSINAJUR_WEBHOOK_URL = process.env.ASSINAJUR_WEBHOOK_URL || 'https://www.
 const BOT_SECRET = process.env.WHATSAPP_BOT_SECRET || '';
 const AUTH_FOLDER = process.env.WHATSAPP_AUTH_DIR || path.join(__dirname, '..', 'whatsapp-auth');
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
-const BOT_VERSION = '2026.08.09.3';
+const BOT_VERSION = '2026.08.09.4';
 const DAEMON_STARTED_AT = new Date().toISOString();
 
 let socketInstance = null;

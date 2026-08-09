@@ -25,10 +25,20 @@ echo.
 echo Conexao local ativa. Para encerrar, feche esta janela.
 echo.
 node "scripts\whatsapp-daemon.js"
+set "BOT_EXIT_CODE=%errorlevel%"
+if "%BOT_EXIT_CODE%"=="20" goto already_running
 echo.
 echo A conexao foi encerrada. Reiniciando em 3 segundos...
 timeout /t 3 /nobreak >nul
 goto loop
+
+:already_running
+echo.
+echo O AssinaJur Bot ja esta funcionando em outra janela.
+echo Nao e necessario iniciar uma segunda copia.
+echo.
+pause
+exit /b 0
 
 :missing_config
 echo.
