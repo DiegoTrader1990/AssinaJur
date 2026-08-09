@@ -650,6 +650,19 @@ async function executePendingAction(officeId: string, action: PendingAction): Pr
         },
       });
 
+  // Mantém documentos ainda pendentes sincronizados com o telefone corrigido
+  // no cadastro. Sem isso, um reenvio podia continuar usando o número antigo
+  // copiado para o signatário quando o documento foi criado.
+  if (existing && normalizePhone(data.phone)) {
+    await prisma.signer.updateMany({
+      where: {
+        status: { not: 'ASSINADO' },
+        document: { officeId, clientId: saved.id },
+      },
+      data: { phone: normalizePhone(data.whatsapp || data.phone) },
+    });
+  }
+
   await prisma.auditLog.create({
     data: {
       officeId,
@@ -1821,6 +1834,53 @@ async function handleTextCommand(
       ].join('\n'),
       actionTaken: 'SHOW_HELP',
     };
+  }
+
+  const directPhoneCorrection = text.match(
+    /\b(?:corrija|corrigir|altere|alterar|atualize|atualizar)\b[^.!?]{0,35}\b(?:telefone|celular|whats(?:app)?)\b(?:\s+(?:de|do|da|para|d[oa]\s+cliente))?\s+(.+?)\s+(?:para|:|como)\s*\+?([\d\s().-]{10,20})\s*$/i
+  );
+  if (directPhoneCorrection) {
+    const query = directPhoneCorrection[1].trim();
+    const correctedPhone = normalizePhone(directPhoneCorrection[2]);
+    if (correctedPhone.length < 10 || correctedPhone.length > 13) {
+      return { replyText: 'O telefone precisa ter DDD e número. Exemplo: *73 99999-9999*.', actionTaken: 'INVALID_CLIENT_PHONE' };
+    }
+    const clients = await prisma.client.findMany({
+      where: { officeId, name: { contains: query, mode: 'insensitive' } },
+      take: 3,
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (clients.length !== 1) {
+      return {
+        replyText: clients.length === 0
+          ? `Não encontrei cliente correspondente a “${query}”.`
+          : `Encontrei mais de um cliente correspondente a “${query}”. Informe o nome completo ou CPF.`,
+        actionTaken: 'CLIENT_PHONE_CORRECTION_AMBIGUOUS',
+      };
+    }
+    const client = clients[0];
+    return createPendingClientAction({
+      name: client.name,
+      cpfCnpj: client.cpfCnpj,
+      rg: client.rg || undefined,
+      issuingOrgan: client.issuingOrgan || undefined,
+      birthDate: client.birthDate || undefined,
+      nationality: client.nationality || undefined,
+      maritalStatus: client.maritalStatus || undefined,
+      profession: client.profession || undefined,
+      phone: correctedPhone,
+      whatsapp: correctedPhone,
+      email: client.email || undefined,
+      cep: client.cep || undefined,
+      address: client.address || undefined,
+      number: client.number || undefined,
+      complement: client.complement || undefined,
+      neighborhood: client.neighborhood || undefined,
+      city: client.city || undefined,
+      state: client.state || undefined,
+      legalArea: client.legalArea || undefined,
+      notes: client.notes || undefined,
+    });
   }
 
   const deleteMatch = text.match(/\b(?:remover|excluir|apagar|deletar)\b(?:\s+(?:o|a|um|uma))?\s*(?:cadastro\s+d[oa]\s+|cliente\s*)?(.*)$/i);
