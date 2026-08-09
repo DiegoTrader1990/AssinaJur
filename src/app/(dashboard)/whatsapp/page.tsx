@@ -18,7 +18,12 @@ import {
   Search,
   CheckCheck,
   RefreshCw,
-  CheckCircle2
+  CheckCircle2,
+  Activity,
+  Cpu,
+  BrainCircuit,
+  AlertTriangle,
+  Download,
 } from 'lucide-react';
 import { maskPhone } from '@/lib/formatters';
 
@@ -51,6 +56,10 @@ export default function WhatsAppPage() {
   const [status, setStatus] = useState<'DISCONNECTED' | 'CONNECTING' | 'CONNECTED'>('DISCONNECTED');
   const [lastHeartbeatAt, setLastHeartbeatAt] = useState<string | null>(null);
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
+  const [botInfo, setBotInfo] = useState<any>(null);
+  const [diagnostic, setDiagnostic] = useState<any>(null);
+  const [currentFlow, setCurrentFlow] = useState<any>(null);
+  const [lastCommand, setLastCommand] = useState<any>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
@@ -128,6 +137,10 @@ export default function WhatsAppPage() {
       }
       setLastHeartbeatAt(dataLogs.lastHeartbeatAt || null);
       setLastSyncAt(new Date());
+      setBotInfo(dataLogs.bot || null);
+      setDiagnostic(dataLogs.lastDocumentDiagnostic || null);
+      setCurrentFlow(dataLogs.currentFlow || null);
+      setLastCommand(dataLogs.lastCommand || null);
       if (Array.isArray(dataLogs.logs) && dataLogs.logs.length > 0) {
         const realMessages: ChatMessage[] = dataLogs.logs
           .slice()
@@ -228,11 +241,40 @@ export default function WhatsAppPage() {
     }
   };
 
+  const downloadDiagnostic = () => {
+    const report = {
+      generatedAt: new Date().toISOString(),
+      connection: { status, lastHeartbeatAt, lastSyncAt },
+      bot: botInfo,
+      currentFlow,
+      lastCommand,
+      lastDocumentDiagnostic: diagnostic,
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `assinajur-diagnostico-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
   const filteredContacts = contacts.filter((c) =>
     c.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
     c.phone.includes(searchFilter) ||
     c.cpfCnpj.includes(searchFilter)
   );
+
+  const flowLabel = currentFlow?.type === 'CREATE_OR_UPDATE_CLIENT'
+    ? currentFlow.missingPhone ? 'Cadastro aguardando telefone' : 'Cadastro aguardando confirmação'
+    : currentFlow?.type === 'GENERATE_LEGAL_DRAFT'
+      ? currentFlow.approved ? 'Minuta aprovada — pronta para gerar link' : 'Minuta aguardando revisão'
+      : currentFlow?.type === 'DELETE_CLIENT'
+        ? 'Exclusão aguardando confirmação'
+        : currentFlow?.type === 'GENERATE_KIT'
+          ? 'Kit aguardando confirmação'
+          : currentFlow?.type === 'GENERATE_TEMPLATE'
+            ? 'Documento aguardando confirmação'
+            : 'Nenhuma etapa pendente';
 
   if (!mounted) return null;
 
@@ -260,14 +302,37 @@ export default function WhatsAppPage() {
           </div>
         </div>
 
-        <button
-          onClick={fetchClientsAndLogs}
-          className="px-4 py-2 rounded-2xl bg-white text-[#075E54] hover:bg-emerald-50 font-extrabold text-xs shadow-md transition-all flex items-center gap-2 shrink-0"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Atualizar Dados
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={downloadDiagnostic} className="px-4 py-2 rounded-2xl bg-white/15 text-white hover:bg-white/25 font-extrabold text-xs transition-all flex items-center gap-2 shrink-0 border border-white/20">
+            <Download className="w-3.5 h-3.5" /> Baixar diagnóstico
+          </button>
+          <button onClick={fetchClientsAndLogs} className="px-4 py-2 rounded-2xl bg-white text-[#075E54] hover:bg-emerald-50 font-extrabold text-xs shadow-md transition-all flex items-center gap-2 shrink-0">
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Atualizar Dados
+          </button>
+        </div>
       </div>
       {lastSyncAt && <p className="text-[11px] text-slate-400 px-2 -mt-2">Painel sincronizado em {lastSyncAt.toLocaleTimeString('pt-BR')}</p>}
+
+      <div className="grid md:grid-cols-3 gap-3">
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+          <div className="flex items-center gap-2 text-xs font-extrabold text-[#071B3A]"><Activity className="w-4 h-4 text-blue-600" /> Etapa atual</div>
+          <p className="text-sm font-bold text-slate-800 mt-2">{flowLabel}</p>
+          <p className="text-[11px] text-slate-500 mt-1">{currentFlow?.clientName ? `${currentFlow.clientName}${currentFlow.version ? ` • versão ${currentFlow.version}` : ''}` : 'O contexto pendente é recuperado mesmo após reiniciar o bot.'}</p>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+          <div className="flex items-center gap-2 text-xs font-extrabold text-[#071B3A]"><Cpu className="w-4 h-4 text-emerald-600" /> Bot local</div>
+          <p className="text-sm font-bold text-slate-800 mt-2">Versão {botInfo?.version || 'aguardando reinício'}</p>
+          <p className="text-[11px] text-slate-500 mt-1">Gemini: {botInfo?.providers?.gemini ? 'ativo' : 'indisponível'} • Groq: {botInfo?.providers?.groq ? 'ativo' : 'indisponível'} • OCR local: {botInfo?.providers?.localOcr ? 'ativo' : 'indisponível'}</p>
+        </div>
+
+        <div className={`rounded-2xl border p-4 shadow-sm ${diagnostic?.complete ? 'bg-emerald-50 border-emerald-200' : diagnostic ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
+          <div className="flex items-center gap-2 text-xs font-extrabold text-[#071B3A]">{diagnostic && !diagnostic.complete ? <AlertTriangle className="w-4 h-4 text-amber-600" /> : <BrainCircuit className="w-4 h-4 text-purple-600" />} Última leitura</div>
+          <p className="text-sm font-bold text-slate-800 mt-2">{diagnostic ? `${diagnostic.provider} • ${diagnostic.complete ? 'concluída' : 'incompleta'}` : 'Nenhum documento analisado'}</p>
+          <p className="text-[11px] text-slate-500 mt-1">{diagnostic ? `${Math.max(0, Number(diagnostic.durationMs || 0) / 1000).toFixed(1)}s • ${diagnostic.attempts || 0} tentativa(s) • ${diagnostic.fields?.length || 0} campo(s)` : lastCommand ? `Última ação: ${lastCommand.action || 'processada'}` : 'Envie uma foto para acompanhar o diagnóstico.'}</p>
+          {diagnostic?.error && <p className="text-[10px] text-amber-700 mt-1 line-clamp-2">{diagnostic.error}</p>}
+        </div>
+      </div>
 
       {/* Interface Central de Atendimento Segura */}
       <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 h-[700px]">

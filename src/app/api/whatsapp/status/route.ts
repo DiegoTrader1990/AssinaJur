@@ -4,6 +4,40 @@ import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
+function parseMetadata(value?: string | null): Record<string, any> {
+  try {
+    const parsed = JSON.parse(value || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function summarizePendingFlow(logs: Array<{ actionTaken: string | null; createdAt: Date }>) {
+  const executed = new Set(logs.map((log) => log.actionTaken || '').filter((value) => value.startsWith('EXECUTED_ACTION:')).map((value) => value.slice('EXECUTED_ACTION:'.length)));
+  for (const log of logs) {
+    const value = log.actionTaken || '';
+    if (!value.startsWith('PENDING_ACTION:')) continue;
+    try {
+      const action = JSON.parse(Buffer.from(value.slice('PENDING_ACTION:'.length), 'base64url').toString('utf8'));
+      if (!action?.id || executed.has(action.id)) return null;
+      const ttl = action.type === 'GENERATE_LEGAL_DRAFT' ? 24 * 60 * 60 * 1000 : 15 * 60 * 1000;
+      if (Date.now() - new Date(action.createdAt || log.createdAt).getTime() > ttl) return null;
+      return {
+        type: String(action.type || ''),
+        createdAt: action.createdAt || log.createdAt,
+        clientName: action.data?.clientName || action.data?.name || null,
+        version: action.data?.version || null,
+        approved: Boolean(action.data?.approvedAt),
+        missingPhone: action.type === 'CREATE_OR_UPDATE_CLIENT' && !String(action.data?.phone || '').replace(/\D/g, ''),
+      };
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 export async function GET() {
   try {
     const user = await getSessionUser();
@@ -21,8 +55,10 @@ export async function GET() {
       take: 30,
     });
 
-    const heartbeatFresh = session
-      ? Date.now() - new Date(session.updatedAt).getTime() < 2 * 60 * 1000
+    const metadata = parseMetadata(session?.sessionData);
+    const heartbeatAt = metadata.lastStatusAt || session?.updatedAt || null;
+    const heartbeatFresh = heartbeatAt
+      ? Date.now() - new Date(heartbeatAt).getTime() < 2 * 60 * 1000
       : false;
     const realStatus = session?.status === 'CONNECTED' && heartbeatFresh
       ? 'CONNECTED'
@@ -36,7 +72,16 @@ export async function GET() {
       phoneNumber: realStatus === 'CONNECTED' ? session?.phoneNumber || null : null,
       autoRemind: session?.autoRemind ?? true,
       qrCode: session?.qrCode || null,
-      lastHeartbeatAt: session?.updatedAt || null,
+      lastHeartbeatAt: heartbeatAt,
+      bot: {
+        version: metadata.botVersion || null,
+        runtime: metadata.runtime || null,
+        startedAt: metadata.daemonStartedAt || null,
+        providers: metadata.providers || {},
+      },
+      lastDocumentDiagnostic: metadata.lastDocumentDiagnostic || null,
+      lastCommand: metadata.lastCommand || null,
+      currentFlow: summarizePendingFlow(logs),
       logs: logs.map((l) => ({
         id: l.id,
         fromNumber: l.fromNumber,

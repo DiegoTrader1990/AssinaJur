@@ -42,6 +42,21 @@ function brazilianPhoneVariants(value: string): Set<string> {
   return variants;
 }
 
+function parseSessionMetadata(value?: string | null): Record<string, any> {
+  try {
+    const parsed = JSON.parse(value || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function mergeSessionMetadata(officeId: string, patch: Record<string, any>) {
+  const current = await prisma.whatsAppSession.findUnique({ where: { officeId }, select: { sessionData: true } });
+  const merged = { ...parseSessionMetadata(current?.sessionData), ...patch };
+  return JSON.stringify(merged).slice(0, 24_000);
+}
+
 async function resolveBridgeOfficeId(fromNumber: string): Promise<string | null> {
   const configuredOfficeId = process.env.WHATSAPP_OFFICE_ID;
   if (configuredOfficeId) {
@@ -124,6 +139,17 @@ export async function POST(req: Request) {
       );
     }
 
+    if (body.eventType === 'CONTEXT') {
+      const phoneVariants = Array.from(brazilianPhoneVariants(fromNumber));
+      const logs = await prisma.whatsAppLog.findMany({
+        where: { officeId: targetOfficeId, fromNumber: { in: phoneVariants } },
+        select: { fromNumber: true, body: true, aiResponse: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      });
+      return NextResponse.json({ success: true, logs: logs.reverse() });
+    }
+
     if (body.eventType === 'STATUS') {
       const status = ['CONNECTED', 'CONNECTING', 'DISCONNECTED'].includes(body.status)
         ? body.status
@@ -133,11 +159,25 @@ export async function POST(req: Request) {
         update: {
           status,
           phoneNumber: status === 'CONNECTED' ? String(body.phoneNumber || fromNumber) : null,
+          sessionData: await mergeSessionMetadata(targetOfficeId, {
+            botVersion: String(body.botVersion || ''),
+            daemonStartedAt: body.daemonStartedAt || null,
+            runtime: String(body.runtime || ''),
+            providers: body.providers && typeof body.providers === 'object' ? body.providers : {},
+            lastStatusAt: new Date().toISOString(),
+          }),
         },
         create: {
           officeId: targetOfficeId,
           status,
           phoneNumber: status === 'CONNECTED' ? String(body.phoneNumber || fromNumber) : null,
+          sessionData: JSON.stringify({
+            botVersion: String(body.botVersion || ''),
+            daemonStartedAt: body.daemonStartedAt || null,
+            runtime: String(body.runtime || ''),
+            providers: body.providers && typeof body.providers === 'object' ? body.providers : {},
+            lastStatusAt: new Date().toISOString(),
+          }),
         },
       });
       return NextResponse.json({ success: true, status: whatsappSession.status });
@@ -178,6 +218,38 @@ export async function POST(req: Request) {
         body: String(body.message || (messageType === 'IMAGE' ? 'Foto de documento enviada' : 'Mensagem de mídia')),
         aiResponse: agentResult.replyText,
         actionTaken: agentResult.actionTaken,
+      },
+    });
+
+    const diagnostic = body.diagnostic && typeof body.diagnostic === 'object' && !Array.isArray(body.diagnostic)
+      ? body.diagnostic
+      : null;
+    const serverRecoveredDocument = Boolean(diagnostic && !diagnostic.complete && messageType !== 'TEXT' && agentResult.actionTaken?.startsWith('PENDING_ACTION:'));
+    const finalDiagnostic = diagnostic
+      ? {
+          ...diagnostic,
+          complete: diagnostic.complete || serverRecoveredDocument,
+          provider: serverRecoveredDocument ? 'Contingência visual do servidor' : diagnostic.provider,
+          error: serverRecoveredDocument ? '' : diagnostic.error,
+        }
+      : null;
+    await prisma.whatsAppSession.upsert({
+      where: { officeId: targetOfficeId },
+      update: {
+        sessionData: await mergeSessionMetadata(targetOfficeId, {
+          ...(finalDiagnostic ? { lastDocumentDiagnostic: finalDiagnostic } : {}),
+          lastCommand: {
+            at: new Date().toISOString(),
+            messageType,
+            action: agentResult.actionTaken?.startsWith('PENDING_ACTION:') ? 'PENDING_ACTION' : agentResult.actionTaken?.startsWith('EXECUTED_ACTION:') ? 'EXECUTED_ACTION' : agentResult.actionTaken,
+            success: !/ERROR|INCOMPLETE|FAILED/i.test(agentResult.actionTaken || ''),
+          },
+        }),
+      },
+      create: {
+        officeId: targetOfficeId,
+        status: 'DISCONNECTED',
+        sessionData: JSON.stringify({ lastDocumentDiagnostic: finalDiagnostic, lastCommand: { at: new Date().toISOString(), messageType, action: agentResult.actionTaken } }),
       },
     });
 

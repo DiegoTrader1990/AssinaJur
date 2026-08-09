@@ -64,13 +64,19 @@ const ASSINAJUR_WEBHOOK_URL = process.env.ASSINAJUR_WEBHOOK_URL || 'https://www.
 const BOT_SECRET = process.env.WHATSAPP_BOT_SECRET || '';
 const AUTH_FOLDER = process.env.WHATSAPP_AUTH_DIR || path.join(__dirname, '..', 'whatsapp-auth');
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
+const BOT_VERSION = '2026.08.09.2';
+const DAEMON_STARTED_AT = new Date().toISOString();
 
 let socketInstance = null;
 let isConnected = false;
 let isConnecting = false;
 const conversationHistories = new Map();
+let activeDocumentDiagnostic = null;
 
 function recordDocumentDiagnostic(event, details = {}) {
+  if (activeDocumentDiagnostic) {
+    activeDocumentDiagnostic.events.push({ event, at: new Date().toISOString(), ...details });
+  }
   try {
     const diagnosticFolder = path.join(process.env.LOCALAPPDATA || path.join(__dirname, '..'), 'AssinaJur');
     fs.mkdirSync(diagnosticFolder, { recursive: true });
@@ -82,10 +88,37 @@ function recordDocumentDiagnostic(event, details = {}) {
   } catch {}
 }
 
+function conversationKey(fromNumber) {
+  const digits = String(fromNumber || '').replace(/\D/g, '');
+  const withCountry = digits.startsWith('55') ? digits : `55${digits}`;
+  return withCountry.length === 12 ? `${withCountry.slice(0, 4)}9${withCountry.slice(4)}` : withCountry || 'default';
+}
+
+function documentDiagnosticSummary(documentData) {
+  if (!activeDocumentDiagnostic) return null;
+  const fields = Object.keys(documentData || {}).filter((field) => Boolean(documentData?.[field]));
+  const events = activeDocumentDiagnostic.events || [];
+  const providerEvent = [...events].reverse().find((item) => /(?:GEMINI_RESULT|GROQ_VISION_RESULT|LOCAL_OCR_RESULT)/.test(item.event));
+  const errorEvent = [...events].reverse().find((item) => /ERROR|INCOMPLETE/.test(item.event));
+  return {
+    startedAt: activeDocumentDiagnostic.startedAt,
+    finishedAt: new Date().toISOString(),
+    durationMs: Date.now() - activeDocumentDiagnostic.startedAtMs,
+    mimeType: activeDocumentDiagnostic.mimeType,
+    bytes: activeDocumentDiagnostic.bytes,
+    rotationsTested: activeDocumentDiagnostic.rotationsTested,
+    provider: providerEvent?.event?.startsWith('GEMINI') ? 'Gemini' : providerEvent?.event?.startsWith('GROQ') ? 'Groq Vision' : providerEvent?.event?.startsWith('LOCAL') ? 'OCR local' : 'Não identificado',
+    attempts: events.filter((item) => /RESULT|HTTP_ERROR/.test(item.event)).length,
+    fields,
+    complete: Boolean(documentData?.name && hasValidCpfCnpjCheckDigits(documentData?.cpfCnpj)),
+    error: errorEvent ? String(errorEvent.message || errorEvent.event).slice(0, 180) : '',
+  };
+}
+
 function rememberConversation(fromNumber, role, content) {
   const clean = String(content || '').trim();
   if (!clean) return;
-  const key = String(fromNumber || 'default').replace(/\D/g, '') || 'default';
+  const key = conversationKey(fromNumber);
   const history = conversationHistories.get(key) || [];
   history.push({ role, content: clean.slice(0, 1200) });
   if (history.length > 20) history.splice(0, history.length - 20);
@@ -260,6 +293,14 @@ async function analyzeDocumentLocally(mediaBase64, mediaMimeType) {
     : 'image/jpeg';
   const collected = {};
   const imageVariants = mimeType.startsWith('image/') ? await buildOcrImageVariants(mediaBase64) : [];
+  activeDocumentDiagnostic = {
+    startedAt: new Date().toISOString(),
+    startedAtMs: Date.now(),
+    mimeType,
+    bytes: Math.floor(mediaBase64.length * 0.75),
+    rotationsTested: imageVariants.length || 1,
+    events: [],
+  };
   const geminiInputs = imageVariants.length
     ? imageVariants.map((buffer) => ({ mimeType: 'image/jpeg', data: buffer.toString('base64') }))
     : [{ mimeType, data: mediaBase64 }];
@@ -504,7 +545,7 @@ function normalizeConversationRouting(parsed) {
 }
 
 async function interpretConversationLocally(fromNumber, text) {
-  const key = String(fromNumber || 'default').replace(/\D/g, '') || 'default';
+  const key = conversationKey(fromNumber);
   const history = (conversationHistories.get(key) || []).map((item) => `${item.role === 'user' ? 'Advogado' : 'AssinaJur'}: ${item.content}`).join('\n');
   const prompt = `Você é o copilot privado do advogado administrador do AssinaJur. Interprete a mensagem considerando toda a conversa recente.
 Retorne somente JSON válido com "command", "reply", "revision" e "draftRequest". Use strings vazias e draftRequest null nos campos não aplicáveis.
@@ -657,6 +698,19 @@ async function callAssinaJur(payload) {
   return data;
 }
 
+async function restoreConversationContext(fromNumber) {
+  try {
+    const data = await callAssinaJur({ eventType: 'CONTEXT', fromNumber });
+    for (const log of data.logs || []) {
+      if (log.body) rememberConversation(log.fromNumber || fromNumber, 'user', log.body);
+      if (log.aiResponse) rememberConversation(log.fromNumber || fromNumber, 'assistant', log.aiResponse);
+    }
+    console.log(`🧠 Contexto restaurado: ${data.logs?.length || 0} interação(ões) anteriores.`);
+  } catch (error) {
+    console.error('Não foi possível restaurar o contexto anterior:', error.message);
+  }
+}
+
 async function publishConnectionStatus(status, phoneNumber) {
   try {
     await callAssinaJur({
@@ -664,6 +718,14 @@ async function publishConnectionStatus(status, phoneNumber) {
       status,
       fromNumber: process.env.WHATSAPP_ADMIN_PHONE || phoneNumber || '5573988250201',
       phoneNumber: phoneNumber || null,
+      botVersion: BOT_VERSION,
+      daemonStartedAt: DAEMON_STARTED_AT,
+      runtime: process.version,
+      providers: {
+        gemini: Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY),
+        groq: Boolean(process.env.GROQ_API_KEY),
+        localOcr: true,
+      },
     });
   } catch (error) {
     console.error(`Não foi possível atualizar o status ${status} no site:`, error.message);
@@ -770,6 +832,7 @@ async function connectToWhatsApp() {
         console.log('======================================================\n');
         const connectedPhone = (sock.user?.id || '').replace(/@.*$/, '').replace(/:\d+$/, '');
         await publishConnectionStatus('CONNECTED', connectedPhone);
+        await restoreConversationContext(process.env.WHATSAPP_ADMIN_PHONE || '5573988250201');
       }
     });
 
@@ -814,6 +877,7 @@ async function connectToWhatsApp() {
         let mediaMimeType = undefined;
         let documentData = undefined;
         let localRouting = undefined;
+        activeDocumentDiagnostic = null;
 
         if (isImage || isReadableDocument) {
           try {
@@ -863,6 +927,7 @@ async function connectToWhatsApp() {
             conversationReply: localRouting?.reply,
             draftRequest: localRouting?.draftRequest,
             conversationRevision: localRouting?.revision,
+            diagnostic: (isImage || isReadableDocument) ? documentDiagnosticSummary(documentData) : undefined,
           });
           if (data.localAiTask) {
             try {
