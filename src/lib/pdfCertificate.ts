@@ -143,9 +143,9 @@ async function embedBase64Image(
       bytes = Buffer.from(await sharp(bytes)
         .rotate()
         .resize(cover.width, cover.height, { fit: 'cover', position: 'attention' })
-        .jpeg({ quality: 90, mozjpeg: true })
+        .png({ compressionLevel: 9, adaptiveFiltering: true })
         .toBuffer());
-      return await pdfDoc.embedJpg(bytes);
+      return await pdfDoc.embedPng(bytes);
     }
 
     // Detectar cabeçalho PNG: 0x89 0x50 0x4E 0x47
