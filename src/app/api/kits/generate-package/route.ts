@@ -90,6 +90,7 @@ export async function POST(req: Request) {
           kitId: kit.id,
           title: `${template.title} (${kit.name})`,
           documentType: template.documentType,
+          signaturePosition: `CUSTOM:${compiledResult.pageCount}:0.3100:0.7850:0.3800:0.1050`,
           originalFileId: compiledResult.storageRecord.id,
           originalHash: compiledResult.hash,
           status: 'ENVIADO',

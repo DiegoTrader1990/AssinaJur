@@ -205,8 +205,9 @@ async function renderTemplatePdf({
     }
   }
 
+  const pageCount = pdfDoc.getPageCount();
   const pdfBuffer = Buffer.from(await pdfDoc.save());
-  return { pdfBuffer, hash: calculateHash(pdfBuffer), compiledText };
+  return { pdfBuffer, hash: calculateHash(pdfBuffer), compiledText, pageCount };
 }
 
 export async function compileTemplatePreviewToPdf({
@@ -254,5 +255,5 @@ export async function compileTemplateToPdf({
     originalName: `${title.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`,
     mimeType: 'application/pdf',
   });
-  return { storageRecord, hash: rendered.hash, compiledText: rendered.compiledText };
+  return { storageRecord, hash: rendered.hash, compiledText: rendered.compiledText, pageCount: rendered.pageCount };
 }

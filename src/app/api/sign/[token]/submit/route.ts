@@ -111,16 +111,22 @@ export async function POST(
     });
 
     // 6. Registros de Trilha Pública de Eventos em Português Amigável (Sem OTP)
-    await prisma.documentEvent.create({
-      data: {
-        documentId: signer.document.id,
-        signerId: signer.id,
-        eventType: 'IDENTITY_CONFIRMED',
-        description: `CPF informado e confirmado pelo signatário ${signer.name}.`,
-        ipAddress: clientIp,
-        userAgent,
-      },
+    const existingIdentityConfirmation = await prisma.documentEvent.findFirst({
+      where: { documentId: signer.document.id, signerId: signer.id, eventType: 'IDENTITY_CONFIRMED' },
+      select: { id: true },
     });
+    if (!existingIdentityConfirmation) {
+      await prisma.documentEvent.create({
+        data: {
+          documentId: signer.document.id,
+          signerId: signer.id,
+          eventType: 'IDENTITY_CONFIRMED',
+          description: `CPF confirmado pelo signatário ${signer.name}.`,
+          ipAddress: clientIp,
+          userAgent,
+        },
+      });
+    }
 
     await prisma.documentEvent.create({
       data: {

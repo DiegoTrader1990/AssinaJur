@@ -5,6 +5,7 @@ import { getFileBuffer, saveFile } from './storage';
 import { calculateHash } from './pdfHash';
 import { formatBrasiliaDateTime } from './dateUtils';
 import sharp from 'sharp';
+import { dedupePublicAuditEvents } from './publicAuditTrail';
 
 // CPF e Telefone completos (SEM MASCARAMENTO no certificado oficial de evidências)
 export function formatFullCpf(cpf: string): string {
@@ -198,6 +199,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
     throw new Error('Documento ou arquivo original não encontrado.');
   }
 
+  const publicEvents = dedupePublicAuditEvents(doc.events);
+
   const originalBytes = await getFileBuffer(doc.officeId, doc.originalFile.storageKey);
   if (!originalBytes) {
     throw new Error('Arquivo original não encontrado no armazenamento.');
@@ -266,20 +269,31 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const stampText = `Documento assinado eletronicamente  |  Código: ${verificationCode}  |  Página ${idx + 1}/${totalOrigPages}  |  AssinaJur`;
 
     if (customStamp) {
+      const footerText = `AssinaJur | ${verificationCode} | Página ${idx + 1}/${totalOrigPages} | Validação pública em assinajur.com.br/verificar`;
+      p.drawLine({ start: { x: 12, y: 17 }, end: { x: pW - 12, y: 17 }, thickness: 0.45, color: navy, opacity: 0.48 });
+      p.drawText(footerText, { x: 14, y: 7, size: 5.2, font: regular, color: muted });
       if (idx + 1 !== customStamp.page) return;
       const stampW = Math.min(pW * customStamp.width, pW - 16);
       const stampH = Math.min(pH * customStamp.height, 92);
       const stampX = Math.min(pW - stampW - 8, Math.max(8, pW * customStamp.x));
       const stampY = Math.min(pH - stampH - 8, Math.max(8, pH * (1 - customStamp.y - customStamp.height)));
       const signerNames = safeText(doc.signers.map((item) => item.name).join(', '), 180);
-      const nameLines = wrapTextToWidth(signerNames, bold, 7.2, stampW - 24).slice(0, 2);
-      p.drawRectangle({ x: stampX, y: stampY, width: stampW, height: stampH, color: rgb(1, 1, 1), opacity: 0.94, borderWidth: 1.2, borderColor: navy });
+      const qrStampSize = Math.min(42, Math.max(28, stampH - 25));
+      const contentX = stampX + qrStampSize + 20;
+      const contentW = stampX + stampW - contentX - 8;
+      const nameLines = wrapTextToWidth(signerNames, bold, 7.1, contentW).slice(0, 2);
+      const signedAt = doc.signers.find((item) => item.signedAt)?.signedAt || doc.completedAt || new Date();
+      p.drawRectangle({ x: stampX + 2.5, y: stampY - 2.5, width: stampW, height: stampH, color: rgb(0.78, 0.81, 0.86), opacity: 0.35 });
+      p.drawRectangle({ x: stampX, y: stampY, width: stampW, height: stampH, color: rgb(1, 1, 1), opacity: 0.98, borderWidth: 1.35, borderColor: navy });
       p.drawRectangle({ x: stampX, y: stampY + stampH - 5, width: stampW, height: 5, color: gold });
-      p.drawText('ASSINADO ELETRONICAMENTE', { x: stampX + 10, y: stampY + stampH - 19, size: 7.4, font: bold, color: navy });
+      p.drawImage(qrImage, { x: stampX + 8, y: stampY + (stampH - qrStampSize) / 2 - 1, width: qrStampSize, height: qrStampSize });
+      p.drawLine({ start: { x: contentX - 8, y: stampY + 9 }, end: { x: contentX - 8, y: stampY + stampH - 12 }, thickness: 0.7, color: panelBorder });
+      p.drawText('ASSINATURA ELETRÔNICA VERIFICADA', { x: contentX, y: stampY + stampH - 18, size: 6.2, font: bold, color: navy });
       nameLines.forEach((line, lineIndex) => {
-        p.drawText(line, { x: stampX + 10, y: stampY + stampH - 32 - lineIndex * 9, size: 7.2, font: bold, color: text });
+        p.drawText(line, { x: contentX, y: stampY + stampH - 31 - lineIndex * 8.5, size: 7.1, font: bold, color: text });
       });
-      p.drawText(`AssinaJur | ${verificationCode}`, { x: stampX + 10, y: stampY + 8, size: 6.2, font: mono, color: green });
+      p.drawText(formatBrasiliaDateTime(signedAt, false).replace(/\s*\(.+$/, ''), { x: contentX, y: stampY + 17, size: 5.6, font: regular, color: muted });
+      p.drawText(`VALIDAR: ${verificationCode}`, { x: contentX, y: stampY + 7, size: 5.8, font: mono, color: navy });
     } else if (sigPos === 'TOP') {
       const stripH = 22;
       const stripY = pH - stripH;
@@ -410,46 +424,24 @@ export async function generateFinalPdfCertificate(documentId: string) {
     x: CX, y: 685, size: 7.5, font: mono, color: muted,
   });
 
-  // Selo "ASSINADO E AUTÊNTICO" elegante sem sobreposição
-  const badgeW = 165;
-  const badgeH = 30;
+  // Identificador funcional de autenticidade, vinculado ao código e ao QR público.
+  const badgeW = 185;
+  const badgeH = 34;
   const badgeX = CR - badgeW;
-  const badgeY = 712;
+  const badgeY = 708;
   page.drawRectangle({
     x: badgeX,
     y: badgeY,
     width: badgeW,
     height: badgeH,
-    color: rgb(0.92, 0.98, 0.94),
-    borderWidth: 1,
-    borderColor: green,
+    color: navy,
+    borderWidth: 1.1,
+    borderColor: navy,
   });
-  const circleR = 9;
-  const circleCx = badgeX + 16;
-  const circleCy = badgeY + badgeH / 2;
-  page.drawEllipse({ x: circleCx, y: circleCy, xScale: circleR, yScale: circleR, color: green });
-  page.drawLine({
-    start: { x: circleCx - 4, y: circleCy - 0.5 },
-    end: { x: circleCx - 1.2, y: circleCy - 3.8 },
-    thickness: 2,
-    color: rgb(1, 1, 1),
-    lineCap: LineCapStyle.Round,
-  });
-  page.drawLine({
-    start: { x: circleCx - 1.2, y: circleCy - 3.8 },
-    end: { x: circleCx + 5, y: circleCy + 4.2 },
-    thickness: 2,
-    color: rgb(1, 1, 1),
-    lineCap: LineCapStyle.Round,
-  });
-  page.drawText('ASSINADO E AUTÊNTICO', { x: circleCx + 14, y: circleCy + 2, size: 7.5, font: bold, color: green });
-  page.drawText('MP 2.200-2 & Lei 14.063', {
-    x: circleCx + 14,
-    y: circleCy - 8,
-    size: 6,
-    font: regular,
-    color: muted,
-  });
+  page.drawRectangle({ x: badgeX, y: badgeY + badgeH - 4, width: badgeW, height: 4, color: gold });
+  page.drawText('AUTENTICIDADE VERIFICÁVEL', { x: badgeX + 11, y: badgeY + 18, size: 7.1, font: bold, color: rgb(1, 1, 1) });
+  page.drawText(verificationCode, { x: badgeX + 11, y: badgeY + 7, size: 7, font: mono, color: gold });
+  page.drawText('QR NA SEÇÃO 5', { x: badgeX + 119, y: badgeY + 7, size: 5.2, font: bold, color: rgb(0.72, 0.79, 0.9) });
 
   page.drawLine({ start: { x: CX, y: 676 }, end: { x: CR, y: 676 }, thickness: 0.8, color: panelBorder });
 
@@ -793,7 +785,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
   y = validationY - 14;
 
   // SEÇÃO DE TRILHA PÚBLICA DE EVENTOS (SEM OTP)
-  if (doc.events.length > 0) {
+  if (publicEvents.length > 0) {
     const dateColX = CX + 6;
     const dateColWidth = 106;
     const eventColX = dateColX + dateColWidth + 8;
@@ -861,7 +853,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
     startTimelinePage();
 
-    const rows = doc.events.map((ev) => {
+    const rows = publicEvents.map((ev) => {
       const dateText = formatBrasiliaDateTime(ev.createdAt, true).replace(' (Horário de Brasília — UTC−3)', '');
       const eventLabel = PUBLIC_EVENT_LABELS[ev.eventType] || ev.eventType;
       const dateLines = wrapTextToWidth(dateText, mono, 7, dateColWidth - 8);
@@ -906,7 +898,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       timelinePage.drawLine({ start: { x: CX, y: rowY }, end: { x: CR, y: rowY }, thickness: 0.5, color: panelBorder });
     });
 
-    closeTimelinePage(`Trilha de auditoria concluída com ${doc.events.length} evento(s) registrado(s).`);
+    closeTimelinePage(`Trilha de auditoria concluída com ${publicEvents.length} evento(s) registrado(s).`);
   }
 
   // Metadados imutáveis do PDF

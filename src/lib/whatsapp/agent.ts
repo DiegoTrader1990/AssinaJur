@@ -2,6 +2,8 @@ import { randomUUID } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
 import { compileTemplatePreviewToPdf, compileTemplateToPdf } from '@/lib/templateCompiler';
+import { getFileBuffer } from '@/lib/storage';
+import { PDFDocument } from 'pdf-lib';
 import {
   brazilianPhoneVariants,
   extractClientConversationCorrections,
@@ -783,6 +785,7 @@ async function createDocumentFromTemplate({
       kitId: kitId || null,
       title,
       documentType: template.documentType,
+      signaturePosition: `CUSTOM:${compiled.pageCount}:0.3100:0.7850:0.3800:0.1050`,
       originalFileId: compiled.storageRecord.id,
       originalHash: compiled.hash,
       status: 'ENVIADO',
@@ -885,7 +888,7 @@ async function generateTemplateDocument(officeId: string, action: PendingTemplat
   const result = await createDocumentFromTemplate({ officeId, clientId: action.data.clientId, template });
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.assinajur.com.br';
   return {
-    replyText: `✅ *Documento gerado no AssinaJur*\n\n📄 ${result.document.title}\n👤 ${result.client.name}\n🔗 ${appUrl}/assinar/${result.signer.token}\n\nDiga *cobrar ${result.client.name}* para enviar o link pelo WhatsApp.`,
+    replyText: `✅ *Documento gerado no AssinaJur*\n\n📄 ${result.document.title}\n👤 ${result.client.name}\n🔗 ${appUrl}/assinar/${result.signer.token}\n\nO selo profissional ficará na área inferior da última página. Para alterar antes do envio, diga, por exemplo: *coloque o selo na página 2, à direita*.\n\nDiga *cobrar ${result.client.name}* para enviar o link pelo WhatsApp.`,
     actionTaken: `${EXECUTED_PREFIX}${action.id}`,
   };
 }
@@ -1457,6 +1460,46 @@ async function handleTextCommand(
   const sendSignatureLinkIntent = signatureLinkCommand.matched;
   const cancelIntent = isCancelIntent(text);
   const approvalIntent = isApprovalIntent(text, generateLinkIntent);
+
+  const stampPositionIntent = /\b(?:posicione|posicionar|coloque|mova|alterar|altere|defina|ajuste)\b[\s\S]{0,80}\b(?:selo|carimbo|assinatura)\b|\b(?:selo|carimbo|assinatura)\b[\s\S]{0,80}\b(?:página|pagina|topo|superior|centro|meio|inferior|embaixo|rodapé|rodape|margem|esquerda|direita)\b/i.test(text);
+  if (stampPositionIntent) {
+    const document = await prisma.document.findFirst({
+      where: {
+        officeId,
+        status: { notIn: ['CONCLUIDO', 'CANCELADO', 'EXPIRADO'] },
+        signers: { some: { status: { not: 'ASSINADO' } } },
+      },
+      include: { originalFile: true },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (!document) {
+      return { replyText: 'Não encontrei um documento recente aguardando assinatura para reposicionar o selo.', actionTaken: 'STAMP_DOCUMENT_NOT_FOUND' };
+    }
+    const originalBuffer = await getFileBuffer(officeId, document.originalFile.storageKey);
+    if (!originalBuffer) {
+      return { replyText: 'Não consegui abrir o PDF para definir a posição do selo.', actionTaken: 'STAMP_PDF_NOT_FOUND' };
+    }
+    const pdf = await PDFDocument.load(originalBuffer, { ignoreEncryption: true });
+    const pageCount = pdf.getPageCount();
+    const explicitPage = text.match(/p[aá]gina\s*(\d+)/i)?.[1];
+    const page = explicitPage ? Number(explicitPage) : pageCount;
+    if (!Number.isInteger(page) || page < 1 || page > pageCount) {
+      return {
+        replyText: `O documento “${document.title}” possui ${pageCount} página(s). Informe uma página entre 1 e ${pageCount}.`,
+        actionTaken: 'STAMP_PAGE_INVALID',
+      };
+    }
+    const x = /\b(?:direita|lado direito)\b/i.test(text) ? 0.57 : /\b(?:esquerda|lado esquerdo)\b/i.test(text) ? 0.07 : 0.31;
+    const y = /\b(?:topo|superior|em cima)\b/i.test(text) ? 0.12 : /\b(?:centro|meio)\b/i.test(text) ? 0.44 : 0.785;
+    const verticalLabel = y < 0.2 ? 'parte superior' : y < 0.6 ? 'centro' : 'parte inferior, sobre a área de assinatura';
+    const horizontalLabel = x > 0.5 ? 'à direita' : x < 0.2 ? 'à esquerda' : 'centralizado';
+    const signaturePosition = `CUSTOM:${page}:${x.toFixed(4)}:${y.toFixed(4)}:0.3800:0.1050`;
+    await prisma.document.update({ where: { id: document.id }, data: { signaturePosition } });
+    return {
+      replyText: `✅ Selo ajustado em “${document.title}”.\n\nPágina ${page} de ${pageCount}, ${verticalLabel}, ${horizontalLabel}.\nEle será aplicado após a assinatura com nome, data, código verificável e QR Code.`,
+      actionTaken: 'SIGNATURE_STAMP_POSITION_UPDATED',
+    };
+  }
 
   if (/^(?:o\s+que\s+falta|qual\s+o\s+próximo\s+passo|em\s+que\s+etapa\s+estamos|onde\s+paramos)\??$/i.test(text)) {
     const action = await findLatestPendingAction(officeId, fromNumber);

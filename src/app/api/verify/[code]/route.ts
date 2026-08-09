@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { formatFullCpf, formatFullPhone } from '@/lib/pdfCertificate';
+import { dedupePublicAuditEvents } from '@/lib/publicAuditTrail';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,7 +38,7 @@ export async function GET(
           orderBy: { signatureOrder: 'asc' },
         },
         events: {
-          select: { eventType: true, description: true, createdAt: true },
+          select: { eventType: true, description: true, createdAt: true, signerId: true },
           where: { NOT: { eventType: 'OTP_SENT' } },
           orderBy: { createdAt: 'asc' },
         },
@@ -63,7 +64,7 @@ export async function GET(
           : null,
     }));
 
-    const auditTrail = document.events.map((ev) => ({
+    const auditTrail = dedupePublicAuditEvents(document.events).map((ev) => ({
       eventType: ev.eventType,
       description: ev.description,
       createdAt: ev.createdAt,

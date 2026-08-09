@@ -10,6 +10,7 @@ import {
   looksLikeUnverifiedOperationalClaim,
   parseSignatureLinkCommand,
 } from '../src/lib/whatsapp/conversation';
+import { dedupePublicAuditEvents } from '../src/lib/publicAuditTrail';
 
 test('considera equivalentes os formatos brasileiros com e sem nono dígito', () => {
   const variants = brazilianPhoneVariants('55 73 98825-0201');
@@ -102,4 +103,15 @@ test('extrai qualificação enviada em uma frase curta', () => {
   assert.equal(result.changes.maritalStatus?.toLowerCase(), 'solteira');
   assert.equal(result.changes.profession?.toLowerCase(), 'advogada');
   assert.equal(result.changes.email, 'dominick.adv@gmail.com');
+});
+
+test('remove confirmação duplicada de CPF sem misturar signatários', () => {
+  const events = dedupePublicAuditEvents([
+    { eventType: 'IDENTITY_CONFIRMED', signerId: 'signer-1', description: 'primeira' },
+    { eventType: 'IDENTITY_CONFIRMED', signerId: 'signer-1', description: 'duplicada' },
+    { eventType: 'IDENTITY_CONFIRMED', signerId: 'signer-2', description: 'outro signatário' },
+    { eventType: 'SIGNATURE_SUBMITTED', signerId: 'signer-1', description: 'assinatura' },
+  ]);
+  assert.equal(events.length, 3);
+  assert.deepEqual(events.map((event) => event.description), ['primeira', 'outro signatário', 'assinatura']);
 });

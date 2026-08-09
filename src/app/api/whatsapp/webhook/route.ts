@@ -9,6 +9,7 @@ import { getFileBuffer } from '@/lib/storage';
 import { queueSignatureCompletionMessages } from '@/lib/whatsapp/signatureCompletion';
 import { generateFinalPdfCertificate } from '@/lib/pdfCertificate';
 import { ensureDefaultLegalLibrary } from '@/lib/defaultLegalLibrary';
+import { PDFDocument } from 'pdf-lib';
 
 export const dynamic = 'force-dynamic';
 
@@ -176,6 +177,34 @@ export async function POST(req: Request) {
         document,
         verificationCode: generated.verificationCode,
         signedFileId: generated.signedStorageFile.id,
+      });
+    }
+
+    if (body.eventType === 'UPGRADE_LATEST_SIGNATURE_STAMP') {
+      const document = await prisma.document.findFirst({
+        where: { officeId: targetOfficeId, status: 'CONCLUIDO', signers: { some: { status: 'ASSINADO' } } },
+        orderBy: { updatedAt: 'desc' },
+        include: { originalFile: true },
+      });
+      if (!document?.originalFile) {
+        return NextResponse.json({ success: false, error: 'Nenhum documento concluído foi encontrado.' }, { status: 404 });
+      }
+      const original = await getFileBuffer(targetOfficeId, document.originalFile.storageKey);
+      if (!original) {
+        return NextResponse.json({ success: false, error: 'O PDF original não foi encontrado.' }, { status: 404 });
+      }
+      const originalPdf = await PDFDocument.load(original, { ignoreEncryption: true });
+      const page = originalPdf.getPageCount();
+      await prisma.document.update({
+        where: { id: document.id },
+        data: { signaturePosition: `CUSTOM:${page}:0.3100:0.7850:0.3800:0.1050` },
+      });
+      const generated = await generateFinalPdfCertificate(document.id);
+      return NextResponse.json({
+        success: true,
+        document: { id: document.id, title: document.title },
+        page,
+        verificationCode: generated.verificationCode,
       });
     }
 

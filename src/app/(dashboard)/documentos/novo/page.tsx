@@ -790,10 +790,13 @@ export default function NewDocumentPage() {
                     }}
                   >
                     <div className="h-1.5 bg-[#D4AF37]" />
-                    <div className="px-2 py-1 text-[#071B3A] leading-tight">
-                      <div className="text-[8px] sm:text-[10px] font-extrabold">ASSINADO ELETRONICAMENTE</div>
-                      <div className="text-[7px] sm:text-[9px] font-bold truncate">{signers[0]?.name || 'Nome do signatário'}</div>
-                      <div className="text-[6px] sm:text-[8px] font-mono text-emerald-700">AssinaJur • código verificável</div>
+                    <div className="flex h-[calc(100%-6px)] text-[#071B3A] leading-tight">
+                      <div className="w-[24%] bg-[#071B3A] text-white flex items-center justify-center text-[7px] sm:text-[9px] font-black">QR</div>
+                      <div className="flex-1 px-2 py-1 min-w-0">
+                        <div className="text-[7px] sm:text-[9px] font-extrabold">ASSINATURA ELETRÔNICA VERIFICADA</div>
+                        <div className="text-[7px] sm:text-[9px] font-bold truncate">{signers[0]?.name || 'Nome do signatário'}</div>
+                        <div className="text-[6px] sm:text-[8px] font-mono text-[#071B3A]">VALIDAR: código AssinaJur</div>
+                      </div>
                     </div>
                   </div>
                   {renderingPreview && (
