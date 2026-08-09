@@ -1492,7 +1492,7 @@ async function handleTextCommand(
     });
   }
 
-  const kitMatch = text.match(/^(?:gerar|criar|preparar)\s+kit\s+(.+?)\s+para\s+(.+)$/i);
+  const kitMatch = text.match(/^(?:gerar|gere|criar|crie|preparar|prepare|fazer|faça|faca)\s+kit\s+(.+?)\s+para\s+(.+)$/i);
   if (kitMatch) {
     const [, kitQuery, clientQuery] = kitMatch;
     const [kits, clients] = await Promise.all([
@@ -1524,7 +1524,7 @@ async function handleTextCommand(
     };
   }
 
-  const templateMatch = text.match(/^(?:gerar|criar|preparar|faça)\s+(.+?)\s+para\s+(.+)$/i);
+  const templateMatch = text.match(/^(?:gerar|gere|criar|crie|preparar|prepare|fazer|faça|faca)\s+(.+?)\s+para\s+(.+)$/i);
   if (templateMatch) {
     const [, rawTemplateQuery, rawClientQuery] = templateMatch;
     const templateQuery = rawTemplateQuery.trim().replace(/^(?:um|uma|o|a)\s+/i, '');
