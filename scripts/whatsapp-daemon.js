@@ -299,6 +299,7 @@ Retorne o clientId exatamente como recebido.`;
     kind: task?.request?.kind === 'KIT' ? 'KIT' : 'DOCUMENT',
     clientId: task.clientId,
     clientName: task.clientName,
+    version: isRevision ? Number(task?.existingDraft?.version || 1) + 1 : 1,
   };
 }
 
@@ -553,8 +554,18 @@ async function connectToWhatsApp() {
             }
             const [jidResult] = await sock.onWhatsApp(...candidates);
             const destinationJid = jidResult?.jid || `${cleanTo}@s.whatsapp.net`;
-            await sock.sendMessage(destinationJid, { text: outbound.text });
-            console.log(`📤 Ação externa entregue para ${cleanTo}.`);
+            if (outbound.documentBase64) {
+              await sock.sendMessage(destinationJid, {
+                document: Buffer.from(outbound.documentBase64, 'base64'),
+                mimetype: outbound.mimeType || 'application/pdf',
+                fileName: outbound.fileName || 'minuta-assinajur.pdf',
+                caption: outbound.text,
+              });
+              console.log(`📎 PDF provisório entregue para ${cleanTo}: ${outbound.fileName || 'minuta-assinajur.pdf'}.`);
+            } else {
+              await sock.sendMessage(destinationJid, { text: outbound.text });
+              console.log(`📤 Ação externa entregue para ${cleanTo}.`);
+            }
           }
         } catch (err) {
           console.error('Erro ao enviar requisição para a IA do AssinaJur:', err);

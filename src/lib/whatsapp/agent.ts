@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
-import { compileTemplateToPdf } from '@/lib/templateCompiler';
+import { compileTemplatePreviewToPdf, compileTemplateToPdf } from '@/lib/templateCompiler';
 
 export const AUTHORIZED_LAWYER_PHONES = [
   '5573988250201',
@@ -13,6 +13,7 @@ export const AUTHORIZED_LAWYER_PHONES = [
 const PENDING_PREFIX = 'PENDING_ACTION:';
 const EXECUTED_PREFIX = 'EXECUTED_ACTION:';
 const PENDING_TTL_MS = 15 * 60 * 1000;
+const LEGAL_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 const GEMINI_TEXT_MODEL = 'gemini-flash-latest';
 const GEMINI_VISION_MODELS = ['gemini-flash-latest', 'gemini-flash-latest', 'gemini-flash-latest'] as const;
 
@@ -34,6 +35,9 @@ export interface WhatsAppIncomingMessage {
 export interface OutboundWhatsAppMessage {
   to: string;
   text: string;
+  documentBase64?: string;
+  fileName?: string;
+  mimeType?: string;
 }
 
 export interface WhatsAppAgentResult {
@@ -66,6 +70,7 @@ interface LegalDraftPackage {
   legalArea?: string;
   requestSummary?: string;
   documents?: LegalDraftDocument[];
+  version?: number;
 }
 
 interface LocalAiTask {
@@ -136,6 +141,8 @@ interface PendingLegalDraftAction {
   data: Required<Pick<LegalDraftPackage, 'kind' | 'clientId' | 'clientName' | 'documents'>> & {
     legalArea?: string;
     requestSummary?: string;
+    version: number;
+    approvedAt?: string;
   };
 }
 
@@ -447,7 +454,8 @@ async function findLatestPendingAction(officeId: string, fromNumber: string): Pr
   for (const log of logs) {
     const action = decodePendingAction(log.actionTaken);
     if (!action) continue;
-    if (Date.now() - new Date(action.createdAt || log.createdAt).getTime() > PENDING_TTL_MS) return null;
+    const ttl = action.type === 'GENERATE_LEGAL_DRAFT' ? LEGAL_DRAFT_TTL_MS : PENDING_TTL_MS;
+    if (Date.now() - new Date(action.createdAt || log.createdAt).getTime() > ttl) return null;
     const executed = await prisma.whatsAppLog.findFirst({
       where: { officeId, fromNumber, actionTaken: `${EXECUTED_PREFIX}${action.id}` },
       select: { id: true },
@@ -674,6 +682,12 @@ async function createDocumentFromTemplate({
 }
 
 async function generateLegalDraftDocuments(officeId: string, action: PendingLegalDraftAction): Promise<WhatsAppAgentResult> {
+  if (!action.data.approvedAt) {
+    return {
+      replyText: 'Esta minuta ainda não foi aprovada. Analise o PDF e responda *APROVAR MINUTA* antes de gerar o link.',
+      actionTaken: encodePendingAction(action),
+    };
+  }
   const client = await prisma.client.findFirst({ where: { id: action.data.clientId, officeId }, select: { id: true, name: true } });
   if (!client) {
     return { replyText: 'O cliente desta minuta não está mais disponível.', actionTaken: `${EXECUTED_PREFIX}${action.id}` };
@@ -688,7 +702,9 @@ async function generateLegalDraftDocuments(officeId: string, action: PendingLega
     }));
   }
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.assinajur.com.br';
-  const titles = created.map((item, index) => `${index + 1}. ${item.document.title}`).join('\n');
+  const titles = created
+    .map((item, index) => `${index + 1}. ${item.document.title}\n   ${appUrl}/assinar/${item.signer.token}`)
+    .join('\n');
   await prisma.auditLog.create({
     data: {
       officeId,
@@ -699,15 +715,13 @@ async function generateLegalDraftDocuments(officeId: string, action: PendingLega
   });
   return {
     replyText: [
-      `✅ *${action.data.kind === 'KIT' ? 'Kit jurídico criado' : 'Documento criado'} no AssinaJur*`,
+      `✅ *${action.data.kind === 'KIT' ? 'Kit jurídico definitivo criado' : 'Documento definitivo criado'} no AssinaJur*`,
       '',
       `👤 ${client.name}`,
       `📄 ${created.length} documento(s):`,
       titles,
       '',
-      `🔗 Primeiro link de assinatura: ${appUrl}/assinar/${created[0].signer.token}`,
-      '',
-      'Os arquivos já estão disponíveis no site e a criação ficou registrada na auditoria.',
+      `O link ainda não foi enviado ao cliente. Quando desejar, diga *ENVIAR LINK PARA ${client.name}*.`,
     ].join('\n'),
     actionTaken: `${EXECUTED_PREFIX}${action.id}`,
   };
@@ -782,14 +796,46 @@ function legalDraftPreview(action: PendingLegalDraftAction): string {
     `🧠 *Prévia ${action.data.kind === 'KIT' ? 'do kit jurídico' : 'da minuta jurídica'}*`,
     '',
     `👤 *Cliente:* ${action.data.clientName}`,
+    `🔢 *Versão:* ${action.data.version}`,
     action.data.legalArea ? `⚖️ *Área:* ${action.data.legalArea}` : null,
     action.data.requestSummary ? `📝 *Pedido:* ${action.data.requestSummary}` : null,
     '',
     documentList,
     '',
-    `Responda *VER TEXTO${action.data.documents.length > 1 ? ' 1' : ''}* para ler a íntegra, *CONFIRMAR* para gerar, *ALTERAR: [o que deseja]* para revisar, ou *CANCELAR*.`,
-    '_Nada foi criado no site ainda._',
+    `O PDF provisório ${action.data.documents.length > 1 ? 'de cada documento será enviado' : 'será enviado'} abaixo.`,
+    `Responda *APROVAR MINUTA* (ou *CONFIRMAR*) quando estiver correto, *ALTERAR: [o que deseja]* para revisar, ou *CANCELAR*.`,
+    '_A aprovação não gera link nem envia nada ao cliente._',
+    '_Esta minuta fica disponível por 24 horas._',
   ].filter((line): line is string => line !== null).join('\n');
+}
+
+async function buildLegalDraftPreviewFiles(
+  officeId: string,
+  fromNumber: string,
+  action: PendingLegalDraftAction
+): Promise<OutboundWhatsAppMessage[]> {
+  const { client, office, user } = await getAutomationContext(officeId, action.data.clientId);
+  const variables = buildTemplateVariables(client, office, user);
+  const officeName = office.tradeName || office.name;
+  const messages: OutboundWhatsAppMessage[] = [];
+  for (const [index, document] of action.data.documents.entries()) {
+    const rendered = await compileTemplatePreviewToPdf({
+      title: document.title,
+      contentHtml: document.contentHtml,
+      variables,
+      officeName,
+      version: action.data.version,
+    });
+    const safeTitle = document.title.replace(/[^a-zA-Z0-9À-ÿ _-]/g, '').replace(/\s+/g, '_').slice(0, 90);
+    messages.push({
+      to: fromNumber,
+      text: `MINUTA ${index + 1}/${action.data.documents.length} — versão ${action.data.version}. Revise antes de aprovar.`,
+      documentBase64: rendered.pdfBuffer.toString('base64'),
+      fileName: `${String(index + 1).padStart(2, '0')}-${safeTitle}-MINUTA-V${action.data.version}.pdf`,
+      mimeType: 'application/pdf',
+    });
+  }
+  return messages;
 }
 
 async function prepareLegalDraftTask(officeId: string, request: LegalDraftRequest): Promise<WhatsAppAgentResult> {
@@ -841,7 +887,7 @@ async function prepareLegalDraftTask(officeId: string, request: LegalDraftReques
   };
 }
 
-async function finalizeLegalDraft(officeId: string, draftPackage: LegalDraftPackage): Promise<WhatsAppAgentResult> {
+async function finalizeLegalDraft(officeId: string, fromNumber: string, draftPackage: LegalDraftPackage): Promise<WhatsAppAgentResult> {
   const clientId = cleanDraftText(draftPackage.clientId, 80);
   const client = clientId
     ? await prisma.client.findFirst({ where: { id: clientId, officeId }, select: { id: true, name: true } })
@@ -870,9 +916,11 @@ async function finalizeLegalDraft(officeId: string, draftPackage: LegalDraftPack
       legalArea: cleanDraftText(draftPackage.legalArea, 120) || undefined,
       requestSummary: cleanDraftText(draftPackage.requestSummary, 600) || undefined,
       documents,
+      version: Math.max(1, Math.min(99, Number(draftPackage.version) || 1)),
     },
   };
-  return { replyText: legalDraftPreview(action), actionTaken: encodePendingAction(action) };
+  const outboundMessages = await buildLegalDraftPreviewFiles(officeId, fromNumber, action);
+  return { replyText: legalDraftPreview(action), actionTaken: encodePendingAction(action), outboundMessages };
 }
 
 async function prepareClientDeletion(officeId: string, query?: string): Promise<WhatsAppAgentResult> {
@@ -1023,12 +1071,56 @@ async function handleTextCommand(
   const text = originalBody.trim();
   const normalized = text.toLocaleLowerCase('pt-BR');
 
-  if (/^(confirmar|confirmo|pode salvar|pode cadastrar|sim,? confirme)$/i.test(text)) {
+  if (/^(confirmar|confirmo|aprovar(?:\s+(?:a\s+)?minuta)?|(?:est[aá]\s+)?aprovad[oa]|minuta aprovada|pode aprovar|pode salvar|pode cadastrar|sim,? confirme)$/i.test(text)) {
     const action = await findLatestPendingAction(officeId, fromNumber);
     if (!action) {
       return {
         replyText: 'Não encontrei uma ação aguardando confirmação ou ela expirou. Envie o pedido novamente.',
         actionTaken: 'NO_PENDING_ACTION',
+      };
+    }
+    if (action.type === 'GENERATE_LEGAL_DRAFT') {
+      if (action.data.approvedAt) {
+        return {
+          replyText: '✅ Esta minuta já está aprovada. Quando quiser criar o documento definitivo e os links, diga *GERAR LINK*.',
+          actionTaken: encodePendingAction(action),
+        };
+      }
+      const approvedAction: PendingLegalDraftAction = {
+        ...action,
+        id: randomUUID(),
+        createdAt: new Date().toISOString(),
+        data: { ...action.data, approvedAt: new Date().toISOString() },
+      };
+      await prisma.auditLog.create({
+        data: {
+          officeId,
+          eventType: 'AI_LEGAL_DRAFT_APPROVED_BY_WHATSAPP',
+          description: `Minuta versão ${action.data.version} aprovada no WhatsApp para ${action.data.clientName}; documento definitivo ainda não gerado.`,
+        },
+      });
+      return {
+        replyText: [
+          '✅ *Minuta aprovada*',
+          '',
+          `👤 ${action.data.clientName}`,
+          `🔢 Versão ${action.data.version}`,
+          '',
+          'Nenhum documento definitivo ou link foi criado ainda.',
+          'Quando desejar prosseguir, diga *GERAR LINK*.',
+        ].join('\n'),
+        actionTaken: encodePendingAction(approvedAction),
+      };
+    }
+    return executePendingAction(officeId, action);
+  }
+
+  if (/^(?:pode\s+)?(?:gerar|gere|criar|crie|prepare|preparar)\s+(?:(?:o|os)\s+)?(?:link|links|documento definitivo|documentos definitivos)(?:\s+(?:de assinatura|para assinatura))?$/i.test(text)) {
+    const action = await findLatestPendingAction(officeId, fromNumber);
+    if (!action || action.type !== 'GENERATE_LEGAL_DRAFT') {
+      return {
+        replyText: 'Não encontrei uma minuta jurídica aprovada aguardando a geração do link.',
+        actionTaken: 'NO_APPROVED_LEGAL_DRAFT',
       };
     }
     return executePendingAction(officeId, action);
@@ -1229,7 +1321,7 @@ async function handleTextCommand(
     };
   }
 
-  const remindMatch = normalized.match(/^(?:cobrar|lembrar|reenviar)\s+(?:cliente\s+)?(.+)$/i);
+  const remindMatch = normalized.match(/^(?:(?:cobrar|lembrar|reenviar)\s+(?:cliente\s+)?|enviar\s+(?:o\s+)?links?\s+(?:de assinatura\s+)?para\s+)(.+)$/i);
   if (remindMatch) {
     const query = remindMatch[1].trim();
     const signer = await prisma.signer.findFirst({
@@ -1252,11 +1344,31 @@ async function handleTextCommand(
       };
     }
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.assinajur.com.br';
-    const reminder = `Olá, ${signer.name}! O escritório ${signer.document.office.tradeName || signer.document.office.name} lembra que o documento “${signer.document.title}” aguarda sua assinatura. Acesse: ${appUrl}/assinar/${signer.token}`;
+    const groupStart = new Date(signer.document.createdAt.getTime() - 2 * 60 * 1000);
+    const relatedSigners = await prisma.signer.findMany({
+      where: {
+        status: { not: 'ASSINADO' },
+        name: signer.name,
+        phone: signer.phone,
+        document: {
+          officeId,
+          clientId: signer.document.clientId,
+          createdAt: { gte: groupStart, lte: signer.document.createdAt },
+          status: { notIn: ['CANCELADO', 'CONCLUIDO', 'EXPIRADO'] },
+        },
+      },
+      include: { document: { include: { office: true } } },
+      orderBy: { document: { createdAt: 'asc' } },
+      take: 6,
+    });
+    const signersToNotify = relatedSigners.length > 0 ? relatedSigners : [signer];
     return {
-      replyText: `📤 Vou enviar agora a cobrança para *${signer.name}* em ${maskPhone(phone)}.`,
+      replyText: `📤 Vou enviar agora ${signersToNotify.length === 1 ? 'o link' : `${signersToNotify.length} links`} para *${signer.name}* em ${maskPhone(phone)}.`,
       actionTaken: 'REMIND_SIGNATURE',
-      outboundMessages: [{ to: phone, text: reminder }],
+      outboundMessages: signersToNotify.map((item) => ({
+        to: phone,
+        text: `Olá, ${item.name}! O escritório ${item.document.office.tradeName || item.document.office.name} enviou o documento “${item.document.title}” para sua assinatura. Acesse: ${appUrl}/assinar/${item.token}`,
+      })),
     };
   }
 
@@ -1400,7 +1512,7 @@ export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Pr
 
 
   if (localAiResult) {
-    return finalizeLegalDraft(officeId, localAiResult);
+    return finalizeLegalDraft(officeId, fromNumber, localAiResult);
   }
 
   if (messageType === 'AUDIO' && mediaBase64) {
