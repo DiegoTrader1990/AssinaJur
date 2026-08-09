@@ -2,7 +2,14 @@ import { randomUUID } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
 import { compileTemplatePreviewToPdf, compileTemplateToPdf } from '@/lib/templateCompiler';
-import { brazilianPhoneVariants, extractClientConversationCorrections } from '@/lib/whatsapp/conversation';
+import {
+  brazilianPhoneVariants,
+  extractClientConversationCorrections,
+  isApprovalIntent,
+  isCancelIntent,
+  isGenerateLinkIntent,
+  looksLikeUnverifiedOperationalClaim,
+} from '@/lib/whatsapp/conversation';
 
 export const AUTHORIZED_LAWYER_PHONES = [
   '5573988250201',
@@ -115,6 +122,7 @@ interface PendingClientAction {
   type: 'CREATE_OR_UPDATE_CLIENT';
   createdAt: string;
   data: ClientDraft;
+  resumeLegalDraft?: { request: LegalDraftRequest };
 }
 
 interface PendingKitAction {
@@ -150,7 +158,19 @@ interface PendingLegalDraftAction {
   };
 }
 
-type PendingAction = PendingClientAction | PendingKitAction | PendingTemplateAction | PendingDeleteClientAction | PendingLegalDraftAction;
+interface PendingLegalQualificationAction {
+  id: string;
+  type: 'COLLECT_LEGAL_DRAFT_QUALIFICATION';
+  createdAt: string;
+  data: {
+    clientId: string;
+    clientName: string;
+    missing: string[];
+    request: LegalDraftRequest;
+  };
+}
+
+type PendingAction = PendingClientAction | PendingKitAction | PendingTemplateAction | PendingDeleteClientAction | PendingLegalDraftAction | PendingLegalQualificationAction;
 
 function normalizePhone(value?: string | null): string {
   return (value || '').replace(/\D/g, '');
@@ -223,8 +243,10 @@ function cleanOptional(value: unknown): string | undefined {
 function clientPreview(data: ClientDraft): string {
   const optional = [
     data.rg ? `🪪 *RG:* ${data.rg}` : null,
+    data.issuingOrgan ? `🏛️ *Órgão expedidor:* ${data.issuingOrgan}` : null,
     data.birthDate ? `🎂 *Nascimento:* ${data.birthDate}` : null,
     data.phone ? `📱 *Telefone:* ${maskPhone(data.phone)}` : null,
+    data.email ? `✉️ *E-mail:* ${data.email}` : null,
     data.address ? `📍 *Endereço:* ${data.address}${data.number ? `, ${data.number}` : ''}${data.city ? ` — ${data.city}/${data.state || ''}` : ''}` : null,
     data.profession ? `💼 *Profissão:* ${data.profession}` : null,
     data.maritalStatus ? `💍 *Estado civil:* ${data.maritalStatus}` : null,
@@ -436,12 +458,16 @@ async function transcribeAudio(mediaBase64: string, mediaMimeType?: string): Pro
   ]);
 }
 
-async function createPendingClientAction(data: ClientDraft): Promise<WhatsAppAgentResult> {
-  const action: PendingAction = {
+async function createPendingClientAction(
+  data: ClientDraft,
+  resumeLegalDraft?: PendingClientAction['resumeLegalDraft']
+): Promise<WhatsAppAgentResult> {
+  const action: PendingClientAction = {
     id: randomUUID(),
     type: 'CREATE_OR_UPDATE_CLIENT',
     createdAt: new Date().toISOString(),
     data,
+    ...(resumeLegalDraft ? { resumeLegalDraft } : {}),
   };
   return {
     replyText: clientPreview(data),
@@ -461,7 +487,9 @@ async function findLatestPendingAction(officeId: string, fromNumber: string): Pr
   for (const log of logs) {
     const action = decodePendingAction(log.actionTaken);
     if (!action) continue;
-    const ttl = action.type === 'GENERATE_LEGAL_DRAFT' ? LEGAL_DRAFT_TTL_MS : PENDING_TTL_MS;
+    const ttl = action.type === 'GENERATE_LEGAL_DRAFT' || action.type === 'COLLECT_LEGAL_DRAFT_QUALIFICATION'
+      ? LEGAL_DRAFT_TTL_MS
+      : PENDING_TTL_MS;
     if (Date.now() - new Date(action.createdAt || log.createdAt).getTime() > ttl) return null;
     const executed = await prisma.whatsAppLog.findFirst({
       where: {
@@ -494,6 +522,9 @@ function pendingActionGuidance(action: PendingAction): string {
     if (action.data.approvedAt && !action.data.clientId) return 'A minuta está aprovada, mas falta vincular um cliente. Diga *VINCULAR AO CLIENTE [nome ou CPF]*.';
     if (action.data.approvedAt) return 'A minuta está aprovada e pronta. Diga *GERAR LINK* para criar o documento definitivo.';
     return `A minuta versão ${action.data.version} está aguardando revisão. Responda *APROVAR MINUTA*, *ALTERAR: [orientação]* ou *CANCELAR*.`;
+  }
+  if (action.type === 'COLLECT_LEGAL_DRAFT_QUALIFICATION') {
+    return `A minuta de *${action.data.clientName}* está aguardando: *${action.data.missing.join(', ')}*. Envie os dados faltantes; eu mostrarei a atualização para confirmação e retomarei a minuta depois.`;
   }
   if (action.type === 'DELETE_CLIENT') {
     return action.data.clientId
@@ -548,6 +579,9 @@ async function executePendingAction(officeId: string, action: PendingAction): Pr
   }
   if (action.type === 'GENERATE_LEGAL_DRAFT') {
     return generateLegalDraftDocuments(officeId, action);
+  }
+  if (action.type === 'COLLECT_LEGAL_DRAFT_QUALIFICATION') {
+    return { replyText: pendingActionGuidance(action), actionTaken: encodePendingAction(action) };
   }
   if (action.type !== 'CREATE_OR_UPDATE_CLIENT') {
     return { replyText: 'Não reconheci a ação pendente. Envie o pedido novamente.', actionTaken: 'UNKNOWN_PENDING_ACTION' };
@@ -622,6 +656,26 @@ async function executePendingAction(officeId: string, action: PendingAction): Pr
       description: `${saved.name} (${saved.cpfCnpj}) ${existing ? 'atualizado' : 'cadastrado'} pelo controle remoto do WhatsApp.`,
     },
   });
+
+  if (action.resumeLegalDraft) {
+    const next = await prepareLegalDraftTask(officeId, {
+      ...action.resumeLegalDraft.request,
+      clientQuery: saved.name,
+      generic: false,
+      askMissingBeforeDraft: false,
+    });
+    return {
+      ...next,
+      replyText: [
+        `✅ *Cliente ${existing ? 'atualizado' : 'cadastrado'} no AssinaJur*`,
+        `👤 ${saved.name}`,
+        '',
+        'Agora vou retomar automaticamente a minuta que estava aguardando.',
+        next.replyText,
+      ].join('\n'),
+      actionTaken: next.localAiTask ? `${EXECUTED_PREFIX}${action.id}` : next.actionTaken,
+    };
+  }
 
   return {
     replyText: [
@@ -1043,6 +1097,22 @@ async function prepareLegalDraftTask(officeId: string, request: LegalDraftReques
     || /\b(?:se|caso)\s+(?:estiver|estiverem|houver|faltar|faltarem).*\b(?:pergunte|perguntar|confirme|confirmar)\b|\bantes\s+de\s+(?:redigir|fazer|preparar|criar).*\b(?:dados|qualifica[cç][aã]o)\b/i.test(request.instructions || '');
   const qualification = clientQualification(client);
   if (shouldAskMissing && qualification.missing.length > 0) {
+    const waitingAction: PendingLegalQualificationAction = {
+      id: randomUUID(),
+      type: 'COLLECT_LEGAL_DRAFT_QUALIFICATION',
+      createdAt: new Date().toISOString(),
+      data: {
+        clientId: client.id,
+        clientName: client.name,
+        missing: qualification.missing,
+        request: {
+          ...request,
+          clientQuery: client.name,
+          generic: false,
+          askMissingBeforeDraft: true,
+        },
+      },
+    };
     return {
       replyText: [
         qualificationReply(client, 'Conferência antes da minuta'),
@@ -1050,7 +1120,7 @@ async function prepareLegalDraftTask(officeId: string, request: LegalDraftReques
         'Parei a elaboração, como você pediu. Envie os dados faltantes ou uma foto do documento. Depois diga *CONTINUE A MINUTA* ou repita o pedido.',
         'Não vou preencher informações por suposição.',
       ].join('\n'),
-      actionTaken: 'LEGAL_DRAFT_WAITING_FOR_QUALIFICATION',
+      actionTaken: encodePendingAction(waitingAction),
     };
   }
   const clientContext: Record<string, string> = {
@@ -1270,16 +1340,9 @@ async function handleTextCommand(
 ): Promise<WhatsAppAgentResult> {
   const text = originalBody.trim();
   const normalized = text.toLocaleLowerCase('pt-BR');
-  const generateLinkIntent = !text.endsWith('?')
-    && /\b(?:link|links|documento definitivo|documentos definitivos|para assinatura)\b/i.test(text)
-    && /\b(?:gerar|gere|gera|criar|crie|cria|emitir|emita|preparar|prepare|enviar|envie|finalizar|finalize|pode|fa[cç]a|quero|preciso|produzir|produza|disponibilizar|disponibilize)\b/i.test(text);
-  const cancelIntent = !text.endsWith('?') && /^(?:cancelar|cancela|cancele(?:\s+(?:isso|essa\s+(?:minuta|ação)|esse\s+(?:cadastro|documento)))?|não\s+(?:quero|preciso)\s+mais|deixa\s+(?:isso\s+)?pra\s+l[aá]|pode\s+descartar|descartar)(?:[.!])?$/i.test(text);
-  const approvalIntent = !text.endsWith('?') && (
-    /^(?:sim|certo|ok|pode seguir|est[aá] certo)[.!]?$/i.test(text)
-    || /^(?:sim[,!]?\s*)?(?:eu\s+)?(?:aprovo|aprovar|confirmo|confirmar|confirme|aprovad[oa]|confirmad[oa]|minuta\s+aprovada|pode\s+(?:aprovar|salvar|prosseguir|seguir)|est[aá]\s+(?:corret[oa]|aprovad[oa])|pode\s+cadastrar)(?:\s+(?:a|o|essa|esta|minha)?\s*(?:minuta|procura[cç][aã]o|contrato|documento|cadastro))?[.!]?$/i.test(text)
-    || /^(?:aprovar|confirmar)(?:\s+(?:a|o))?\s+(?:minuta|procura[cç][aã]o|contrato|documento)$/i.test(text)
-    || (generateLinkIntent && /\b(?:aprovo|aprovei|j[aá]\s+aprovei|aprovad[oa]|confirmo|confirmad[oa])\b/i.test(text))
-  );
+  const generateLinkIntent = isGenerateLinkIntent(text);
+  const cancelIntent = isCancelIntent(text);
+  const approvalIntent = isApprovalIntent(text, generateLinkIntent);
 
   if (/^(?:o\s+que\s+falta|qual\s+o\s+próximo\s+passo|em\s+que\s+etapa\s+estamos|onde\s+paramos)\??$/i.test(text)) {
     const action = await findLatestPendingAction(officeId, fromNumber);
@@ -1304,6 +1367,14 @@ async function handleTextCommand(
     if (!action) return { replyText: 'Não encontrei uma etapa pendente para continuar. Diga o que deseja fazer.', actionTaken: 'NO_PENDING_ACTION' };
     if (action.type === 'GENERATE_LEGAL_DRAFT' && action.data.approvedAt && action.data.clientId) {
       return executeLegalDraftLinkSafely(officeId, action);
+    }
+    if (action.type === 'COLLECT_LEGAL_DRAFT_QUALIFICATION') {
+      return prepareLegalDraftTask(officeId, {
+        ...action.data.request,
+        clientQuery: action.data.clientName,
+        generic: false,
+        askMissingBeforeDraft: false,
+      });
     }
     return { replyText: pendingActionGuidance(action), actionTaken: encodePendingAction(action) };
   }
@@ -1351,7 +1422,33 @@ async function handleTextCommand(
         actionTaken: encodePendingAction(approvedAction),
       };
     }
-    return executePendingAction(officeId, action);
+    const executed = await executePendingAction(officeId, action);
+    if (action.type === 'CREATE_OR_UPDATE_CLIENT' && action.resumeLegalDraft) {
+      return executed;
+    }
+    const compoundDocument = text.match(/\b(?:faça|faca|crie|prepare|redija|elabore|monte)\s+(?:(?:um|uma|novo|nova)\s+)?(kit|procura[cç][aã]o|contrato|declara[cç][aã]o|peti[cç][aã]o|termo|minuta)\b/i)?.[1];
+    const nextDraftRequest = action.type === 'CREATE_OR_UPDATE_CLIENT'
+      ? localRouting?.draftRequest || (compoundDocument
+        ? {
+            kind: compoundDocument.toLocaleLowerCase('pt-BR') === 'kit' ? 'KIT' as const : 'DOCUMENT' as const,
+            clientQuery: action.data.name,
+            title: compoundDocument,
+            instructions: text,
+          }
+        : null)
+      : null;
+    if (nextDraftRequest && executed.actionTaken.startsWith(EXECUTED_PREFIX)) {
+      const next = await prepareLegalDraftTask(officeId, {
+        ...nextDraftRequest,
+        clientQuery: action.type === 'CREATE_OR_UPDATE_CLIENT' ? action.data.name : nextDraftRequest.clientQuery,
+      });
+      return {
+        ...next,
+        replyText: `${executed.replyText}\n\n${next.replyText}`,
+        actionTaken: next.localAiTask ? executed.actionTaken : next.actionTaken,
+      };
+    }
+    return executed;
   }
 
   if (generateLinkIntent) {
@@ -1374,6 +1471,58 @@ async function handleTextCommand(
   }
 
   const existingPending = await findLatestPendingAction(officeId, fromNumber);
+  if (existingPending?.type === 'COLLECT_LEGAL_DRAFT_QUALIFICATION') {
+    if (localRouting?.draftRequest) {
+      return prepareLegalDraftTask(officeId, localRouting.draftRequest);
+    }
+    const correction = extractClientConversationCorrections(text);
+    if (Object.keys(correction.changes).length > 0) {
+      const client = await prisma.client.findFirst({ where: { id: existingPending.data.clientId, officeId } });
+      if (!client) {
+        return { replyText: 'O cliente desta minuta não está mais disponível.', actionTaken: `${EXECUTED_PREFIX}${existingPending.id}` };
+      }
+      const updatedAction: PendingClientAction = {
+        id: randomUUID(),
+        type: 'CREATE_OR_UPDATE_CLIENT',
+        createdAt: new Date().toISOString(),
+        data: {
+          name: client.name,
+          cpfCnpj: client.cpfCnpj,
+          rg: client.rg || undefined,
+          issuingOrgan: client.issuingOrgan || undefined,
+          birthDate: client.birthDate || undefined,
+          nationality: client.nationality || undefined,
+          maritalStatus: client.maritalStatus || undefined,
+          profession: client.profession || undefined,
+          phone: client.phone,
+          whatsapp: client.whatsapp || client.phone,
+          email: client.email || undefined,
+          cep: client.cep || undefined,
+          address: client.address || undefined,
+          number: client.number || undefined,
+          complement: client.complement || undefined,
+          neighborhood: client.neighborhood || undefined,
+          city: client.city || undefined,
+          state: client.state || undefined,
+          legalArea: client.legalArea || undefined,
+          notes: client.notes || undefined,
+          ...correction.changes,
+        },
+        resumeLegalDraft: { request: existingPending.data.request },
+      };
+      return {
+        replyText: [
+          `Entendi os novos dados de *${client.name}*.`,
+          '',
+          clientPreview(updatedAction.data),
+          '',
+          '_Depois da confirmação, retomarei automaticamente a minuta._',
+        ].join('\n'),
+        actionTaken: encodePendingAction(updatedAction),
+      };
+    }
+    return { replyText: pendingActionGuidance(existingPending), actionTaken: encodePendingAction(existingPending) };
+  }
   if (existingPending?.type === 'GENERATE_LEGAL_DRAFT') {
     // Um novo pedido documental substitui a minuta corrente. Sem esta prioridade,
     // “agora faça um contrato” podia ser tratado como revisão da procuração anterior.
@@ -1838,11 +1987,28 @@ async function handleTextCommand(
         return handleTextCommand(officeId, fromNumber, localRouting.command, false);
       }
       if (localRouting?.reply) {
+        if (looksLikeUnverifiedOperationalClaim(localRouting.reply)) {
+          return {
+            replyText: existingPending
+              ? `Ainda não executei essa operação. ${pendingActionGuidance(existingPending)}`
+              : 'Ainda não executei essa operação. Diga exatamente o que deseja confirmar para eu processar e verificar no AssinaJur.',
+            actionTaken: existingPending ? encodePendingAction(existingPending) : 'UNVERIFIED_OPERATION_BLOCKED',
+          };
+        }
         return { replyText: localRouting.reply, actionTaken: 'LOCAL_AI_CONVERSATION' };
       }
       const routedCommand = await routeNaturalLanguageCommand(text);
       if (routedCommand === '__CHAT__') {
-        return { replyText: await answerSafeConversation(officeId, fromNumber, text), actionTaken: 'SAFE_AI_CONVERSATION' };
+        const reply = await answerSafeConversation(officeId, fromNumber, text);
+        if (looksLikeUnverifiedOperationalClaim(reply)) {
+          return {
+            replyText: existingPending
+              ? `Ainda não executei essa operação. ${pendingActionGuidance(existingPending)}`
+              : 'Ainda não executei essa operação. Diga exatamente o que deseja confirmar para eu processar e verificar no AssinaJur.',
+            actionTaken: existingPending ? encodePendingAction(existingPending) : 'UNVERIFIED_OPERATION_BLOCKED',
+          };
+        }
+        return { replyText: reply, actionTaken: 'SAFE_AI_CONVERSATION' };
       }
       if (routedCommand) {
         return handleTextCommand(officeId, fromNumber, routedCommand, false);
@@ -1852,10 +2018,16 @@ async function handleTextCommand(
     }
   }
 
-  return {
-    replyText: await answerSafeConversation(officeId, fromNumber, text),
-    actionTaken: 'SAFE_AI_CONVERSATION_FALLBACK',
-  };
+  const fallbackReply = await answerSafeConversation(officeId, fromNumber, text);
+  if (looksLikeUnverifiedOperationalClaim(fallbackReply)) {
+    return {
+      replyText: existingPending
+        ? `Ainda não executei essa operação. ${pendingActionGuidance(existingPending)}`
+        : 'Ainda não executei essa operação. Diga exatamente o que deseja confirmar para eu processar e verificar no AssinaJur.',
+      actionTaken: existingPending ? encodePendingAction(existingPending) : 'UNVERIFIED_OPERATION_BLOCKED',
+    };
+  }
+  return { replyText: fallbackReply, actionTaken: 'SAFE_AI_CONVERSATION_FALLBACK' };
 }
 
 export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Promise<WhatsAppAgentResult> {
@@ -1942,7 +2114,12 @@ export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Pr
         city: cleanOptional(documentData.city) || existingClient?.city || undefined,
         state: (cleanOptional(documentData.state) || existingClient?.state || undefined)?.toUpperCase(),
       };
-      return createPendingClientAction(draft);
+      const pendingFlow = await findLatestPendingAction(officeId, fromNumber);
+      const resumeLegalDraft = pendingFlow?.type === 'COLLECT_LEGAL_DRAFT_QUALIFICATION'
+        && existingClient?.id === pendingFlow.data.clientId
+        ? { request: pendingFlow.data.request }
+        : undefined;
+      return createPendingClientAction(draft, resumeLegalDraft);
     }
     console.error('[WhatsApp Vision] Leitura local recebida sem nome e CPF válidos; acionando contingência do servidor.');
   }
@@ -1956,7 +2133,18 @@ export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Pr
           actionTaken: 'IMAGE_DATA_INCOMPLETE',
         };
       }
-      return createPendingClientAction(draft);
+      const pendingFlow = await findLatestPendingAction(officeId, fromNumber);
+      let resumeLegalDraft: PendingClientAction['resumeLegalDraft'];
+      if (pendingFlow?.type === 'COLLECT_LEGAL_DRAFT_QUALIFICATION') {
+        const matchingClient = await prisma.client.findFirst({
+          where: { officeId, cpfCnpj: draft.cpfCnpj },
+          select: { id: true },
+        });
+        if (matchingClient?.id === pendingFlow.data.clientId) {
+          resumeLegalDraft = { request: pendingFlow.data.request };
+        }
+      }
+      return createPendingClientAction(draft, resumeLegalDraft);
     } catch (error) {
       console.error('Erro ao ler documento recebido pelo WhatsApp:', error);
       return { replyText: 'A foto foi recebida, mas a leitura automática ficou temporariamente indisponível. Tente novamente em instantes ou informe os dados em texto.', actionTaken: 'IMAGE_ERROR' };

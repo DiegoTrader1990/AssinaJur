@@ -3,6 +3,10 @@ import test from 'node:test';
 import {
   brazilianPhoneVariants,
   extractClientConversationCorrections,
+  isApprovalIntent,
+  isCancelIntent,
+  isGenerateLinkIntent,
+  looksLikeUnverifiedOperationalClaim,
 } from '../src/lib/whatsapp/conversation';
 
 test('considera equivalentes os formatos brasileiros com e sem nono dígito', () => {
@@ -36,4 +40,36 @@ test('extrai qualificação sem confundir pontuação final', () => {
   assert.equal(result.changes.name, 'Maria de Souza');
   assert.equal(result.changes.maritalStatus?.toLowerCase(), 'casada');
   assert.equal(result.changes.profession?.toLowerCase(), 'professora');
+});
+
+test('reconhece aprovações naturais no singular e plural', () => {
+  assert.equal(isApprovalIntent('Certo'), true);
+  assert.equal(isApprovalIntent('Ok aprovadas'), true);
+  assert.equal(isApprovalIntent('Confirmar, e pode fazer uma procuração'), true);
+  assert.equal(isApprovalIntent('A minuta está aprovada?'), false);
+});
+
+test('reconhece geração efetiva do link sem confundir pergunta', () => {
+  assert.equal(isGenerateLinkIntent('Sim, vamos gerar o link de assinatura'), true);
+  assert.equal(isGenerateLinkIntent('Pode finalizar o documento para assinatura'), true);
+  assert.equal(isGenerateLinkIntent('O link já foi gerado?'), false);
+  assert.equal(isGenerateLinkIntent('Não quero gerar o link agora'), false);
+});
+
+test('reconhece cancelamentos em linguagem natural', () => {
+  assert.equal(isCancelIntent('Deixa isso pra lá'), true);
+  assert.equal(isCancelIntent('Pode descartar'), true);
+});
+
+test('bloqueia promessa operacional sem bloquear resposta negativa', () => {
+  assert.equal(looksLikeUnverifiedOperationalClaim('O link será gerado e enviado em breve.'), true);
+  assert.equal(looksLikeUnverifiedOperationalClaim('A minuta foi aprovada e prosseguiremos.'), true);
+  assert.equal(looksLikeUnverifiedOperationalClaim('O link ainda não foi gerado.'), false);
+});
+
+test('extrai qualificação enviada em uma frase curta', () => {
+  const result = extractClientConversationCorrections('Solteira, advogada, dominick.adv@gmail.com');
+  assert.equal(result.changes.maritalStatus?.toLowerCase(), 'solteira');
+  assert.equal(result.changes.profession?.toLowerCase(), 'advogada');
+  assert.equal(result.changes.email, 'dominick.adv@gmail.com');
 });

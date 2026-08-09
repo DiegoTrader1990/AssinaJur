@@ -11,6 +11,37 @@ export interface ClientConversationCorrections {
   address?: string;
 }
 
+export function isGenerateLinkIntent(text: string): boolean {
+  const input = String(text || '').trim();
+  if (/\b(?:não\s+(?:quero|gere|gerar|crie|criar|envie|enviar)|não\s+precisa|cancele|cancelar)\b/i.test(input)) return false;
+  return !input.endsWith('?')
+    && /\b(?:link|links|documento definitivo|documentos definitivos|para assinatura)\b/i.test(input)
+    && /\b(?:gerar|gere|gera|geramos|criar|crie|cria|emitir|emita|preparar|prepare|enviar|envie|finalizar|finalize|vamos|pode|fa[cç]a|quero|preciso|produzir|produza|disponibilizar|disponibilize)\b/i.test(input);
+}
+
+export function isApprovalIntent(text: string, generateLinkIntent = isGenerateLinkIntent(text)): boolean {
+  const input = String(text || '').trim();
+  if (!input || input.endsWith('?')) return false;
+  return /^(?:sim|certo|ok|perfeito|pode\s+seguir|est[aá]\s+certo)[.!]?$/i.test(input)
+    || /^(?:(?:sim|ok|certo|perfeito)[,!]?\s*)?(?:eu\s+)?(?:aprovo|aprovei|aprovar|confirmo|confirmar|confirme|aprovad[oa]s?|confirmad[oa]s?|minutas?\s+aprovadas?|pode\s+(?:aprovar|salvar|prosseguir|seguir)|est[aá]\s+(?:corret[oa]s?|aprovad[oa]s?)|pode\s+cadastrar)\b/i.test(input)
+    || /^(?:aprovar|confirmar)(?:\s+(?:a|o|as|os))?\s+(?:minutas?|procura[cç][aã]o|contratos?|documentos?|cadastro)\b/i.test(input)
+    || (generateLinkIntent && /\b(?:aprovo|aprovei|j[aá]\s+aprovei|aprovad[oa]s?|confirmo|confirmad[oa]s?)\b/i.test(input));
+}
+
+export function isCancelIntent(text: string): boolean {
+  const input = String(text || '').trim();
+  return !input.endsWith('?') && /^(?:cancelar|cancela|cancele(?:\s+(?:isso|essa\s+(?:minuta|ação)|esse\s+(?:cadastro|documento)))?|não\s+(?:quero|preciso)\s+mais|deixa\s+(?:isso\s+)?pra\s+l[aá]|pode\s+descartar|descartar|não\s+confirmar)(?:[.!])?$/i.test(input);
+}
+
+export function looksLikeUnverifiedOperationalClaim(text: string): boolean {
+  const input = String(text || '');
+  if (/\b(?:não|ainda\s+não|nenhum[oa]?)\b[^.!?]{0,60}\b(?:gerad[oa]|enviad[oa]|aprova(?:d[oa])?|cadastrad[oa]|alterad[oa]|exclu[ií]d[oa]|conclu[ií]d[oa])\b/i.test(input)) {
+    return false;
+  }
+  return /\b(?:link|documento|procura[cç][aã]o|minuta|cadastro|cliente)\b/i.test(input)
+    && /\b(?:foi|ser[aá]|est[aá]|ficou|prosseguiremos|conclu[ií]d[oa]|gerad[oa]|enviad[oa]|aprova(?:d[oa])?|cadastrad[oa]|alterad[oa]|exclu[ií]d[oa])\b/i.test(input);
+}
+
 export function brazilianPhoneVariants(value: string): string[] {
   const digits = String(value || '').replace(/\D/g, '');
   if (!digits) return [];
@@ -47,11 +78,12 @@ export function extractClientConversationCorrections(text: string): {
   const cpf = input.match(/\bcpf(?:\/cnpj)?\b\s*(?:correto\s*)?(?:é|e|:|para|como)?\s*([\d.\/-]{11,20})/i)?.[1];
   const rg = input.match(/\brg\b\s*(?:correto\s*)?(?:é|e|:|para|como)?\s*([A-Z0-9.\/-]{4,20})/i)?.[1];
   const birthDate = input.match(/\b(?:nascimento|data\s+de\s+nascimento)\b\s*(?:corret[oa]\s*)?(?:é|e|:|para|como)?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{4})/i)?.[1];
-  const email = input.match(/\be-?mail\b\s*(?:correto\s*)?(?:é|e|:|para|como)?\s*([\w.+-]+@[\w.-]+\.[A-Za-z]{2,})/i)?.[1];
-  const maritalStatus = input.match(/\b(?:estado\s+civil)\b\s*(?:correto\s*)?(?:é|e|:|para|como)?\s*(solteir[oa]|casad[oa]|divorciad[oa]|viúv[oa]|separad[oa]|união\s+estável)/i)?.[1];
+  const email = input.match(/(?:\be-?mail\b\s*(?:correto\s*)?(?:é|e|:|para|como)?\s*)?([\w.+-]+@[\w.-]+\.[A-Za-z]{2,})/i)?.[1];
+  const maritalStatus = input.match(/(?:\b(?:estado\s+civil)\b\s*(?:correto\s*)?(?:é|e|:|para|como)?\s*)?\b(solteir[oa]|casad[oa]|divorciad[oa]|viúv[oa]|separad[oa]|união\s+estável)\b/i)?.[1];
   const profession = input.match(/\b(?:profissão|ocupação)\b\s*(?:corret[oa]\s*)?(?:é|e|:|para|como)?\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ' -]{1,80})(?=$|[,;.])/i)?.[1];
   const address = input.match(/\bendereço\b\s*(?:correto\s*)?(?:é|e|:|para|como)?\s*(.{5,180})(?=$|[;])/i)?.[1];
   const name = input.match(/\b(?:nome(?:\s+correto)?|corrija\s+o\s+nome|troque\s+o\s+nome\s+para)\b\s*(?:é|e|:|para|como)?\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ' -]{2,120})(?=$|[,;.])/i)?.[1];
+  const knownProfession = input.match(/\b(advogad[oa]|professor[ae]?|médic[oa]|enfermeir[oa]|engenheir[oa]|contador[ae]?|empresári[oa]|comerciante|agricultor[ae]?|autônom[oa]|aposentad[oa]|servidor[ae]?\s+públic[oa]|doméstic[oa])\b/i)?.[1];
 
   if (phone) {
     changes.phone = phone.replace(/\D/g, '');
@@ -62,7 +94,7 @@ export function extractClientConversationCorrections(text: string): {
   if (birthDate) changes.birthDate = birthDate.replace(/-/g, '/');
   if (email) changes.email = email.toLowerCase();
   if (maritalStatus) changes.maritalStatus = cleanCaptured(maritalStatus);
-  if (profession) changes.profession = cleanCaptured(profession);
+  if (profession || knownProfession) changes.profession = cleanCaptured(profession || knownProfession);
   if (address) changes.address = cleanCaptured(address);
   if (name) changes.name = cleanCaptured(name);
 

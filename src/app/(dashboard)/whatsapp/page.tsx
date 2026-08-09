@@ -268,6 +268,8 @@ export default function WhatsAppPage() {
     ? currentFlow.missingPhone ? 'Cadastro aguardando telefone' : 'Cadastro aguardando confirmação'
     : currentFlow?.type === 'GENERATE_LEGAL_DRAFT'
       ? currentFlow.approved ? 'Minuta aprovada — pronta para gerar link' : 'Minuta aguardando revisão'
+      : currentFlow?.type === 'COLLECT_LEGAL_DRAFT_QUALIFICATION'
+        ? 'Minuta aguardando qualificação'
       : currentFlow?.type === 'DELETE_CLIENT'
         ? 'Exclusão aguardando confirmação'
         : currentFlow?.type === 'GENERATE_KIT'
@@ -317,7 +319,7 @@ export default function WhatsAppPage() {
         <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
           <div className="flex items-center gap-2 text-xs font-extrabold text-[#071B3A]"><Activity className="w-4 h-4 text-blue-600" /> Etapa atual</div>
           <p className="text-sm font-bold text-slate-800 mt-2">{flowLabel}</p>
-          <p className="text-[11px] text-slate-500 mt-1">{currentFlow?.clientName ? `${currentFlow.clientName}${currentFlow.version ? ` • versão ${currentFlow.version}` : ''}` : 'O contexto pendente é recuperado mesmo após reiniciar o bot.'}</p>
+          <p className="text-[11px] text-slate-500 mt-1">{currentFlow?.clientName ? `${currentFlow.clientName}${currentFlow.version ? ` • versão ${currentFlow.version}` : ''}${currentFlow.missing?.length ? ` • faltam: ${currentFlow.missing.join(', ')}` : ''}` : 'O contexto pendente é recuperado mesmo após reiniciar o bot.'}</p>
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">

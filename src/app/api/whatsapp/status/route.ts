@@ -21,7 +21,9 @@ function summarizePendingFlow(logs: Array<{ actionTaken: string | null; createdA
     try {
       const action = JSON.parse(Buffer.from(value.slice('PENDING_ACTION:'.length), 'base64url').toString('utf8'));
       if (!action?.id || executed.has(action.id)) return null;
-      const ttl = action.type === 'GENERATE_LEGAL_DRAFT' ? 24 * 60 * 60 * 1000 : 15 * 60 * 1000;
+      const ttl = action.type === 'GENERATE_LEGAL_DRAFT' || action.type === 'COLLECT_LEGAL_DRAFT_QUALIFICATION'
+        ? 24 * 60 * 60 * 1000
+        : 15 * 60 * 1000;
       if (Date.now() - new Date(action.createdAt || log.createdAt).getTime() > ttl) return null;
       return {
         type: String(action.type || ''),
@@ -30,6 +32,9 @@ function summarizePendingFlow(logs: Array<{ actionTaken: string | null; createdA
         version: action.data?.version || null,
         approved: Boolean(action.data?.approvedAt),
         missingPhone: action.type === 'CREATE_OR_UPDATE_CLIENT' && !String(action.data?.phone || '').replace(/\D/g, ''),
+        missing: action.type === 'COLLECT_LEGAL_DRAFT_QUALIFICATION' && Array.isArray(action.data?.missing)
+          ? action.data.missing.slice(0, 8)
+          : [],
       };
     } catch {
       return null;
