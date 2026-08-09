@@ -63,6 +63,7 @@ const customFetch = globalThis.fetch || (async (url, opts) => {
 const ASSINAJUR_WEBHOOK_URL = process.env.ASSINAJUR_WEBHOOK_URL || 'https://www.assinajur.com.br/api/whatsapp/webhook';
 const BOT_SECRET = process.env.WHATSAPP_BOT_SECRET || '';
 const AUTH_FOLDER = process.env.WHATSAPP_AUTH_DIR || path.join(__dirname, '..', 'whatsapp-auth');
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 
 let socketInstance = null;
 let isConnected = false;
@@ -265,13 +266,13 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
   if (apiKey) for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       const response = await customFetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(apiKey)}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ inlineData: { mimeType, data: mediaBase64 } }, { text: prompt }] }],
-            generationConfig: { responseMimeType: 'application/json', temperature: 0 },
+            generationConfig: { responseMimeType: 'application/json' },
           }),
         }
       );
@@ -546,13 +547,13 @@ Mensagem atual: ${text}`;
   if (!apiKey) return null;
   try {
     const response = await customFetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(apiKey)}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: 'application/json', temperature: 0.1 },
+          generationConfig: { responseMimeType: 'application/json' },
         }),
       }
     );
@@ -614,13 +615,13 @@ Retorne o clientId exatamente como recebido.`;
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
   if (!apiKey) throw new Error('Nenhum provedor de IA local está disponível no computador.');
   const response = await customFetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(apiKey)}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: 'application/json', temperature: 0.2, maxOutputTokens: 12000 },
+        generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 12000 },
       }),
     }
   );

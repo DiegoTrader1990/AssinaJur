@@ -14,8 +14,8 @@ const PENDING_PREFIX = 'PENDING_ACTION:';
 const EXECUTED_PREFIX = 'EXECUTED_ACTION:';
 const PENDING_TTL_MS = 15 * 60 * 1000;
 const LEGAL_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
-const GEMINI_TEXT_MODEL = 'gemini-flash-latest';
-const GEMINI_VISION_MODELS = ['gemini-flash-latest', 'gemini-flash-latest', 'gemini-flash-latest'] as const;
+const GEMINI_TEXT_MODEL = 'gemini-3.5-flash-lite';
+const GEMINI_VISION_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'] as const;
 
 export interface WhatsAppIncomingMessage {
   officeId: string;
@@ -272,9 +272,8 @@ async function callGemini(
           generationConfig: jsonMode
             ? {
                 responseMimeType: 'application/json',
-                temperature: 0,
               }
-            : { temperature: 0.2 },
+            : {},
         }),
       }
     );
