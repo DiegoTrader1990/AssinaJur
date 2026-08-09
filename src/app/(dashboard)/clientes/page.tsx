@@ -229,7 +229,7 @@ export default function ClientsPage() {
       legalRepresentative: client.legalRepresentative || '',
       financialResponsible: client.financialResponsible || '',
       notes: client.notes || '',
-      legalArea: client.legalArea || 'Previdenciário',
+      legalArea: client.legalArea || '',
       processNumber: client.processNumber || '',
     });
     setFormError('');
@@ -879,6 +879,7 @@ export default function ClientsPage() {
                         onChange={handleFormChange}
                         className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-bold focus:border-blue-600 focus:outline-none font-heading"
                       >
+                        <option value="">Geral</option>
                         <option value="Previdenciário">Previdenciário</option>
                         <option value="Trabalhista">Trabalhista</option>
                         <option value="Família">Família</option>
