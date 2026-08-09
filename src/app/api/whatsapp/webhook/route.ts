@@ -158,6 +158,12 @@ export async function POST(req: Request) {
         : undefined,
       naturalCommand: bridgeAuthenticated && typeof body.naturalCommand === 'string' ? body.naturalCommand : undefined,
       conversationReply: bridgeAuthenticated && typeof body.conversationReply === 'string' ? body.conversationReply : undefined,
+      draftRequest: bridgeAuthenticated && body.draftRequest && typeof body.draftRequest === 'object' && !Array.isArray(body.draftRequest)
+        ? body.draftRequest
+        : undefined,
+      localAiResult: bridgeAuthenticated && body.localAiResult && typeof body.localAiResult === 'object' && !Array.isArray(body.localAiResult)
+        ? body.localAiResult
+        : undefined,
       trustedSource: Boolean(sessionUser),
     });
 
@@ -179,6 +185,7 @@ export async function POST(req: Request) {
       reply: agentResult.replyText,
       actionTaken: agentResult.actionTaken,
       outboundMessages: agentResult.outboundMessages || [],
+      localAiTask: agentResult.localAiTask,
     });
   } catch (error: any) {
     console.error('Erro no webhook do WhatsApp:', error);

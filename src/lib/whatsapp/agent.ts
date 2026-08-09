@@ -26,6 +26,8 @@ export interface WhatsAppIncomingMessage {
   documentData?: Record<string, unknown>;
   naturalCommand?: string;
   conversationReply?: string;
+  draftRequest?: LegalDraftRequest;
+  localAiResult?: LegalDraftPackage;
   trustedSource?: boolean;
 }
 
@@ -39,6 +41,41 @@ export interface WhatsAppAgentResult {
   actionTaken: string;
   mediaUrl?: string;
   outboundMessages?: OutboundWhatsAppMessage[];
+  localAiTask?: LocalAiTask;
+}
+
+interface LegalDraftRequest {
+  kind?: 'DOCUMENT' | 'KIT';
+  clientQuery?: string;
+  title?: string;
+  legalArea?: string;
+  instructions?: string;
+  suggestedDocuments?: string[];
+}
+
+interface LegalDraftDocument {
+  title: string;
+  documentType: string;
+  contentHtml: string;
+}
+
+interface LegalDraftPackage {
+  kind?: 'DOCUMENT' | 'KIT';
+  clientId?: string;
+  clientName?: string;
+  legalArea?: string;
+  requestSummary?: string;
+  documents?: LegalDraftDocument[];
+}
+
+interface LocalAiTask {
+  type: 'CREATE_LEGAL_DRAFT' | 'REVISE_LEGAL_DRAFT';
+  clientId: string;
+  clientName: string;
+  clientContext: Record<string, string>;
+  request: LegalDraftRequest;
+  existingDraft?: LegalDraftPackage;
+  revisionInstructions?: string;
 }
 
 interface ClientDraft {
@@ -92,7 +129,17 @@ interface PendingDeleteClientAction {
   data: { clientId?: string; clientName?: string; cpfCnpj?: string };
 }
 
-type PendingAction = PendingClientAction | PendingKitAction | PendingTemplateAction | PendingDeleteClientAction;
+interface PendingLegalDraftAction {
+  id: string;
+  type: 'GENERATE_LEGAL_DRAFT';
+  createdAt: string;
+  data: Required<Pick<LegalDraftPackage, 'kind' | 'clientId' | 'clientName' | 'documents'>> & {
+    legalArea?: string;
+    requestSummary?: string;
+  };
+}
+
+type PendingAction = PendingClientAction | PendingKitAction | PendingTemplateAction | PendingDeleteClientAction | PendingLegalDraftAction;
 
 function normalizePhone(value?: string | null): string {
   return (value || '').replace(/\D/g, '');
@@ -452,6 +499,9 @@ async function executePendingAction(officeId: string, action: PendingAction): Pr
   if (action.type === 'GENERATE_TEMPLATE') {
     return generateTemplateDocument(officeId, action);
   }
+  if (action.type === 'GENERATE_LEGAL_DRAFT') {
+    return generateLegalDraftDocuments(officeId, action);
+  }
   if (action.type !== 'CREATE_OR_UPDATE_CLIENT') {
     return { replyText: 'Não reconheci a ação pendente. Envie o pedido novamente.', actionTaken: 'UNKNOWN_PENDING_ACTION' };
   }
@@ -573,7 +623,7 @@ async function createDocumentFromTemplate({
 }: {
   officeId: string;
   clientId: string;
-  template: { id: string; title: string; contentHtml: string; documentType: string };
+  template: { id?: string; title: string; contentHtml: string; documentType: string };
   kitId?: string;
 }) {
   const { client, office, user } = await getAutomationContext(officeId, clientId);
@@ -590,7 +640,7 @@ async function createDocumentFromTemplate({
     data: {
       officeId,
       clientId: client.id,
-      templateId: template.id,
+      templateId: template.id || null,
       kitId: kitId || null,
       title,
       documentType: template.documentType,
@@ -621,6 +671,46 @@ async function createDocumentFromTemplate({
     },
   });
   return { document, signer, client };
+}
+
+async function generateLegalDraftDocuments(officeId: string, action: PendingLegalDraftAction): Promise<WhatsAppAgentResult> {
+  const client = await prisma.client.findFirst({ where: { id: action.data.clientId, officeId }, select: { id: true, name: true } });
+  if (!client) {
+    return { replyText: 'O cliente desta minuta não está mais disponível.', actionTaken: `${EXECUTED_PREFIX}${action.id}` };
+  }
+
+  const created = [];
+  for (const draft of action.data.documents) {
+    created.push(await createDocumentFromTemplate({
+      officeId,
+      clientId: client.id,
+      template: draft,
+    }));
+  }
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.assinajur.com.br';
+  const titles = created.map((item, index) => `${index + 1}. ${item.document.title}`).join('\n');
+  await prisma.auditLog.create({
+    data: {
+      officeId,
+      eventType: action.data.kind === 'KIT' ? 'AI_LEGAL_KIT_CREATED_BY_WHATSAPP' : 'AI_LEGAL_DRAFT_CREATED_BY_WHATSAPP',
+      description: `${created.length} documento(s) redigido(s) pela IA local e aprovado(s) no WhatsApp para ${client.name}.`,
+      metadata: JSON.stringify({ legalArea: action.data.legalArea, requestSummary: action.data.requestSummary }),
+    },
+  });
+  return {
+    replyText: [
+      `✅ *${action.data.kind === 'KIT' ? 'Kit jurídico criado' : 'Documento criado'} no AssinaJur*`,
+      '',
+      `👤 ${client.name}`,
+      `📄 ${created.length} documento(s):`,
+      titles,
+      '',
+      `🔗 Primeiro link de assinatura: ${appUrl}/assinar/${created[0].signer.token}`,
+      '',
+      'Os arquivos já estão disponíveis no site e a criação ficou registrada na auditoria.',
+    ].join('\n'),
+    actionTaken: `${EXECUTED_PREFIX}${action.id}`,
+  };
 }
 
 async function generateTemplateDocument(officeId: string, action: PendingTemplateAction): Promise<WhatsAppAgentResult> {
@@ -662,12 +752,127 @@ async function generateKitDocuments(officeId: string, action: PendingKitAction):
 }
 
 async function findSingleClient(officeId: string, query: string) {
+  const digits = normalizeCpfCnpj(query);
   const clients = await prisma.client.findMany({
-    where: { officeId, name: { contains: query.trim(), mode: 'insensitive' } },
+    where: {
+      officeId,
+      OR: [
+        { name: { contains: query.trim(), mode: 'insensitive' } },
+        ...(digits ? [{ cpfCnpj: { contains: digits } }] : []),
+      ],
+    },
     take: 3,
     orderBy: { updatedAt: 'desc' },
   });
   return clients;
+}
+
+function cleanDraftText(value: unknown, maxLength: number): string {
+  return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+}
+
+function legalDraftPreview(action: PendingLegalDraftAction): string {
+  const documentList = action.data.documents
+    .map((document, index) => {
+      const excerpt = document.contentHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 260);
+      return `${index + 1}. *${document.title}* (${document.documentType})\n   _${excerpt}${excerpt.length >= 260 ? '…' : ''}_`;
+    })
+    .join('\n\n');
+  return [
+    `🧠 *Prévia ${action.data.kind === 'KIT' ? 'do kit jurídico' : 'da minuta jurídica'}*`,
+    '',
+    `👤 *Cliente:* ${action.data.clientName}`,
+    action.data.legalArea ? `⚖️ *Área:* ${action.data.legalArea}` : null,
+    action.data.requestSummary ? `📝 *Pedido:* ${action.data.requestSummary}` : null,
+    '',
+    documentList,
+    '',
+    'Responda *CONFIRMAR* para gerar no AssinaJur, *ALTERAR: [o que deseja]* para eu revisar, ou *CANCELAR*.',
+    '_Nada foi criado no site ainda._',
+  ].filter((line): line is string => line !== null).join('\n');
+}
+
+async function prepareLegalDraftTask(officeId: string, request: LegalDraftRequest): Promise<WhatsAppAgentResult> {
+  const clientQuery = cleanDraftText(request.clientQuery, 200);
+  if (!clientQuery) {
+    return {
+      replyText: 'Perfeito. Para qual cliente devo redigir? Informe o nome ou CPF. Se quiser, acrescente também a área e os termos principais.',
+      actionTaken: 'LEGAL_DRAFT_CLIENT_REQUIRED',
+    };
+  }
+  const clients = await findSingleClient(officeId, clientQuery);
+  if (clients.length !== 1) {
+    return {
+      replyText: clients.length === 0
+        ? `Não encontrei o cliente “${clientQuery}”. Confirme o nome ou cadastre-o primeiro.`
+        : `Encontrei mais de um cliente para “${clientQuery}”. Informe o nome completo ou CPF.`,
+      actionTaken: 'LEGAL_DRAFT_CLIENT_NOT_UNIQUE',
+    };
+  }
+  const client = clients[0];
+  const clientContext: Record<string, string> = {
+    nome: client.name,
+    cpfCnpj: client.cpfCnpj,
+    rg: client.rg || '',
+    nacionalidade: client.nationality || '',
+    estadoCivil: client.maritalStatus || '',
+    profissao: client.profession || '',
+    endereco: [client.address, client.number, client.neighborhood, client.city, client.state].filter(Boolean).join(', '),
+  };
+  return {
+    replyText: 'Estou preparando a minuta com a IA local. Aguarde alguns instantes…',
+    actionTaken: 'LOCAL_AI_LEGAL_DRAFT_REQUESTED',
+    localAiTask: {
+      type: 'CREATE_LEGAL_DRAFT',
+      clientId: client.id,
+      clientName: client.name,
+      clientContext,
+      request: {
+        kind: request.kind === 'KIT' ? 'KIT' : 'DOCUMENT',
+        clientQuery,
+        title: cleanDraftText(request.title, 180),
+        legalArea: cleanDraftText(request.legalArea, 120),
+        instructions: cleanDraftText(request.instructions, 3000),
+        suggestedDocuments: Array.isArray(request.suggestedDocuments)
+          ? request.suggestedDocuments.map((item) => cleanDraftText(item, 160)).filter(Boolean).slice(0, 6)
+          : [],
+      },
+    },
+  };
+}
+
+async function finalizeLegalDraft(officeId: string, draftPackage: LegalDraftPackage): Promise<WhatsAppAgentResult> {
+  const clientId = cleanDraftText(draftPackage.clientId, 80);
+  const client = clientId
+    ? await prisma.client.findFirst({ where: { id: clientId, officeId }, select: { id: true, name: true } })
+    : null;
+  const documents = Array.isArray(draftPackage.documents)
+    ? draftPackage.documents.slice(0, 6).map((document) => ({
+        title: cleanDraftText(document?.title, 180),
+        documentType: cleanDraftText(document?.documentType, 60).toUpperCase() || 'DOCUMENTO',
+        contentHtml: cleanDraftText(document?.contentHtml, 18000),
+      })).filter((document) => document.title && document.contentHtml.length >= 200)
+    : [];
+  if (!client || documents.length === 0) {
+    return {
+      replyText: 'A IA não conseguiu montar uma minuta completa com segurança. Envie novamente o tipo de documento, o cliente e os termos desejados.',
+      actionTaken: 'LEGAL_DRAFT_INCOMPLETE',
+    };
+  }
+  const action: PendingLegalDraftAction = {
+    id: randomUUID(),
+    type: 'GENERATE_LEGAL_DRAFT',
+    createdAt: new Date().toISOString(),
+    data: {
+      kind: draftPackage.kind === 'KIT' ? 'KIT' : 'DOCUMENT',
+      clientId: client.id,
+      clientName: client.name,
+      legalArea: cleanDraftText(draftPackage.legalArea, 120) || undefined,
+      requestSummary: cleanDraftText(draftPackage.requestSummary, 600) || undefined,
+      documents,
+    },
+  };
+  return { replyText: legalDraftPreview(action), actionTaken: encodePendingAction(action) };
 }
 
 async function prepareClientDeletion(officeId: string, query?: string): Promise<WhatsAppAgentResult> {
@@ -813,7 +1018,7 @@ async function handleTextCommand(
   fromNumber: string,
   originalBody: string,
   allowAiRouting = true,
-  localRouting?: { command?: string; reply?: string }
+  localRouting?: { command?: string; reply?: string; draftRequest?: LegalDraftRequest }
 ): Promise<WhatsAppAgentResult> {
   const text = originalBody.trim();
   const normalized = text.toLocaleLowerCase('pt-BR');
@@ -838,6 +1043,36 @@ async function handleTextCommand(
   }
 
   const existingPending = await findLatestPendingAction(officeId, fromNumber);
+  if (existingPending?.type === 'GENERATE_LEGAL_DRAFT') {
+    const revision = text.match(/^(?:alterar|altere|revisar|revise|modificar|modifique|mudar|mude)\s*:?\s*(.+)$/i)?.[1]?.trim();
+    if (revision) {
+      const client = await prisma.client.findFirst({ where: { id: existingPending.data.clientId, officeId } });
+      if (!client) return { replyText: 'O cliente desta minuta não está mais disponível.', actionTaken: `${EXECUTED_PREFIX}${existingPending.id}` };
+      return {
+        replyText: 'Vou revisar a minuta com essas orientações. Aguarde alguns instantes…',
+        actionTaken: encodePendingAction(existingPending),
+        localAiTask: {
+          type: 'REVISE_LEGAL_DRAFT',
+          clientId: client.id,
+          clientName: client.name,
+          clientContext: {
+            nome: client.name,
+            cpfCnpj: client.cpfCnpj,
+            rg: client.rg || '',
+            endereco: [client.address, client.number, client.neighborhood, client.city, client.state].filter(Boolean).join(', '),
+          },
+          request: {
+            kind: existingPending.data.kind,
+            clientQuery: client.name,
+            legalArea: existingPending.data.legalArea,
+            instructions: existingPending.data.requestSummary,
+          },
+          existingDraft: existingPending.data,
+          revisionInstructions: revision.slice(0, 3000),
+        },
+      };
+    }
+  }
   if (existingPending?.type === 'CREATE_OR_UPDATE_CLIENT') {
     const phoneCandidate = normalizePhone(text.match(/(?:telefone|celular|whatsapp|fone)?\s*\+?([\d\s().-]{10,20})/i)?.[1]);
     if (phoneCandidate.length >= 10 && phoneCandidate.length <= 13) {
@@ -859,6 +1094,10 @@ async function handleTextCommand(
     if (!startsAnotherAction) return prepareClientDeletion(officeId, text);
   }
 
+  if (localRouting?.draftRequest) {
+    return prepareLegalDraftTask(officeId, localRouting.draftRequest);
+  }
+
   if (/^(ajuda|menu|comandos|o que você faz|oi|olá)$/i.test(normalized)) {
     return {
       replyText: [
@@ -872,6 +1111,8 @@ async function handleTextCommand(
         '• “Quem ainda não assinou?”',
         '• “Cobre a assinatura do João”',
         '• “Gere uma procuração para Ana”',
+        '• “Redija um contrato previdenciário com estes termos para Ana”',
+        '• “Monte um kit trabalhista completo para João”',
         '• Envie uma foto de RG/CNH ou um áudio explicando o que precisa',
         '',
         'Quando faltar alguma informação, eu pergunto. Ações que alteram dados sempre pedem *CONFIRMAR*.',
@@ -978,6 +1219,16 @@ async function handleTextCommand(
       actionTaken: 'REMIND_SIGNATURE',
       outboundMessages: [{ to: phone, text: reminder }],
     };
+  }
+
+  const freeDraftMatch = text.match(/^(?:redigir|redija|elaborar|elabore)\s+(?:um|uma)?\s*(.+?)\s+para\s+(?:o\s+cliente\s+|a\s+cliente\s+)?(.+)$/i);
+  if (freeDraftMatch) {
+    return prepareLegalDraftTask(officeId, {
+      kind: /\bkit\b/i.test(freeDraftMatch[1]) ? 'KIT' : 'DOCUMENT',
+      clientQuery: freeDraftMatch[2].trim(),
+      title: freeDraftMatch[1].trim(),
+      instructions: text,
+    });
   }
 
   const kitMatch = text.match(/^(?:gerar|criar|preparar)\s+kit\s+(.+?)\s+para\s+(.+)$/i);
@@ -1097,6 +1348,8 @@ export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Pr
     documentData,
     naturalCommand,
     conversationReply,
+    draftRequest,
+    localAiResult,
     trustedSource,
   } = input;
   if (!trustedSource && !isAuthorizedLawyerPhone(fromNumber)) {
@@ -1104,6 +1357,11 @@ export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Pr
       replyText: 'Este número não possui autorização para administrar o AssinaJur.',
       actionTaken: 'UNAUTHORIZED_PHONE',
     };
+  }
+
+
+  if (localAiResult) {
+    return finalizeLegalDraft(officeId, localAiResult);
   }
 
   if (messageType === 'AUDIO' && mediaBase64) {
@@ -1166,5 +1424,6 @@ export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Pr
   return handleTextCommand(officeId, fromNumber, body || '', true, {
     command: cleanOptional(naturalCommand),
     reply: cleanOptional(conversationReply),
+    draftRequest,
   });
 }

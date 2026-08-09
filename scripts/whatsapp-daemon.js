@@ -179,7 +179,7 @@ async function interpretConversationLocally(text) {
   if (!apiKey) return null;
   const history = conversationHistory.map((item) => `${item.role === 'user' ? 'Advogado' : 'AssinaJur'}: ${item.content}`).join('\n');
   const prompt = `Você é o assistente privado do advogado no AssinaJur. Interprete a mensagem considerando o histórico.
-Retorne somente JSON válido com "command" e "reply".
+Retorne somente JSON válido com "command", "reply" e "draftRequest". Use draftRequest como null quando não houver pedido de redação jurídica.
 
 Use command apenas quando houver uma ação operacional. Formatos permitidos:
 - ajuda
@@ -192,6 +192,11 @@ Use command apenas quando houver uma ação operacional. Formatos permitidos:
 - excluir cliente
 - gerar MODELO para CLIENTE
 - gerar kit KIT para CLIENTE
+
+Quando o advogado pedir para REDIGIR, ELABORAR ou CRIAR conteúdo jurídico novo, não use command. Preencha draftRequest:
+{"kind":"DOCUMENT" ou "KIT","clientQuery":"nome ou CPF","title":"tipo/título","legalArea":"área","instructions":"todos os termos pedidos","suggestedDocuments":["nomes, se for kit"]}
+Use KIT quando ele pedir para montar um conjunto inteligente de documentos. Use DOCUMENT para uma única procuração, contrato, declaração, termo, petição ou outra minuta.
+Extraia o cliente e os requisitos também do histórico recente quando a mensagem atual for continuação. Se faltar o cliente, deixe clientQuery vazio; o servidor perguntará.
 
 Se for conversa, dúvida, continuação sem dados suficientes ou discussão de ideias, deixe command vazio e responda em reply de forma natural, profissional e breve. Faça uma pergunta objetiva quando faltar informação.
 Nunca afirme que alterou, cadastrou, excluiu, gerou ou enviou algo; ações reais são executadas e confirmadas pelo servidor.
@@ -221,14 +226,80 @@ Mensagem atual: ${text}`;
     if (!parsed) return null;
     const command = typeof parsed.command === 'string' ? parsed.command.trim().slice(0, 1000) : '';
     const reply = typeof parsed.reply === 'string' ? parsed.reply.trim().slice(0, 2000) : '';
+    const hasDraftRequest = parsed.draftRequest
+      && typeof parsed.draftRequest === 'object'
+      && !Array.isArray(parsed.draftRequest)
+      && ['DOCUMENT', 'KIT'].includes(parsed.draftRequest.kind)
+      && Boolean(String(parsed.draftRequest.title || parsed.draftRequest.instructions || '').trim());
+    const draftRequest = hasDraftRequest
+      ? {
+          kind: parsed.draftRequest.kind === 'KIT' ? 'KIT' : 'DOCUMENT',
+          clientQuery: String(parsed.draftRequest.clientQuery || '').trim().slice(0, 200),
+          title: String(parsed.draftRequest.title || '').trim().slice(0, 180),
+          legalArea: String(parsed.draftRequest.legalArea || '').trim().slice(0, 120),
+          instructions: String(parsed.draftRequest.instructions || '').trim().slice(0, 3000),
+          suggestedDocuments: Array.isArray(parsed.draftRequest.suggestedDocuments)
+            ? parsed.draftRequest.suggestedDocuments.map((item) => String(item || '').trim().slice(0, 160)).filter(Boolean).slice(0, 6)
+            : [],
+        }
+      : null;
     const allowedCommand = /^(?:ajuda|clientes|buscar cliente(?:\s+.+)?|status|cobrar\s+.+|cadastrar cliente(?:\s+.*)?|excluir cliente(?:\s+.*)?|gerar(?:\s+kit)?\s+.+\s+para\s+.+)$/i.test(command)
       ? command
       : '';
-    return { command: allowedCommand, reply: allowedCommand ? '' : reply };
+    return { command: draftRequest ? '' : allowedCommand, reply: draftRequest || allowedCommand ? '' : reply, draftRequest };
   } catch (error) {
     console.error('Falha ao interpretar a conversa localmente:', error?.message || error);
     return null;
   }
+}
+
+async function generateLegalDraftLocally(task) {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY não configurada no computador.');
+  const isRevision = task?.type === 'REVISE_LEGAL_DRAFT';
+  const prompt = `Você é um redator jurídico brasileiro trabalhando sob supervisão direta de um advogado.
+Produza somente JSON válido. Não inclua markdown fora do JSON.
+
+Regras obrigatórias:
+- Não invente fatos, números, datas, partes, valores, legislação específica ou condições não informadas.
+- Use os dados do cliente fornecidos. Quando um dado indispensável não existir, use um marcador claro entre colchetes, como [INFORMAR VALOR].
+- Preserve no texto as variáveis {{cliente_nome}}, {{cliente_cpf}}, {{cliente_rg}}, {{cliente_endereco}}, {{cliente_estado_civil}}, {{cliente_profissao}}, {{advogado_nome}}, {{advogado_oab}}, {{escritorio_nome}}, {{cidade}} e {{data_atual}} quando forem pertinentes; o AssinaJur as preencherá.
+- Escreva em português brasileiro, com linguagem jurídica profissional, cláusulas numeradas e sem emojis.
+- O conteúdo deve ser HTML simples, usando apenas h1, h2, p, strong, ol, ul e li.
+- Uma minuta deve ser completa, mas objetiva. Para KIT, gere de 2 a 5 documentos úteis e não duplique conteúdo.
+- Isto é uma minuta para revisão do advogado, não uma afirmação de que o documento já foi aprovado.
+
+Formato:
+{"kind":"DOCUMENT ou KIT","clientId":"...","clientName":"...","legalArea":"...","requestSummary":"resumo fiel do pedido","documents":[{"title":"...","documentType":"CONTRATO|PROCURACAO|DECLARACAO|PETICAO|TERMO|DOCUMENTO","contentHtml":"..."}]}
+
+Tarefa: ${isRevision ? 'REVISAR a minuta existente conforme a orientação, mantendo o que não foi solicitado alterar.' : 'CRIAR uma nova minuta ou kit.'}
+Dados e instruções:
+${JSON.stringify(task)}
+
+Retorne o clientId exatamente como recebido.`;
+  const response = await customFetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: 'application/json', temperature: 0.2, maxOutputTokens: 12000 },
+      }),
+    }
+  );
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`Gemini respondeu HTTP ${response.status} ao redigir a minuta.`);
+  const parsed = parseGeminiJson(payload?.candidates?.[0]?.content?.parts?.[0]?.text);
+  if (!parsed || !Array.isArray(parsed.documents) || parsed.documents.length === 0) {
+    throw new Error('A IA local devolveu uma minuta incompleta.');
+  }
+  return {
+    ...parsed,
+    kind: task?.request?.kind === 'KIT' ? 'KIT' : 'DOCUMENT',
+    clientId: task.clientId,
+    clientName: task.clientName,
+  };
 }
 
 async function callAssinaJur(payload) {
@@ -435,7 +506,7 @@ async function connectToWhatsApp() {
 
         try {
           console.log('🤖 Processando com a Inteligência IA do AssinaJur...');
-          const data = await callAssinaJur({
+          let data = await callAssinaJur({
             fromNumber: resolvedFromNumber,
             message: textMessage,
             messageType: isImage ? 'IMAGE' : isAudio ? 'AUDIO' : 'TEXT',
@@ -444,7 +515,28 @@ async function connectToWhatsApp() {
             documentData,
             naturalCommand: localRouting?.command,
             conversationReply: localRouting?.reply,
+            draftRequest: localRouting?.draftRequest,
           });
+          if (data.localAiTask) {
+            try {
+              console.log(`🧠 Redigindo ${data.localAiTask.request?.kind === 'KIT' ? 'kit jurídico' : 'minuta jurídica'} localmente...`);
+              const localAiResult = await generateLegalDraftLocally(data.localAiTask);
+              data = await callAssinaJur({
+                eventType: 'LOCAL_AI_RESULT',
+                fromNumber: resolvedFromNumber,
+                message: data.localAiTask.type === 'REVISE_LEGAL_DRAFT' ? 'Revisão jurídica concluída pela IA local' : 'Minuta jurídica concluída pela IA local',
+                messageType: 'TEXT',
+                localAiResult,
+              });
+              console.log('✅ Minuta jurídica preparada; enviando prévia para aprovação.');
+            } catch (draftError) {
+              console.error('Erro na redação jurídica local:', draftError?.message || draftError);
+              data = {
+                reply: 'Não consegui concluir a minuta nesta tentativa. Seus dados não foram alterados. Tente novamente em instantes ou envie o pedido com menos documentos por vez.',
+                outboundMessages: [],
+              };
+            }
+          }
           if (data.reply) {
             console.log(`💬 Resposta enviada ao WhatsApp: "${data.reply}"`);
             await sock.sendMessage(rawJid, { text: data.reply });
