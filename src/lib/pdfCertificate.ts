@@ -235,6 +235,14 @@ export async function generateFinalPdfCertificate(documentId: string) {
   const originalPages = pdfDoc.getPages();
   const totalOrigPages = originalPages.length;
   const sigPos = (doc as any).signaturePosition || 'BOTTOM';
+  const customStampMatch = String(sigPos).match(/^CUSTOM:(\d+):([\d.]+):([\d.]+):([\d.]+):([\d.]+)$/);
+  const customStamp = customStampMatch ? {
+    page: Math.max(1, Number(customStampMatch[1])),
+    x: Math.min(0.92, Math.max(0, Number(customStampMatch[2]))),
+    y: Math.min(0.92, Math.max(0, Number(customStampMatch[3]))),
+    width: Math.min(0.6, Math.max(0.18, Number(customStampMatch[4]))),
+    height: Math.min(0.22, Math.max(0.065, Number(customStampMatch[5]))),
+  } : null;
 
   originalPages.forEach((p, idx) => {
     const { width: pW, height: pH } = p.getSize();
@@ -242,7 +250,22 @@ export async function generateFinalPdfCertificate(documentId: string) {
     // Os nomes completos permanecem no certificado de evidências.
     const stampText = `Documento assinado eletronicamente  |  Código: ${verificationCode}  |  Página ${idx + 1}/${totalOrigPages}  |  AssinaJur`;
 
-    if (sigPos === 'TOP') {
+    if (customStamp) {
+      if (idx + 1 !== customStamp.page) return;
+      const stampW = Math.min(pW * customStamp.width, pW - 16);
+      const stampH = Math.min(pH * customStamp.height, 92);
+      const stampX = Math.min(pW - stampW - 8, Math.max(8, pW * customStamp.x));
+      const stampY = Math.min(pH - stampH - 8, Math.max(8, pH * (1 - customStamp.y - customStamp.height)));
+      const signerNames = safeText(doc.signers.map((item) => item.name).join(', '), 180);
+      const nameLines = wrapTextToWidth(signerNames, bold, 7.2, stampW - 24).slice(0, 2);
+      p.drawRectangle({ x: stampX, y: stampY, width: stampW, height: stampH, color: rgb(1, 1, 1), opacity: 0.94, borderWidth: 1.2, borderColor: navy });
+      p.drawRectangle({ x: stampX, y: stampY + stampH - 5, width: stampW, height: 5, color: gold });
+      p.drawText('ASSINADO ELETRONICAMENTE', { x: stampX + 10, y: stampY + stampH - 19, size: 7.4, font: bold, color: navy });
+      nameLines.forEach((line, lineIndex) => {
+        p.drawText(line, { x: stampX + 10, y: stampY + stampH - 32 - lineIndex * 9, size: 7.2, font: bold, color: text });
+      });
+      p.drawText(`AssinaJur | ${verificationCode}`, { x: stampX + 10, y: stampY + 8, size: 6.2, font: mono, color: green });
+    } else if (sigPos === 'TOP') {
       const stripH = 22;
       const stripY = pH - stripH;
       p.drawRectangle({
@@ -538,7 +561,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       (12 + locationLines.length * 9.8 + 5) +
       (12 + authenticationLines.length * 9.8 + 5) +
       (signer.signatureImage ? 65 : 0);
-    const photosHeight = hasPhotos ? 170 : 0;
+    const photosHeight = hasPhotos ? 225 : 0;
     const panelH = 28 + dataHeight + photosHeight + 10;
     ensureSpace(panelH + 10);
 
@@ -619,7 +642,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
     // SEÇÃO 4: EVIDÊNCIAS COLETADAS — 3 SELFIES (CENTRO / PERFIL ESQUERDO / PERFIL DIREITO)
     if (hasPhotos) {
-      page.drawText('3. PROVA DE PRESENÇA AO VIVO (PROPORÇÃO PRESERVADA)', {
+      page.drawText('3. PROVA DE PRESENÇA AO VIVO', {
         x: padX,
         y: cursor,
         size: 7.5,
@@ -633,16 +656,17 @@ export async function generateFinalPdfCertificate(documentId: string) {
         ['3. Perfil Direito', signer.selfieRightImage],
       ];
 
-      // Tamanho do container ampliado e proporcional
-      const boxW = 145;
-      const boxH = 100;
-      const cardH = 132;
-      const gap = 16;
-      let photoX = padX;
+      // Cartões verticais para acompanhar melhor o enquadramento natural de selfie.
+      const boxW = 135;
+      const boxH = 155;
+      const cardH = 187;
+      const gap = 27;
+      const photosTotalWidth = boxW * 3 + gap * 2;
+      let photoX = padX + Math.max(0, (innerWidth - photosTotalWidth) / 2);
 
       for (const [label, img] of photoLabels) {
         const embedded = await embedBase64Image(pdfDoc, img);
-        const cardY = cursor - 150;
+        const cardY = cursor - cardH - 16;
 
         page.drawRectangle({
           x: photoX - 2,
@@ -656,7 +680,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
         page.drawRectangle({ x: photoX, y: cardY + 27, width: boxW, height: boxH, color: rgb(0.88, 0.92, 0.97) });
 
         if (embedded) {
-          // ESCALA PROPORCIONAL EXATA SEM DISTORÇÃO
+          // Escala proporcional sem distorção, centralizada no cartão vertical.
           const imgW = embedded.width;
           const imgH = embedded.height;
           const scale = Math.min(boxW / imgW, boxH / imgH);
@@ -741,8 +765,11 @@ export async function generateFinalPdfCertificate(documentId: string) {
   // SEÇÃO DE TRILHA PÚBLICA DE EVENTOS (SEM OTP)
   if (doc.events.length > 0) {
     const dateColX = CX + 6;
-    const eventColX = CX + 120;
-    const descColX = CX + 230;
+    const dateColWidth = 106;
+    const eventColX = dateColX + dateColWidth + 8;
+    const eventColWidth = 126;
+    const descColX = eventColX + eventColWidth + 8;
+    const descColWidth = CR - descColX - 6;
     const headerHeight = 18;
     const tableBottom = 68;
 
@@ -807,11 +834,12 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const rows = doc.events.map((ev) => {
       const dateText = formatBrasiliaDateTime(ev.createdAt, true).replace(' (Horário de Brasília — UTC−3)', '');
       const eventLabel = PUBLIC_EVENT_LABELS[ev.eventType] || ev.eventType;
-      const eventLines = wrapText(eventLabel, 22);
-      const descLines = wrapText(ev.description, 55);
-      const lineCount = Math.max(1, eventLines.length, descLines.length);
+      const dateLines = wrapTextToWidth(dateText, mono, 7, dateColWidth - 8);
+      const eventLines = wrapTextToWidth(eventLabel, bold, 7.2, eventColWidth - 8);
+      const descLines = wrapTextToWidth(ev.description, regular, 7, descColWidth - 6);
+      const lineCount = Math.max(1, dateLines.length, eventLines.length, descLines.length);
       const height = Math.max(26, 15 + lineCount * 9.5);
-      return { dateText, eventLines, descLines, height };
+      return { dateLines, eventLines, descLines, height };
     });
 
     rows.forEach((row, index) => {
@@ -824,7 +852,11 @@ export async function generateFinalPdfCertificate(documentId: string) {
       if (index % 2 === 1) {
         timelinePage.drawRectangle({ x: CX, y: rowY, width: CW, height: row.height, color: panelBg });
       }
-      timelinePage.drawText(row.dateText, { x: dateColX, y: rowY + row.height - 13, size: 7, font: mono, color: text });
+      let dateY = rowY + row.height - 13;
+      for (const line of row.dateLines) {
+        timelinePage.drawText(line, { x: dateColX, y: dateY, size: 7, font: mono, color: text });
+        dateY -= 9.5;
+      }
 
       let eventY = rowY + row.height - 13;
       for (const line of row.eventLines) {
@@ -837,6 +869,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
         timelinePage.drawText(line, { x: descColX, y: descY, size: 7, font: regular, color: text });
         descY -= 9.5;
       }
+
+      timelinePage.drawLine({ start: { x: eventColX - 4, y: rowY }, end: { x: eventColX - 4, y: rowY + row.height }, thickness: 0.35, color: panelBorder });
+      timelinePage.drawLine({ start: { x: descColX - 4, y: rowY }, end: { x: descColX - 4, y: rowY + row.height }, thickness: 0.35, color: panelBorder });
 
       timelinePage.drawLine({ start: { x: CX, y: rowY }, end: { x: CR, y: rowY }, thickness: 0.5, color: panelBorder });
     });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Upload,
@@ -18,7 +18,10 @@ import {
   Loader2,
   Copy,
   Check,
-  Scale
+  Scale,
+  Move,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
 
@@ -65,7 +68,14 @@ export default function NewDocumentPage() {
   // Dados do Passo 3: Título e Detalhes
   const [title, setTitle] = useState('');
   const [documentType, setDocumentType] = useState('Contrato');
-  const [signaturePosition, setSignaturePosition] = useState<'BOTTOM' | 'TOP' | 'RIGHT_MARGIN' | 'LEFT_MARGIN'>('BOTTOM');
+  const [signaturePosition, setSignaturePosition] = useState<'CUSTOM' | 'BOTTOM' | 'TOP' | 'RIGHT_MARGIN' | 'LEFT_MARGIN'>('CUSTOM');
+  const [placementPage, setPlacementPage] = useState(1);
+  const [pdfPageCount, setPdfPageCount] = useState(1);
+  const [stampPlacement, setStampPlacement] = useState({ x: 0.33, y: 0.79, width: 0.34, height: 0.095 });
+  const [renderingPreview, setRenderingPreview] = useState(false);
+  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const previewContainerRef = useRef<HTMLDivElement | null>(null);
+  const dragOffsetRef = useRef<{ x: number; y: number } | null>(null);
   const [customMessage, setCustomMessage] = useState('');
 
   // Assinatura a Rogo (Clientes Analfabetos / com Limitação)
@@ -88,6 +98,61 @@ export default function NewDocumentPage() {
       })
       .catch((err) => console.error('Erro ao carregar clientes:', err));
   }, []);
+
+  useEffect(() => {
+    if (!file || step !== 3 || signaturePosition !== 'CUSTOM') return;
+    let cancelled = false;
+    let activeRender: any = null;
+    const renderPage = async () => {
+      setRenderingPreview(true);
+      try {
+        const pdfjs = await import('pdfjs-dist');
+        pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+        if (cancelled) return;
+        setPdfPageCount(pdf.numPages);
+        const safePage = Math.min(Math.max(1, placementPage), pdf.numPages);
+        if (safePage !== placementPage) setPlacementPage(safePage);
+        const pdfPage = await pdf.getPage(safePage);
+        const baseViewport = pdfPage.getViewport({ scale: 1 });
+        const availableWidth = Math.min(680, previewContainerRef.current?.clientWidth || 680);
+        const scale = Math.max(0.65, availableWidth / baseViewport.width);
+        const viewport = pdfPage.getViewport({ scale });
+        const canvas = previewCanvasRef.current;
+        if (!canvas || cancelled) return;
+        const context = canvas.getContext('2d');
+        if (!context) return;
+        canvas.width = Math.round(viewport.width);
+        canvas.height = Math.round(viewport.height);
+        canvas.style.width = `${Math.round(viewport.width)}px`;
+        canvas.style.height = `${Math.round(viewport.height)}px`;
+        activeRender = pdfPage.render({ canvasContext: context, viewport });
+        await activeRender.promise;
+      } catch (previewError) {
+        if (!cancelled) console.error('Erro ao renderizar prévia do PDF:', previewError);
+      } finally {
+        if (!cancelled) setRenderingPreview(false);
+      }
+    };
+    renderPage();
+    return () => {
+      cancelled = true;
+      activeRender?.cancel?.();
+    };
+  }, [file, step, placementPage, signaturePosition]);
+
+  const moveStamp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragOffsetRef.current || !previewContainerRef.current) return;
+    const bounds = previewContainerRef.current.getBoundingClientRect();
+    const nextX = (event.clientX - bounds.left - dragOffsetRef.current.x) / bounds.width;
+    const nextY = (event.clientY - bounds.top - dragOffsetRef.current.y) / bounds.height;
+    setStampPlacement((current) => ({
+      ...current,
+      x: Math.min(1 - current.width, Math.max(0, nextX)),
+      y: Math.min(1 - current.height, Math.max(0, nextY)),
+    }));
+  };
 
   const handleSelectClient = (clientId: string) => {
     setSelectedClientId(clientId);
@@ -206,7 +271,9 @@ export default function NewDocumentPage() {
           originalFileId: uploadedFile.id,
           originalHash: uploadedFile.hash,
           clientId: selectedClientId || null,
-          signaturePosition,
+          signaturePosition: signaturePosition === 'CUSTOM'
+            ? `CUSTOM:${placementPage}:${stampPlacement.x.toFixed(4)}:${stampPlacement.y.toFixed(4)}:${stampPlacement.width.toFixed(4)}:${stampPlacement.height.toFixed(4)}`
+            : signaturePosition,
           customMessage,
           signers,
           isIlliterate,
@@ -633,9 +700,10 @@ export default function NewDocumentPage() {
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Posição do Carimbo / Grampo nas Páginas</label>
               <select
                 value={signaturePosition}
-                onChange={(e) => setSignaturePosition(e.target.value as any)}
+                onChange={(e) => setSignaturePosition(e.target.value as typeof signaturePosition)}
                 className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-bold focus:border-blue-600 focus:outline-none font-heading"
               >
+                <option value="CUSTOM">✥ Escolher na página (Arrastar selo)</option>
                 <option value="BOTTOM">⬇️ Rodapé (Faixa Inferior - Padrão)</option>
                 <option value="TOP">⬆️ Cabeçalho (Faixa Superior)</option>
                 <option value="RIGHT_MARGIN">➡️ Margem Lateral Direita (Grampo Vertical)</option>
@@ -643,6 +711,100 @@ export default function NewDocumentPage() {
               </select>
             </div>
           </div>
+
+          {signaturePosition === 'CUSTOM' && (
+            <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50/70 via-white to-amber-50/50 p-4 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-heading text-sm font-extrabold text-[#071B3A] flex items-center gap-2">
+                    <Move className="w-4 h-4 text-blue-600" /> Posicione o selo na linha de assinatura
+                  </h3>
+                  <p className="text-[11px] text-slate-600 mt-1">Arraste o selo sobre a página. Ele será aplicado exatamente neste local após a assinatura.</p>
+                </div>
+                <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1.5 shadow-xs">
+                  <button
+                    type="button"
+                    onClick={() => setPlacementPage((current) => Math.max(1, current - 1))}
+                    disabled={placementPage <= 1}
+                    className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-30"
+                    aria-label="Página anterior"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="text-[11px] font-extrabold text-[#071B3A] min-w-[82px] text-center">Página {placementPage} de {pdfPageCount}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPlacementPage((current) => Math.min(pdfPageCount, current + 1))}
+                    disabled={placementPage >= pdfPageCount}
+                    className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-30"
+                    aria-label="Próxima página"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 rounded-xl bg-white border border-slate-200 px-3 py-2">
+                <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 whitespace-nowrap">Tamanho do selo</span>
+                <input
+                  type="range"
+                  min="22"
+                  max="52"
+                  value={Math.round(stampPlacement.width * 100)}
+                  onChange={(event) => {
+                    const width = Number(event.target.value) / 100;
+                    setStampPlacement((current) => ({ ...current, width, height: Math.max(0.075, width * 0.28), x: Math.min(current.x, 1 - width) }));
+                  }}
+                  className="w-full accent-blue-600"
+                />
+                <span className="text-[11px] font-bold text-slate-700 w-9 text-right">{Math.round(stampPlacement.width * 100)}%</span>
+              </div>
+
+              <div className="overflow-auto rounded-xl border border-slate-300 bg-slate-200/70 p-3 max-h-[680px]">
+                <div
+                  ref={previewContainerRef}
+                  className="relative mx-auto w-fit shadow-2xl bg-white touch-none select-none"
+                  onPointerMove={moveStamp}
+                  onPointerUp={() => { dragOffsetRef.current = null; }}
+                  onPointerCancel={() => { dragOffsetRef.current = null; }}
+                >
+                  <canvas ref={previewCanvasRef} className="block max-w-full h-auto" />
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    className="absolute rounded-md border-2 border-[#071B3A] bg-white/95 shadow-lg cursor-move overflow-hidden"
+                    style={{
+                      left: `${stampPlacement.x * 100}%`,
+                      top: `${stampPlacement.y * 100}%`,
+                      width: `${stampPlacement.width * 100}%`,
+                      height: `${stampPlacement.height * 100}%`,
+                    }}
+                    onPointerDown={(event) => {
+                      const bounds = previewContainerRef.current?.getBoundingClientRect();
+                      if (!bounds) return;
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                      dragOffsetRef.current = {
+                        x: event.clientX - bounds.left - stampPlacement.x * bounds.width,
+                        y: event.clientY - bounds.top - stampPlacement.y * bounds.height,
+                      };
+                    }}
+                  >
+                    <div className="h-1.5 bg-[#D4AF37]" />
+                    <div className="px-2 py-1 text-[#071B3A] leading-tight">
+                      <div className="text-[8px] sm:text-[10px] font-extrabold">ASSINADO ELETRONICAMENTE</div>
+                      <div className="text-[7px] sm:text-[9px] font-bold truncate">{signers[0]?.name || 'Nome do signatário'}</div>
+                      <div className="text-[6px] sm:text-[8px] font-mono text-emerald-700">AssinaJur • código verificável</div>
+                    </div>
+                  </div>
+                  {renderingPreview && (
+                    <div className="absolute inset-0 bg-white/75 flex items-center justify-center text-xs font-bold text-[#071B3A]">
+                      <Loader2 className="w-5 h-5 animate-spin mr-2 text-blue-600" /> Carregando página…
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Mensagem para o Cliente (Exibida no Celular)</label>

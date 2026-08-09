@@ -7,6 +7,7 @@ import { isAuthorizedLawyerPhone, processWhatsAppCommand } from '@/lib/whatsapp/
 import { brazilianPhoneVariants } from '@/lib/whatsapp/conversation';
 import { getFileBuffer } from '@/lib/storage';
 import { queueSignatureCompletionMessages } from '@/lib/whatsapp/signatureCompletion';
+import { generateFinalPdfCertificate } from '@/lib/pdfCertificate';
 
 export const dynamic = 'force-dynamic';
 
@@ -153,6 +154,28 @@ export async function POST(req: Request) {
       }
       await queueSignatureCompletionMessages(document.id);
       return NextResponse.json({ success: true, document });
+    }
+
+    if (body.eventType === 'REGENERATE_LATEST_CERTIFICATE') {
+      const document = await prisma.document.findFirst({
+        where: {
+          officeId: targetOfficeId,
+          status: 'CONCLUIDO',
+          signers: { some: { status: 'ASSINADO' } },
+        },
+        orderBy: { updatedAt: 'desc' },
+        select: { id: true, title: true },
+      });
+      if (!document) {
+        return NextResponse.json({ success: false, error: 'Nenhum documento concluído foi encontrado.' }, { status: 404 });
+      }
+      const generated = await generateFinalPdfCertificate(document.id);
+      return NextResponse.json({
+        success: true,
+        document,
+        verificationCode: generated.verificationCode,
+        signedFileId: generated.signedStorageFile.id,
+      });
     }
 
     if (body.eventType === 'OUTBOX_PULL') {

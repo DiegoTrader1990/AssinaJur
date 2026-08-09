@@ -40,6 +40,65 @@ export function replaceTemplateVariables(contentHtml: string, variables: Variabl
   return compiled;
 }
 
+type ParagraphKind = 'BODY' | 'H1' | 'H2' | 'LIST';
+type TextRun = { text: string; bold: boolean };
+type RichParagraph = { kind: ParagraphKind; runs: TextRun[] };
+
+function decodeHtmlText(value: string): string {
+  return value
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, ' ');
+}
+
+function emphasizeDocumentNames(html: string, variables: VariableValues): string {
+  const names = [variables.cliente_nome, variables.advogado_nome, variables.escritorio_nome]
+    .map((item) => String(item || '').trim())
+    .filter((item) => item.length >= 3)
+    .sort((left, right) => right.length - left.length);
+  return names.reduce((result, name) => {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return result.replace(new RegExp(escaped, 'gi'), (match) => `<strong>${match}</strong>`);
+  }, html);
+}
+
+function parseRichParagraphs(html: string): RichParagraph[] {
+  const normalized = html
+    .replace(/\r/g, '')
+    .replace(/<\s*br\s*\/?>/gi, '\n')
+    .replace(/<\s*h1[^>]*>/gi, '\n[[H1]]')
+    .replace(/<\s*h2[^>]*>/gi, '\n[[H2]]')
+    .replace(/<\s*li[^>]*>/gi, '\n[[LIST]]')
+    .replace(/<\/(?:p|div|h1|h2|h3|li|ol|ul)>/gi, '\n');
+
+  return normalized
+    .split('\n')
+    .map((raw): RichParagraph | null => {
+      let line = raw.trim();
+      if (!line) return null;
+      let kind: ParagraphKind = 'BODY';
+      if (line.startsWith('[[H1]]')) { kind = 'H1'; line = line.slice(6); }
+      if (line.startsWith('[[H2]]')) { kind = 'H2'; line = line.slice(6); }
+      if (line.startsWith('[[LIST]]')) { kind = 'LIST'; line = line.slice(8); }
+
+      const runs: TextRun[] = [];
+      let boldDepth = 0;
+      for (const token of line.match(/<[^>]+>|[^<]+/g) || []) {
+        if (/^<\s*(?:strong|b)\b/i.test(token)) { boldDepth += 1; continue; }
+        if (/^<\s*\/(?:strong|b)\s*>/i.test(token)) { boldDepth = Math.max(0, boldDepth - 1); continue; }
+        if (/^<[^>]+>$/.test(token)) continue;
+        const text = decodeHtmlText(token);
+        if (text.trim()) runs.push({ text, bold: boldDepth > 0 });
+      }
+      return runs.length ? { kind, runs } : null;
+    })
+    .filter((item): item is RichParagraph => Boolean(item));
+}
+
 async function renderTemplatePdf({
   title,
   contentHtml,
@@ -54,6 +113,7 @@ async function renderTemplatePdf({
   watermark?: string;
 }) {
   const compiledText = replaceTemplateVariables(contentHtml, variables);
+  const presentationHtml = emphasizeDocumentNames(compiledText, variables);
   const pdfDoc = await PDFDocument.create();
   const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -78,33 +138,52 @@ async function renderTemplatePdf({
   let currentY = height - 110;
   const marginX = 40;
   const maxWidth = width - 80;
-  const paragraphs = compiledText.replace(/<[^>]*>/g, '\n').split('\n').map((item) => item.trim()).filter(Boolean);
+  const paragraphs = parseRichParagraphs(presentationHtml);
+  const ensureLineSpace = (lineHeight: number) => {
+    if (currentY - lineHeight < 58) {
+      page = addPage(false);
+      currentY = height - 60;
+    }
+  };
 
   for (const paragraph of paragraphs) {
-    const words = paragraph.split(/\s+/);
-    let currentLine = '';
-    for (const word of words) {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      if (regularFont.widthOfTextAtSize(testLine, 10) > maxWidth && currentLine) {
-        page.drawText(currentLine, { x: marginX, y: currentY, size: 10, font: regularFont, color: textColor });
-        currentY -= 15;
-        if (currentY < 60) {
-          page = addPage(false);
-          currentY = height - 60;
-        }
-        currentLine = word;
-      } else {
-        currentLine = testLine;
-      }
+    const heading = paragraph.kind === 'H1' || paragraph.kind === 'H2';
+    const fontSize = paragraph.kind === 'H1' ? 12 : paragraph.kind === 'H2' ? 10.8 : 10;
+    const lineHeight = paragraph.kind === 'H1' ? 17 : paragraph.kind === 'H2' ? 16 : 15;
+    const tokens = paragraph.runs.flatMap((run) =>
+      run.text.trim().split(/\s+/).filter(Boolean).map((word) => ({ text: word, bold: heading || run.bold }))
+    );
+    if (paragraph.kind === 'LIST') tokens.unshift({ text: '\u2022', bold: true });
+
+    let line: Array<{ text: string; bold: boolean }> = [];
+    let lineWidth = 0;
+    const drawLine = () => {
+      if (!line.length) return;
+      ensureLineSpace(lineHeight);
+      const startX = heading ? marginX + Math.max(0, (maxWidth - lineWidth) / 2) : marginX;
+      let cursorX = startX;
+      line.forEach((token, index) => {
+        const font = token.bold ? boldFont : regularFont;
+        const value = `${index > 0 && !/^[,.;:!?)]/.test(token.text) ? ' ' : ''}${token.text}`;
+        page.drawText(value, { x: cursorX, y: currentY, size: fontSize, font, color: heading ? navyColor : textColor });
+        cursorX += font.widthOfTextAtSize(value, fontSize);
+      });
+      currentY -= lineHeight;
+      line = [];
+      lineWidth = 0;
+    };
+
+    for (const token of tokens) {
+      const font = token.bold ? boldFont : regularFont;
+      const value = `${line.length && !/^[,.;:!?)]/.test(token.text) ? ' ' : ''}${token.text}`;
+      const width = font.widthOfTextAtSize(value, fontSize);
+      if (line.length && lineWidth + width > maxWidth) drawLine();
+      const nextValue = `${line.length && !/^[,.;:!?)]/.test(token.text) ? ' ' : ''}${token.text}`;
+      line.push(token);
+      lineWidth += font.widthOfTextAtSize(nextValue, fontSize);
     }
-    if (currentLine) {
-      page.drawText(currentLine, { x: marginX, y: currentY, size: 10, font: regularFont, color: textColor });
-      currentY -= 20;
-      if (currentY < 60) {
-        page = addPage(false);
-        currentY = height - 60;
-      }
-    }
+    drawLine();
+    currentY -= heading ? 8 : 6;
   }
 
   if (watermark) {

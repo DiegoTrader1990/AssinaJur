@@ -538,12 +538,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     try {
-      // Geramos uma foto 4:3 sem redimensionar o quadro inteiro da câmera.
+      // Geramos uma foto vertical 3:4, no enquadramento natural de selfie,
       // Celulares normalmente entregam vídeo 16:9; esticá-lo diretamente para
       // 640x480 deformava o rosto. Aqui recortamos o centro e preservamos a
       // proporção original antes de desenhar no canvas.
-      canvas.width = 640;
-      canvas.height = 480;
+      canvas.width = 480;
+      canvas.height = 640;
       const ctx = canvas.getContext('2d');
       if (ctx) {
         const sourceWidth = video.videoWidth;

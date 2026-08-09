@@ -62,7 +62,7 @@ const PUBLIC_EVENT_LABELS: Record<string, string> = {
   LINK_SENT: 'Link enviado',
   LINK_OPENED: 'Link acessado',
   IDENTITY_CONFIRMED: 'CPF confirmado pelo signatário',
-  LIVENESS_CAPTURED: 'Prova de presença concluída (3 selfies 4:3)',
+  LIVENESS_CAPTURED: 'Prova de presença concluída (3 selfies verticais)',
   SIGNATURE_SUBMITTED: 'Assinatura eletrônica concluída',
   DOCUMENT_COMPLETED: 'Documento finalizado e certificado emitido',
   DOCUMENT_CANCELLED: 'Documento cancelado',
@@ -278,7 +278,7 @@ export default function VerificationResultPage({ params }: { params: { code: str
                   )}
                   {s.livenessVerified && (
                     <div className="text-[11px] text-emerald-700 font-bold flex items-center gap-1 mt-1">
-                      <Eye className="w-3.5 h-3.5 text-emerald-600" /> Prova de presença ao vivo registrada (3 selfies 4:3)
+                      <Eye className="w-3.5 h-3.5 text-emerald-600" /> Prova de presença ao vivo registrada (3 selfies verticais)
                     </div>
                   )}
                   {s.signedAt && (

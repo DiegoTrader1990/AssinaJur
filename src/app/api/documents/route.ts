@@ -4,8 +4,23 @@ import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 import { getFileBuffer } from '@/lib/storage';
 import { calculateHash } from '@/lib/pdfHash';
+import { PDFDocument } from 'pdf-lib';
 
 export const dynamic = 'force-dynamic';
+
+function normalizeSignaturePosition(value: unknown, pageCount: number): string {
+  const input = String(value || 'BOTTOM');
+  if (['BOTTOM', 'TOP', 'RIGHT_MARGIN', 'LEFT_MARGIN'].includes(input)) return input;
+  const match = input.match(/^CUSTOM:(\d+):([\d.]+):([\d.]+):([\d.]+):([\d.]+)$/);
+  if (!match) return 'BOTTOM';
+  const page = Number(match[1]);
+  const [x, y, width, height] = match.slice(2).map(Number);
+  if (!Number.isInteger(page) || page < 1 || page > pageCount) return 'BOTTOM';
+  if (![x, y, width, height].every(Number.isFinite)) return 'BOTTOM';
+  if (x < 0 || y < 0 || width < 0.18 || width > 0.6 || height < 0.065 || height > 0.22) return 'BOTTOM';
+  if (x + width > 1.001 || y + height > 1.001) return 'BOTTOM';
+  return `CUSTOM:${page}:${x.toFixed(4)}:${y.toFixed(4)}:${width.toFixed(4)}:${height.toFixed(4)}`;
+}
 
 function hasValidCpfCnpjCheckDigits(value: string): boolean {
   const digits = value.replace(/\D/g, '');
@@ -123,6 +138,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'O PDF original não foi encontrado no armazenamento.' }, { status: 400 });
     }
     const verifiedOriginalHash = calculateHash(originalBuffer);
+    const originalPdf = await PDFDocument.load(originalBuffer, { ignoreEncryption: true });
+    const safeSignaturePosition = normalizeSignaturePosition(signaturePosition, originalPdf.getPageCount());
     if (clientId && !linkedClient) {
       return NextResponse.json({ error: 'O cliente informado não pertence a este escritório.' }, { status: 400 });
     }
@@ -143,7 +160,7 @@ export async function POST(req: Request) {
           clientId: clientId || null,
           title,
           documentType: documentType || 'Não informado',
-          signaturePosition: signaturePosition || 'BOTTOM',
+          signaturePosition: safeSignaturePosition,
           originalFileId,
           originalHash: verifiedOriginalHash,
           status: 'PRONTO_PARA_ENVIO',
