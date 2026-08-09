@@ -278,22 +278,24 @@ export async function generateFinalPdfCertificate(documentId: string) {
       const stampX = Math.min(pW - stampW - 8, Math.max(8, pW * customStamp.x));
       const stampY = Math.min(pH - stampH - 8, Math.max(8, pH * (1 - customStamp.y - customStamp.height)));
       const signerNames = safeText(doc.signers.map((item) => item.name).join(', '), 180);
-      const qrStampSize = Math.min(42, Math.max(28, stampH - 25));
+      const qrStampSize = Math.min(38, Math.max(26, stampH - 27));
       const contentX = stampX + qrStampSize + 20;
       const contentW = stampX + stampW - contentX - 8;
       const nameLines = wrapTextToWidth(signerNames, bold, 7.1, contentW).slice(0, 2);
       const signedAt = doc.signers.find((item) => item.signedAt)?.signedAt || doc.completedAt || new Date();
       p.drawRectangle({ x: stampX + 2.5, y: stampY - 2.5, width: stampW, height: stampH, color: rgb(0.78, 0.81, 0.86), opacity: 0.35 });
       p.drawRectangle({ x: stampX, y: stampY, width: stampW, height: stampH, color: rgb(1, 1, 1), opacity: 0.98, borderWidth: 1.35, borderColor: navy });
-      p.drawRectangle({ x: stampX, y: stampY + stampH - 5, width: stampW, height: 5, color: gold });
-      p.drawImage(qrImage, { x: stampX + 8, y: stampY + (stampH - qrStampSize) / 2 - 1, width: qrStampSize, height: qrStampSize });
-      p.drawLine({ start: { x: contentX - 8, y: stampY + 9 }, end: { x: contentX - 8, y: stampY + stampH - 12 }, thickness: 0.7, color: panelBorder });
-      p.drawText('ASSINATURA ELETRÔNICA VERIFICADA', { x: contentX, y: stampY + stampH - 18, size: 6.2, font: bold, color: navy });
+      p.drawRectangle({ x: stampX, y: stampY + stampH - 17, width: stampW, height: 17, color: navy });
+      p.drawRectangle({ x: stampX, y: stampY + stampH - 4, width: stampW, height: 4, color: gold });
+      p.drawText('ASSINATURA ELETRÔNICA E PRESENÇA VERIFICADAS', { x: stampX + 9, y: stampY + stampH - 13, size: 5.8, font: bold, color: rgb(1, 1, 1) });
+      p.drawImage(qrImage, { x: stampX + 8, y: stampY + 6, width: qrStampSize, height: qrStampSize });
+      p.drawLine({ start: { x: contentX - 8, y: stampY + 6 }, end: { x: contentX - 8, y: stampY + stampH - 22 }, thickness: 0.7, color: panelBorder });
       nameLines.forEach((line, lineIndex) => {
-        p.drawText(line, { x: contentX, y: stampY + stampH - 31 - lineIndex * 8.5, size: 7.1, font: bold, color: text });
+        p.drawText(line, { x: contentX, y: stampY + stampH - 29 - lineIndex * 8.2, size: 7, font: bold, color: text });
       });
-      p.drawText(formatBrasiliaDateTime(signedAt, false).replace(/\s*\(.+$/, ''), { x: contentX, y: stampY + 17, size: 5.6, font: regular, color: muted });
-      p.drawText(`VALIDAR: ${verificationCode}`, { x: contentX, y: stampY + 7, size: 5.8, font: mono, color: navy });
+      p.drawText('CPF + 3 SELFIES + GEOLOCALIZAÇÃO', { x: contentX, y: stampY + 22, size: 5.2, font: bold, color: navy });
+      p.drawText(formatBrasiliaDateTime(signedAt, false).replace(/\s*\(.+$/, ''), { x: contentX, y: stampY + 13, size: 5.4, font: regular, color: muted });
+      p.drawText(`VALIDAR: ${verificationCode}`, { x: contentX, y: stampY + 4, size: 5.6, font: mono, color: navy });
     } else if (sigPos === 'TOP') {
       const stripH = 22;
       const stripY = pH - stripH;
@@ -395,6 +397,154 @@ export async function generateFinalPdfCertificate(documentId: string) {
     }
   });
 
+  // ── 2. CERTIFICADO COMPACTO: UMA FOLHA DE EVIDÊNCIAS POR DOCUMENTO ──
+  const compactCertificate = true;
+  if (compactCertificate) {
+    const certificatePage = pdfDoc.addPage([PAGE_W, PAGE_H]);
+    const signer = doc.signers[0];
+    if (!signer) throw new Error('Documento concluído sem signatário associado.');
+
+    certificatePage.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: paperBg });
+    certificatePage.drawRectangle({ x: 20, y: 20, width: 555.28, height: 801.89, borderWidth: 1.2, borderColor: panelBorder });
+    certificatePage.drawRectangle({ x: 20, y: 760, width: 555.28, height: 61.89, color: navy });
+    certificatePage.drawRectangle({ x: 20, y: 757, width: 555.28, height: 3, color: gold });
+    certificatePage.drawText('ASSINAJUR', { x: CX, y: 794, size: 14, font: bold, color: rgb(1, 1, 1) });
+    certificatePage.drawText('ASSINATURA ELETRÔNICA PARA ADVOCACIA', { x: CX, y: 780, size: 6.2, font: regular, color: rgb(0.72, 0.79, 0.9) });
+    const compactHeader = 'CERTIFICADO DE EVIDÊNCIAS JURÍDICAS';
+    certificatePage.drawText(compactHeader, { x: CR - bold.widthOfTextAtSize(compactHeader, 8.4), y: 787, size: 8.4, font: bold, color: rgb(1, 1, 1) });
+
+    const compactTitleLines = wrapTextToWidth(doc.title, bold, 11.2, 320).slice(0, 2);
+    compactTitleLines.forEach((line, index) => certificatePage.drawText(line, { x: CX, y: 736 - index * 13, size: 11.2, font: bold, color: navy }));
+    certificatePage.drawText(`Código: ${verificationCode}`, { x: CX, y: 702, size: 7.2, font: mono, color: muted });
+    certificatePage.drawText(`ID: ${doc.id}`, { x: CX, y: 691, size: 6.5, font: mono, color: muted });
+
+    const compactBadgeX = 380;
+    certificatePage.drawRectangle({ x: compactBadgeX, y: 704, width: 175, height: 38, color: navy });
+    certificatePage.drawRectangle({ x: compactBadgeX, y: 738, width: 175, height: 4, color: gold });
+    certificatePage.drawText('ASSINATURA E PRESENÇA', { x: compactBadgeX + 11, y: 724, size: 7.2, font: bold, color: rgb(1, 1, 1) });
+    certificatePage.drawText('VERIFICADAS', { x: compactBadgeX + 11, y: 713, size: 7.2, font: bold, color: gold });
+    certificatePage.drawText('QR E TRILHA PÚBLICA', { x: compactBadgeX + 105, y: 713, size: 5, font: bold, color: rgb(0.72, 0.79, 0.9) });
+
+    const compactTrustY = 651;
+    const compactTrustW = 160;
+    const compactTrust = (x: number, label: string, value: string, accent: any) => {
+      certificatePage.drawRectangle({ x, y: compactTrustY, width: compactTrustW, height: 29, color: rgb(1, 1, 1), borderWidth: 0.7, borderColor: panelBorder });
+      certificatePage.drawRectangle({ x, y: compactTrustY, width: 4, height: 29, color: accent });
+      certificatePage.drawText(label.toUpperCase(), { x: x + 11, y: compactTrustY + 18, size: 5.4, font: bold, color: muted });
+      certificatePage.drawText(value, { x: x + 11, y: compactTrustY + 7, size: 7.1, font: bold, color: navy });
+    };
+    compactTrust(CX, 'Autenticidade', verificationCode, gold);
+    compactTrust(CX + 177, 'Conclusão', formatBrasiliaDateTime(doc.completedAt || new Date(), false).replace(/\s*\(.+$/, ''), navy);
+    compactTrust(CX + 354, 'Integridade', 'SHA-256 completo', navy);
+
+    const compactPanelTop = 638;
+    const compactPanelY = 475;
+    certificatePage.drawRectangle({ x: CX, y: compactPanelY, width: CW, height: compactPanelTop - compactPanelY, color: rgb(1, 1, 1), borderWidth: 0.8, borderColor: panelBorder });
+    certificatePage.drawRectangle({ x: CX, y: compactPanelTop - 23, width: CW, height: 23, color: navy });
+    certificatePage.drawRectangle({ x: CX, y: compactPanelTop - 3, width: CW, height: 3, color: gold });
+    certificatePage.drawText('1. IDENTIFICAÇÃO, ASSINATURA E DISPOSITIVO', { x: CX + 14, y: compactPanelTop - 15, size: 7.3, font: bold, color: rgb(1, 1, 1) });
+
+    const leftX = CX + 14;
+    const rightX = 315;
+    const compactLabel = (x: number, yPos: number, label: string) => certificatePage.drawText(label.toUpperCase(), { x, y: yPos, size: 5.8, font: bold, color: muted });
+    const compactValue = (x: number, yPos: number, value: string, width: number, size = 8, valueFont = regular, color = text, maxLines = 1) => {
+      wrapTextToWidth(value, valueFont, size, width).slice(0, maxLines).forEach((line, index) => {
+        certificatePage.drawText(line, { x, y: yPos - index * (size + 1.5), size, font: valueFont, color });
+      });
+    };
+    compactLabel(leftX, 601, 'Signatário');
+    compactValue(leftX, 588, signer.name, 235, 9.2, bold, navy, 2);
+    compactLabel(rightX, 601, 'CPF completo');
+    compactValue(rightX, 588, formatFullCpf(signer.cpf), 225, 9.2, bold, navy);
+    compactLabel(leftX, 568, 'Telefone');
+    compactValue(leftX, 556, formatFullPhone(signer.phone), 235, 8.2);
+    compactLabel(rightX, 568, 'Data e hora da assinatura');
+    compactValue(rightX, 556, formatBrasiliaDateTime(signer.signedAt), 225, 7.2, bold, text, 2);
+    compactLabel(leftX, 536, 'Endereço IP');
+    compactValue(leftX, 524, signer.ipAddress || 'Não informado', 235, 7.4, mono);
+    compactLabel(rightX, 536, 'Geolocalização');
+    const compactLocation = signer.geoLat != null && signer.geoLng != null
+      ? `${signer.geoCity || ''}${signer.geoState ? '/' + signer.geoState : ''} | ${Number(signer.geoLat).toFixed(6)}, ${Number(signer.geoLng).toFixed(6)}${signer.geoAccuracy != null ? ` | precisão ${Math.round(signer.geoAccuracy)} m` : ''}`
+      : 'Não coletada';
+    compactValue(rightX, 524, compactLocation, 225, 6.8, regular, signer.geoLat != null ? linkBlue : muted, 2);
+    compactLabel(leftX, 505, 'Dispositivo e navegador');
+    compactValue(leftX, 493, signer.userAgent || 'Não informado', CW - 28, 6.4, regular, text, 2);
+
+    certificatePage.drawText('2. PROVA DE PRESENÇA AO VIVO - 3 REGISTROS FACIAIS', { x: CX, y: 458, size: 7.4, font: bold, color: navy });
+    const compactPhotos: Array<[string, string | null]> = [
+      ['1  FRONTAL', signer.selfieCenterImage],
+      ['2  PERFIL ESQUERDO', signer.selfieLeftImage],
+      ['3  PERFIL DIREITO', signer.selfieRightImage],
+    ];
+    const compactPhotoW = 140;
+    const compactPhotoH = 132;
+    const compactPhotoGap = 27;
+    let compactPhotoX = CX + (CW - (compactPhotoW * 3 + compactPhotoGap * 2)) / 2;
+    for (const [label, imageData] of compactPhotos) {
+      const embedded = await embedBase64Image(pdfDoc, imageData, { width: 560, height: 528 });
+      certificatePage.drawRectangle({ x: compactPhotoX - 2, y: 309, width: compactPhotoW + 4, height: compactPhotoH + 4, color: navy });
+      certificatePage.drawRectangle({ x: compactPhotoX - 2, y: 441, width: compactPhotoW + 4, height: 4, color: gold });
+      if (embedded) certificatePage.drawImage(embedded, { x: compactPhotoX, y: 311, width: compactPhotoW, height: compactPhotoH - 2 });
+      certificatePage.drawRectangle({ x: compactPhotoX, y: 311, width: compactPhotoW, height: 18, color: navy, opacity: 0.93 });
+      certificatePage.drawText(label, { x: compactPhotoX + 7, y: 317, size: 5.8, font: bold, color: rgb(1, 1, 1) });
+      certificatePage.drawText('VALIDADA', { x: compactPhotoX + compactPhotoW - 41, y: 317, size: 4.8, font: bold, color: gold });
+      compactPhotoX += compactPhotoW + compactPhotoGap;
+    }
+
+    const integrityX = CX;
+    const integrityY = 162;
+    const integrityW = 250;
+    const evidenceH = 132;
+    certificatePage.drawRectangle({ x: integrityX, y: integrityY, width: integrityW, height: evidenceH, color: navy });
+    certificatePage.drawRectangle({ x: integrityX, y: integrityY + evidenceH - 4, width: integrityW, height: 4, color: gold });
+    certificatePage.drawText('3. INTEGRIDADE CRIPTOGRÁFICA', { x: integrityX + 13, y: integrityY + evidenceH - 18, size: 7.1, font: bold, color: rgb(1, 1, 1) });
+    certificatePage.drawText('HASH SHA-256 DO DOCUMENTO ORIGINAL', { x: integrityX + 13, y: integrityY + 93, size: 5.7, font: bold, color: rgb(0.68, 0.76, 0.88) });
+    const compactHash = doc.originalHash || '';
+    certificatePage.drawText(compactHash.substring(0, 32), { x: integrityX + 13, y: integrityY + 78, size: 7.2, font: mono, color: rgb(1, 1, 1) });
+    certificatePage.drawText(compactHash.substring(32, 64), { x: integrityX + 13, y: integrityY + 66, size: 7.2, font: mono, color: rgb(1, 1, 1) });
+    certificatePage.drawText('PROVAS VINCULADAS', { x: integrityX + 13, y: integrityY + 46, size: 5.7, font: bold, color: rgb(0.68, 0.76, 0.88) });
+    certificatePage.drawText('CPF confirmado | 3 selfies | IP | geolocalização', { x: integrityX + 13, y: integrityY + 33, size: 6.4, font: regular, color: rgb(0.9, 0.93, 0.98) });
+    certificatePage.drawText(`${publicEvents.length} eventos preservados na trilha pública`, { x: integrityX + 13, y: integrityY + 19, size: 6.4, font: bold, color: gold });
+
+    const validationX = 304;
+    const validationW = CR - validationX;
+    certificatePage.drawRectangle({ x: validationX, y: integrityY, width: validationW, height: evidenceH, color: rgb(1, 1, 1), borderWidth: 0.8, borderColor: panelBorder });
+    certificatePage.drawRectangle({ x: validationX, y: integrityY + evidenceH - 24, width: validationW, height: 24, color: navy });
+    certificatePage.drawRectangle({ x: validationX, y: integrityY + evidenceH - 3, width: validationW, height: 3, color: gold });
+    certificatePage.drawText('VALIDAÇÃO PÚBLICA INDEPENDENTE', { x: validationX + 12, y: integrityY + evidenceH - 16, size: 6.7, font: bold, color: rgb(1, 1, 1) });
+    certificatePage.drawImage(qrImage, { x: validationX + 12, y: integrityY + 15, width: 73, height: 73 });
+    const validationTextX = validationX + 96;
+    certificatePage.drawText('ESCANEIE PARA VERIFICAR', { x: validationTextX, y: integrityY + 84, size: 5.8, font: bold, color: muted });
+    certificatePage.drawText(verificationCode, { x: validationTextX, y: integrityY + 68, size: 8, font: mono, color: navy });
+    certificatePage.drawText('assinajur.com.br/verificar', { x: validationTextX, y: integrityY + 52, size: 6.5, font: bold, color: linkBlue });
+    certificatePage.drawText('Trilha completa, dados técnicos', { x: validationTextX, y: integrityY + 35, size: 6.2, font: regular, color: text });
+    certificatePage.drawText('e autenticidade disponíveis online.', { x: validationTextX, y: integrityY + 25, size: 6.2, font: regular, color: text });
+    certificatePage.drawText('MP 2.200-2/2001 | Lei 14.063/2020', { x: validationTextX, y: integrityY + 11, size: 5.5, font: bold, color: muted });
+
+    const auditY = 57;
+    const auditH = 92;
+    certificatePage.drawRectangle({ x: CX, y: auditY, width: CW, height: auditH, color: rgb(1, 1, 1), borderWidth: 0.8, borderColor: panelBorder });
+    certificatePage.drawRectangle({ x: CX, y: auditY + auditH - 23, width: CW, height: 23, color: navy });
+    certificatePage.drawText('4. RESUMO DA TRILHA DE AUDITORIA', { x: CX + 14, y: auditY + auditH - 15, size: 7.1, font: bold, color: rgb(1, 1, 1) });
+    certificatePage.drawText(`${publicEvents.length} EVENTOS | DETALHAMENTO COMPLETO PELO QR CODE`, { x: CR - 196, y: auditY + auditH - 15, size: 5.2, font: bold, color: rgb(0.72, 0.79, 0.9) });
+    const milestones = [
+      'CPF CONFIRMADO',
+      'PRESENÇA - 3 SELFIES',
+      'ASSINATURA REGISTRADA',
+      'CERTIFICADO EMITIDO',
+    ];
+    milestones.forEach((milestone, index) => {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const itemX = CX + 16 + col * 250;
+      const itemY = auditY + 48 - row * 21;
+      certificatePage.drawRectangle({ x: itemX, y: itemY, width: 8, height: 8, color: gold });
+      certificatePage.drawText(milestone, { x: itemX + 15, y: itemY + 1, size: 6.4, font: bold, color: navy });
+    });
+    certificatePage.drawText(`Concluído em ${formatBrasiliaDateTime(doc.completedAt || new Date())}`, { x: CX + 16, y: auditY + 7, size: 5.7, font: italic, color: muted });
+  }
+
+  if (!compactCertificate) {
   // ── 2. PÁGINA(S) DO CERTIFICADO DE EVIDÊNCIAS JURÍDICAS ──
   let page = pdfDoc.addPage([PAGE_W, PAGE_H]);
   let manifestPageCount = 1;
@@ -899,6 +1049,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
     });
 
     closeTimelinePage(`Trilha de auditoria concluída com ${publicEvents.length} evento(s) registrado(s).`);
+  }
+
   }
 
   // Metadados imutáveis do PDF
