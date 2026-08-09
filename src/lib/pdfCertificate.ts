@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { getFileBuffer, saveFile } from './storage';
 import { calculateHash } from './pdfHash';
 import { formatBrasiliaDateTime } from './dateUtils';
+import sharp from 'sharp';
 
 // CPF e Telefone completos (SEM MASCARAMENTO no certificado oficial de evidências)
 export function formatFullCpf(cpf: string): string {
@@ -126,13 +127,26 @@ function addLinkAnnotation(
   }
 }
 
-async function embedBase64Image(pdfDoc: PDFDocument, base64: string | null | undefined) {
+async function embedBase64Image(
+  pdfDoc: PDFDocument,
+  base64: string | null | undefined,
+  cover?: { width: number; height: number }
+) {
   if (!base64) return null;
   try {
     const raw = String(base64).trim();
     const clean = raw.replace(/^data:image\/(jpeg|jpg|png|webp);base64,/i, '').trim();
-    const bytes = Buffer.from(clean, 'base64');
+    let bytes = Buffer.from(clean, 'base64');
     if (bytes.length === 0) return null;
+
+    if (cover) {
+      bytes = Buffer.from(await sharp(bytes)
+        .rotate()
+        .resize(cover.width, cover.height, { fit: 'cover', position: 'attention' })
+        .jpeg({ quality: 90, mozjpeg: true })
+        .toBuffer());
+      return await pdfDoc.embedJpg(bytes);
+    }
 
     // Detectar cabeçalho PNG: 0x89 0x50 0x4E 0x47
     if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
@@ -148,6 +162,7 @@ async function embedBase64Image(pdfDoc: PDFDocument, base64: string | null | und
 // Rótulos públicos em português amigável (sem OTP ou nomes técnicos)
 const PUBLIC_EVENT_LABELS: Record<string, string> = {
   DOCUMENT_CREATED: 'Documento criado',
+  DOCUMENT_GENERATED_BY_WHATSAPP: 'Documento gerado pelo WhatsApp',
   LINK_SENT: 'Link de assinatura enviado',
   LINK_OPENED: 'Link de assinatura acessado',
   IDENTITY_CONFIRMED: 'CPF confirmado pelo signatário',
@@ -665,7 +680,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       let photoX = padX + Math.max(0, (innerWidth - photosTotalWidth) / 2);
 
       for (const [label, img] of photoLabels) {
-        const embedded = await embedBase64Image(pdfDoc, img);
+        const embedded = await embedBase64Image(pdfDoc, img, { width: 540, height: 620 });
         const cardY = cursor - cardH - 16;
 
         page.drawRectangle({
