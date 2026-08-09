@@ -461,6 +461,9 @@ async function findLatestPendingAction(officeId: string, fromNumber: string): Pr
       select: { id: true },
     });
     if (!executed) return action;
+    // A ação pendente mais recente representa o estado atual do fluxo. Se ela já foi
+    // concluída ou cancelada, não devemos ressuscitar versões anteriores do mesmo pedido.
+    return null;
   }
   return null;
 }
