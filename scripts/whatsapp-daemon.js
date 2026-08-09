@@ -93,7 +93,8 @@ function unwrapMessageContent(message) {
     const wrapped = content.ephemeralMessage?.message
       || content.viewOnceMessage?.message
       || content.viewOnceMessageV2?.message
-      || content.viewOnceMessageV2Extension?.message;
+      || content.viewOnceMessageV2Extension?.message
+      || content.documentWithCaptionMessage?.message;
     if (!wrapped) break;
     content = wrapped;
   }
@@ -145,7 +146,10 @@ function parseGeminiJson(text) {
 async function analyzeDocumentLocally(mediaBase64, mediaMimeType) {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
   if (!mediaBase64) return null;
-  const mimeType = mediaMimeType?.startsWith('image/') ? mediaMimeType : 'image/jpeg';
+  const suppliedMimeType = String(mediaMimeType || '').split(';')[0].trim().toLowerCase();
+  const mimeType = suppliedMimeType.startsWith('image/') || suppliedMimeType === 'application/pdf'
+    ? suppliedMimeType
+    : 'image/jpeg';
   const prompt = `Analise cuidadosamente este RG ou CNH brasileiro, inclusive se estiver rotacionado.
 Extraia somente os dados visíveis do titular. Diferencie CPF do número do RG e não invente dígitos.
 Retorne somente JSON válido com: name, cpfCnpj, rg, issuingOrgan, birthDate, nationality,
@@ -184,8 +188,8 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
   }
 
   const groqKey = String(process.env.GROQ_API_KEY || '').trim();
-  if (!groqKey) return null;
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
+  // O endpoint visual do Groq recebe imagens. PDFs continuam pela leitura Gemini do bloco anterior.
+  if (groqKey && mimeType.startsWith('image/')) for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       const response = await customFetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
@@ -219,6 +223,37 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
       console.error(`Leitura alternativa incompleta na tentativa ${attempt}.`);
     } catch (error) {
       console.error(`Falha na leitura alternativa na tentativa ${attempt}:`, error?.message || error);
+    }
+  }
+
+  // Última contingência para imagens: OCR executado no próprio computador. O texto reconhecido
+  // é estruturado separadamente e ainda passa pela validação matemática do CPF/CNPJ.
+  if (mimeType.startsWith('image/')) {
+    let worker;
+    try {
+      const { createWorker } = require('tesseract.js');
+      worker = await createWorker('por');
+      const result = await worker.recognize(Buffer.from(mediaBase64, 'base64'));
+      const rawText = String(result?.data?.text || '').replace(/\s+/g, ' ').trim().slice(0, 6000);
+      if (rawText && groqKey) {
+        const parsed = await callGroqJson(`O texto abaixo foi extraído localmente de um RG ou CNH brasileiro.
+Identifique apenas informações explicitamente presentes e retorne JSON com: name, cpfCnpj, rg, issuingOrgan,
+birthDate, nationality, maritalStatus, profession, cep, address, number, neighborhood, city e state.
+Não invente dados e diferencie CPF do número do RG.
+
+Texto OCR: ${rawText}`, { model: 'openai/gpt-oss-120b', maxTokens: 1200 });
+        const name = typeof parsed?.name === 'string' ? parsed.name.trim() : '';
+        const cpfCnpj = String(parsed?.cpfCnpj || '').replace(/\D/g, '');
+        if (name && hasValidCpfCnpjCheckDigits(cpfCnpj)) {
+          console.log('✅ Documento recuperado pela contingência OCR local.');
+          return { ...parsed, name, cpfCnpj };
+        }
+      }
+      console.error('Contingência OCR local não confirmou nome e CPF válidos.');
+    } catch (error) {
+      console.error('Falha na contingência OCR local:', error?.message || error);
+    } finally {
+      if (worker) await worker.terminate().catch(() => {});
     }
   }
   return null;
@@ -614,6 +649,10 @@ async function connectToWhatsApp() {
         const messageContent = unwrapMessageContent(msg.message);
         const isImage = !!messageContent.imageMessage;
         const isAudio = !!messageContent.audioMessage;
+        const documentMessage = messageContent.documentMessage;
+        const isDocument = !!documentMessage;
+        const documentMimeType = String(documentMessage?.mimetype || '').split(';')[0].toLowerCase();
+        const isReadableDocument = isDocument && (documentMimeType.startsWith('image/') || documentMimeType === 'application/pdf');
         const sharedContact = messageContent.contactMessage || messageContent.contactsArrayMessage?.contacts?.[0];
         const isContact = !!sharedContact;
         const contactPhone = phoneFromVcard(sharedContact?.vcard);
@@ -624,23 +663,23 @@ async function connectToWhatsApp() {
           messageContent.extendedTextMessage?.text ||
           (isContact && contactPhone ? `telefone ${contactPhone}` : '') ||
           (isContact ? `Contato ${contactName} recebido sem telefone legível` : '') ||
-          (isImage ? 'Foto de documento para cadastro' : isAudio ? 'Áudio de voz enviado pelo advogado' : '');
+          (isImage ? 'Foto de documento para cadastro' : isReadableDocument ? 'Arquivo de documento para cadastro' : isDocument ? 'Arquivo recebido' : isAudio ? 'Áudio de voz enviado pelo advogado' : '');
 
         if (!textMessage) continue;
 
-        console.log(`\n📩 Mensagem RECEBIDA (${resolvedFromNumber}): [${isImage ? 'FOTO' : isAudio ? 'ÁUDIO DE VOZ' : isContact ? 'CONTATO' : 'TEXTO'}] "${textMessage}"`);
+        console.log(`\n📩 Mensagem RECEBIDA (${resolvedFromNumber}): [${isImage ? 'FOTO' : isDocument ? 'DOCUMENTO' : isAudio ? 'ÁUDIO DE VOZ' : isContact ? 'CONTATO' : 'TEXTO'}] "${textMessage}"`);
 
         let mediaBase64 = undefined;
         let mediaMimeType = undefined;
         let documentData = undefined;
         let localRouting = undefined;
 
-        if (isImage) {
+        if (isImage || isReadableDocument) {
           try {
             const buffer = await downloadMediaMessage(msg, 'buffer', {});
             mediaBase64 = buffer.toString('base64');
-            mediaMimeType = messageContent.imageMessage.mimetype || 'image/jpeg';
-            console.log(`📸 Foto baixada com sucesso (${buffer.length} bytes)...`);
+            mediaMimeType = isImage ? (messageContent.imageMessage.mimetype || 'image/jpeg') : documentMimeType;
+            console.log(`📸 Documento baixado com sucesso (${buffer.length} bytes, ${mediaMimeType})...`);
             console.log('🔎 Analisando o documento localmente no computador...');
             documentData = await analyzeDocumentLocally(mediaBase64, mediaMimeType);
             console.log(documentData
@@ -660,7 +699,7 @@ async function connectToWhatsApp() {
           }
         }
 
-        if (!isImage && !isAudio && !isContact) {
+        if (!isImage && !isDocument && !isAudio && !isContact) {
           const simpleControl = /^(?:confirmar|confirmo|cancelar|cancela|ajuda|menu|oi|olá|\+?[\d\s().-]{10,20})$/i.test(textMessage.trim());
           if (!simpleControl) {
             localRouting = await interpretConversationLocally(textMessage);
@@ -673,7 +712,7 @@ async function connectToWhatsApp() {
           let data = await callAssinaJur({
             fromNumber: resolvedFromNumber,
             message: textMessage,
-            messageType: isImage ? 'IMAGE' : isAudio ? 'AUDIO' : 'TEXT',
+            messageType: isImage ? 'IMAGE' : isReadableDocument ? 'DOCUMENT' : isAudio ? 'AUDIO' : 'TEXT',
             mediaBase64: documentData ? undefined : mediaBase64,
             mediaMimeType,
             documentData,

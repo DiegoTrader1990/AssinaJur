@@ -350,8 +350,11 @@ async function extractClientDraftFromImage(
   mediaMimeType: string | undefined,
   fallbackPhone: string
 ): Promise<ClientDraft | null> {
-  const mimeType = mediaMimeType?.startsWith('image/') ? mediaMimeType : 'image/jpeg';
-  const cleanBase64 = mediaBase64.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/i, '').trim();
+  const suppliedMimeType = String(mediaMimeType || '').split(';')[0].trim().toLowerCase();
+  const mimeType = suppliedMimeType.startsWith('image/') || suppliedMimeType === 'application/pdf'
+    ? suppliedMimeType
+    : 'image/jpeg';
+  const cleanBase64 = mediaBase64.replace(/^data:(?:image\/[a-zA-Z0-9.+-]+|application\/pdf);base64,/i, '').trim();
   const collected: Partial<ClientDraft> = {};
 
   for (let attempt = 0; attempt < GEMINI_VISION_MODELS.length; attempt += 1) {
@@ -1745,7 +1748,7 @@ export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Pr
     }
   }
 
-  if (messageType === 'IMAGE' && documentData) {
+  if ((messageType === 'IMAGE' || messageType === 'DOCUMENT') && documentData) {
     const name = cleanOptional(documentData.name);
     const cpfCnpj = normalizeCpfCnpj(cleanOptional(documentData.cpfCnpj));
     if (name && hasValidCpfCnpjCheckDigits(cpfCnpj)) {
@@ -1774,7 +1777,7 @@ export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Pr
     console.error('[WhatsApp Vision] Leitura local recebida sem nome e CPF válidos; acionando contingência do servidor.');
   }
 
-  if (messageType === 'IMAGE' && mediaBase64) {
+  if ((messageType === 'IMAGE' || messageType === 'DOCUMENT') && mediaBase64) {
     try {
       const draft = await extractClientDraftFromImage(mediaBase64, mediaMimeType, '');
       if (!draft) {
