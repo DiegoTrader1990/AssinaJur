@@ -178,6 +178,28 @@ export async function POST(req: Request) {
       });
     }
 
+    if (body.eventType === 'DOWNLOAD_LATEST_CERTIFICATE') {
+      const document = await prisma.document.findFirst({
+        where: { officeId: targetOfficeId, status: 'CONCLUIDO', signedFileId: { not: null } },
+        orderBy: { updatedAt: 'desc' },
+        include: { signedFile: true },
+      });
+      if (!document?.signedFile) {
+        return NextResponse.json({ success: false, error: 'Nenhum certificado final foi encontrado.' }, { status: 404 });
+      }
+      const file = await getFileBuffer(targetOfficeId, document.signedFile.storageKey);
+      if (!file) {
+        return NextResponse.json({ success: false, error: 'O arquivo final não foi encontrado.' }, { status: 404 });
+      }
+      return NextResponse.json({
+        success: true,
+        document: { id: document.id, title: document.title },
+        fileName: document.signedFile.originalName,
+        mimeType: document.signedFile.mimeType,
+        documentBase64: file.toString('base64'),
+      });
+    }
+
     if (body.eventType === 'OUTBOX_PULL') {
       const pending = await prisma.whatsAppLog.findMany({
         where: {
