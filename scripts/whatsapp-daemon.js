@@ -68,6 +68,18 @@ let isConnected = false;
 let isConnecting = false;
 const conversationHistory = [];
 
+function recordDocumentDiagnostic(event, details = {}) {
+  try {
+    const diagnosticFolder = path.join(process.env.LOCALAPPDATA || path.join(__dirname, '..'), 'AssinaJur');
+    fs.mkdirSync(diagnosticFolder, { recursive: true });
+    fs.appendFileSync(
+      path.join(diagnosticFolder, 'whatsapp-document-diagnostics.log'),
+      `${JSON.stringify({ at: new Date().toISOString(), event, ...details })}\n`,
+      'utf8'
+    );
+  } catch {}
+}
+
 function rememberConversation(role, content) {
   const clean = String(content || '').trim();
   if (!clean) return;
@@ -220,6 +232,7 @@ async function analyzeDocumentLocally(mediaBase64, mediaMimeType) {
     ? suppliedMimeType
     : 'image/jpeg';
   const collected = {};
+  recordDocumentDiagnostic('READ_STARTED', { mimeType, bytes: Math.floor(mediaBase64.length * 0.75) });
   const prompt = `Analise cuidadosamente este RG ou CNH brasileiro, inclusive se estiver rotacionado.
 Extraia somente os dados visíveis do titular. Diferencie CPF do número do RG e não invente dígitos.
 Retorne somente JSON válido com: name, cpfCnpj, rg, issuingOrgan, birthDate, nationality,
@@ -241,12 +254,14 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         console.error(`Leitura local do documento: Gemini respondeu HTTP ${response.status} na tentativa ${attempt}.`);
+        recordDocumentDiagnostic('GEMINI_HTTP_ERROR', { status: response.status, attempt });
         // Limite de uso não é defeito da fotografia. Acionamos imediatamente o leitor alternativo.
         if (response.status === 429) break;
         continue;
       }
       const parsed = parseGeminiJson(payload?.candidates?.[0]?.content?.parts?.[0]?.text);
       mergeDocumentCandidate(collected, parsed);
+      recordDocumentDiagnostic('GEMINI_RESULT', { attempt, fields: Object.keys(collected), complete: hasMinimumDocumentIdentity(collected) });
       if (hasMinimumDocumentIdentity(collected)) return collected;
       console.error(`Leitura local do documento incompleta na tentativa ${attempt}; tentando novamente.`);
     } catch (error) {
@@ -278,10 +293,12 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         console.error(`Leitura alternativa do documento: Groq Vision respondeu HTTP ${response.status} na tentativa ${attempt}.`);
+        recordDocumentDiagnostic('GROQ_VISION_HTTP_ERROR', { status: response.status, attempt });
         continue;
       }
       const parsed = parseGeminiJson(payload?.choices?.[0]?.message?.content);
       mergeDocumentCandidate(collected, parsed);
+      recordDocumentDiagnostic('GROQ_VISION_RESULT', { attempt, fields: Object.keys(collected), complete: hasMinimumDocumentIdentity(collected) });
       if (hasMinimumDocumentIdentity(collected)) {
         console.log('✅ Documento lido pelo leitor visual alternativo.');
         return collected;
@@ -304,6 +321,7 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
       const result = await worker.recognize(Buffer.from(mediaBase64, 'base64'));
       const rawText = String(result?.data?.text || '').replace(/\r/g, '').trim().slice(0, 6000);
       mergeDocumentCandidate(collected, extractDocumentPatternsFromOcr(rawText));
+      recordDocumentDiagnostic('LOCAL_OCR_RESULT', { characters: rawText.length, fields: Object.keys(collected), complete: hasMinimumDocumentIdentity(collected) });
       if (hasMinimumDocumentIdentity(collected)) {
         console.log('✅ Documento recuperado por padrões documentais e OCR local.');
         return collected;
@@ -328,7 +346,9 @@ Texto OCR: ${rawText}`, { model: 'openai/gpt-oss-120b', maxTokens: 1200 });
       if (worker) await worker.terminate().catch(() => {});
     }
   }
-  return null;
+  const usefulPartial = Boolean(collected.name && (collected.cpfCnpj || collected.rg || collected.birthDate));
+  recordDocumentDiagnostic('READ_FINISHED', { fields: Object.keys(collected), complete: hasMinimumDocumentIdentity(collected), usefulPartial });
+  return usefulPartial ? collected : null;
 }
 
 async function callGroqJson(prompt, { model = 'openai/gpt-oss-120b', maxTokens = 1200, strictRouting = false } = {}) {

@@ -1749,28 +1749,48 @@ export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Pr
   }
 
   if ((messageType === 'IMAGE' || messageType === 'DOCUMENT') && documentData) {
-    const name = cleanOptional(documentData.name);
-    const cpfCnpj = normalizeCpfCnpj(cleanOptional(documentData.cpfCnpj));
+    let name = cleanOptional(documentData.name);
+    let cpfCnpj = normalizeCpfCnpj(cleanOptional(documentData.cpfCnpj));
+    const extractedRg = cleanOptional(documentData.rg);
+    let existingClient = hasValidCpfCnpjCheckDigits(cpfCnpj)
+      ? await prisma.client.findFirst({ where: { officeId, cpfCnpj } })
+      : null;
+    if (!existingClient && (name || extractedRg)) {
+      const possibleClients = await prisma.client.findMany({
+        where: {
+          officeId,
+          OR: [
+            ...(name ? [{ name: { equals: name, mode: 'insensitive' as const } }] : []),
+            ...(extractedRg ? [{ rg: extractedRg }] : []),
+          ],
+        },
+        take: 2,
+      });
+      if (possibleClients.length === 1) existingClient = possibleClients[0];
+    }
+    if (existingClient) {
+      name ||= existingClient.name;
+      cpfCnpj = existingClient.cpfCnpj;
+    }
     if (name && hasValidCpfCnpjCheckDigits(cpfCnpj)) {
-      const extractedRg = cleanOptional(documentData.rg);
       const safeRg = normalizeCpfCnpj(extractedRg) === cpfCnpj ? undefined : extractedRg;
       const draft: ClientDraft = {
         name,
         cpfCnpj,
-        phone: '',
-        whatsapp: '',
-        rg: safeRg,
-        issuingOrgan: cleanOptional(documentData.issuingOrgan),
-        birthDate: cleanOptional(documentData.birthDate),
-        nationality: cleanOptional(documentData.nationality) || 'Brasileira',
-        maritalStatus: cleanOptional(documentData.maritalStatus),
-        profession: cleanOptional(documentData.profession),
-        cep: cleanOptional(documentData.cep),
-        address: cleanOptional(documentData.address),
-        number: cleanOptional(documentData.number),
-        neighborhood: cleanOptional(documentData.neighborhood),
-        city: cleanOptional(documentData.city),
-        state: cleanOptional(documentData.state)?.toUpperCase(),
+        phone: existingClient?.phone || '',
+        whatsapp: existingClient?.whatsapp || existingClient?.phone || '',
+        rg: safeRg || existingClient?.rg || undefined,
+        issuingOrgan: cleanOptional(documentData.issuingOrgan) || existingClient?.issuingOrgan || undefined,
+        birthDate: cleanOptional(documentData.birthDate) || existingClient?.birthDate || undefined,
+        nationality: cleanOptional(documentData.nationality) || existingClient?.nationality || 'Brasileira',
+        maritalStatus: cleanOptional(documentData.maritalStatus) || existingClient?.maritalStatus || undefined,
+        profession: cleanOptional(documentData.profession) || existingClient?.profession || undefined,
+        cep: cleanOptional(documentData.cep) || existingClient?.cep || undefined,
+        address: cleanOptional(documentData.address) || existingClient?.address || undefined,
+        number: cleanOptional(documentData.number) || existingClient?.number || undefined,
+        neighborhood: cleanOptional(documentData.neighborhood) || existingClient?.neighborhood || undefined,
+        city: cleanOptional(documentData.city) || existingClient?.city || undefined,
+        state: (cleanOptional(documentData.state) || existingClient?.state || undefined)?.toUpperCase(),
       };
       return createPendingClientAction(draft);
     }
