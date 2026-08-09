@@ -636,13 +636,29 @@ async function createDocumentFromTemplate({
   clientId,
   template,
   kitId,
+  automationKey,
 }: {
   officeId: string;
   clientId: string;
   template: { id?: string; title: string; contentHtml: string; documentType: string };
   kitId?: string;
+  automationKey?: string;
 }) {
   const { client, office, user } = await getAutomationContext(officeId, clientId);
+  if (automationKey) {
+    const previousEvent = await prisma.documentEvent.findFirst({
+      where: {
+        eventType: 'DOCUMENT_GENERATED_BY_WHATSAPP',
+        description: { contains: `[ação ${automationKey}]` },
+        document: { officeId, clientId },
+      },
+      include: { document: { include: { signers: { orderBy: { signatureOrder: 'asc' }, take: 1 } } } },
+    });
+    const previousSigner = previousEvent?.document.signers[0];
+    if (previousEvent && previousSigner) {
+      return { document: previousEvent.document, signer: previousSigner, client };
+    }
+  }
   const title = `${template.title} - ${client.name}`;
   const compiled = await compileTemplateToPdf({
     officeId,
@@ -683,7 +699,7 @@ async function createDocumentFromTemplate({
       documentId: document.id,
       userId: user.id,
       eventType: 'DOCUMENT_GENERATED_BY_WHATSAPP',
-      description: `Documento “${title}” gerado pelo controle remoto do WhatsApp.`,
+      description: `Documento “${title}” gerado pelo controle remoto do WhatsApp.${automationKey ? ` [ação ${automationKey}]` : ''}`,
     },
   });
   return { document, signer, client };
@@ -708,11 +724,12 @@ async function generateLegalDraftDocuments(officeId: string, action: PendingLega
   }
 
   const created = [];
-  for (const draft of action.data.documents) {
+  for (const [index, draft] of action.data.documents.entries()) {
     created.push(await createDocumentFromTemplate({
       officeId,
       clientId: client.id,
       template: draft,
+      automationKey: `${action.id}:${index}`,
     }));
   }
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.assinajur.com.br';
@@ -739,6 +756,18 @@ async function generateLegalDraftDocuments(officeId: string, action: PendingLega
     ].join('\n'),
     actionTaken: `${EXECUTED_PREFIX}${action.id}`,
   };
+}
+
+async function executeLegalDraftLinkSafely(officeId: string, action: PendingLegalDraftAction): Promise<WhatsAppAgentResult> {
+  try {
+    return await executePendingAction(officeId, action);
+  } catch (error) {
+    console.error('Erro ao criar documento definitivo da minuta aprovada:', error);
+    return {
+      replyText: 'A minuta continua aprovada, mas houve uma falha ao criar o documento definitivo. Nenhum envio foi feito ao cliente. Tente *GERAR LINK* novamente em instantes.',
+      actionTaken: encodePendingAction(action),
+    };
+  }
 }
 
 async function generateTemplateDocument(officeId: string, action: PendingTemplateAction): Promise<WhatsAppAgentResult> {
@@ -1203,8 +1232,16 @@ async function handleTextCommand(
 ): Promise<WhatsAppAgentResult> {
   const text = originalBody.trim();
   const normalized = text.toLocaleLowerCase('pt-BR');
+  const generateLinkIntent = !text.endsWith('?')
+    && /\b(?:link|links|documento definitivo|documentos definitivos)\b/i.test(text)
+    && /\b(?:gerar|gere|gera|criar|crie|cria|emitir|emita|preparar|prepare|fa[cç]a|quero|preciso|produzir|produza|disponibilizar|disponibilize)\b/i.test(text);
+  const approvalIntent = !text.endsWith('?') && (
+    /^(?:sim[,!]?\s*)?(?:eu\s+)?(?:aprovo|aprovar|confirmo|confirmar|confirme|aprovad[oa]|confirmad[oa]|minuta\s+aprovada|pode\s+(?:aprovar|salvar|prosseguir|seguir)|est[aá]\s+(?:corret[oa]|aprovad[oa])|pode\s+cadastrar)(?:\s+(?:a|o|essa|esta|minha)?\s*(?:minuta|procura[cç][aã]o|contrato|documento|cadastro))?[.!]?$/i.test(text)
+    || /^(?:aprovar|confirmar)(?:\s+(?:a|o))?\s+(?:minuta|procura[cç][aã]o|contrato|documento)$/i.test(text)
+    || (generateLinkIntent && /\b(?:aprovo|aprovei|j[aá]\s+aprovei|aprovad[oa]|confirmo|confirmad[oa])\b/i.test(text))
+  );
 
-  if (/^(confirmar|confirmo|aprovar(?:\s+(?:a\s+)?minuta)?|(?:est[aá]\s+)?aprovad[oa]|minuta aprovada|pode aprovar|pode salvar|pode cadastrar|sim,? confirme)$/i.test(text)) {
+  if (approvalIntent) {
     const action = await findLatestPendingAction(officeId, fromNumber);
     if (!action) {
       return {
@@ -1214,6 +1251,7 @@ async function handleTextCommand(
     }
     if (action.type === 'GENERATE_LEGAL_DRAFT') {
       if (action.data.approvedAt) {
+        if (generateLinkIntent) return executeLegalDraftLinkSafely(officeId, action);
         return {
           replyText: '✅ Esta minuta já está aprovada. Quando quiser criar o documento definitivo e os links, diga *GERAR LINK*.',
           actionTaken: encodePendingAction(action),
@@ -1232,6 +1270,7 @@ async function handleTextCommand(
           description: `Minuta versão ${action.data.version} aprovada no WhatsApp para ${action.data.clientName}; documento definitivo ainda não gerado.`,
         },
       });
+      if (generateLinkIntent) return executeLegalDraftLinkSafely(officeId, approvedAction);
       return {
         replyText: [
           '✅ *Minuta aprovada*',
@@ -1248,7 +1287,7 @@ async function handleTextCommand(
     return executePendingAction(officeId, action);
   }
 
-  if (/^(?:pode\s+)?(?:gerar|gere|criar|crie|prepare|preparar)\s+(?:(?:o|os)\s+)?(?:link|links|documento definitivo|documentos definitivos)(?:\s+(?:de assinatura|para assinatura))?$/i.test(text)) {
+  if (generateLinkIntent) {
     const action = await findLatestPendingAction(officeId, fromNumber);
     if (!action || action.type !== 'GENERATE_LEGAL_DRAFT') {
       return {
@@ -1256,7 +1295,7 @@ async function handleTextCommand(
         actionTaken: 'NO_APPROVED_LEGAL_DRAFT',
       };
     }
-    return executePendingAction(officeId, action);
+    return executeLegalDraftLinkSafely(officeId, action);
   }
 
   if (/^(cancelar|cancela|não confirmar|descartar)$/i.test(text)) {

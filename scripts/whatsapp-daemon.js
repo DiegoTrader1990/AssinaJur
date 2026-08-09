@@ -875,6 +875,17 @@ async function connectToWhatsApp() {
               };
             }
           }
+          const safeAction = String(data.actionTaken || '').startsWith('PENDING_ACTION:')
+            ? 'PENDING_ACTION'
+            : String(data.actionTaken || '').startsWith('EXECUTED_ACTION:')
+              ? 'EXECUTED_ACTION'
+              : String(data.actionTaken || '').slice(0, 100);
+          recordDocumentDiagnostic('COMMAND_RESULT', {
+            messageType: isImage ? 'IMAGE' : isReadableDocument ? 'DOCUMENT' : isAudio ? 'AUDIO' : 'TEXT',
+            routing: localRouting?.draftRequest ? 'DRAFT_REQUEST' : localRouting?.revision ? 'REVISION' : localRouting?.command ? 'COMMAND' : localRouting?.reply ? 'CONVERSATION' : 'DIRECT',
+            action: safeAction,
+            hasOutboundMessages: Boolean(data.outboundMessages?.length),
+          });
           if (data.reply) {
             console.log(`💬 Resposta enviada ao WhatsApp: "${data.reply}"`);
             await sock.sendMessage(rawJid, { text: data.reply });
