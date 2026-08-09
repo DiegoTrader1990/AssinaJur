@@ -158,6 +158,7 @@ export async function POST(req: Request) {
         : undefined,
       naturalCommand: bridgeAuthenticated && typeof body.naturalCommand === 'string' ? body.naturalCommand : undefined,
       conversationReply: bridgeAuthenticated && typeof body.conversationReply === 'string' ? body.conversationReply : undefined,
+      conversationRevision: bridgeAuthenticated && typeof body.conversationRevision === 'string' ? body.conversationRevision : undefined,
       draftRequest: bridgeAuthenticated && body.draftRequest && typeof body.draftRequest === 'object' && !Array.isArray(body.draftRequest)
         ? body.draftRequest
         : undefined,

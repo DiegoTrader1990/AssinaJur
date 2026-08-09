@@ -75,6 +75,18 @@ function rememberConversation(role, content) {
   if (conversationHistory.length > 16) conversationHistory.splice(0, conversationHistory.length - 16);
 }
 
+// Reutiliza apenas a chave Groq já configurada no agente de atendimento do escritório.
+// O segredo permanece no arquivo original e não é copiado para o projeto AssinaJur.
+if (!process.env.GROQ_API_KEY) {
+  const sharedAgentEnv = path.join(__dirname, '..', '..', 'agente-whatsapp', '.env');
+  if (fs.existsSync(sharedAgentEnv)) {
+    const groqLine = fs.readFileSync(sharedAgentEnv, 'utf8').split(/\r?\n/)
+      .find((line) => /^GROQ_API_KEY=/.test(line));
+    const groqValue = groqLine?.replace(/^GROQ_API_KEY=/, '').trim().replace(/^(['"])(.*)\1$/, '$2');
+    if (groqValue) process.env.GROQ_API_KEY = groqValue;
+  }
+}
+
 function unwrapMessageContent(message) {
   let content = message || {};
   for (let depth = 0; depth < 3; depth += 1) {
@@ -174,12 +186,112 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
   return null;
 }
 
-async function interpretConversationLocally(text) {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
+async function callGroqJson(prompt, { model = 'openai/gpt-oss-120b', maxTokens = 1200, strictRouting = false } = {}) {
+  const apiKey = String(process.env.GROQ_API_KEY || '').trim();
   if (!apiKey) return null;
+  const responseFormat = strictRouting
+    ? {
+        type: 'json_schema',
+        json_schema: {
+          name: 'assinajur_routing',
+          strict: true,
+          schema: {
+            type: 'object',
+            properties: {
+              command: { type: 'string' },
+              reply: { type: 'string' },
+              revision: { type: 'string' },
+              draftRequest: {
+                anyOf: [
+                  { type: 'null' },
+                  {
+                    type: 'object',
+                    properties: {
+                      kind: { type: 'string', enum: ['DOCUMENT', 'KIT'] },
+                      clientQuery: { type: 'string' },
+                      title: { type: 'string' },
+                      legalArea: { type: 'string' },
+                      instructions: { type: 'string' },
+                      suggestedDocuments: { type: 'array', items: { type: 'string' } },
+                      generic: { type: 'boolean' },
+                    },
+                    required: ['kind', 'clientQuery', 'title', 'legalArea', 'instructions', 'suggestedDocuments', 'generic'],
+                    additionalProperties: false,
+                  },
+                ],
+              },
+            },
+            required: ['command', 'reply', 'revision', 'draftRequest'],
+            additionalProperties: false,
+          },
+        },
+      }
+    : { type: 'json_object' };
+  try {
+    const response = await customFetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: 'Siga rigorosamente as instruções e responda somente com JSON válido.' },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.15,
+        max_completion_tokens: maxTokens,
+        response_format: responseFormat,
+      }),
+    });
+    if (!response.ok) {
+      console.error(`Groq respondeu HTTP ${response.status}; acionando contingência.`);
+      return null;
+    }
+    const payload = await response.json().catch(() => ({}));
+    return parseGeminiJson(payload?.choices?.[0]?.message?.content);
+  } catch (error) {
+    console.error('Falha na chamada local ao Groq:', error?.message || error);
+    return null;
+  }
+}
+
+function normalizeConversationRouting(parsed) {
+  if (!parsed || typeof parsed !== 'object') return null;
+  const command = typeof parsed.command === 'string' ? parsed.command.trim().slice(0, 1000) : '';
+  const reply = typeof parsed.reply === 'string' ? parsed.reply.trim().slice(0, 2000) : '';
+  const revision = typeof parsed.revision === 'string' ? parsed.revision.trim().slice(0, 3000) : '';
+  const hasDraftRequest = parsed.draftRequest
+    && typeof parsed.draftRequest === 'object'
+    && !Array.isArray(parsed.draftRequest)
+    && ['DOCUMENT', 'KIT'].includes(parsed.draftRequest.kind)
+    && Boolean(String(parsed.draftRequest.title || parsed.draftRequest.instructions || '').trim());
+  const draftRequest = hasDraftRequest
+    ? {
+        kind: parsed.draftRequest.kind === 'KIT' ? 'KIT' : 'DOCUMENT',
+        clientQuery: String(parsed.draftRequest.clientQuery || '').trim().slice(0, 200),
+        title: String(parsed.draftRequest.title || '').trim().slice(0, 180),
+        legalArea: String(parsed.draftRequest.legalArea || '').trim().slice(0, 120),
+        instructions: String(parsed.draftRequest.instructions || '').trim().slice(0, 3000),
+        generic: parsed.draftRequest.generic === true,
+        suggestedDocuments: Array.isArray(parsed.draftRequest.suggestedDocuments)
+          ? parsed.draftRequest.suggestedDocuments.map((item) => String(item || '').trim().slice(0, 160)).filter(Boolean).slice(0, 6)
+          : [],
+      }
+    : null;
+  const allowedCommand = /^(?:ajuda|clientes|buscar cliente(?:\s+.+)?|status|cobrar\s+.+|cadastrar cliente(?:\s+.*)?|excluir cliente(?:\s+.*)?|gerar(?:\s+kit)?\s+.+\s+para\s+.+)$/i.test(command)
+    ? command
+    : '';
+  return {
+    command: draftRequest || revision ? '' : allowedCommand,
+    reply: draftRequest || revision || allowedCommand ? '' : reply,
+    draftRequest,
+    revision,
+  };
+}
+
+async function interpretConversationLocally(text) {
   const history = conversationHistory.map((item) => `${item.role === 'user' ? 'Advogado' : 'AssinaJur'}: ${item.content}`).join('\n');
-  const prompt = `Você é o assistente privado do advogado no AssinaJur. Interprete a mensagem considerando o histórico.
-Retorne somente JSON válido com "command", "reply" e "draftRequest". Use draftRequest como null quando não houver pedido de redação jurídica.
+  const prompt = `Você é o copilot privado do advogado administrador do AssinaJur. Interprete a mensagem considerando toda a conversa recente.
+Retorne somente JSON válido com "command", "reply", "revision" e "draftRequest". Use strings vazias e draftRequest null nos campos não aplicáveis.
 
 Use command apenas quando houver uma ação operacional. Formatos permitidos:
 - ajuda
@@ -200,6 +312,9 @@ Use o command "gerar MODELO para CLIENTE" somente quando ele disser claramente q
 Extraia o cliente e os requisitos também do histórico recente quando a mensagem atual for continuação, como "então crie um modelo" ou apenas "procuração". Considere especialmente o cliente que acabou de ser cadastrado e citado pelo AssinaJur.
 Se ele pedir somente uma minuta genérica, sem cadastrar ou vincular cliente, deixe clientQuery vazio e defina generic como true. Se faltar o cliente sem essa intenção, deixe clientQuery vazio e generic como false; o servidor explicará as opções.
 
+Quando já houver uma prévia/minuta em andamento e a mensagem acrescentar, corrigir ou retirar informações dela, coloque a mensagem completa em revision e mantenha draftRequest null. Exemplos: "ela é solteira e advogada", "troque para 25%", "a procuração é geral", "retire os poderes para receber valores".
+Nunca amplie, presuma ou invente conteúdo em revision. Esse campo serve apenas para classificar; o sistema utilizará literalmente a mensagem original do advogado.
+
 Se for conversa, dúvida, continuação sem dados suficientes ou discussão de ideias, deixe command vazio e responda em reply de forma natural, profissional e breve. Faça uma pergunta objetiva quando faltar informação.
 Nunca afirme que alterou, cadastrou, excluiu, gerou ou enviou algo; ações reais são executadas e confirmadas pelo servidor.
 
@@ -207,6 +322,19 @@ Histórico:
 ${history || 'Sem histórico anterior.'}
 
 Mensagem atual: ${text}`;
+
+  const groqRouting = normalizeConversationRouting(await callGroqJson(prompt, {
+    model: 'openai/gpt-oss-120b',
+    maxTokens: 1200,
+    strictRouting: true,
+  }));
+  if (groqRouting) {
+    if (groqRouting.revision) groqRouting.revision = text.trim().slice(0, 3000);
+    return groqRouting;
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
+  if (!apiKey) return null;
   try {
     const response = await customFetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(apiKey)}`,
@@ -225,31 +353,9 @@ Mensagem atual: ${text}`;
     }
     const payload = await response.json().catch(() => ({}));
     const parsed = parseGeminiJson(payload?.candidates?.[0]?.content?.parts?.[0]?.text);
-    if (!parsed) return null;
-    const command = typeof parsed.command === 'string' ? parsed.command.trim().slice(0, 1000) : '';
-    const reply = typeof parsed.reply === 'string' ? parsed.reply.trim().slice(0, 2000) : '';
-    const hasDraftRequest = parsed.draftRequest
-      && typeof parsed.draftRequest === 'object'
-      && !Array.isArray(parsed.draftRequest)
-      && ['DOCUMENT', 'KIT'].includes(parsed.draftRequest.kind)
-      && Boolean(String(parsed.draftRequest.title || parsed.draftRequest.instructions || '').trim());
-    const draftRequest = hasDraftRequest
-      ? {
-          kind: parsed.draftRequest.kind === 'KIT' ? 'KIT' : 'DOCUMENT',
-          clientQuery: String(parsed.draftRequest.clientQuery || '').trim().slice(0, 200),
-          title: String(parsed.draftRequest.title || '').trim().slice(0, 180),
-          legalArea: String(parsed.draftRequest.legalArea || '').trim().slice(0, 120),
-          instructions: String(parsed.draftRequest.instructions || '').trim().slice(0, 3000),
-          generic: parsed.draftRequest.generic === true,
-          suggestedDocuments: Array.isArray(parsed.draftRequest.suggestedDocuments)
-            ? parsed.draftRequest.suggestedDocuments.map((item) => String(item || '').trim().slice(0, 160)).filter(Boolean).slice(0, 6)
-            : [],
-        }
-      : null;
-    const allowedCommand = /^(?:ajuda|clientes|buscar cliente(?:\s+.+)?|status|cobrar\s+.+|cadastrar cliente(?:\s+.*)?|excluir cliente(?:\s+.*)?|gerar(?:\s+kit)?\s+.+\s+para\s+.+)$/i.test(command)
-      ? command
-      : '';
-    return { command: draftRequest ? '' : allowedCommand, reply: draftRequest || allowedCommand ? '' : reply, draftRequest };
+    const geminiRouting = normalizeConversationRouting(parsed);
+    if (geminiRouting?.revision) geminiRouting.revision = text.trim().slice(0, 3000);
+    return geminiRouting;
   } catch (error) {
     console.error('Falha ao interpretar a conversa localmente:', error?.message || error);
     return null;
@@ -257,8 +363,6 @@ Mensagem atual: ${text}`;
 }
 
 async function generateLegalDraftLocally(task) {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY não configurada no computador.');
   const isRevision = task?.type === 'REVISE_LEGAL_DRAFT';
   const prompt = `Você é um redator jurídico brasileiro trabalhando sob supervisão direta de um advogado.
 Produza somente JSON válido. Não inclua markdown fora do JSON.
@@ -280,6 +384,26 @@ Dados e instruções:
 ${JSON.stringify(task)}
 
 Retorne o clientId exatamente como recebido.`;
+
+  const normalizeDraft = (parsed) => {
+    if (!parsed || !Array.isArray(parsed.documents) || parsed.documents.length === 0) return null;
+    return {
+      ...parsed,
+      kind: task?.request?.kind === 'KIT' ? 'KIT' : 'DOCUMENT',
+      clientId: task.clientId,
+      clientName: task.clientName,
+      version: isRevision ? Number(task?.existingDraft?.version || 1) + 1 : 1,
+    };
+  };
+
+  const groqDraft = normalizeDraft(await callGroqJson(prompt, {
+    model: 'llama-3.3-70b-versatile',
+    maxTokens: 8000,
+  }));
+  if (groqDraft) return groqDraft;
+
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
+  if (!apiKey) throw new Error('Nenhum provedor de IA local está disponível no computador.');
   const response = await customFetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(apiKey)}`,
     {
@@ -294,16 +418,11 @@ Retorne o clientId exatamente como recebido.`;
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`Gemini respondeu HTTP ${response.status} ao redigir a minuta.`);
   const parsed = parseGeminiJson(payload?.candidates?.[0]?.content?.parts?.[0]?.text);
-  if (!parsed || !Array.isArray(parsed.documents) || parsed.documents.length === 0) {
+  const normalizedDraft = normalizeDraft(parsed);
+  if (!normalizedDraft) {
     throw new Error('A IA local devolveu uma minuta incompleta.');
   }
-  return {
-    ...parsed,
-    kind: task?.request?.kind === 'KIT' ? 'KIT' : 'DOCUMENT',
-    clientId: task.clientId,
-    clientName: task.clientName,
-    version: isRevision ? Number(task?.existingDraft?.version || 1) + 1 : 1,
-  };
+  return normalizedDraft;
 }
 
 async function callAssinaJur(payload) {
@@ -520,6 +639,7 @@ async function connectToWhatsApp() {
             naturalCommand: localRouting?.command,
             conversationReply: localRouting?.reply,
             draftRequest: localRouting?.draftRequest,
+            conversationRevision: localRouting?.revision,
           });
           if (data.localAiTask) {
             try {

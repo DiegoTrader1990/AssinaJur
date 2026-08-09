@@ -27,6 +27,7 @@ export interface WhatsAppIncomingMessage {
   documentData?: Record<string, unknown>;
   naturalCommand?: string;
   conversationReply?: string;
+  conversationRevision?: string;
   draftRequest?: LegalDraftRequest;
   localAiResult?: LegalDraftPackage;
   trustedSource?: boolean;
@@ -1132,7 +1133,7 @@ async function handleTextCommand(
   fromNumber: string,
   originalBody: string,
   allowAiRouting = true,
-  localRouting?: { command?: string; reply?: string; draftRequest?: LegalDraftRequest }
+  localRouting?: { command?: string; reply?: string; revision?: string; draftRequest?: LegalDraftRequest }
 ): Promise<WhatsAppAgentResult> {
   const text = originalBody.trim();
   const normalized = text.toLocaleLowerCase('pt-BR');
@@ -1270,7 +1271,11 @@ async function handleTextCommand(
         })),
       };
     }
-    const revision = text.match(/^(?:alterar|altere|revisar|revise|modificar|modifique|mudar|mude)\s*:?\s*(.+)$/i)?.[1]?.trim();
+    const explicitRevision = text.match(/^(?:alterar|altere|revisar|revise|modificar|modifique|mudar|mude)\s*:?\s*(.+)$/i)?.[1]?.trim();
+    const startsAnotherAction = /\b(?:cadastrar|cadastre|buscar|procurar|status|cobrar|excluir|remover|gerar link|criar link|aprovar|confirmar|cancelar|ajuda|menu)\b/i.test(text);
+    const looksLikeDraftDetails = /\b(?:ela|ele|cliente|outorgante|outorgado|contratante|contratado|solteir[oa]|casad[oa]|advogad[oa]|residente|domiciliad[oa]|procura[cç][aã]o|contrato|poderes|valor|percentual|cl[aá]usula|geral|espec[ií]fic[oa])\b/i.test(text);
+    const naturalStatement = !startsAnotherAction && !text.endsWith('?') && looksLikeDraftDetails ? text : '';
+    const revision = explicitRevision || cleanOptional(localRouting?.revision) || naturalStatement;
     if (revision) {
       const client = existingPending.data.clientId
         ? await prisma.client.findFirst({ where: { id: existingPending.data.clientId, officeId } })
@@ -1618,6 +1623,7 @@ export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Pr
     documentData,
     naturalCommand,
     conversationReply,
+    conversationRevision,
     draftRequest,
     localAiResult,
     trustedSource,
@@ -1694,6 +1700,7 @@ export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Pr
   return handleTextCommand(officeId, fromNumber, body || '', true, {
     command: cleanOptional(naturalCommand),
     reply: cleanOptional(conversationReply),
+    revision: cleanOptional(conversationRevision),
     draftRequest,
   });
 }
