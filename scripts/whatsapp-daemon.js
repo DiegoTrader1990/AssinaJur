@@ -90,7 +90,7 @@ const ASSINAJUR_WEBHOOK_URL = process.env.ASSINAJUR_WEBHOOK_URL || 'https://www.
 const BOT_SECRET = process.env.WHATSAPP_BOT_SECRET || '';
 const AUTH_FOLDER = process.env.WHATSAPP_AUTH_DIR || path.join(__dirname, '..', 'whatsapp-auth');
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
-const BOT_VERSION = '2026.08.09.4';
+const BOT_VERSION = '2026.08.09.5';
 const DAEMON_STARTED_AT = new Date().toISOString();
 
 let socketInstance = null;
@@ -98,6 +98,8 @@ let isConnected = false;
 let isConnecting = false;
 const conversationHistories = new Map();
 let activeDocumentDiagnostic = null;
+let completionOutboxTimer = null;
+let completionOutboxRunning = false;
 
 function recordDocumentDiagnostic(event, details = {}) {
   if (activeDocumentDiagnostic) {
@@ -738,6 +740,50 @@ async function restoreConversationContext(fromNumber) {
   }
 }
 
+async function pollSignatureCompletionOutbox(sock) {
+  if (!isConnected || completionOutboxRunning) return;
+  completionOutboxRunning = true;
+  const adminPhone = process.env.WHATSAPP_ADMIN_PHONE || '5573988250201';
+  const deliveredIds = [];
+  try {
+    const data = await callAssinaJur({ eventType: 'OUTBOX_PULL', fromNumber: adminPhone });
+    for (const outbound of data.messages || []) {
+      try {
+        const cleanTo = String(outbound.to || '').replace(/\D/g, '');
+        if (!cleanTo || !outbound.text) continue;
+        const candidates = [cleanTo];
+        if (cleanTo.startsWith('55') && cleanTo.length === 13) {
+          candidates.push(`${cleanTo.slice(0, 4)}${cleanTo.slice(5)}`);
+        }
+        const [jidResult] = await sock.onWhatsApp(...candidates);
+        const destinationJid = jidResult?.jid || `${cleanTo}@s.whatsapp.net`;
+        if (outbound.documentBase64) {
+          await sock.sendMessage(destinationJid, {
+            document: Buffer.from(outbound.documentBase64, 'base64'),
+            mimetype: outbound.mimeType || 'application/pdf',
+            fileName: outbound.fileName || 'documento-assinado-assinajur.pdf',
+            caption: outbound.text,
+          });
+          console.log(`📜 PDF final assinado entregue exclusivamente ao escritório (${cleanTo}).`);
+        } else {
+          await sock.sendMessage(destinationJid, { text: outbound.text });
+          console.log(`🙏 Confirmação de assinatura enviada ao cliente (${cleanTo}).`);
+        }
+        deliveredIds.push(outbound.id);
+      } catch (deliveryError) {
+        console.error('Falha ao entregar uma notificação de assinatura concluída:', deliveryError?.message || deliveryError);
+      }
+    }
+    if (deliveredIds.length > 0) {
+      await callAssinaJur({ eventType: 'OUTBOX_ACK', fromNumber: adminPhone, ids: deliveredIds });
+    }
+  } catch (error) {
+    console.error('Não foi possível consultar conclusões de assinatura:', error?.message || error);
+  } finally {
+    completionOutboxRunning = false;
+  }
+}
+
 async function publishConnectionStatus(status, phoneNumber) {
   try {
     await callAssinaJur({
@@ -839,6 +885,8 @@ async function connectToWhatsApp() {
       if (connection === 'close') {
         isConnected = false;
         isConnecting = false;
+        if (completionOutboxTimer) clearInterval(completionOutboxTimer);
+        completionOutboxTimer = null;
         const statusCode = lastDisconnect?.error?.output?.statusCode;
         await publishConnectionStatus('DISCONNECTED');
 
@@ -860,6 +908,9 @@ async function connectToWhatsApp() {
         const connectedPhone = (sock.user?.id || '').replace(/@.*$/, '').replace(/:\d+$/, '');
         await publishConnectionStatus('CONNECTED', connectedPhone);
         await restoreConversationContext(process.env.WHATSAPP_ADMIN_PHONE || '5573988250201');
+        await pollSignatureCompletionOutbox(sock);
+        if (completionOutboxTimer) clearInterval(completionOutboxTimer);
+        completionOutboxTimer = setInterval(() => pollSignatureCompletionOutbox(sock), 15000);
       }
     });
 

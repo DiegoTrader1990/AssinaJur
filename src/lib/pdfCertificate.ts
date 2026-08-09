@@ -220,8 +220,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
   const muted = rgb(0.44, 0.49, 0.56);
   const green = rgb(0.04, 0.45, 0.23);
   const linkBlue = rgb(0.11, 0.36, 0.74);
-  const panelBg = rgb(0.975, 0.98, 0.99);
+  const panelBg = rgb(1, 1, 1);
   const panelBorder = rgb(0.82, 0.86, 0.91);
+  const paperBg = rgb(0.965, 0.974, 0.988);
+  const paleGreen = rgb(0.92, 0.98, 0.95);
 
   const PAGE_W = 595.28; // A4 width
   const PAGE_H = 841.89; // A4 height
@@ -347,11 +349,14 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
   const drawFrame = (p: PDFPage, subtitle: string) => {
     const cleanSubtitle = safeText(subtitle, 120);
+    p.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: paperBg });
     p.drawRectangle({ x: 20, y: 20, width: 555.28, height: 801.89, borderWidth: 1.2, borderColor: panelBorder });
     p.drawRectangle({ x: 20, y: 760, width: 555.28, height: 61.89, color: navy });
     p.drawRectangle({ x: 20, y: 757, width: 555.28, height: 3, color: gold });
     p.drawText('ASSINAJUR', { x: CX, y: 794, size: 14, font: bold, color: rgb(1, 1, 1) });
-    p.drawText(cleanSubtitle, { x: CX, y: 774, size: 9, font: bold, color: rgb(0.88, 0.93, 1) });
+    p.drawText('ASSINATURA ELETRÔNICA PARA ADVOCACIA', { x: CX, y: 780, size: 6.2, font: regular, color: rgb(0.72, 0.79, 0.9) });
+    const subtitleWidth = bold.widthOfTextAtSize(cleanSubtitle, 8.2);
+    p.drawText(cleanSubtitle, { x: CR - subtitleWidth, y: 787, size: 8.2, font: bold, color: rgb(1, 1, 1) });
   };
 
   // SEÇÃO 1: CABEÇALHO DO CERTIFICADO
@@ -410,7 +415,19 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
   page.drawLine({ start: { x: CX, y: 676 }, end: { x: CR, y: 676 }, thickness: 0.8, color: panelBorder });
 
-  let y = 666;
+  const trustCardY = 632;
+  const trustCardW = 160;
+  const drawTrustCard = (x: number, label: string, value: string, accent: any) => {
+    page.drawRectangle({ x, y: trustCardY, width: trustCardW, height: 36, color: rgb(1, 1, 1), borderWidth: 0.8, borderColor: panelBorder });
+    page.drawRectangle({ x, y: trustCardY, width: 4, height: 36, color: accent });
+    page.drawText(label.toUpperCase(), { x: x + 12, y: trustCardY + 23, size: 5.7, font: bold, color: muted });
+    page.drawText(value, { x: x + 12, y: trustCardY + 10, size: 7.7, font: bold, color: navy });
+  };
+  drawTrustCard(CX, 'Código de autenticidade', verificationCode, gold);
+  drawTrustCard(CX + 177, 'Conclusão', formatBrasiliaDateTime(doc.completedAt || new Date(), false).replace(/\s*\(.+$/, ''), green);
+  drawTrustCard(CX + 354, 'Proteção', 'Integridade SHA-256', navy);
+
+  let y = 616;
   const padX = CX + 14;
 
   const ensureSpace = (minRemaining: number) => {
@@ -473,7 +490,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
   const docPanelTop = y;
   const docPanelY = docPanelTop - docPanelH;
   page.drawRectangle({ x: CX, y: docPanelY, width: CW, height: docPanelH, color: panelBg, borderWidth: 0.9, borderColor: panelBorder });
-  page.drawText('1. DADOS DO DOCUMENTO E ESCRITÓRIO RESPONSÁVEL', { x: padX, y: docPanelTop - 15, size: 7.5, font: bold, color: navy });
+  page.drawRectangle({ x: CX, y: docPanelTop - 24, width: CW, height: 24, color: navy });
+  page.drawRectangle({ x: CX, y: docPanelTop - 3, width: CW, height: 3, color: gold });
+  page.drawText('1. IDENTIFICAÇÃO DO DOCUMENTO', { x: padX, y: docPanelTop - 16, size: 7.5, font: bold, color: rgb(1, 1, 1) });
 
   const documentCol2X = padX + documentHalfWidth + documentGap;
   let documentCursor = docPanelTop - 32;
@@ -519,20 +538,22 @@ export async function generateFinalPdfCertificate(documentId: string) {
       (12 + locationLines.length * 9.8 + 5) +
       (12 + authenticationLines.length * 9.8 + 5) +
       (signer.signatureImage ? 65 : 0);
-    const photosHeight = hasPhotos ? 150 : 0;
+    const photosHeight = hasPhotos ? 170 : 0;
     const panelH = 28 + dataHeight + photosHeight + 10;
     ensureSpace(panelH + 10);
 
     const pTop = y;
     const pY = pTop - panelH;
     page.drawRectangle({ x: CX, y: pY, width: CW, height: panelH, color: panelBg, borderWidth: 0.9, borderColor: panelBorder });
+    page.drawRectangle({ x: CX, y: pTop - 24, width: CW, height: 24, color: navy });
+    page.drawRectangle({ x: CX, y: pTop - 3, width: CW, height: 3, color: gold });
     
     page.drawText('2. DADOS COMPLETOS DO SIGNATÁRIO', {
       x: padX,
       y: pTop - 15,
       size: 7.5,
       font: bold,
-      color: navy,
+      color: rgb(1, 1, 1),
     });
 
     const col2X = padX + halfWidth + gapWidth;
@@ -614,23 +635,25 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
       // Tamanho do container ampliado e proporcional
       const boxW = 145;
-      const boxH = 110;
+      const boxH = 100;
+      const cardH = 132;
       const gap = 16;
       let photoX = padX;
 
       for (const [label, img] of photoLabels) {
         const embedded = await embedBase64Image(pdfDoc, img);
-        const cardY = cursor - 124;
+        const cardY = cursor - 150;
 
         page.drawRectangle({
           x: photoX - 2,
           y: cardY - 2,
           width: boxW + 4,
-          height: boxH + 4,
-          borderWidth: 1,
-          borderColor: green,
-          color: rgb(0.98, 1, 0.98),
+          height: cardH + 4,
+          borderWidth: 0,
+          color: navy,
         });
+        page.drawRectangle({ x: photoX - 2, y: cardY + cardH - 2, width: boxW + 4, height: 4, color: gold });
+        page.drawRectangle({ x: photoX, y: cardY + 27, width: boxW, height: boxH, color: rgb(0.88, 0.92, 0.97) });
 
         if (embedded) {
           // ESCALA PROPORCIONAL EXATA SEM DISTORÇÃO
@@ -641,7 +664,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
           const drawH = Math.round(imgH * scale);
 
           const offsetX = photoX + (boxW - drawW) / 2;
-          const offsetY = cardY + (boxH - drawH) / 2;
+          const offsetY = cardY + 27 + (boxH - drawH) / 2;
 
           page.drawImage(embedded, {
             x: offsetX,
@@ -651,13 +674,15 @@ export async function generateFinalPdfCertificate(documentId: string) {
           });
         }
 
-        page.drawText(`[OK] ${safeText(label, 40)}`, {
-          x: photoX,
-          y: cardY - 14,
-          size: 7,
+        page.drawText(safeText(label, 40).toUpperCase(), {
+          x: photoX + 7,
+          y: cardY + 11,
+          size: 6.4,
           font: bold,
-          color: green,
+          color: rgb(1, 1, 1),
         });
+        page.drawRectangle({ x: photoX + boxW - 46, y: cardY + 7, width: 39, height: 13, color: paleGreen });
+        page.drawText('VALIDADA', { x: photoX + boxW - 41, y: cardY + 11, size: 5.2, font: bold, color: green });
         photoX += boxW + gap;
       }
     }
@@ -670,22 +695,23 @@ export async function generateFinalPdfCertificate(documentId: string) {
   const integTop = y;
   const integH = 92;
   const integY = integTop - integH;
-  page.drawRectangle({ x: CX, y: integY, width: CW, height: integH, color: panelBg, borderWidth: 0.9, borderColor: panelBorder });
-  page.drawText('4. REGISTRO DE INTEGRIDADE E HASH SHA-256 COMPLETO', { x: padX, y: integTop - 15, size: 7.5, font: bold, color: navy });
+  page.drawRectangle({ x: CX, y: integY, width: CW, height: integH, color: navy, borderWidth: 0.9, borderColor: navy });
+  page.drawRectangle({ x: CX, y: integTop - 3, width: CW, height: 3, color: gold });
+  page.drawText('4. REGISTRO DE INTEGRIDADE E HASH SHA-256 COMPLETO', { x: padX, y: integTop - 15, size: 7.5, font: bold, color: rgb(1, 1, 1) });
 
-  fieldLabel(padX, integTop - 32, 'Hash SHA-256 do Documento Original (64 caracteres)');
+  page.drawText('HASH SHA-256 DO DOCUMENTO ORIGINAL (64 CARACTERES)', { x: padX, y: integTop - 32, size: 6.5, font: bold, color: rgb(0.68, 0.76, 0.88) });
   // Dividir o hash de 64 caracteres em duas linhas monoespaçadas exatas de 32 chars cada
   const origHash = doc.originalHash || '';
   const hashPart1 = origHash.substring(0, 32);
   const hashPart2 = origHash.substring(32, 64);
 
-  page.drawText(hashPart1, { x: padX, y: integTop - 45, size: 8, font: mono, color: navy });
-  page.drawText(hashPart2, { x: padX, y: integTop - 56, size: 8, font: mono, color: navy });
+  page.drawText(hashPart1, { x: padX, y: integTop - 45, size: 8, font: mono, color: rgb(1, 1, 1) });
+  page.drawText(hashPart2, { x: padX, y: integTop - 56, size: 8, font: mono, color: rgb(1, 1, 1) });
 
-  fieldLabel(padX, integTop - 70, 'Garantia de Integridade');
+  page.drawText('GARANTIA DE INTEGRIDADE', { x: padX, y: integTop - 70, size: 6.5, font: bold, color: rgb(0.68, 0.76, 0.88) });
   page.drawText(
     'Este hash identifica univocamente este documento. Qualquer alteração de um único caractere modificará este código.',
-    { x: padX, y: integTop - 81, size: 7, font: italic, color: muted }
+    { x: padX, y: integTop - 81, size: 7, font: italic, color: rgb(0.82, 0.87, 0.94) }
   );
 
   y = integY - 14;
@@ -694,6 +720,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
   ensureSpace(120);
   const qrSize = 92;
   const qrY = y - qrSize - 10;
+  page.drawRectangle({ x: CX, y: qrY - 7, width: CW, height: qrSize + 34, color: rgb(1, 1, 1), borderWidth: 0.9, borderColor: panelBorder });
   page.drawText('5. VALIDAÇÃO PÚBLICA E CONFORMIDADE LEGAL', { x: CX, y: y - 10, size: 8, font: bold, color: navy });
   page.drawImage(qrImage, { x: CX, y: qrY, width: qrSize, height: qrSize });
 
@@ -725,22 +752,29 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
     const startTimelinePage = () => {
       timelinePageCount += 1;
-      const p = pdfDoc.addPage([PAGE_W, PAGE_H]);
-      drawFrame(p, '6. TRILHA PUBLICA DE EVENTOS DO DOCUMENTO');
-      const timelineTitleLines = wrapTextToWidth(doc!.title, bold, 11, CW);
-      timelineTitleLines.forEach((line, index) => {
-        p.drawText(line, { x: CX, y: 736 - index * 12, size: 11, font: bold, color: navy });
-      });
-      p.drawText(`Codigo: ${verificationCode}${timelinePageCount > 1 ? ' - continuacao' : ''}`, {
-        x: CX,
-        y: 718,
-        size: 8,
-        font: mono,
-        color: muted,
-      });
-
-      let introY = 700;
-      if (timelinePageCount === 1) {
+      const reuseIntegrityPage = timelinePageCount === 1 && qrY > 250;
+      const p = reuseIntegrityPage ? page : pdfDoc.addPage([PAGE_W, PAGE_H]);
+      let introY: number;
+      if (reuseIntegrityPage) {
+        p.drawText('6. TRILHA CRONOLÓGICA DE EVIDÊNCIAS', { x: CX, y: qrY - 25, size: 8, font: bold, color: navy });
+        p.drawLine({ start: { x: CX, y: qrY - 32 }, end: { x: CR, y: qrY - 32 }, thickness: 0.8, color: panelBorder });
+        introY = qrY - 49;
+      } else {
+        drawFrame(p, `6. TRILHA PÚBLICA DE EVENTOS${timelinePageCount > 1 ? ' - CONTINUAÇÃO' : ''}`);
+        const timelineTitleLines = wrapTextToWidth(doc!.title, bold, 11, CW);
+        timelineTitleLines.forEach((line, index) => {
+          p.drawText(line, { x: CX, y: 736 - index * 12, size: 11, font: bold, color: navy });
+        });
+        p.drawText(`Código: ${verificationCode}${timelinePageCount > 1 ? ' - continuação' : ''}`, {
+          x: CX,
+          y: 718,
+          size: 8,
+          font: mono,
+          color: muted,
+        });
+        introY = 700;
+      }
+      if (timelinePageCount === 1 && !reuseIntegrityPage) {
         const introLines = wrapText(
           'Registro cronológico dos eventos relevantes desta contratação. Todos os horários estão exibidos no Horário de Brasília (UTC−3).',
           118

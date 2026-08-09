@@ -5,6 +5,7 @@ import { getSessionUser } from '@/lib/auth';
 import { handleMetaWebhookPayload } from '@/lib/whatsapp/meta';
 import { isAuthorizedLawyerPhone, processWhatsAppCommand } from '@/lib/whatsapp/agent';
 import { brazilianPhoneVariants } from '@/lib/whatsapp/conversation';
+import { getFileBuffer } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -134,6 +135,55 @@ export async function POST(req: Request) {
         take: 10,
       });
       return NextResponse.json({ success: true, logs: logs.reverse() });
+    }
+
+    if (body.eventType === 'OUTBOX_PULL') {
+      const pending = await prisma.whatsAppLog.findMany({
+        where: {
+          officeId: targetOfficeId,
+          direction: 'OUTBOUND',
+          actionTaken: { startsWith: 'PENDING_COMPLETION_' },
+        },
+        orderBy: { createdAt: 'asc' },
+        take: 6,
+      });
+      const messages = [];
+      for (const item of pending) {
+        const ownerMatch = item.actionTaken?.match(/^PENDING_COMPLETION_OWNER:(.+)$/);
+        if (!ownerMatch) {
+          messages.push({ id: item.id, to: item.toNumber, text: item.body });
+          continue;
+        }
+        const document = await prisma.document.findFirst({
+          where: { id: ownerMatch[1], officeId: targetOfficeId },
+          include: { signedFile: true },
+        });
+        if (!document?.signedFile) continue;
+        const file = await getFileBuffer(targetOfficeId, document.signedFile.storageKey);
+        if (!file) continue;
+        messages.push({
+          id: item.id,
+          to: item.toNumber,
+          text: item.body,
+          documentBase64: file.toString('base64'),
+          fileName: document.signedFile.originalName,
+          mimeType: document.signedFile.mimeType,
+        });
+      }
+      return NextResponse.json({ success: true, messages });
+    }
+
+    if (body.eventType === 'OUTBOX_ACK') {
+      const ids = Array.isArray(body.ids)
+        ? body.ids.filter((id: unknown): id is string => typeof id === 'string').slice(0, 20)
+        : [];
+      if (ids.length > 0) {
+        await prisma.whatsAppLog.updateMany({
+          where: { id: { in: ids }, officeId: targetOfficeId, actionTaken: { startsWith: 'PENDING_COMPLETION_' } },
+          data: { actionTaken: 'DELIVERED_SIGNATURE_COMPLETION' },
+        });
+      }
+      return NextResponse.json({ success: true, acknowledged: ids.length });
     }
 
     if (body.eventType === 'STATUS') {

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { logAuditEvent } from '@/lib/audit';
 import { generateFinalPdfCertificate } from '@/lib/pdfCertificate';
+import { queueSignatureCompletionMessages } from '@/lib/whatsapp/signatureCompletion';
 
 export const dynamic = 'force-dynamic';
 
@@ -168,8 +169,9 @@ export async function POST(
 
       try {
         await generateFinalPdfCertificate(signer.document.id);
+        await queueSignatureCompletionMessages(signer.document.id);
       } catch (pdfErr) {
-        console.error('Erro na compilação imediata do PDF:', pdfErr);
+        console.error('Erro na compilação ou notificação imediata do PDF:', pdfErr);
       }
     }
 
