@@ -11,12 +11,36 @@ export interface ClientConversationCorrections {
   address?: string;
 }
 
-export function isSendSignatureLinkIntent(text: string): boolean {
+export interface SignatureLinkCommand {
+  matched: boolean;
+  clientQuery: string;
+}
+
+export function parseSignatureLinkCommand(text: string): SignatureLinkCommand {
   const input = String(text || '').trim();
-  if (!input || input.endsWith('?')) return false;
-  if (/\b(?:não\s+(?:envie|enviar|mande|mandar|reenvie|reenviar)|cancele|cancelar)\b/i.test(input)) return false;
-  return /\b(?:enviar|envie|manda|mande|mandar|reenviar|reenvie|cobrar)\b[^.!?]{0,80}\blinks?\b/i.test(input)
-    || /\b(?:enviar|envie|manda|mande|mandar)\b[^.!?]{0,80}\b(?:assinar|assinatura)\b/i.test(input);
+  if (!input || input.endsWith('?')) return { matched: false, clientQuery: '' };
+  if (/\b(?:não\s+(?:envie|enviar|mande|mandar|reenvie|reenviar)|cancele|cancelar)\b/i.test(input)) {
+    return { matched: false, clientQuery: '' };
+  }
+
+  const command = input.match(/^(cobrar|lembrar|reenviar|reenvie|enviar|envie|manda|mande|mandar)\b\s*(.*)$/i);
+  if (!command) return { matched: false, clientQuery: '' };
+
+  let remainder = command[2].trim();
+  remainder = remainder
+    .replace(/^(?:(?:o|a|os|as)\s+)?links?\b(?:\s+de\s+assinatura)?\s*/i, '')
+    .replace(/^(?:de\s+assinatura)\s*/i, '')
+    .replace(/^(?:para|pro|pra|ao|a|\u00e0|do|da)\s+/i, '')
+    .replace(/^cliente\s+/i, '')
+    .trim();
+
+  if (/^(?:(?:o|a)\s+)?links?(?:\s+de\s+assinatura)?$/i.test(remainder)) remainder = '';
+
+  return { matched: true, clientQuery: remainder };
+}
+
+export function isSendSignatureLinkIntent(text: string): boolean {
+  return parseSignatureLinkCommand(text).matched;
 }
 
 export function isGenerateLinkIntent(text: string): boolean {

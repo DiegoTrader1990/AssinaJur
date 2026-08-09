@@ -8,8 +8,8 @@ import {
   isApprovalIntent,
   isCancelIntent,
   isGenerateLinkIntent,
-  isSendSignatureLinkIntent,
   looksLikeUnverifiedOperationalClaim,
+  parseSignatureLinkCommand,
 } from '@/lib/whatsapp/conversation';
 
 export const AUTHORIZED_LAWYER_PHONES = [
@@ -1410,7 +1410,8 @@ async function handleTextCommand(
   const text = originalBody.trim();
   const normalized = text.toLocaleLowerCase('pt-BR');
   const generateLinkIntent = isGenerateLinkIntent(text);
-  const sendSignatureLinkIntent = isSendSignatureLinkIntent(text);
+  const signatureLinkCommand = parseSignatureLinkCommand(text);
+  const sendSignatureLinkIntent = signatureLinkCommand.matched;
   const cancelIntent = isCancelIntent(text);
   const approvalIntent = isApprovalIntent(text, generateLinkIntent);
 
@@ -1952,12 +1953,8 @@ async function handleTextCommand(
     };
   }
 
-  const remindMatch = normalized.match(/^(?:(?:cobrar|lembrar|reenviar|reenvie)\s+(?:cliente\s+)?|(?:enviar|envie|mandar|mande)\s+(?:o\s+)?links?(?:\s+links?)?\s+(?:de assinatura\s+)?para\s+)(.+)$/i);
-  if (remindMatch) {
-    return prepareSignatureLinkDelivery(officeId, remindMatch[1].trim());
-  }
   if (sendSignatureLinkIntent) {
-    return prepareSignatureLinkDelivery(officeId);
+    return prepareSignatureLinkDelivery(officeId, signatureLinkCommand.clientQuery);
   }
 
   const genericDraftMatch = text.match(/\b(procura[cç][aã]o|contrato|declara[cç][aã]o|peti[cç][aã]o|termo|minuta|modelo)\b/i);

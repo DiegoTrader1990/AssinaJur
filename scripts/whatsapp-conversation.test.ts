@@ -8,6 +8,7 @@ import {
   isGenerateLinkIntent,
   isSendSignatureLinkIntent,
   looksLikeUnverifiedOperationalClaim,
+  parseSignatureLinkCommand,
 } from '../src/lib/whatsapp/conversation';
 
 test('considera equivalentes os formatos brasileiros com e sem nono dígito', () => {
@@ -64,6 +65,25 @@ test('diferencia envio do link da criação do documento definitivo', () => {
   assert.equal(isSendSignatureLinkIntent('Envie para ela assinar'), true);
   assert.equal(isSendSignatureLinkIntent('O link foi enviado?'), false);
   assert.equal(isSendSignatureLinkIntent('Não envie o link agora'), false);
+});
+
+test('extrai corretamente o cliente dos comandos naturais de envio', () => {
+  assert.deepEqual(parseSignatureLinkCommand('Reenviar o link para Dominick Quinto Soares'), {
+    matched: true,
+    clientQuery: 'Dominick Quinto Soares',
+  });
+  assert.deepEqual(parseSignatureLinkCommand('Enviar link para Dominick'), {
+    matched: true,
+    clientQuery: 'Dominick',
+  });
+  assert.deepEqual(parseSignatureLinkCommand('Reenvie link'), {
+    matched: true,
+    clientQuery: '',
+  });
+  assert.deepEqual(parseSignatureLinkCommand('Enviar'), {
+    matched: true,
+    clientQuery: '',
+  });
 });
 
 test('reconhece cancelamentos em linguagem natural', () => {
