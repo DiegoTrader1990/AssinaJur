@@ -1493,7 +1493,7 @@ async function handleTextCommand(
     const y = /\b(?:topo|superior|em cima)\b/i.test(text) ? 0.12 : /\b(?:centro|meio)\b/i.test(text) ? 0.44 : 0.785;
     const verticalLabel = y < 0.2 ? 'parte superior' : y < 0.6 ? 'centro' : 'parte inferior, sobre a área de assinatura';
     const horizontalLabel = x > 0.5 ? 'à direita' : x < 0.2 ? 'à esquerda' : 'centralizado';
-    const signaturePosition = `CUSTOM:${page}:${x.toFixed(4)}:${y.toFixed(4)}:0.3800:0.1050`;
+    const signaturePosition = `CUSTOM:${page}:${x.toFixed(4)}:${y.toFixed(4)}:0.3800:0.0850`;
     await prisma.document.update({ where: { id: document.id }, data: { signaturePosition } });
     return {
       replyText: `✅ Selo ajustado em “${document.title}”.\n\nPágina ${page} de ${pageCount}, ${verticalLabel}, ${horizontalLabel}.\nEle será aplicado após a assinatura com nome, data, código verificável e QR Code.`,

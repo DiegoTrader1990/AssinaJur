@@ -168,8 +168,8 @@ async function renderTemplatePdf({
       if (!line.length) return;
       ensureLineSpace(lineHeight);
       if (isExplicitSignatureLine || (isClientSignatureLabel && !explicitSignatureLineFound)) {
-        const topY = Math.min(0.82, Math.max(0.08, (height - currentY - 65) / height));
-        signaturePlacement = { page: pdfDoc.getPageCount(), x: 0.31, y: topY, width: 0.38, height: 0.105 };
+        const topY = Math.min(0.82, Math.max(0.08, (height - currentY - 5) / height));
+        signaturePlacement = { page: pdfDoc.getPageCount(), x: 0.31, y: topY, width: 0.38, height: 0.085 };
         if (isExplicitSignatureLine) explicitSignatureLineFound = true;
       }
       const startX = heading ? marginX + Math.max(0, (maxWidth - lineWidth) / 2) : marginX;
@@ -268,6 +268,6 @@ export async function compileTemplateToPdf({
   const detectedPlacement = rendered.signaturePlacement as { page: number; x: number; y: number; width: number; height: number } | null;
   const position = detectedPlacement
     ? `CUSTOM:${detectedPlacement.page}:${detectedPlacement.x.toFixed(4)}:${detectedPlacement.y.toFixed(4)}:${detectedPlacement.width.toFixed(4)}:${detectedPlacement.height.toFixed(4)}`
-    : `CUSTOM:${rendered.pageCount}:0.3100:0.6200:0.3800:0.1050`;
+    : `CUSTOM:${rendered.pageCount}:0.3100:0.6200:0.3800:0.0850`;
   return { storageRecord, hash: rendered.hash, compiledText: rendered.compiledText, pageCount: rendered.pageCount, signaturePosition: position };
 }

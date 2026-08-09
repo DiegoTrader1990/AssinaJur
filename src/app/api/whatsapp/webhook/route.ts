@@ -197,7 +197,7 @@ export async function POST(req: Request) {
       const page = originalPdf.getPageCount();
       await prisma.document.update({
         where: { id: document.id },
-        data: { signaturePosition: `CUSTOM:${page}:0.3100:0.3300:0.3800:0.1050` },
+        data: { signaturePosition: `CUSTOM:${page}:0.3100:0.3980:0.3800:0.0850` },
       });
       const generated = await generateFinalPdfCertificate(document.id);
       return NextResponse.json({
