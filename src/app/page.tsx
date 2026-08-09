@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import {
   FileCheck2,
   Layers,
@@ -110,10 +109,10 @@ export default function LandingPage() {
           
           {/* Logo */}
           <Link href="/" className="flex items-center gap-3 z-50 relative group">
-            <div className="w-10 h-10 bg-navy-900 text-white rounded-xl flex items-center justify-center font-heading font-extrabold text-lg shadow-elevated group-hover:bg-brand-600 transition-colors">
+            <div className="w-10 h-10 bg-white text-navy-900 rounded-xl flex items-center justify-center font-heading font-extrabold text-lg shadow-elevated group-hover:bg-brand-100 transition-colors">
               AJ
             </div>
-            <span className={`font-heading font-extrabold text-xl ${scrolled ? 'text-white' : 'text-navy-900'} transition-colors duration-300`}>
+            <span className="font-heading font-extrabold text-xl text-white transition-colors duration-300">
               AssinaJur
             </span>
           </Link>
@@ -125,7 +124,7 @@ export default function LandingPage() {
               onMouseEnter={() => handleDropdownEnter('produto')}
               onMouseLeave={handleDropdownLeave}
             >
-              <button className={`font-semibold flex items-center gap-1 transition-colors ${scrolled ? 'text-slate-200 hover:text-white' : 'text-navy-800 hover:text-brand-600'}`}>
+              <button className="font-semibold flex items-center gap-1 transition-colors text-slate-200 hover:text-white">
                 Produto
                 <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${activeDropdown === 'produto' ? 'rotate-180' : ''}`} />
               </button>
@@ -253,7 +252,7 @@ export default function LandingPage() {
               onMouseEnter={() => handleDropdownEnter('solucoes')}
               onMouseLeave={handleDropdownLeave}
             >
-              <button className={`font-semibold flex items-center gap-1 transition-colors ${scrolled ? 'text-slate-200 hover:text-white' : 'text-navy-800 hover:text-brand-600'}`}>
+              <button className="font-semibold flex items-center gap-1 transition-colors text-slate-200 hover:text-white">
                 Soluções
                 <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${activeDropdown === 'solucoes' ? 'rotate-180' : ''}`} />
               </button>
@@ -311,13 +310,13 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <Link href="#seguranca" className={`font-semibold transition-colors ${scrolled ? 'text-slate-200 hover:text-white' : 'text-navy-800 hover:text-brand-600'}`}>Segurança</Link>
-            <Link href="#precos" className={`font-semibold transition-colors ${scrolled ? 'text-slate-200 hover:text-white' : 'text-navy-800 hover:text-brand-600'}`}>Preços</Link>
+            <Link href="#seguranca" className="font-semibold transition-colors text-slate-200 hover:text-white">Segurança</Link>
+            <Link href="#precos" className="font-semibold transition-colors text-slate-200 hover:text-white">Preços</Link>
           </nav>
 
           {/* Desktop Actions */}
           <div className="hidden lg:flex items-center gap-6">
-            <Link href="/login" className={`font-semibold transition-colors ${scrolled ? 'text-slate-200 hover:text-white' : 'text-navy-800 hover:text-brand-600'}`}>
+            <Link href="/login" className="font-semibold transition-colors text-slate-200 hover:text-white">
               Entrar
             </Link>
             <Link href="/register" className="btn-primary">
@@ -328,7 +327,7 @@ export default function LandingPage() {
           {/* Mobile Menu Toggle */}
           <button 
             onClick={() => setMobileMenuOpen(true)}
-            className={`lg:hidden p-2 -mr-2 rounded-lg transition-colors ${scrolled ? 'text-white hover:bg-white/10' : 'text-navy-900 hover:bg-black/5'}`}
+            className="lg:hidden p-2 -mr-2 rounded-lg transition-colors text-white hover:bg-white/10"
             aria-label="Abrir menu"
           >
             <Menu className="w-6 h-6" />
@@ -421,70 +420,82 @@ export default function LandingPage() {
 
       <main>
         {/* ═══ 5. HERO SECTION ═══ */}
-        <section className="relative gradient-hero pt-24 lg:pt-32 pb-20 overflow-hidden">
-          <div className="absolute inset-0 hero-grid opacity-30 mix-blend-overlay"></div>
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-brand-500/10 rounded-full blur-3xl opacity-50 pointer-events-none hero-glow"></div>
+        <section className="relative bg-[#06152f] pt-24 lg:pt-32 pb-20 lg:pb-28 overflow-hidden">
+          <div className="absolute inset-0 hero-grid opacity-[0.08]"></div>
+          <div className="absolute -top-40 right-0 w-[760px] h-[760px] bg-brand-500/20 rounded-full blur-3xl pointer-events-none"></div>
+          <div className="absolute -bottom-52 left-1/4 w-[620px] h-[620px] bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
           
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-            <div className="grid lg:grid-cols-2 gap-12 lg:gap-8 items-center">
+            <div className="grid lg:grid-cols-[.92fr_1.08fr] gap-14 lg:gap-12 items-center">
               
               {/* Left Column */}
               <div className="flex flex-col items-start gap-6 pt-10">
-                <div className="text-overline bg-brand-600/10 text-brand-700 border border-brand-200/50 rounded-full px-4 py-1.5 font-bold tracking-widest backdrop-blur-sm scroll-reveal animate-slide-in-down">
-                  LEGALTECH PARA ESCRITÓRIOS
+                <div className="text-overline bg-white/10 text-brand-200 border border-white/10 rounded-full px-4 py-1.5 font-bold tracking-widest backdrop-blur-sm scroll-reveal animate-slide-in-down">
+                  ASSINATURA ELETRÔNICA PARA O JURÍDICO
                 </div>
                 
-                <h1 className="font-heading text-display text-navy-900 leading-[1.1] scroll-reveal text-[40px] md:text-[48px] lg:text-[64px]">
-                  Assinatura jurídica <span className="text-gradient bg-clip-text text-transparent bg-gradient-to-r from-brand-600 to-brand-400">completa</span> em um único link
+                <h1 className="font-heading text-white leading-[1.05] scroll-reveal text-[42px] md:text-[52px] lg:text-[66px] tracking-[-0.035em]">
+                  Documentos jurídicos prontos para <span className="text-brand-400">assinar.</span>
                 </h1>
                 
-                <p className="text-body-lg text-muted max-w-xl scroll-reveal text-[17px] lg:text-[19px]">
-                  Prepare contratos, procurações e declarações, envie tudo de uma vez e acompanhe cada assinatura com evidências de autenticidade.
+                <p className="text-slate-300 max-w-xl scroll-reveal text-[17px] lg:text-[19px] leading-relaxed">
+                  Cadastre o cliente uma vez, monte contratos e procurações, envie por um único link e acompanhe tudo até a evidência final.
                 </p>
                 
                 <div className="flex flex-wrap items-center gap-4 pt-4 scroll-reveal">
-                  <Link href="/register" className="btn-primary text-base px-6 py-3">
-                    Começar gratuitamente <ArrowRight className="w-5 h-5 ml-1" />
+                  <Link href="/register" className="inline-flex items-center justify-center rounded-xl bg-brand-500 hover:bg-brand-400 text-white font-bold text-base px-6 py-3.5 shadow-lg shadow-brand-900/30 transition-colors">
+                    Testar o AssinaJur <ArrowRight className="w-5 h-5 ml-2" />
                   </Link>
-                  <Link href="#plataforma" className="btn-secondary text-base px-6 py-3">
-                    ↓ Conhecer a plataforma
+                  <Link href="#plataforma" className="inline-flex items-center justify-center rounded-xl border border-white/20 bg-white/5 hover:bg-white/10 text-white font-bold text-base px-6 py-3.5 transition-colors">
+                    Ver como funciona
                   </Link>
                 </div>
 
-                <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 text-caption text-muted font-medium scroll-reveal">
+                <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 text-caption text-slate-300 font-medium scroll-reveal">
                   <div className="flex items-center gap-1.5"><Check className="w-4 h-4 text-success-500" /> Sem cartão de crédito</div>
                   <div className="flex items-center gap-1.5"><Check className="w-4 h-4 text-success-500" /> 5 pacotes gratuitos</div>
-                  <div className="flex items-center gap-1.5"><Check className="w-4 h-4 text-success-500" /> 30 dias para testar</div>
                 </div>
               </div>
 
-              {/* Right Column - Human, institutional photography */}
-              <div className="relative mt-8 lg:mt-0 scroll-reveal lg:pl-6">
-                <div className="relative min-h-[480px] lg:min-h-[560px] overflow-hidden rounded-[2rem] shadow-2xl border border-white/80 bg-surface-100">
-                  <Image
-                    src="/images/assinajur-atendimento-digital.webp"
-                    alt="Cena ilustrativa de atendimento jurídico com assinatura digital pelo celular"
-                    fill
-                    priority
-                    sizes="(max-width: 1024px) 100vw, 50vw"
-                    className="object-cover object-center"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-navy-950/75 via-transparent to-transparent"></div>
-                  <div className="absolute left-5 right-5 bottom-5 rounded-2xl border border-white/20 bg-navy-950/75 backdrop-blur-md p-5 text-white">
-                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-brand-200">
-                      <Smartphone className="w-4 h-4" /> Atendimento digital
+              {/* Product-first interface */}
+              <div className="relative mt-8 lg:mt-0 scroll-reveal">
+                <div className="rounded-[1.75rem] border border-white/15 bg-white/[0.07] p-2.5 shadow-2xl shadow-black/30 backdrop-blur">
+                  <div className="overflow-hidden rounded-[1.3rem] bg-[#f7f9fc] border border-white/10">
+                    <div className="h-11 bg-white border-b border-slate-200 flex items-center gap-2 px-4">
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-400"></span>
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                      <div className="ml-3 h-6 flex-1 max-w-[340px] rounded-md bg-slate-100 px-3 flex items-center text-[9px] font-mono text-slate-400">app.assinajur.com.br/dashboard</div>
                     </div>
-                    <p className="mt-2 text-sm leading-relaxed text-white/90">Cliente e escritório conectados do envio à assinatura, com uma experiência simples e segura.</p>
+                    <div className="grid sm:grid-cols-[150px_1fr] min-h-[430px]">
+                      <div className="hidden sm:block bg-[#081d3d] p-4 text-white">
+                        <div className="flex items-center gap-2 font-heading font-bold mb-8"><span className="w-7 h-7 rounded-lg bg-brand-500 flex items-center justify-center text-[10px]">AJ</span> AssinaJur</div>
+                        {['Visão geral', 'Documentos', 'Clientes', 'WhatsApp IA', 'Modelos'].map((item, index) => (
+                          <div key={item} className={`rounded-lg px-3 py-2.5 mb-1 text-[11px] font-semibold ${index === 0 ? 'bg-white/10 text-white' : 'text-slate-400'}`}>{item}</div>
+                        ))}
+                      </div>
+                      <div className="p-5 sm:p-6">
+                        <div className="flex items-start justify-between mb-6">
+                          <div><div className="text-[10px] font-bold tracking-widest text-brand-600 uppercase">Painel do escritório</div><h3 className="font-heading font-extrabold text-navy-900 text-xl mt-1">Acompanhe sua operação</h3></div>
+                          <span className="rounded-full bg-emerald-50 text-emerald-700 px-2.5 py-1 text-[9px] font-bold">ATIVO</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2.5 mb-5">
+                          <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="text-[9px] text-slate-500">Clientes</div><strong className="text-lg text-navy-900">87</strong></div>
+                          <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="text-[9px] text-slate-500">Pendentes</div><strong className="text-lg text-amber-500">12</strong></div>
+                          <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="text-[9px] text-slate-500">Concluídos</div><strong className="text-lg text-emerald-600">142</strong></div>
+                        </div>
+                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                          <div className="grid grid-cols-[1fr_90px] bg-slate-50 px-4 py-2.5 text-[9px] uppercase font-bold tracking-wider text-slate-400"><span>Documento</span><span>Status</span></div>
+                          <div className="grid grid-cols-[1fr_90px] items-center px-4 py-3 border-t border-slate-100"><span className="text-[11px] font-bold text-navy-900">Procuração previdenciária</span><span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 rounded-full px-2 py-1 text-center">Concluído</span></div>
+                          <div className="grid grid-cols-[1fr_90px] items-center px-4 py-3 border-t border-slate-100"><span className="text-[11px] font-bold text-navy-900">Contrato de honorários</span><span className="text-[9px] font-bold text-amber-700 bg-amber-50 rounded-full px-2 py-1 text-center">Pendente</span></div>
+                          <div className="grid grid-cols-[1fr_90px] items-center px-4 py-3 border-t border-slate-100"><span className="text-[11px] font-bold text-navy-900">Declaração de hipossuficiência</span><span className="text-[9px] font-bold text-blue-700 bg-blue-50 rounded-full px-2 py-1 text-center">Enviado</span></div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div className="absolute -left-3 top-8 bg-white px-4 py-3 rounded-2xl shadow-card flex items-center gap-3 border border-surface-100">
-                  <div className="w-9 h-9 rounded-full bg-success-100 flex items-center justify-center"><Check className="w-4 h-4 text-success-600" /></div>
-                  <span className="text-sm font-semibold text-navy-900">Documento assinado</span>
-                </div>
-                <div className="absolute -right-3 top-24 bg-white px-4 py-3 rounded-2xl shadow-card hidden sm:flex items-center gap-3 border border-surface-100">
-                  <Shield className="w-5 h-5 text-amber-600" />
-                  <span className="text-sm font-semibold text-navy-900">Integridade verificada</span>
-                </div>
+                <div className="absolute -left-4 -bottom-5 rounded-2xl border border-white/10 bg-[#10284d] px-4 py-3 shadow-xl flex items-center gap-3 text-white"><Check className="w-5 h-5 text-emerald-400" /><div><div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">Automação</div><div className="text-xs font-bold">Documento assinado</div></div></div>
+                <div className="absolute -right-3 top-20 rounded-2xl border border-white/10 bg-white px-4 py-3 shadow-xl hidden sm:flex items-center gap-3"><Shield className="w-5 h-5 text-brand-600" /><div><div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">Segurança</div><div className="text-xs font-bold text-navy-900">Evidências vinculadas</div></div></div>
               </div>
             </div>
           </div>
@@ -521,43 +532,47 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* HUMAN-CENTERED LEGALTECH */}
+        {/* PRODUCT DIFFERENTIATORS */}
         <section className="py-24 bg-white scroll-reveal">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-              <div className="relative min-h-[380px] sm:min-h-[460px] overflow-hidden rounded-[2rem] shadow-elevated border border-surface-200">
-                <Image
-                  src="/images/assinajur-equipe-juridica.webp"
-                  alt="Cena institucional ilustrativa de profissionais jurídicos utilizando tecnologia"
-                  fill
-                  sizes="(max-width: 1024px) 100vw, 50vw"
-                  className="object-cover object-center"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-navy-950/35 via-transparent to-transparent"></div>
-                <span className="absolute bottom-4 left-4 rounded-full bg-white/90 backdrop-blur px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted">
-                  Cena institucional ilustrativa
-                </span>
-              </div>
+            <div className="max-w-3xl mb-12">
+              <div className="text-overline text-brand-700 font-bold tracking-widest mb-4">MAIS DO QUE COLETAR ASSINATURAS</div>
+              <h2 className="text-h2 font-heading text-navy-900 mb-5">Uma operação jurídica inteira, conectada.</h2>
+              <p className="text-body-lg text-muted">Menos troca de telas, menos cadastro repetido e mais controle sobre cada documento enviado.</p>
+            </div>
 
-              <div>
-                <div className="text-overline text-brand-700 font-bold tracking-widest mb-4">TECNOLOGIA COM CONTEXTO JURÍDICO</div>
-                <h2 className="text-h2 font-heading text-navy-900 mb-6">Feito para a rotina de quem vive o Direito</h2>
-                <p className="text-body-lg text-muted leading-relaxed mb-8">
-                  O AssinaJur reúne clientes, documentos, kits e assinaturas em uma experiência clara para o escritório e simples para quem recebe o link.
-                </p>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="rounded-2xl border border-surface-200 bg-surface-50 p-5">
-                    <Users className="w-6 h-6 text-brand-600 mb-3" />
-                    <h3 className="font-bold text-navy-900">Gestão centralizada</h3>
-                    <p className="mt-1 text-sm text-muted">Cadastros reutilizáveis e histórico organizado.</p>
-                  </div>
-                  <div className="rounded-2xl border border-surface-200 bg-surface-50 p-5">
-                    <FileCheck2 className="w-6 h-6 text-brand-600 mb-3" />
-                    <h3 className="font-bold text-navy-900">Fluxo completo</h3>
-                    <p className="mt-1 text-sm text-muted">Do preparo do documento às evidências finais.</p>
+            <div className="grid lg:grid-cols-12 gap-5">
+              <div className="lg:col-span-7 rounded-[2rem] bg-[#071b3a] text-white p-7 sm:p-9 overflow-hidden relative min-h-[470px]">
+                <div className="absolute -right-24 -top-24 w-72 h-72 bg-brand-500/25 rounded-full blur-3xl"></div>
+                <div className="relative z-10 flex items-center justify-between mb-8">
+                  <div><div className="text-[10px] uppercase tracking-[0.2em] text-brand-300 font-bold">Exclusivo AssinaJur</div><h3 className="font-heading text-2xl font-bold mt-2">Controle pelo WhatsApp</h3></div>
+                  <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 text-emerald-300 flex items-center justify-center"><Smartphone className="w-5 h-5" /></div>
+                </div>
+                <div className="relative z-10 rounded-2xl bg-[#e9e5dc] p-4 sm:p-5 max-w-xl mx-auto shadow-2xl">
+                  <div className="flex items-center gap-3 pb-3 border-b border-black/10"><div className="w-9 h-9 rounded-full bg-[#071b3a] text-white flex items-center justify-center text-[10px] font-bold">AJ</div><div><div className="text-xs font-bold text-slate-900">AssinaJur — Assistente</div><div className="text-[10px] text-emerald-700">online</div></div></div>
+                  <div className="py-4 space-y-3 text-[11px] leading-relaxed">
+                    <div className="ml-auto max-w-[78%] rounded-xl rounded-tr-sm bg-[#d9fdd3] p-3 text-slate-800 shadow-sm">Cadastre a cliente Maria Silva com o documento que enviei.</div>
+                    <div className="max-w-[86%] rounded-xl rounded-tl-sm bg-white p-3 text-slate-800 shadow-sm"><strong>Dados identificados.</strong><br />Nome, CPF, RG e nascimento estão prontos para conferência.</div>
+                    <div className="ml-auto max-w-[55%] rounded-xl rounded-tr-sm bg-[#d9fdd3] p-3 text-slate-800 shadow-sm">Confirmar cadastro.</div>
+                    <div className="max-w-[86%] rounded-xl rounded-tl-sm bg-white p-3 text-slate-800 shadow-sm"><span className="text-emerald-600 font-bold">✓ Cliente cadastrada</span><br />A ficha já está disponível no painel.</div>
                   </div>
                 </div>
               </div>
+
+              <div className="lg:col-span-5 rounded-[2rem] border border-surface-200 bg-surface-50 p-7 sm:p-9 min-h-[470px]">
+                <div className="flex items-start justify-between mb-7"><div><div className="text-[10px] uppercase tracking-[0.2em] text-brand-600 font-bold">Clientes</div><h3 className="font-heading text-2xl font-bold text-navy-900 mt-2">Cadastro vivo e reutilizável</h3></div><Users className="w-7 h-7 text-brand-600" /></div>
+                <p className="text-sm text-muted leading-relaxed mb-7">Atualize dados, consulte a ficha e reaproveite as informações em novos documentos.</p>
+                <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+                  {[['MS','Maria Silva','Previdenciário'],['CA','Carlos Almeida','Trabalhista'],['AF','Ana Ferreira','Cível']].map(([initials,name,area], index) => (
+                    <div key={name} className={`flex items-center gap-3 p-4 ${index ? 'border-t border-slate-100' : ''}`}><div className="w-9 h-9 rounded-xl bg-brand-50 text-brand-700 flex items-center justify-center text-[10px] font-bold">{initials}</div><div className="flex-1"><div className="text-xs font-bold text-navy-900">{name}</div><div className="text-[10px] text-slate-400">{area}</div></div><span className="text-[10px] font-bold text-brand-600">Abrir ficha</span></div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-4"><div className="rounded-xl bg-brand-600 text-white p-4"><strong className="block text-xl">1 vez</strong><span className="text-[10px] text-brand-100">para cadastrar</span></div><div className="rounded-xl bg-navy-900 text-white p-4"><strong className="block text-xl">∞</strong><span className="text-[10px] text-slate-300">para reutilizar</span></div></div>
+              </div>
+
+              <div className="lg:col-span-4 rounded-[1.75rem] border border-surface-200 p-7"><Layers className="w-7 h-7 text-brand-600 mb-5" /><h3 className="font-heading text-xl font-bold text-navy-900">Kits em um único link</h3><p className="text-sm text-muted mt-2 leading-relaxed">Contrato, procuração e declarações enviados juntos para o cliente.</p></div>
+              <div className="lg:col-span-4 rounded-[1.75rem] border border-surface-200 p-7"><Eye className="w-7 h-7 text-brand-600 mb-5" /><h3 className="font-heading text-xl font-bold text-navy-900">Acompanhamento claro</h3><p className="text-sm text-muted mt-2 leading-relaxed">Veja o que foi enviado, aberto, assinado ou ainda está pendente.</p></div>
+              <div className="lg:col-span-4 rounded-[1.75rem] border border-surface-200 p-7"><Shield className="w-7 h-7 text-brand-600 mb-5" /><h3 className="font-heading text-xl font-bold text-navy-900">Evidências vinculadas</h3><p className="text-sm text-muted mt-2 leading-relaxed">Fotos, contexto técnico, hash e validação reunidos no documento final.</p></div>
             </div>
           </div>
         </section>
@@ -1022,31 +1037,16 @@ export default function LandingPage() {
 
         {/* ═══ 12. MOBILE EXPERIENCE SECTION ═══ */}
         <section id="mobile" className="py-24 bg-surface-50 overflow-hidden scroll-reveal">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-16">
-            <div className="grid lg:grid-cols-[1.05fr_.95fr] gap-12 items-center">
-              <div>
-                <div className="text-overline text-brand-700 font-bold tracking-widest mb-4">SIMPLES PARA QUEM ASSINA</div>
-                <h2 className="text-h2 font-heading text-navy-900 mb-6">O cliente assina pelo celular, sem instalar aplicativo</h2>
-                <p className="text-body-lg text-muted max-w-xl mb-8">
-                  O link abre diretamente no navegador e conduz o signatário por cada etapa, da identificação à confirmação final.
-                </p>
-                <div className="flex flex-wrap gap-3 text-sm font-semibold text-navy-900">
-                  <span className="inline-flex items-center gap-2 rounded-full bg-white border border-surface-200 px-4 py-2"><Check className="w-4 h-4 text-success-500" /> Sem aplicativo</span>
-                  <span className="inline-flex items-center gap-2 rounded-full bg-white border border-surface-200 px-4 py-2"><Check className="w-4 h-4 text-success-500" /> Fluxo guiado</span>
-                  <span className="inline-flex items-center gap-2 rounded-full bg-white border border-surface-200 px-4 py-2"><Check className="w-4 h-4 text-success-500" /> Confirmação imediata</span>
-                </div>
-              </div>
-              <div className="relative min-h-[440px] sm:min-h-[520px] overflow-hidden rounded-[2rem] shadow-elevated border border-white">
-                <Image
-                  src="/images/assinajur-assinatura-celular.webp"
-                  alt="Cena ilustrativa de uma pessoa assinando documento pelo celular"
-                  fill
-                  sizes="(max-width: 1024px) 100vw, 42vw"
-                  className="object-cover object-center"
-                />
-                <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-navy-950/65 to-transparent"></div>
-                <span className="absolute bottom-4 left-4 text-[10px] font-bold uppercase tracking-widest text-white/85">Cena institucional ilustrativa</span>
-              </div>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center mb-16">
+            <div className="text-overline text-brand-700 font-bold tracking-widest mb-4">SIMPLES PARA QUEM ASSINA</div>
+            <h2 className="text-h2 font-heading text-navy-900 mb-5">Um link. Cinco etapas. Nenhum aplicativo.</h2>
+            <p className="text-body-lg text-muted max-w-2xl mx-auto">
+              O cliente recebe, visualiza, confirma sua presença, assina e conclui tudo diretamente pelo navegador do celular.
+            </p>
+            <div className="flex flex-wrap justify-center gap-3 text-sm font-semibold text-navy-900 mt-7">
+              <span className="inline-flex items-center gap-2 rounded-full bg-white border border-surface-200 px-4 py-2"><Check className="w-4 h-4 text-success-500" /> Sem aplicativo</span>
+              <span className="inline-flex items-center gap-2 rounded-full bg-white border border-surface-200 px-4 py-2"><Check className="w-4 h-4 text-success-500" /> Fluxo guiado</span>
+              <span className="inline-flex items-center gap-2 rounded-full bg-white border border-surface-200 px-4 py-2"><Check className="w-4 h-4 text-success-500" /> Confirmação imediata</span>
             </div>
           </div>
 
