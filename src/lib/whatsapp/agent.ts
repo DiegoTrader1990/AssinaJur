@@ -873,8 +873,9 @@ async function executeLegalDraftLinkSafely(officeId: string, action: PendingLega
     return await executePendingAction(officeId, action);
   } catch (error) {
     console.error('Erro ao criar documento definitivo da minuta aprovada:', error);
+    const reason = error instanceof Error ? error.message : 'Falha inesperada ao preparar o documento.';
     return {
-      replyText: 'A minuta continua aprovada, mas houve uma falha ao criar o documento definitivo. Nenhum envio foi feito ao cliente. Tente *GERAR LINK* novamente em instantes.',
+      replyText: `A minuta continua aprovada, mas o documento definitivo não foi criado. ${reason}\n\nCorrija o campo indicado e gere uma nova prévia antes de pedir o link.`,
       actionTaken: encodePendingAction(action),
     };
   }

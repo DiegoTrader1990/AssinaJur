@@ -257,6 +257,10 @@ export async function compileTemplateToPdf({
   variables: VariableValues;
   officeName: string;
 }) {
+  const unresolvedFields = contentHtml.match(/\[(?:INFORMAR|PREENCHER|DESCREVER|DEFINIR|REVISAR|INSERIR)[^\]]*\]/gi) || [];
+  if (unresolvedFields.length > 0) {
+    throw new Error(`A minuta ainda contém campo(s) pendente(s): ${[...new Set(unresolvedFields)].slice(0, 3).join(', ')}. Revise a minuta antes de gerar o documento definitivo.`);
+  }
   const rendered = await renderTemplatePdf({ title, contentHtml, variables, officeName });
   const storageRecord = await saveFile({
     officeId,
