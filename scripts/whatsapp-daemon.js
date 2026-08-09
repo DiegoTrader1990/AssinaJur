@@ -66,6 +66,14 @@ const AUTH_FOLDER = process.env.WHATSAPP_AUTH_DIR || path.join(__dirname, '..', 
 let socketInstance = null;
 let isConnected = false;
 let isConnecting = false;
+const conversationHistory = [];
+
+function rememberConversation(role, content) {
+  const clean = String(content || '').trim();
+  if (!clean) return;
+  conversationHistory.push({ role, content: clean.slice(0, 1200) });
+  if (conversationHistory.length > 16) conversationHistory.splice(0, conversationHistory.length - 16);
+}
 
 function unwrapMessageContent(message) {
   let content = message || {};
@@ -164,6 +172,63 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
     }
   }
   return null;
+}
+
+async function interpretConversationLocally(text) {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
+  if (!apiKey) return null;
+  const history = conversationHistory.map((item) => `${item.role === 'user' ? 'Advogado' : 'AssinaJur'}: ${item.content}`).join('\n');
+  const prompt = `Você é o assistente privado do advogado no AssinaJur. Interprete a mensagem considerando o histórico.
+Retorne somente JSON válido com "command" e "reply".
+
+Use command apenas quando houver uma ação operacional. Formatos permitidos:
+- ajuda
+- clientes
+- buscar cliente NOME OU CPF
+- status
+- cobrar NOME
+- cadastrar cliente DADOS
+- excluir cliente NOME OU CPF
+- excluir cliente
+- gerar MODELO para CLIENTE
+- gerar kit KIT para CLIENTE
+
+Se for conversa, dúvida, continuação sem dados suficientes ou discussão de ideias, deixe command vazio e responda em reply de forma natural, profissional e breve. Faça uma pergunta objetiva quando faltar informação.
+Nunca afirme que alterou, cadastrou, excluiu, gerou ou enviou algo; ações reais são executadas e confirmadas pelo servidor.
+
+Histórico:
+${history || 'Sem histórico anterior.'}
+
+Mensagem atual: ${text}`;
+  try {
+    const response = await customFetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: 'application/json', temperature: 0.1 },
+        }),
+      }
+    );
+    if (!response.ok) {
+      console.error(`Interpretação local da conversa: Gemini respondeu HTTP ${response.status}.`);
+      return null;
+    }
+    const payload = await response.json().catch(() => ({}));
+    const parsed = parseGeminiJson(payload?.candidates?.[0]?.content?.parts?.[0]?.text);
+    if (!parsed) return null;
+    const command = typeof parsed.command === 'string' ? parsed.command.trim().slice(0, 1000) : '';
+    const reply = typeof parsed.reply === 'string' ? parsed.reply.trim().slice(0, 2000) : '';
+    const allowedCommand = /^(?:ajuda|clientes|buscar cliente(?:\s+.+)?|status|cobrar\s+.+|cadastrar cliente(?:\s+.*)?|excluir cliente(?:\s+.*)?|gerar(?:\s+kit)?\s+.+\s+para\s+.+)$/i.test(command)
+      ? command
+      : '';
+    return { command: allowedCommand, reply: allowedCommand ? '' : reply };
+  } catch (error) {
+    console.error('Falha ao interpretar a conversa localmente:', error?.message || error);
+    return null;
+  }
 }
 
 async function callAssinaJur(payload) {
@@ -333,6 +398,7 @@ async function connectToWhatsApp() {
         let mediaBase64 = undefined;
         let mediaMimeType = undefined;
         let documentData = undefined;
+        let localRouting = undefined;
 
         if (isImage) {
           try {
@@ -359,6 +425,14 @@ async function connectToWhatsApp() {
           }
         }
 
+        if (!isImage && !isAudio && !isContact) {
+          const simpleControl = /^(?:confirmar|confirmo|cancelar|cancela|ajuda|menu|oi|olá|\+?[\d\s().-]{10,20})$/i.test(textMessage.trim());
+          if (!simpleControl) {
+            localRouting = await interpretConversationLocally(textMessage);
+          }
+          rememberConversation('user', textMessage);
+        }
+
         try {
           console.log('🤖 Processando com a Inteligência IA do AssinaJur...');
           const data = await callAssinaJur({
@@ -368,11 +442,14 @@ async function connectToWhatsApp() {
             mediaBase64: documentData ? undefined : mediaBase64,
             mediaMimeType,
             documentData,
+            naturalCommand: localRouting?.command,
+            conversationReply: localRouting?.reply,
           });
           if (data.reply) {
             console.log(`💬 Resposta enviada ao WhatsApp: "${data.reply}"`);
             await sock.sendMessage(rawJid, { text: data.reply });
             console.log('✅ Mensagem entregue com sucesso!');
+            rememberConversation('assistant', data.reply);
           }
 
           for (const outbound of data.outboundMessages || []) {

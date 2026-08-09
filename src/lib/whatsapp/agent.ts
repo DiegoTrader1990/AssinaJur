@@ -24,6 +24,8 @@ export interface WhatsAppIncomingMessage {
   mediaBase64?: string;
   mediaMimeType?: string;
   documentData?: Record<string, unknown>;
+  naturalCommand?: string;
+  conversationReply?: string;
   trustedSource?: boolean;
 }
 
@@ -83,7 +85,14 @@ interface PendingTemplateAction {
   data: { clientId: string; clientName: string; templateId: string; templateName: string };
 }
 
-type PendingAction = PendingClientAction | PendingKitAction | PendingTemplateAction;
+interface PendingDeleteClientAction {
+  id: string;
+  type: 'DELETE_CLIENT';
+  createdAt: string;
+  data: { clientId?: string; clientName?: string; cpfCnpj?: string };
+}
+
+type PendingAction = PendingClientAction | PendingKitAction | PendingTemplateAction | PendingDeleteClientAction;
 
 function normalizePhone(value?: string | null): string {
   return (value || '').replace(/\D/g, '');
@@ -318,7 +327,7 @@ address, number, neighborhood, city e state.`,
     const candidate: Partial<ClientDraft> = {
       name: cleanOptional(parsed.name),
       cpfCnpj: hasValidCpfCnpjCheckDigits(extractedCpfCnpj) ? extractedCpfCnpj : undefined,
-      rg: cleanOptional(parsed.rg),
+      rg: normalizeCpfCnpj(cleanOptional(parsed.rg)) === extractedCpfCnpj ? undefined : cleanOptional(parsed.rg),
       issuingOrgan: cleanOptional(parsed.issuingOrgan),
       birthDate: cleanOptional(parsed.birthDate),
       nationality: cleanOptional(parsed.nationality),
@@ -402,6 +411,41 @@ async function findLatestPendingAction(officeId: string, fromNumber: string): Pr
 }
 
 async function executePendingAction(officeId: string, action: PendingAction): Promise<WhatsAppAgentResult> {
+  if (action.type === 'DELETE_CLIENT') {
+    if (!action.data.clientId) {
+      return {
+        replyText: 'Claro. Qual cliente você deseja excluir? Pode informar o nome completo ou o CPF.',
+        actionTaken: encodePendingAction(action),
+      };
+    }
+    const client = await prisma.client.findFirst({
+      where: { id: action.data.clientId, officeId },
+      include: { _count: { select: { documents: true } } },
+    });
+    if (!client) {
+      return { replyText: 'Esse cliente não foi encontrado ou já foi excluído.', actionTaken: `${EXECUTED_PREFIX}${action.id}` };
+    }
+    if (client._count.documents > 0) {
+      return {
+        replyText: `Não excluí *${client.name}* porque existem ${client._count.documents} documento(s) associado(s). Para preservar o histórico jurídico, remova ou trate esses documentos primeiro.`,
+        actionTaken: `${EXECUTED_PREFIX}${action.id}`,
+      };
+    }
+    await prisma.$transaction(async (tx) => {
+      await tx.client.delete({ where: { id: client.id } });
+      await tx.auditLog.create({
+        data: {
+          officeId,
+          eventType: 'CLIENT_DELETED_BY_WHATSAPP',
+          description: `${client.name} (${client.cpfCnpj}) excluído pelo controle remoto do WhatsApp após confirmação.`,
+        },
+      });
+    });
+    return {
+      replyText: `✅ *Cliente excluído do AssinaJur*\n\n👤 ${client.name}\n🪪 ${maskCpfCnpj(client.cpfCnpj)}\n\nA exclusão foi registrada na auditoria.`,
+      actionTaken: `${EXECUTED_PREFIX}${action.id}`,
+    };
+  }
   if (action.type === 'GENERATE_KIT') {
     return generateKitDocuments(officeId, action);
   }
@@ -626,13 +670,80 @@ async function findSingleClient(officeId: string, query: string) {
   return clients;
 }
 
+async function prepareClientDeletion(officeId: string, query?: string): Promise<WhatsAppAgentResult> {
+  const cleanQuery = (query || '').trim().replace(/^(?:é|seria|o nome é|a cliente é|o cliente é)\s+/i, '');
+  if (!cleanQuery) {
+    const action: PendingDeleteClientAction = {
+      id: randomUUID(),
+      type: 'DELETE_CLIENT',
+      createdAt: new Date().toISOString(),
+      data: {},
+    };
+    return {
+      replyText: 'Claro. Qual cliente você deseja excluir? Pode me dizer o nome completo ou o CPF.',
+      actionTaken: encodePendingAction(action),
+    };
+  }
+
+  const digits = normalizeCpfCnpj(cleanQuery);
+  const clients = await prisma.client.findMany({
+    where: {
+      officeId,
+      OR: [
+        { name: { contains: cleanQuery, mode: 'insensitive' } },
+        ...(digits ? [{ cpfCnpj: { contains: digits } }] : []),
+      ],
+    },
+    take: 5,
+    orderBy: { updatedAt: 'desc' },
+  });
+  if (clients.length === 0) {
+    const action: PendingDeleteClientAction = {
+      id: randomUUID(),
+      type: 'DELETE_CLIENT',
+      createdAt: new Date().toISOString(),
+      data: {},
+    };
+    return {
+      replyText: `Não encontrei cliente correspondente a “${cleanQuery}”. Tente outro nome ou informe o CPF.`,
+      actionTaken: encodePendingAction(action),
+    };
+  }
+  if (clients.length > 1) {
+    const action: PendingDeleteClientAction = {
+      id: randomUUID(),
+      type: 'DELETE_CLIENT',
+      createdAt: new Date().toISOString(),
+      data: {},
+    };
+    return {
+      replyText: `Encontrei mais de um cliente:\n\n${clients
+        .map((client, index) => `${index + 1}. *${client.name}* — ${maskCpfCnpj(client.cpfCnpj)}`)
+        .join('\n')}\n\nDiga o nome completo ou o CPF de quem deseja excluir.`,
+      actionTaken: encodePendingAction(action),
+    };
+  }
+
+  const client = clients[0];
+  const action: PendingDeleteClientAction = {
+    id: randomUUID(),
+    type: 'DELETE_CLIENT',
+    createdAt: new Date().toISOString(),
+    data: { clientId: client.id, clientName: client.name, cpfCnpj: client.cpfCnpj },
+  };
+  return {
+    replyText: `⚠️ *Confirmar exclusão de cliente*\n\n👤 ${client.name}\n🪪 ${maskCpfCnpj(client.cpfCnpj)}\n\nEssa ação remove o cadastro e não pode ser desfeita. Responda *CONFIRMAR* para excluir ou *CANCELAR* para manter.`,
+    actionTaken: encodePendingAction(action),
+  };
+}
+
 async function routeNaturalLanguageCommand(text: string): Promise<string | null> {
   const aiText = await callGemini(
     [{
       text: `Você é o roteador de comandos do AssinaJur. Identifique a intenção operacional da mensagem.
 Retorne somente JSON válido com:
 {
-  "intent": "HELP|LIST_CLIENTS|SEARCH_CLIENT|STATUS|REMIND|CREATE_CLIENT|GENERATE_TEMPLATE|GENERATE_KIT|CHAT",
+  "intent": "HELP|LIST_CLIENTS|SEARCH_CLIENT|STATUS|REMIND|CREATE_CLIENT|DELETE_CLIENT|GENERATE_TEMPLATE|GENERATE_KIT|CHAT",
   "client": "nome do cliente ou vazio",
   "document": "nome do modelo ou kit ou vazio"
 }
@@ -642,6 +753,7 @@ Regras:
 - Procurar cadastro/dados de alguém => SEARCH_CLIENT.
 - Cobrar, lembrar ou reenviar assinatura => REMIND.
 - Cadastrar pessoa com dados => CREATE_CLIENT.
+- Excluir, apagar ou remover cadastro de cliente => DELETE_CLIENT.
 - Criar documento específico => GENERATE_TEMPLATE.
 - Criar pacote/kit => GENERATE_KIT.
 - Saudação, dúvida geral ou conversa sem ação => CHAT.
@@ -661,6 +773,7 @@ Mensagem: ${text}`,
     case 'STATUS': return 'status';
     case 'REMIND': return client ? `cobrar ${client}` : null;
     case 'CREATE_CLIENT': return `cadastrar cliente ${text}`;
+    case 'DELETE_CLIENT': return client ? `excluir cliente ${client}` : 'excluir cliente';
     case 'GENERATE_TEMPLATE': return client && document ? `gerar ${document} para ${client}` : null;
     case 'GENERATE_KIT': return client && document ? `gerar kit ${document} para ${client}` : null;
     case 'CHAT': return '__CHAT__';
@@ -668,14 +781,27 @@ Mensagem: ${text}`,
   }
 }
 
-async function answerSafeConversation(text: string): Promise<string> {
+async function answerSafeConversation(officeId: string, fromNumber: string, text: string): Promise<string> {
+  const recentLogs = await prisma.whatsAppLog.findMany({
+    where: { officeId, fromNumber },
+    orderBy: { createdAt: 'desc' },
+    take: 8,
+    select: { body: true, aiResponse: true },
+  });
+  const context = recentLogs
+    .reverse()
+    .map((log) => `Advogado: ${(log.body || '').slice(0, 500)}\nAssinaJur: ${(log.aiResponse || '').slice(0, 700)}`)
+    .join('\n\n');
   const answer = await callGemini([{
     text: `Você é o AssinaJur Copilot, assistente privado do advogado administrador.
 Converse de forma profissional, natural e breve em português brasileiro.
 Você pode orientar sobre o uso do AssinaJur e ajudar a transformar o pedido em um dos recursos:
-cadastro de clientes, consulta, geração por modelo/kit, status e cobrança de assinatura.
+cadastro e exclusão segura de clientes, consulta, geração por modelo/kit, status e cobrança de assinatura.
 Nunca diga que cadastrou, alterou, gerou ou enviou algo se nenhuma ação operacional foi executada.
 Quando faltar informação, faça uma pergunta objetiva.
+
+Histórico recente da conversa:
+${context || 'Sem histórico anterior.'}
 
 Mensagem do advogado: ${text}`,
   }]);
@@ -686,7 +812,8 @@ async function handleTextCommand(
   officeId: string,
   fromNumber: string,
   originalBody: string,
-  allowAiRouting = true
+  allowAiRouting = true,
+  localRouting?: { command?: string; reply?: string }
 ): Promise<WhatsAppAgentResult> {
   const text = originalBody.trim();
   const normalized = text.toLocaleLowerCase('pt-BR');
@@ -727,25 +854,35 @@ async function handleTextCommand(
     }
   }
 
+  if (existingPending?.type === 'DELETE_CLIENT' && !existingPending.data.clientId) {
+    const startsAnotherAction = /\b(cadastrar|cadastre|buscar|procurar|status|cobrar|gerar|criar|ajuda|menu|listar)\b/i.test(normalized);
+    if (!startsAnotherAction) return prepareClientDeletion(officeId, text);
+  }
+
   if (/^(ajuda|menu|comandos|o que você faz|oi|olá)$/i.test(normalized)) {
     return {
       replyText: [
-        '🤖 *AssinaJur — Controle Remoto*',
+        '🤖 *AssinaJur — Assistente do Escritório*',
         '',
-        '• *clientes* — últimos cadastros',
-        '• *buscar cliente [nome ou CPF]*',
-        '• *status* — assinaturas pendentes',
-        '• *cobrar [nome]* — reenviar link de assinatura',
-        '• *cadastrar cliente...* — cadastro por texto',
-        '• *gerar [modelo] para [cliente]*',
-        '• *gerar kit [kit] para [cliente]*',
-        '• Envie uma *foto de RG/CNH* para preparar o cadastro',
-        '• Envie um *áudio* com qualquer desses comandos',
+        'Pode conversar normalmente. Alguns exemplos:',
         '',
-        'Operações que alteram dados sempre pedem *CONFIRMAR*.',
+        '• “Quero cadastrar um cliente”',
+        '• “Procure o cadastro da Maria”',
+        '• “Quero excluir um cliente”',
+        '• “Quem ainda não assinou?”',
+        '• “Cobre a assinatura do João”',
+        '• “Gere uma procuração para Ana”',
+        '• Envie uma foto de RG/CNH ou um áudio explicando o que precisa',
+        '',
+        'Quando faltar alguma informação, eu pergunto. Ações que alteram dados sempre pedem *CONFIRMAR*.',
       ].join('\n'),
       actionTaken: 'SHOW_HELP',
     };
+  }
+
+  const deleteMatch = text.match(/\b(?:remover|excluir|apagar|deletar)\b(?:\s+(?:o|a|um|uma))?\s*(?:cadastro\s+d[oa]\s+|cliente\s*)?(.*)$/i);
+  if (deleteMatch) {
+    return prepareClientDeletion(officeId, deleteMatch[1]);
   }
 
   const clientSearchMatch = normalized.match(/^(?:buscar|procurar|consultar|localizar|ver)\s+cliente\s+(.+)$/i);
@@ -925,9 +1062,15 @@ async function handleTextCommand(
 
   if (allowAiRouting) {
     try {
+      if (localRouting?.command) {
+        return handleTextCommand(officeId, fromNumber, localRouting.command, false);
+      }
+      if (localRouting?.reply) {
+        return { replyText: localRouting.reply, actionTaken: 'LOCAL_AI_CONVERSATION' };
+      }
       const routedCommand = await routeNaturalLanguageCommand(text);
       if (routedCommand === '__CHAT__') {
-        return { replyText: await answerSafeConversation(text), actionTaken: 'SAFE_AI_CONVERSATION' };
+        return { replyText: await answerSafeConversation(officeId, fromNumber, text), actionTaken: 'SAFE_AI_CONVERSATION' };
       }
       if (routedCommand) {
         return handleTextCommand(officeId, fromNumber, routedCommand, false);
@@ -938,13 +1081,24 @@ async function handleTextCommand(
   }
 
   return {
-    replyText: 'Não consegui transformar essa mensagem em uma ação. Diga mais detalhes ou digite *AJUDA*.',
-    actionTaken: 'COMMAND_NOT_UNDERSTOOD',
+    replyText: await answerSafeConversation(officeId, fromNumber, text),
+    actionTaken: 'SAFE_AI_CONVERSATION_FALLBACK',
   };
 }
 
 export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Promise<WhatsAppAgentResult> {
-  const { officeId, fromNumber, body, messageType, mediaBase64, mediaMimeType, documentData, trustedSource } = input;
+  const {
+    officeId,
+    fromNumber,
+    body,
+    messageType,
+    mediaBase64,
+    mediaMimeType,
+    documentData,
+    naturalCommand,
+    conversationReply,
+    trustedSource,
+  } = input;
   if (!trustedSource && !isAuthorizedLawyerPhone(fromNumber)) {
     return {
       replyText: 'Este número não possui autorização para administrar o AssinaJur.',
@@ -968,12 +1122,14 @@ export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Pr
     const name = cleanOptional(documentData.name);
     const cpfCnpj = normalizeCpfCnpj(cleanOptional(documentData.cpfCnpj));
     if (name && hasValidCpfCnpjCheckDigits(cpfCnpj)) {
+      const extractedRg = cleanOptional(documentData.rg);
+      const safeRg = normalizeCpfCnpj(extractedRg) === cpfCnpj ? undefined : extractedRg;
       const draft: ClientDraft = {
         name,
         cpfCnpj,
         phone: '',
         whatsapp: '',
-        rg: cleanOptional(documentData.rg),
+        rg: safeRg,
         issuingOrgan: cleanOptional(documentData.issuingOrgan),
         birthDate: cleanOptional(documentData.birthDate),
         nationality: cleanOptional(documentData.nationality) || 'Brasileira',
@@ -1007,5 +1163,8 @@ export async function processWhatsAppCommand(input: WhatsAppIncomingMessage): Pr
     }
   }
 
-  return handleTextCommand(officeId, fromNumber, body || '');
+  return handleTextCommand(officeId, fromNumber, body || '', true, {
+    command: cleanOptional(naturalCommand),
+    reply: cleanOptional(conversationReply),
+  });
 }

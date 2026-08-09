@@ -156,6 +156,8 @@ export async function POST(req: Request) {
       documentData: body.documentData && typeof body.documentData === 'object' && !Array.isArray(body.documentData)
         ? body.documentData as Record<string, unknown>
         : undefined,
+      naturalCommand: bridgeAuthenticated && typeof body.naturalCommand === 'string' ? body.naturalCommand : undefined,
+      conversationReply: bridgeAuthenticated && typeof body.conversationReply === 'string' ? body.conversationReply : undefined,
       trustedSource: Boolean(sessionUser),
     });
 
