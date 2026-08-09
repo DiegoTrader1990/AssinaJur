@@ -787,7 +787,7 @@ function legalDraftPreview(action: PendingLegalDraftAction): string {
     '',
     documentList,
     '',
-    'Responda *CONFIRMAR* para gerar no AssinaJur, *ALTERAR: [o que deseja]* para eu revisar, ou *CANCELAR*.',
+    `Responda *VER TEXTO${action.data.documents.length > 1 ? ' 1' : ''}* para ler a íntegra, *CONFIRMAR* para gerar, *ALTERAR: [o que deseja]* para revisar, ou *CANCELAR*.`,
     '_Nada foi criado no site ainda._',
   ].filter((line): line is string => line !== null).join('\n');
 }
@@ -1044,6 +1044,45 @@ async function handleTextCommand(
 
   const existingPending = await findLatestPendingAction(officeId, fromNumber);
   if (existingPending?.type === 'GENERATE_LEGAL_DRAFT') {
+    const fullTextMatch = text.match(/^(?:ver|mostrar|mostre)\s+(?:o\s+)?(?:texto|conte[uú]do|[ií]ntegra)(?:\s+(\d+))?$/i);
+    if (fullTextMatch) {
+      if (existingPending.data.documents.length > 1 && !fullTextMatch[1]) {
+        return {
+          replyText: `Este kit possui ${existingPending.data.documents.length} documentos. Diga *VER TEXTO 1*, *VER TEXTO 2* e assim por diante.`,
+          actionTaken: encodePendingAction(existingPending),
+        };
+      }
+      const documentIndex = Math.max(0, Number(fullTextMatch[1] || '1') - 1);
+      const document = existingPending.data.documents[documentIndex];
+      if (!document) {
+        return {
+          replyText: `Escolha um número entre 1 e ${existingPending.data.documents.length}.`,
+          actionTaken: encodePendingAction(existingPending),
+        };
+      }
+      const plainText = document.contentHtml
+        .replace(/<\s*br\s*\/?>/gi, '\n')
+        .replace(/<\/(?:p|h1|h2|li|ol|ul)>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      const chunks: string[] = [];
+      for (let offset = 0; offset < plainText.length; offset += 3300) {
+        chunks.push(plainText.slice(offset, offset + 3300));
+      }
+      return {
+        replyText: `📖 Vou enviar a íntegra de *${document.title}* em ${chunks.length} parte(s). Depois, responda *CONFIRMAR*, *ALTERAR: [orientação]* ou *CANCELAR*.`,
+        actionTaken: encodePendingAction(existingPending),
+        outboundMessages: chunks.map((chunk, index) => ({
+          to: fromNumber,
+          text: `📄 *${document.title} — parte ${index + 1}/${chunks.length}*\n\n${chunk}`,
+        })),
+      };
+    }
     const revision = text.match(/^(?:alterar|altere|revisar|revise|modificar|modifique|mudar|mude)\s*:?\s*(.+)$/i)?.[1]?.trim();
     if (revision) {
       const client = await prisma.client.findFirst({ where: { id: existingPending.data.clientId, officeId } });
