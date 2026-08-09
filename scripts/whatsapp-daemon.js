@@ -143,6 +143,75 @@ function parseGeminiJson(text) {
   }
 }
 
+const DOCUMENT_FIELDS = [
+  'name', 'cpfCnpj', 'rg', 'issuingOrgan', 'birthDate', 'nationality', 'maritalStatus',
+  'profession', 'cep', 'address', 'number', 'neighborhood', 'city', 'state',
+];
+
+function mergeDocumentCandidate(target, candidate) {
+  if (!candidate || typeof candidate !== 'object') return target;
+  for (const field of DOCUMENT_FIELDS) {
+    let value = typeof candidate[field] === 'string' ? candidate[field].trim() : '';
+    if (!value) continue;
+    if (field === 'cpfCnpj') {
+      value = value.replace(/\D/g, '');
+      if (!hasValidCpfCnpjCheckDigits(value)) continue;
+    }
+    if (!target[field]) target[field] = value;
+  }
+  return target;
+}
+
+function hasMinimumDocumentIdentity(data) {
+  return Boolean(data?.name && hasValidCpfCnpjCheckDigits(data?.cpfCnpj));
+}
+
+function validBrazilianDate(day, month, year) {
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  return date.getUTCFullYear() === Number(year)
+    && date.getUTCMonth() === Number(month) - 1
+    && date.getUTCDate() === Number(day);
+}
+
+function extractDocumentPatternsFromOcr(rawText) {
+  const lines = String(rawText || '').replace(/\r/g, '').split('\n').map((line) => line.trim()).filter(Boolean);
+  const candidate = {};
+  const numericText = String(rawText || '').replace(/[Oo]/g, '0').replace(/[Il|]/g, '1');
+
+  // Um CPF possui 11 dígitos (3+3+3+2). Testamos todas as sequências compatíveis e só
+  // aceitamos aquela cujos dois dígitos verificadores estejam matematicamente corretos.
+  const cpfPatterns = numericText.split(/\r?\n/).flatMap((line) => line.match(/(?:\d[\t .\-/]*){11}/g) || []);
+  for (const value of cpfPatterns) {
+    const digits = value.replace(/\D/g, '');
+    if (digits.length === 11 && hasValidCpfCnpjCheckDigits(digits)) {
+      candidate.cpfCnpj = digits;
+      break;
+    }
+  }
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const nextLine = lines[index + 1] || '';
+    const nameMatch = line.match(/\b(?:NOME(?:\s+CIVIL)?|NAME)\b\s*[:\-]?\s*(.*)$/i);
+    if (!candidate.name && nameMatch) {
+      const possibleName = (nameMatch[1] || nextLine).replace(/[^A-Za-zÀ-ÿ' -]/g, ' ').replace(/\s+/g, ' ').trim();
+      if ((possibleName.match(/[A-Za-zÀ-ÿ]{2,}/g) || []).length >= 2) candidate.name = possibleName;
+    }
+
+    const rgMatch = line.match(/\b(?:RG|REGISTRO\s+GERAL|IDENTIDADE)\b\s*[:\-]?\s*([0-9][0-9.\-\sX]{4,18})/i);
+    if (!candidate.rg && rgMatch) {
+      const rg = rgMatch[1].replace(/\s+/g, '').trim();
+      if (rg.replace(/\D/g, '').length >= 5 && rg.replace(/\D/g, '') !== candidate.cpfCnpj) candidate.rg = rg;
+    }
+
+    const dateMatch = line.match(/\b(?:NASCIMENTO|DATA\s+DE\s+NASCIMENTO|NASC\.?|BIRTH)\b[^0-9]{0,12}([0-3]?\d)[\s/.\-]([01]?\d)[\s/.\-]((?:19|20)\d{2})/i);
+    if (!candidate.birthDate && dateMatch && validBrazilianDate(dateMatch[1], dateMatch[2], dateMatch[3])) {
+      candidate.birthDate = `${dateMatch[1].padStart(2, '0')}/${dateMatch[2].padStart(2, '0')}/${dateMatch[3]}`;
+    }
+  }
+  return candidate;
+}
+
 async function analyzeDocumentLocally(mediaBase64, mediaMimeType) {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
   if (!mediaBase64) return null;
@@ -150,6 +219,7 @@ async function analyzeDocumentLocally(mediaBase64, mediaMimeType) {
   const mimeType = suppliedMimeType.startsWith('image/') || suppliedMimeType === 'application/pdf'
     ? suppliedMimeType
     : 'image/jpeg';
+  const collected = {};
   const prompt = `Analise cuidadosamente este RG ou CNH brasileiro, inclusive se estiver rotacionado.
 Extraia somente os dados visíveis do titular. Diferencie CPF do número do RG e não invente dígitos.
 Retorne somente JSON válido com: name, cpfCnpj, rg, issuingOrgan, birthDate, nationality,
@@ -176,11 +246,8 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
         continue;
       }
       const parsed = parseGeminiJson(payload?.candidates?.[0]?.content?.parts?.[0]?.text);
-      const name = typeof parsed?.name === 'string' ? parsed.name.trim() : '';
-      const cpfCnpj = String(parsed?.cpfCnpj || '').replace(/\D/g, '');
-      if (name && hasValidCpfCnpjCheckDigits(cpfCnpj)) {
-        return { ...parsed, name, cpfCnpj };
-      }
+      mergeDocumentCandidate(collected, parsed);
+      if (hasMinimumDocumentIdentity(collected)) return collected;
       console.error(`Leitura local do documento incompleta na tentativa ${attempt}; tentando novamente.`);
     } catch (error) {
       console.error(`Falha na leitura local do documento na tentativa ${attempt}:`, error?.message || error);
@@ -214,11 +281,10 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
         continue;
       }
       const parsed = parseGeminiJson(payload?.choices?.[0]?.message?.content);
-      const name = typeof parsed?.name === 'string' ? parsed.name.trim() : '';
-      const cpfCnpj = String(parsed?.cpfCnpj || '').replace(/\D/g, '');
-      if (name && hasValidCpfCnpjCheckDigits(cpfCnpj)) {
+      mergeDocumentCandidate(collected, parsed);
+      if (hasMinimumDocumentIdentity(collected)) {
         console.log('✅ Documento lido pelo leitor visual alternativo.');
-        return { ...parsed, name, cpfCnpj };
+        return collected;
       }
       console.error(`Leitura alternativa incompleta na tentativa ${attempt}.`);
     } catch (error) {
@@ -236,7 +302,12 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
       fs.mkdirSync(ocrCachePath, { recursive: true });
       worker = await createWorker('por', 1, { cachePath: ocrCachePath });
       const result = await worker.recognize(Buffer.from(mediaBase64, 'base64'));
-      const rawText = String(result?.data?.text || '').replace(/\s+/g, ' ').trim().slice(0, 6000);
+      const rawText = String(result?.data?.text || '').replace(/\r/g, '').trim().slice(0, 6000);
+      mergeDocumentCandidate(collected, extractDocumentPatternsFromOcr(rawText));
+      if (hasMinimumDocumentIdentity(collected)) {
+        console.log('✅ Documento recuperado por padrões documentais e OCR local.');
+        return collected;
+      }
       if (rawText && groqKey) {
         const parsed = await callGroqJson(`O texto abaixo foi extraído localmente de um RG ou CNH brasileiro.
 Identifique apenas informações explicitamente presentes e retorne JSON com: name, cpfCnpj, rg, issuingOrgan,
@@ -244,11 +315,10 @@ birthDate, nationality, maritalStatus, profession, cep, address, number, neighbo
 Não invente dados e diferencie CPF do número do RG.
 
 Texto OCR: ${rawText}`, { model: 'openai/gpt-oss-120b', maxTokens: 1200 });
-        const name = typeof parsed?.name === 'string' ? parsed.name.trim() : '';
-        const cpfCnpj = String(parsed?.cpfCnpj || '').replace(/\D/g, '');
-        if (name && hasValidCpfCnpjCheckDigits(cpfCnpj)) {
+        mergeDocumentCandidate(collected, parsed);
+        if (hasMinimumDocumentIdentity(collected)) {
           console.log('✅ Documento recuperado pela contingência OCR local.');
-          return { ...parsed, name, cpfCnpj };
+          return collected;
         }
       }
       console.error('Contingência OCR local não confirmou nome e CPF válidos.');
