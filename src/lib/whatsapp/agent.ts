@@ -785,7 +785,7 @@ async function createDocumentFromTemplate({
       kitId: kitId || null,
       title,
       documentType: template.documentType,
-      signaturePosition: `CUSTOM:${compiled.pageCount}:0.3100:0.7850:0.3800:0.1050`,
+      signaturePosition: compiled.signaturePosition,
       originalFileId: compiled.storageRecord.id,
       originalHash: compiled.hash,
       status: 'ENVIADO',

@@ -141,6 +141,8 @@ async function renderTemplatePdf({
   const marginX = 40;
   const maxWidth = width - 80;
   const paragraphs = parseRichParagraphs(presentationHtml);
+  let signaturePlacement: { page: number; x: number; y: number; width: number; height: number } | null = null;
+  let explicitSignatureLineFound = false;
   const ensureLineSpace = (lineHeight: number) => {
     if (currentY - lineHeight < 58) {
       page = addPage(false);
@@ -149,6 +151,9 @@ async function renderTemplatePdf({
   };
 
   for (const paragraph of paragraphs) {
+    const paragraphText = paragraph.runs.map((run) => run.text).join(' ').trim();
+    const isExplicitSignatureLine = /^_{5,}/.test(paragraphText);
+    const isClientSignatureLabel = /^(?:CONTRATANTE|OUTORGANTE|DECLARANTE|ASSINATURA\s+DO\s+CLIENTE)\s*:/i.test(paragraphText);
     const heading = paragraph.kind === 'H1' || paragraph.kind === 'H2';
     const fontSize = paragraph.kind === 'H1' ? 12 : paragraph.kind === 'H2' ? 10.8 : 10;
     const lineHeight = paragraph.kind === 'H1' ? 17 : paragraph.kind === 'H2' ? 16 : 15;
@@ -162,6 +167,11 @@ async function renderTemplatePdf({
     const drawLine = () => {
       if (!line.length) return;
       ensureLineSpace(lineHeight);
+      if (isExplicitSignatureLine || (isClientSignatureLabel && !explicitSignatureLineFound)) {
+        const topY = Math.min(0.82, Math.max(0.08, (height - currentY - 65) / height));
+        signaturePlacement = { page: pdfDoc.getPageCount(), x: 0.31, y: topY, width: 0.38, height: 0.105 };
+        if (isExplicitSignatureLine) explicitSignatureLineFound = true;
+      }
       const startX = heading ? marginX + Math.max(0, (maxWidth - lineWidth) / 2) : marginX;
       let cursorX = startX;
       line.forEach((token, index) => {
@@ -207,7 +217,7 @@ async function renderTemplatePdf({
 
   const pageCount = pdfDoc.getPageCount();
   const pdfBuffer = Buffer.from(await pdfDoc.save());
-  return { pdfBuffer, hash: calculateHash(pdfBuffer), compiledText, pageCount };
+  return { pdfBuffer, hash: calculateHash(pdfBuffer), compiledText, pageCount, signaturePlacement };
 }
 
 export async function compileTemplatePreviewToPdf({
@@ -255,5 +265,9 @@ export async function compileTemplateToPdf({
     originalName: `${title.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`,
     mimeType: 'application/pdf',
   });
-  return { storageRecord, hash: rendered.hash, compiledText: rendered.compiledText, pageCount: rendered.pageCount };
+  const detectedPlacement = rendered.signaturePlacement as { page: number; x: number; y: number; width: number; height: number } | null;
+  const position = detectedPlacement
+    ? `CUSTOM:${detectedPlacement.page}:${detectedPlacement.x.toFixed(4)}:${detectedPlacement.y.toFixed(4)}:${detectedPlacement.width.toFixed(4)}:${detectedPlacement.height.toFixed(4)}`
+    : `CUSTOM:${rendered.pageCount}:0.3100:0.6200:0.3800:0.1050`;
+  return { storageRecord, hash: rendered.hash, compiledText: rendered.compiledText, pageCount: rendered.pageCount, signaturePosition: position };
 }
