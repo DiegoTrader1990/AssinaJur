@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   FileCheck2,
   Layers,
@@ -457,104 +458,33 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              {/* Right Column - Mockup Composition */}
-              <div className="relative mt-8 lg:mt-0 scroll-reveal">
-                {/* Browser Mockup */}
-                <div className="mockup-browser bg-white rounded-2xl shadow-card-hover border border-surface-200 overflow-hidden ml-auto w-full max-w-[540px]">
-                  <div className="mockup-browser-bar bg-surface-100 flex items-center px-4 py-3 border-b border-surface-200 gap-2">
-                    <div className="flex gap-1.5">
-                      <div className="w-3 h-3 rounded-full mockup-dot bg-rose-400"></div>
-                      <div className="w-3 h-3 rounded-full mockup-dot bg-amber-400"></div>
-                      <div className="w-3 h-3 rounded-full mockup-dot bg-emerald-400"></div>
+              {/* Right Column - Human, institutional photography */}
+              <div className="relative mt-8 lg:mt-0 scroll-reveal lg:pl-6">
+                <div className="relative min-h-[480px] lg:min-h-[560px] overflow-hidden rounded-[2rem] shadow-2xl border border-white/80 bg-surface-100">
+                  <Image
+                    src="/images/assinajur-atendimento-digital.webp"
+                    alt="Cena ilustrativa de atendimento jurídico com assinatura digital pelo celular"
+                    fill
+                    priority
+                    sizes="(max-width: 1024px) 100vw, 50vw"
+                    className="object-cover object-center"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-navy-950/75 via-transparent to-transparent"></div>
+                  <div className="absolute left-5 right-5 bottom-5 rounded-2xl border border-white/20 bg-navy-950/75 backdrop-blur-md p-5 text-white">
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-brand-200">
+                      <Smartphone className="w-4 h-4" /> Atendimento digital
                     </div>
-                    <div className="flex-1 bg-white rounded-md mx-4 h-6 text-[10px] text-muted flex items-center px-3 font-mono opacity-60">app.assinajur.com.br/dashboard</div>
-                  </div>
-                  
-                  <div className="p-6 bg-surface-50 h-[380px]">
-                    <div className="flex justify-between items-center mb-6">
-                      <h3 className="font-heading font-bold text-navy-900 text-lg">Painel do Escritório</h3>
-                      <span className="px-2 py-1 bg-success-50 text-success-700 text-[10px] font-bold rounded uppercase tracking-wider">Ativo</span>
-                    </div>
-                    
-                    <div className="grid grid-cols-3 gap-3 mb-6">
-                      <div className="bg-white p-3 rounded-xl shadow-sm border border-surface-100">
-                        <div className="text-[11px] text-muted font-semibold mb-1">Pendentes</div>
-                        <div className="text-xl font-bold text-amber-500">4</div>
-                      </div>
-                      <div className="bg-white p-3 rounded-xl shadow-sm border border-surface-100">
-                        <div className="text-[11px] text-muted font-semibold mb-1">Concluídos</div>
-                        <div className="text-xl font-bold text-success-500">18</div>
-                      </div>
-                      <div className="bg-white p-3 rounded-xl shadow-sm border border-surface-100">
-                        <div className="text-[11px] text-muted font-semibold mb-1">Pacotes</div>
-                        <div className="text-xl font-bold text-brand-600">18/60</div>
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-xl shadow-sm border border-surface-100 overflow-hidden">
-                      <div className="px-4 py-2 border-b border-surface-100 text-[11px] font-semibold text-muted flex justify-between bg-surface-50">
-                        <span>Documento</span>
-                        <span>Status</span>
-                      </div>
-                      <div className="p-4 flex items-center justify-between border-b border-surface-50">
-                        <div className="flex items-center gap-3">
-                          <FileText className="w-4 h-4 text-brand-500" />
-                          <div className="text-sm font-semibold text-navy-900">Honorários - Silva</div>
-                        </div>
-                        <span className="px-2 py-0.5 bg-success-50 text-success-700 text-[10px] font-bold rounded">Concluído</span>
-                      </div>
-                      <div className="p-4 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <Layers className="w-4 h-4 text-amber-500" />
-                          <div className="text-sm font-semibold text-navy-900">Kit Imobiliário</div>
-                        </div>
-                        <span className="px-2 py-0.5 bg-amber-50 text-amber-700 text-[10px] font-bold rounded">Pendente</span>
-                      </div>
-                    </div>
+                    <p className="mt-2 text-sm leading-relaxed text-white/90">Cliente e escritório conectados do envio à assinatura, com uma experiência simples e segura.</p>
                   </div>
                 </div>
-
-                {/* Phone Mockup Overlapping */}
-                <div className="mockup-phone absolute -bottom-10 -right-6 lg:-right-12 w-[180px] h-[360px] bg-white rounded-[2rem] shadow-2xl border-4 border-navy-900 overflow-hidden flex flex-col z-20 animate-float-slow">
-                  <div className="bg-navy-900 text-white text-[10px] py-1 text-center font-medium">14:30</div>
-                  <div className="flex-1 bg-surface-100 relative p-3 flex flex-col justify-end pb-8">
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-32 border-2 border-dashed border-brand-400 rounded-[2rem] flex items-center justify-center opacity-60">
-                      <UserCheck className="w-10 h-10 text-brand-400" />
-                    </div>
-                    <div className="bg-white p-2 rounded-xl shadow-md z-10 text-center">
-                      <div className="text-[9px] text-muted font-bold uppercase mb-1">Prova de presença</div>
-                      <div className="flex items-center justify-center gap-1.5">
-                        <div className="w-3 h-3 bg-success-500 rounded-full flex items-center justify-center">
-                          <Check className="w-2 h-2 text-white" />
-                        </div>
-                        <span className="text-[11px] font-semibold text-navy-900">Foto frontal</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Floating Cards */}
-                <div className="absolute -left-12 top-1/4 bg-white px-4 py-3 rounded-2xl shadow-card flex items-center gap-3 animate-float z-20 border border-surface-100">
-                  <div className="w-8 h-8 rounded-full bg-success-100 flex items-center justify-center">
-                    <Check className="w-4 h-4 text-success-600" />
-                  </div>
+                <div className="absolute -left-3 top-8 bg-white px-4 py-3 rounded-2xl shadow-card flex items-center gap-3 border border-surface-100">
+                  <div className="w-9 h-9 rounded-full bg-success-100 flex items-center justify-center"><Check className="w-4 h-4 text-success-600" /></div>
                   <span className="text-sm font-semibold text-navy-900">Documento assinado</span>
                 </div>
-                
-                <div className="absolute -left-4 bottom-1/4 bg-white px-4 py-3 rounded-2xl shadow-card flex items-center gap-3 animate-float-delayed z-20 border border-surface-100">
-                  <div className="w-8 h-8 rounded-full bg-brand-50 flex items-center justify-center">
-                    <Camera className="w-4 h-4 text-brand-600" />
-                  </div>
-                  <span className="text-sm font-semibold text-navy-900">3 evidências capturadas</span>
-                </div>
-                
-                <div className="absolute top-10 right-4 lg:-right-8 bg-white px-4 py-3 rounded-2xl shadow-card flex items-center gap-3 animate-float z-20 border border-surface-100">
-                  <div className="w-8 h-8 rounded-full bg-amber-50 flex items-center justify-center">
-                    <Shield className="w-4 h-4 text-amber-600" />
-                  </div>
+                <div className="absolute -right-3 top-24 bg-white px-4 py-3 rounded-2xl shadow-card hidden sm:flex items-center gap-3 border border-surface-100">
+                  <Shield className="w-5 h-5 text-amber-600" />
                   <span className="text-sm font-semibold text-navy-900">Integridade verificada</span>
                 </div>
-
               </div>
             </div>
           </div>
@@ -586,6 +516,47 @@ export default function LandingPage() {
                 <QrCode className="w-8 h-8 text-brand-600 mb-3" />
                 <div className="font-bold text-navy-900 mb-1">QR Code</div>
                 <div className="text-caption text-muted">Validação independente</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* HUMAN-CENTERED LEGALTECH */}
+        <section className="py-24 bg-white scroll-reveal">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+              <div className="relative min-h-[380px] sm:min-h-[460px] overflow-hidden rounded-[2rem] shadow-elevated border border-surface-200">
+                <Image
+                  src="/images/assinajur-equipe-juridica.webp"
+                  alt="Cena institucional ilustrativa de profissionais jurídicos utilizando tecnologia"
+                  fill
+                  sizes="(max-width: 1024px) 100vw, 50vw"
+                  className="object-cover object-center"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-navy-950/35 via-transparent to-transparent"></div>
+                <span className="absolute bottom-4 left-4 rounded-full bg-white/90 backdrop-blur px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted">
+                  Cena institucional ilustrativa
+                </span>
+              </div>
+
+              <div>
+                <div className="text-overline text-brand-700 font-bold tracking-widest mb-4">TECNOLOGIA COM CONTEXTO JURÍDICO</div>
+                <h2 className="text-h2 font-heading text-navy-900 mb-6">Feito para a rotina de quem vive o Direito</h2>
+                <p className="text-body-lg text-muted leading-relaxed mb-8">
+                  O AssinaJur reúne clientes, documentos, kits e assinaturas em uma experiência clara para o escritório e simples para quem recebe o link.
+                </p>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="rounded-2xl border border-surface-200 bg-surface-50 p-5">
+                    <Users className="w-6 h-6 text-brand-600 mb-3" />
+                    <h3 className="font-bold text-navy-900">Gestão centralizada</h3>
+                    <p className="mt-1 text-sm text-muted">Cadastros reutilizáveis e histórico organizado.</p>
+                  </div>
+                  <div className="rounded-2xl border border-surface-200 bg-surface-50 p-5">
+                    <FileCheck2 className="w-6 h-6 text-brand-600 mb-3" />
+                    <h3 className="font-bold text-navy-900">Fluxo completo</h3>
+                    <p className="mt-1 text-sm text-muted">Do preparo do documento às evidências finais.</p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1051,8 +1022,32 @@ export default function LandingPage() {
 
         {/* ═══ 12. MOBILE EXPERIENCE SECTION ═══ */}
         <section id="mobile" className="py-24 bg-surface-50 overflow-hidden scroll-reveal">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center mb-16">
-            <h2 className="text-h2 font-heading text-navy-900">O cliente assina pelo celular, sem instalar aplicativo</h2>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-16">
+            <div className="grid lg:grid-cols-[1.05fr_.95fr] gap-12 items-center">
+              <div>
+                <div className="text-overline text-brand-700 font-bold tracking-widest mb-4">SIMPLES PARA QUEM ASSINA</div>
+                <h2 className="text-h2 font-heading text-navy-900 mb-6">O cliente assina pelo celular, sem instalar aplicativo</h2>
+                <p className="text-body-lg text-muted max-w-xl mb-8">
+                  O link abre diretamente no navegador e conduz o signatário por cada etapa, da identificação à confirmação final.
+                </p>
+                <div className="flex flex-wrap gap-3 text-sm font-semibold text-navy-900">
+                  <span className="inline-flex items-center gap-2 rounded-full bg-white border border-surface-200 px-4 py-2"><Check className="w-4 h-4 text-success-500" /> Sem aplicativo</span>
+                  <span className="inline-flex items-center gap-2 rounded-full bg-white border border-surface-200 px-4 py-2"><Check className="w-4 h-4 text-success-500" /> Fluxo guiado</span>
+                  <span className="inline-flex items-center gap-2 rounded-full bg-white border border-surface-200 px-4 py-2"><Check className="w-4 h-4 text-success-500" /> Confirmação imediata</span>
+                </div>
+              </div>
+              <div className="relative min-h-[440px] sm:min-h-[520px] overflow-hidden rounded-[2rem] shadow-elevated border border-white">
+                <Image
+                  src="/images/assinajur-assinatura-celular.webp"
+                  alt="Cena ilustrativa de uma pessoa assinando documento pelo celular"
+                  fill
+                  sizes="(max-width: 1024px) 100vw, 42vw"
+                  className="object-cover object-center"
+                />
+                <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-navy-950/65 to-transparent"></div>
+                <span className="absolute bottom-4 left-4 text-[10px] font-bold uppercase tracking-widest text-white/85">Cena institucional ilustrativa</span>
+              </div>
+            </div>
           </div>
 
           <div className="flex justify-start md:justify-center gap-4 md:gap-8 overflow-x-auto pb-8 px-4 sm:px-6 lg:px-8 snap-x snap-mandatory hide-scrollbar">
