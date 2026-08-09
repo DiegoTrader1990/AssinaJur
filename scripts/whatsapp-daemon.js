@@ -90,7 +90,7 @@ const ASSINAJUR_WEBHOOK_URL = process.env.ASSINAJUR_WEBHOOK_URL || 'https://www.
 const BOT_SECRET = process.env.WHATSAPP_BOT_SECRET || '';
 const AUTH_FOLDER = process.env.WHATSAPP_AUTH_DIR || path.join(__dirname, '..', 'whatsapp-auth');
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
-const BOT_VERSION = '2026.08.09.7';
+const BOT_VERSION = '2026.08.09.8';
 const DAEMON_STARTED_AT = new Date().toISOString();
 
 let socketInstance = null;

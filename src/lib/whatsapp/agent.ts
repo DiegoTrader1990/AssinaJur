@@ -1347,15 +1347,26 @@ Mensagem do advogado: ${text}`,
 
 async function prepareSignatureLinkDelivery(officeId: string, clientQuery?: string): Promise<WhatsAppAgentResult> {
   const query = String(clientQuery || '').trim();
-  const signer = await prisma.signer.findFirst({
+  const queryDigits = normalizeCpfCnpj(query);
+  const signerMatches = await prisma.signer.findMany({
     where: {
       status: { not: 'ASSINADO' },
-      ...(query ? { name: { contains: query, mode: 'insensitive' as const } } : {}),
+      ...(query ? {
+        OR: [
+          { name: { contains: query, mode: 'insensitive' as const } },
+          ...(queryDigits.length >= 4 ? [
+            { cpf: { contains: queryDigits } },
+            { phone: { contains: queryDigits } },
+          ] : []),
+        ],
+      } : {}),
       document: { officeId, status: { notIn: ['CANCELADO', 'CONCLUIDO', 'EXPIRADO'] } },
     },
     include: { document: { include: { office: true } } },
     orderBy: { document: { createdAt: 'desc' } },
+    take: 20,
   });
+  const signer = signerMatches[0];
   if (!signer) {
     return {
       replyText: query
@@ -1364,6 +1375,34 @@ async function prepareSignatureLinkDelivery(officeId: string, clientQuery?: stri
       actionTaken: 'REMIND_SIGNATURE_EMPTY',
     };
   }
+
+  if (query) {
+    const distinctClients = new Map<string, typeof signer>();
+    for (const candidate of signerMatches) {
+      const identity = candidate.document.clientId
+        || `${candidate.name.toLocaleLowerCase('pt-BR')}|${normalizeCpfCnpj(candidate.cpf || '')}|${normalizePhone(candidate.phone)}`;
+      if (!distinctClients.has(identity)) distinctClients.set(identity, candidate);
+    }
+    if (distinctClients.size > 1) {
+      const options = Array.from(distinctClients.values()).slice(0, 6);
+      return {
+        replyText: [
+          `Encontrei ${distinctClients.size} clientes correspondentes a *${query}*. Para evitar enviar ao cliente errado, informe qual deles:`,
+          '',
+          ...options.map((item, index) => [
+            `${index + 1}. *${item.name}*`,
+            `   CPF: ${maskCpfCnpj(item.cpf || '')}`,
+            `   Telefone: ${maskPhone(item.phone)}`,
+          ].join('\n')),
+          '',
+          'Responda, por exemplo: *ENVIAR LINK PARA CPF 000.000.000-00*.',
+          '_Nenhum link foi enviado enquanto houver dúvida._',
+        ].join('\n'),
+        actionTaken: 'REMIND_SIGNATURE_AMBIGUOUS',
+      };
+    }
+  }
+
   const phone = normalizePhone(signer.phone);
   if (!phone) {
     return {
