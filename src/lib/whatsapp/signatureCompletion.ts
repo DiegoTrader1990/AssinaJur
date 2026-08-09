@@ -17,15 +17,21 @@ export async function queueSignatureCompletionMessages(documentId: string): Prom
   });
   if (!document?.signedFile) return;
 
-  const officePhone = cleanPhone(
-    document.office.whatsAppSession?.phoneNumber
-      || process.env.WHATSAPP_ADMIN_PHONE
-      || '5573988250201'
-  );
-  const ownerAction = `PENDING_COMPLETION_OWNER:${document.id}`;
-  if (officePhone) {
+  const ownerPhones = new Set([
+    cleanPhone(document.office.whatsAppSession?.phoneNumber),
+    cleanPhone(process.env.WHATSAPP_ADMIN_PHONE || '5573988250201'),
+  ].filter(Boolean));
+  const legacyOwnerAction = `PENDING_COMPLETION_OWNER:${document.id}`;
+  for (const officePhone of ownerPhones) {
+    const ownerAction = `PENDING_COMPLETION_OWNER:${document.id}:${officePhone}`;
     const existingOwnerMessage = await prisma.whatsAppLog.findFirst({
-      where: { officeId: document.officeId, actionTaken: ownerAction },
+      where: {
+        officeId: document.officeId,
+        OR: [
+          { actionTaken: ownerAction },
+          { actionTaken: legacyOwnerAction, toNumber: officePhone },
+        ],
+      },
       select: { id: true },
     });
     if (!existingOwnerMessage) {

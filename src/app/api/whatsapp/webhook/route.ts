@@ -6,6 +6,7 @@ import { handleMetaWebhookPayload } from '@/lib/whatsapp/meta';
 import { isAuthorizedLawyerPhone, processWhatsAppCommand } from '@/lib/whatsapp/agent';
 import { brazilianPhoneVariants } from '@/lib/whatsapp/conversation';
 import { getFileBuffer } from '@/lib/storage';
+import { queueSignatureCompletionMessages } from '@/lib/whatsapp/signatureCompletion';
 
 export const dynamic = 'force-dynamic';
 
@@ -137,6 +138,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, logs: logs.reverse() });
     }
 
+    if (body.eventType === 'QUEUE_LATEST_COMPLETION') {
+      const document = await prisma.document.findFirst({
+        where: {
+          officeId: targetOfficeId,
+          signedFileId: { not: null },
+          status: 'CONCLUIDO',
+        },
+        orderBy: { updatedAt: 'desc' },
+        select: { id: true, title: true },
+      });
+      if (!document) {
+        return NextResponse.json({ success: false, error: 'Nenhum documento assinado foi encontrado.' }, { status: 404 });
+      }
+      await queueSignatureCompletionMessages(document.id);
+      return NextResponse.json({ success: true, document });
+    }
+
     if (body.eventType === 'OUTBOX_PULL') {
       const pending = await prisma.whatsAppLog.findMany({
         where: {
@@ -149,7 +167,7 @@ export async function POST(req: Request) {
       });
       const messages = [];
       for (const item of pending) {
-        const ownerMatch = item.actionTaken?.match(/^PENDING_COMPLETION_OWNER:(.+)$/);
+        const ownerMatch = item.actionTaken?.match(/^PENDING_COMPLETION_OWNER:([^:]+)(?::.+)?$/);
         if (!ownerMatch) {
           messages.push({ id: item.id, to: item.toNumber, text: item.body });
           continue;
