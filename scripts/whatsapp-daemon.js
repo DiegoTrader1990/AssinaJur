@@ -11,6 +11,7 @@ const pino = require('pino');
 const path = require('path');
 const fs = require('fs');
 const { exec } = require('child_process');
+const sharp = require('sharp');
 
 // Carrega apenas configurações locais do bot. O arquivo .env.bot nunca deve ser versionado.
 for (const envFile of ['.env.bot', '.env']) {
@@ -210,7 +211,7 @@ function extractDocumentPatternsFromOcr(rawText) {
       if ((possibleName.match(/[A-Za-zÀ-ÿ]{2,}/g) || []).length >= 2) candidate.name = possibleName;
     }
 
-    const rgMatch = line.match(/\b(?:RG|REGISTRO\s+GERAL|IDENTIDADE)\b\s*[:\-]?\s*([0-9][0-9.\-\sX]{4,18})/i);
+    const rgMatch = line.match(/\b(?:RG|REGISTRO\s+GERAL|DOC(?:UMENTO)?\.?\s+(?:DE\s+)?IDENTIDADE|IDENTIDADE)\b\s*[:\-]?\s*([0-9][0-9.\-\sX]{4,18})/i);
     if (!candidate.rg && rgMatch) {
       const rg = rgMatch[1].replace(/\s+/g, '').trim();
       if (rg.replace(/\D/g, '').length >= 5 && rg.replace(/\D/g, '') !== candidate.cpfCnpj) candidate.rg = rg;
@@ -224,6 +225,28 @@ function extractDocumentPatternsFromOcr(rawText) {
   return candidate;
 }
 
+async function buildOcrImageVariants(mediaBase64) {
+  const source = Buffer.from(mediaBase64, 'base64');
+  try {
+    const autoOriented = await sharp(source).rotate().toBuffer();
+    const variants = [];
+    for (const angle of [0, 90, 180, 270]) {
+      variants.push(await sharp(autoOriented)
+        .rotate(angle)
+        .resize({ width: 2200, height: 2200, fit: 'inside', withoutEnlargement: false })
+        .greyscale()
+        .normalize()
+        .sharpen()
+        .jpeg({ quality: 92 })
+        .toBuffer());
+    }
+    return variants;
+  } catch (error) {
+    recordDocumentDiagnostic('IMAGE_NORMALIZATION_ERROR', { message: String(error?.message || error).slice(0, 180) });
+    return [source];
+  }
+}
+
 async function analyzeDocumentLocally(mediaBase64, mediaMimeType) {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
   if (!mediaBase64) return null;
@@ -232,6 +255,7 @@ async function analyzeDocumentLocally(mediaBase64, mediaMimeType) {
     ? suppliedMimeType
     : 'image/jpeg';
   const collected = {};
+  const imageVariants = mimeType.startsWith('image/') ? await buildOcrImageVariants(mediaBase64) : [];
   recordDocumentDiagnostic('READ_STARTED', { mimeType, bytes: Math.floor(mediaBase64.length * 0.75) });
   const prompt = `Analise cuidadosamente este RG ou CNH brasileiro, inclusive se estiver rotacionado.
 Extraia somente os dados visíveis do titular. Diferencie CPF do número do RG e não invente dígitos.
@@ -271,7 +295,7 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
 
   const groqKey = String(process.env.GROQ_API_KEY || '').trim();
   // O endpoint visual do Groq recebe imagens. PDFs continuam pela leitura Gemini do bloco anterior.
-  if (groqKey && mimeType.startsWith('image/')) for (let attempt = 1; attempt <= 2; attempt += 1) {
+  if (groqKey && mimeType.startsWith('image/')) for (let attempt = 1; attempt <= Math.min(2, imageVariants.length); attempt += 1) {
     try {
       const response = await customFetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
@@ -282,7 +306,7 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
             role: 'user',
             content: [
               { type: 'text', text: `${prompt}\nNão confunda número do documento com CPF. Se um campo não estiver visível, retorne string vazia.` },
-              { type: 'image_url', image_url: { url: `data:${mimeType};base64,${mediaBase64}` } },
+              { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageVariants[attempt - 1].toString('base64')}` } },
             ],
           }],
           temperature: 0.05,
@@ -293,7 +317,14 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         console.error(`Leitura alternativa do documento: Groq Vision respondeu HTTP ${response.status} na tentativa ${attempt}.`);
-        recordDocumentDiagnostic('GROQ_VISION_HTTP_ERROR', { status: response.status, attempt });
+        recordDocumentDiagnostic('GROQ_VISION_HTTP_ERROR', {
+          status: response.status,
+          attempt,
+          errorType: payload?.error?.type,
+          errorCode: payload?.error?.code,
+          message: String(payload?.error?.message || '').slice(0, 180),
+        });
+        if (response.status === 429) break;
         continue;
       }
       const parsed = parseGeminiJson(payload?.choices?.[0]?.message?.content);
@@ -318,14 +349,24 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
       const ocrCachePath = path.join(process.env.LOCALAPPDATA || path.join(__dirname, '..'), 'AssinaJur', 'tesseract-cache');
       fs.mkdirSync(ocrCachePath, { recursive: true });
       worker = await createWorker('por', 1, { cachePath: ocrCachePath });
-      const result = await worker.recognize(Buffer.from(mediaBase64, 'base64'));
-      const rawText = String(result?.data?.text || '').replace(/\r/g, '').trim().slice(0, 6000);
-      mergeDocumentCandidate(collected, extractDocumentPatternsFromOcr(rawText));
-      recordDocumentDiagnostic('LOCAL_OCR_RESULT', { characters: rawText.length, fields: Object.keys(collected), complete: hasMinimumDocumentIdentity(collected) });
-      if (hasMinimumDocumentIdentity(collected)) {
-        console.log('✅ Documento recuperado por padrões documentais e OCR local.');
-        return collected;
+      const ocrTexts = [];
+      for (let index = 0; index < imageVariants.length; index += 1) {
+        const result = await worker.recognize(imageVariants[index]);
+        const rawText = String(result?.data?.text || '').replace(/\r/g, '').trim().slice(0, 6000);
+        ocrTexts.push(`ORIENTAÇÃO ${[0, 90, 180, 270][index] || index}:\n${rawText}`);
+        mergeDocumentCandidate(collected, extractDocumentPatternsFromOcr(rawText));
+        recordDocumentDiagnostic('LOCAL_OCR_RESULT', {
+          orientation: [0, 90, 180, 270][index] || index,
+          characters: rawText.length,
+          fields: Object.keys(collected),
+          complete: hasMinimumDocumentIdentity(collected),
+        });
+        if (hasMinimumDocumentIdentity(collected)) {
+          console.log('✅ Documento recuperado por padrões documentais e OCR local.');
+          return collected;
+        }
       }
+      const rawText = ocrTexts.join('\n\n').slice(0, 12000);
       if (rawText && groqKey) {
         const parsed = await callGroqJson(`O texto abaixo foi extraído localmente de um RG ou CNH brasileiro.
 Identifique apenas informações explicitamente presentes e retorne JSON com: name, cpfCnpj, rg, issuingOrgan,
