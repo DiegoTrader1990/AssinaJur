@@ -37,6 +37,7 @@ export default function PlanPage() {
   }
 
   if (!planInfo) return null;
+  const planDisplayName = planInfo.plan === 'SOLO' ? 'Essencial' : planInfo.plan === 'PROFISSIONAL' ? 'Profissional' : planInfo.plan === 'ESCRITORIO' ? 'Escritório' : planInfo.plan;
 
   return (
     <div className="space-y-8">
@@ -56,7 +57,7 @@ export default function PlanPage() {
               <span>Consumo Mensal de Documentos</span>
             </div>
             <span className="px-2.5 py-1 rounded-full bg-gold-100 text-[#0B1D3D] font-extrabold text-xs">
-              Plano {planInfo.plan}
+              Plano {planDisplayName}
             </span>
           </div>
 
@@ -124,11 +125,11 @@ export default function PlanPage() {
         </div>
 
         <div className="grid md:grid-cols-3 gap-6 pt-4">
-          {/* Solo */}
+          {/* Essencial */}
           <div className={`p-6 rounded-2xl border ${planInfo.plan === 'SOLO' ? 'border-gold-500 bg-gold-50/20 shadow-md' : 'border-slate-200'} space-y-4 flex flex-col justify-between`}>
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Plano Solo</span>
-              <div className="text-2xl font-extrabold text-[#0B1D3D] mt-1">R$ 59<span className="text-xs text-slate-500 font-normal">/mês</span></div>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Plano Essencial</span>
+              <div className="text-2xl font-extrabold text-[#0B1D3D] mt-1">R$ 39,90<span className="text-xs text-slate-500 font-normal">/mês</span></div>
               <ul className="space-y-2 text-xs text-slate-600 mt-4">
                 <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> 1 Usuário Advogado</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> 30 Documentos/mês</li>
@@ -146,10 +147,10 @@ export default function PlanPage() {
           <div className={`p-6 rounded-2xl border-2 ${planInfo.plan === 'PROFISSIONAL' ? 'border-gold-500 bg-gold-50/20 shadow-md' : 'border-gold-400'} space-y-4 flex flex-col justify-between relative`}>
             <div>
               <span className="text-xs font-bold uppercase tracking-wider text-gold-600">Plano Profissional</span>
-              <div className="text-2xl font-extrabold text-[#0B1D3D] mt-1">R$ 149<span className="text-xs text-slate-500 font-normal">/mês</span></div>
+              <div className="text-2xl font-extrabold text-[#0B1D3D] mt-1">R$ 69,90<span className="text-xs text-slate-500 font-normal">/mês</span></div>
               <ul className="space-y-2 text-xs text-slate-600 mt-4">
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> Até 5 Usuários</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> Documentos Ilimitados</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> Até 3 Usuários</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> 60 Documentos/mês</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> Kits Jurídicos em 1 Link</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> Personalização com Logo e Cores</li>
               </ul>
@@ -160,7 +161,7 @@ export default function PlanPage() {
               </span>
             ) : (
               <a
-                href="https://wa.me/5511999999999?text=Quero%20fazer%20upgrade%20do%20AssinaJur%20para%20o%20Plano%20Profissional"
+                href="https://wa.me/5573988250201?text=Quero%20fazer%20upgrade%20do%20AssinaJur%20para%20o%20Plano%20Profissional"
                 target="_blank"
                 rel="noreferrer"
                 className="w-full text-center py-2.5 bg-gold-500 text-[#0B1D3D] font-bold rounded-xl text-xs block hover:bg-gold-400"
@@ -174,9 +175,10 @@ export default function PlanPage() {
           <div className={`p-6 rounded-2xl border ${planInfo.plan === 'ESCRITORIO' ? 'border-gold-500 bg-gold-50/20 shadow-md' : 'border-slate-200'} space-y-4 flex flex-col justify-between`}>
             <div>
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Plano Escritório</span>
-              <div className="text-2xl font-extrabold text-[#0B1D3D] mt-1">R$ 299<span className="text-xs text-slate-500 font-normal">/mês</span></div>
+              <div className="text-2xl font-extrabold text-[#0B1D3D] mt-1">R$ 99,90<span className="text-xs text-slate-500 font-normal">/mês</span></div>
               <ul className="space-y-2 text-xs text-slate-600 mt-4">
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> Usuários Ilimitados</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> Até 5 Usuários</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> 150 Documentos/mês</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> Permissões Granulares</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> Suporte Prioritário</li>
               </ul>
@@ -187,7 +189,7 @@ export default function PlanPage() {
               </span>
             ) : (
               <a
-                href="https://wa.me/5511999999999?text=Quero%20fazer%20upgrade%20do%20AssinaJur%20para%20o%20Plano%20Escritorio"
+                href="https://wa.me/5573988250201?text=Quero%20fazer%20upgrade%20do%20AssinaJur%20para%20o%20Plano%20Escritorio"
                 target="_blank"
                 rel="noreferrer"
                 className="w-full text-center py-2.5 bg-[#0B1D3D] text-white font-bold rounded-xl text-xs block hover:bg-slate-800"

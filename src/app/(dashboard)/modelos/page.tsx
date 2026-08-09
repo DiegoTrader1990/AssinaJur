@@ -88,6 +88,21 @@ export default function TemplatesPage() {
     }
   };
 
+  const installStarterLibrary = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch('/api/templates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ starterLibrary: true }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Não foi possível instalar a biblioteca inicial.');
+      await fetchTemplates();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const standardTags = [
     'cliente_nome',
     'cliente_cpf',
@@ -134,13 +149,15 @@ export default function TemplatesPage() {
             <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
             <p className="text-slate-700 font-bold text-base">Nenhum modelo cadastrado.</p>
             <p className="text-xs text-slate-400 mt-1 mb-4">Crie modelos para automatizar o preenchimento dos contratos do escritório.</p>
-            <button
-              onClick={() => setShowModal(true)}
-              className="px-4 py-2 bg-gold-500 text-[#0B1D3D] font-bold rounded-xl text-xs inline-flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Cadastrar Primeiro Modelo
-            </button>
+            {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
+            <div className="flex flex-wrap justify-center gap-2">
+              <button onClick={installStarterLibrary} disabled={saving} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-xl text-xs inline-flex items-center gap-2 disabled:opacity-50">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} Instalar Biblioteca Inicial
+              </button>
+              <button onClick={() => setShowModal(true)} className="px-4 py-2 bg-gold-500 text-[#0B1D3D] font-bold rounded-xl text-xs inline-flex items-center gap-2">
+                <Plus className="w-4 h-4" /> Criar Modelo Próprio
+              </button>
+            </div>
           </div>
         ) : (
           <div className="grid md:grid-cols-2 gap-4 p-6">

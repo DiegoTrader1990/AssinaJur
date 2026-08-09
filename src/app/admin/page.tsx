@@ -278,9 +278,9 @@ export default function SuperAdminDashboardPage() {
                   onChange={(e) => setEditData({ ...editData, plan: e.target.value })}
                   className="w-full p-2.5 border border-slate-300 rounded-xl text-slate-800 text-xs font-semibold"
                 >
-                  <option value="SOLO">Solo (R$ 59/mês)</option>
-                  <option value="PROFISSIONAL">Profissional (R$ 149/mês)</option>
-                  <option value="ESCRITORIO">Escritório (R$ 299/mês)</option>
+                  <option value="SOLO">Essencial (R$ 39,90/mês)</option>
+                  <option value="PROFISSIONAL">Profissional (R$ 69,90/mês)</option>
+                  <option value="ESCRITORIO">Escritório (R$ 99,90/mês)</option>
                 </select>
               </div>
 

@@ -16,7 +16,10 @@ const manrope = Manrope({
   weight: ['600', '700', '800'],
 });
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://assinajur.vercel.app';
+const configuredAppUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+const APP_URL = configuredAppUrl && /^https?:\/\//i.test(configuredAppUrl)
+  ? configuredAppUrl
+  : 'https://assinajur.com.br';
 
 export const metadata: Metadata = {
   title: 'AssinaJur — Assinatura eletrônica jurídica com evidências para advogados',

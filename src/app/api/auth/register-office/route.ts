@@ -14,6 +14,7 @@ export async function POST(req: Request) {
       adminName,
       adminEmail,
       adminPassword,
+      acceptedTerms,
     } = body;
 
     if (!officeName || !cpfCnpj || !phone || !adminName || !adminEmail || !adminPassword) {
@@ -23,9 +24,25 @@ export async function POST(req: Request) {
       );
     }
 
+    if (!acceptedTerms) {
+      return NextResponse.json({ error: 'É necessário aceitar os Termos de Uso e a Política de Privacidade.' }, { status: 400 });
+    }
+    if (String(adminPassword).length < 10 || !/[A-Za-z]/.test(adminPassword) || !/\d/.test(adminPassword)) {
+      return NextResponse.json({ error: 'A senha deve ter ao menos 10 caracteres, incluindo letras e números.' }, { status: 400 });
+    }
+    const cleanCpfCnpj = String(cpfCnpj).replace(/\D/g, '');
+    const cleanPhone = String(phone).replace(/\D/g, '');
+    const normalizedEmail = String(adminEmail).trim().toLowerCase();
+    if (![11, 14].includes(cleanCpfCnpj.length)) {
+      return NextResponse.json({ error: 'Informe um CPF ou CNPJ válido.' }, { status: 400 });
+    }
+    if (cleanPhone.length < 10 || cleanPhone.length > 13) {
+      return NextResponse.json({ error: 'Informe um telefone/WhatsApp válido com DDD.' }, { status: 400 });
+    }
+
     // Verificar se e-mail de usuário já está em uso
     const existingUser = await prisma.user.findUnique({
-      where: { email: adminEmail },
+      where: { email: normalizedEmail },
     });
 
     if (existingUser) {
@@ -33,6 +50,10 @@ export async function POST(req: Request) {
         { error: 'O e-mail informado já está cadastrado no sistema.' },
         { status: 400 }
       );
+    }
+    const existingOffice = await prisma.office.findFirst({ where: { cpfCnpj: cleanCpfCnpj } });
+    if (existingOffice) {
+      return NextResponse.json({ error: 'Já existe um escritório cadastrado com este CPF/CNPJ.' }, { status: 400 });
     }
 
     const passwordHash = await hashPassword(adminPassword);
@@ -42,10 +63,10 @@ export async function POST(req: Request) {
       const office = await tx.office.create({
         data: {
           name: officeName,
-          cpfCnpj,
+          cpfCnpj: cleanCpfCnpj,
           oabNumber: oabNumber || null,
-          phone,
-          email: adminEmail,
+          phone: cleanPhone,
+          email: normalizedEmail,
           primaryColor: '#0B1D3D',
           secondaryColor: '#D4AF37',
         },
@@ -55,11 +76,11 @@ export async function POST(req: Request) {
         data: {
           officeId: office.id,
           name: adminName,
-          email: adminEmail,
+          email: normalizedEmail,
           passwordHash,
           role: 'OFFICE_ADMIN',
           oabNumber: oabNumber || null,
-          phone,
+          phone: cleanPhone,
         },
       });
 
@@ -70,7 +91,7 @@ export async function POST(req: Request) {
       officeId: result.office.id,
       userId: result.user.id,
       eventType: 'OFFICE_REGISTERED',
-      description: `Escritório ${result.office.name} cadastrado com sucesso.`,
+      description: `Escritório ${result.office.name} cadastrado com sucesso. Termos de Uso e Política de Privacidade aceitos na versão 2026-08-09.`,
     });
 
     const token = signToken({

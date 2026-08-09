@@ -26,6 +26,14 @@ export async function POST(req: Request) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    const maxSizeBytes = 20 * 1024 * 1024;
+    if (buffer.length === 0 || buffer.length > maxSizeBytes) {
+      return NextResponse.json({ error: 'O PDF deve ter entre 1 byte e 20 MB.' }, { status: 400 });
+    }
+    if (buffer.subarray(0, 5).toString('ascii') !== '%PDF-') {
+      return NextResponse.json({ error: 'O conteúdo enviado não corresponde a um arquivo PDF válido.' }, { status: 400 });
+    }
+
     const hash = calculateHash(buffer);
 
     const storageRecord = await saveFile({

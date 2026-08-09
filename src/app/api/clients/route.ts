@@ -92,6 +92,20 @@ export async function POST(req: Request) {
     }
 
     const cleanCpfCnpj = cpfCnpj.replace(/\D/g, '');
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (![11, 14].includes(cleanCpfCnpj.length)) {
+      return NextResponse.json({ error: 'Informe um CPF ou CNPJ com a quantidade correta de dígitos.' }, { status: 400 });
+    }
+    if (cleanPhone.length < 10 || cleanPhone.length > 13) {
+      return NextResponse.json({ error: 'Informe um telefone/WhatsApp válido com DDD.' }, { status: 400 });
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: 'Informe um endereço de e-mail válido.' }, { status: 400 });
+    }
+    if (lawyerInChargeId) {
+      const lawyer = await prisma.user.findFirst({ where: { id: lawyerInChargeId, officeId: user.officeId, active: true } });
+      if (!lawyer) return NextResponse.json({ error: 'O advogado responsável não pertence a este escritório.' }, { status: 400 });
+    }
 
     // Verificar se cliente com mesmo CPF/CNPJ já existe NESTE escritório
     const existingClient = await prisma.client.findUnique({
@@ -121,8 +135,8 @@ export async function POST(req: Request) {
         nationality: nationality || 'Brasileira',
         maritalStatus: maritalStatus || null,
         profession: profession || null,
-        phone,
-        whatsapp: whatsapp || phone,
+        phone: cleanPhone,
+        whatsapp: (whatsapp || phone).replace(/\D/g, ''),
         email: email || null,
         cep: cep || null,
         address: address || null,

@@ -54,6 +54,10 @@ export async function GET(
     if (document.status === 'EXPIRADO') {
       return NextResponse.json({ error: 'O prazo de validade deste link de assinatura expirou.' }, { status: 400 });
     }
+    if (document.expirationDate && new Date(document.expirationDate).getTime() < Date.now()) {
+      await prisma.document.update({ where: { id: document.id }, data: { status: 'EXPIRADO' } });
+      return NextResponse.json({ error: 'O prazo de validade deste link de assinatura expirou.' }, { status: 400 });
+    }
 
     // Registrar evento de abertura do link (primeira visualização)
     const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '127.0.0.1';

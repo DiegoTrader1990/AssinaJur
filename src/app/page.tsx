@@ -446,7 +446,7 @@ export default function LandingPage() {
                     Começar gratuitamente <ArrowRight className="w-5 h-5 ml-1" />
                   </Link>
                   <Link href="#plataforma" className="btn-secondary text-base px-6 py-3">
-                    ▶ Ver demonstração
+                    ↓ Conhecer a plataforma
                   </Link>
                 </div>
 
@@ -689,7 +689,7 @@ export default function LandingPage() {
                 <div className="p-3 bg-brand-50 text-brand-600 rounded-xl shrink-0"><Award className="w-6 h-6" /></div>
                 <div>
                   <h4 className="font-bold text-navy-900 mb-2">Certificado</h4>
-                  <p className="text-muted text-sm leading-relaxed">Evidências reunidas automaticamente no final, gerando um PDF único, robusto e com validade jurídica incontestável.</p>
+                  <p className="text-muted text-sm leading-relaxed">Evidências reunidas automaticamente no final, gerando um PDF único e robusto para reforçar a comprovação da assinatura.</p>
                 </div>
               </div>
             </div>
@@ -887,7 +887,7 @@ export default function LandingPage() {
               <div>
                 <h2 className="text-h2 font-heading text-navy-900 mb-6">Identificação guiada, sem complicar a experiência</h2>
                 <p className="text-body-lg text-muted mb-8">
-                  Nossa tecnologia de Prova de Presença garante que o signatário está participando ativamente do processo, criando um conjunto de evidências visuais irrefutáveis vinculadas ao documento final.
+                  Nossa experiência de registros fotográficos orientados ajuda a demonstrar a participação do signatário e vincula as evidências coletadas ao documento final.
                 </p>
                 <ul className="space-y-4 text-navy-900 font-medium">
                   <li className="flex items-start gap-3">
@@ -1201,7 +1201,7 @@ export default function LandingPage() {
                   <div className="bg-white/5 border border-white/10 rounded-xl p-4 hover:bg-white/10 transition-colors">
                     <Monitor className="w-6 h-6 text-brand-400 mb-3" />
                     <h4 className="font-semibold text-white text-sm mb-1">Geolocalização</h4>
-                    <p className="text-xs text-slate-400">Registro do local exato</p>
+                    <p className="text-xs text-slate-400">Localização informada pelo dispositivo, quando autorizada</p>
                   </div>
                   <div className="bg-white/5 border border-white/10 rounded-xl p-4 hover:bg-white/10 transition-colors">
                     <Lock className="w-6 h-6 text-brand-400 mb-3" />
@@ -1343,7 +1343,7 @@ export default function LandingPage() {
                   Contratar Essencial
                 </Link>
                 <ul className="space-y-4 text-sm font-medium flex-1">
-                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> 20 pacotes/mês</li>
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> 30 documentos/mês</li>
                   <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> 1 Usuário</li>
                   <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> Cadastro de Clientes</li>
                   <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> Prova de presença</li>
@@ -1363,7 +1363,7 @@ export default function LandingPage() {
                   Contratar Profissional
                 </Link>
                 <ul className="space-y-4 text-sm font-medium flex-1">
-                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-brand-600 shrink-0"/> 60 pacotes/mês</li>
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-brand-600 shrink-0"/> 60 documentos/mês</li>
                   <li className="flex items-center gap-3"><Check className="w-4 h-4 text-brand-600 shrink-0"/> Até 3 Usuários</li>
                   <li className="flex items-center gap-3"><Check className="w-4 h-4 text-brand-600 shrink-0"/> Todos os recursos Essencial</li>
                   <li className="flex items-center gap-3"><Check className="w-4 h-4 text-brand-600 shrink-0"/> Marca do escritório</li>
@@ -1382,7 +1382,7 @@ export default function LandingPage() {
                   Contratar Escritório
                 </Link>
                 <ul className="space-y-4 text-sm font-medium flex-1">
-                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> 150 pacotes/mês</li>
+                  <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> 150 documentos/mês</li>
                   <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> Até 5 Usuários</li>
                   <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> Todos do Profissional</li>
                   <li className="flex items-center gap-3"><Check className="w-4 h-4 text-success-500 shrink-0"/> Gestão de permissões</li>

@@ -68,7 +68,7 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 let socketInstance = null;
 let isConnected = false;
 let isConnecting = false;
-const conversationHistory = [];
+const conversationHistories = new Map();
 
 function recordDocumentDiagnostic(event, details = {}) {
   try {
@@ -82,11 +82,14 @@ function recordDocumentDiagnostic(event, details = {}) {
   } catch {}
 }
 
-function rememberConversation(role, content) {
+function rememberConversation(fromNumber, role, content) {
   const clean = String(content || '').trim();
   if (!clean) return;
-  conversationHistory.push({ role, content: clean.slice(0, 1200) });
-  if (conversationHistory.length > 16) conversationHistory.splice(0, conversationHistory.length - 16);
+  const key = String(fromNumber || 'default').replace(/\D/g, '') || 'default';
+  const history = conversationHistories.get(key) || [];
+  history.push({ role, content: clean.slice(0, 1200) });
+  if (history.length > 20) history.splice(0, history.length - 20);
+  conversationHistories.set(key, history);
 }
 
 // Reutiliza apenas a chave Groq já configurada no agente de atendimento do escritório.
@@ -257,13 +260,16 @@ async function analyzeDocumentLocally(mediaBase64, mediaMimeType) {
     : 'image/jpeg';
   const collected = {};
   const imageVariants = mimeType.startsWith('image/') ? await buildOcrImageVariants(mediaBase64) : [];
+  const geminiInputs = imageVariants.length
+    ? imageVariants.map((buffer) => ({ mimeType: 'image/jpeg', data: buffer.toString('base64') }))
+    : [{ mimeType, data: mediaBase64 }];
   recordDocumentDiagnostic('READ_STARTED', { mimeType, bytes: Math.floor(mediaBase64.length * 0.75) });
   const prompt = `Analise cuidadosamente este RG ou CNH brasileiro, inclusive se estiver rotacionado.
 Extraia somente os dados visíveis do titular. Diferencie CPF do número do RG e não invente dígitos.
 Retorne somente JSON válido com: name, cpfCnpj, rg, issuingOrgan, birthDate, nationality,
 maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
 
-  if (apiKey) for (let attempt = 1; attempt <= 2; attempt += 1) {
+  if (apiKey) for (let attempt = 1; attempt <= geminiInputs.length; attempt += 1) {
     try {
       const response = await customFetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
@@ -271,7 +277,7 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{ parts: [{ inlineData: { mimeType, data: mediaBase64 } }, { text: prompt }] }],
+            contents: [{ parts: [{ inlineData: geminiInputs[attempt - 1] }, { text: prompt }] }],
             generationConfig: { responseMimeType: 'application/json' },
           }),
         }
@@ -296,7 +302,7 @@ maritalStatus, profession, cep, address, number, neighborhood, city e state.`;
 
   const groqKey = String(process.env.GROQ_API_KEY || '').trim();
   // O endpoint visual do Groq recebe imagens. PDFs continuam pela leitura Gemini do bloco anterior.
-  if (groqKey && mimeType.startsWith('image/')) for (let attempt = 1; attempt <= Math.min(2, imageVariants.length); attempt += 1) {
+  if (groqKey && mimeType.startsWith('image/')) for (let attempt = 1; attempt <= imageVariants.length; attempt += 1) {
     try {
       const response = await customFetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
@@ -497,8 +503,9 @@ function normalizeConversationRouting(parsed) {
   };
 }
 
-async function interpretConversationLocally(text) {
-  const history = conversationHistory.map((item) => `${item.role === 'user' ? 'Advogado' : 'AssinaJur'}: ${item.content}`).join('\n');
+async function interpretConversationLocally(fromNumber, text) {
+  const key = String(fromNumber || 'default').replace(/\D/g, '') || 'default';
+  const history = (conversationHistories.get(key) || []).map((item) => `${item.role === 'user' ? 'Advogado' : 'AssinaJur'}: ${item.content}`).join('\n');
   const prompt = `Você é o copilot privado do advogado administrador do AssinaJur. Interprete a mensagem considerando toda a conversa recente.
 Retorne somente JSON válido com "command", "reply", "revision" e "draftRequest". Use strings vazias e draftRequest null nos campos não aplicáveis.
 
@@ -834,20 +841,22 @@ async function connectToWhatsApp() {
         }
 
         if (!isImage && !isDocument && !isAudio && !isContact) {
-          const simpleControl = /^(?:confirmar|confirmo|cancelar|cancela|ajuda|menu|oi|olá|\+?[\d\s().-]{10,20})$/i.test(textMessage.trim());
+          const simpleControl = /^(?:sim|confirmar|confirmo|aprovar(?:\s+minuta)?|aprovado|pode\s+seguir|está\s+certo|gerar\s+(?:o\s+)?link|continuar|continue|voltar|recomeçar|o\s+que\s+falta\??|cancelar|cancela|ajuda|menu|oi|olá|\+?[\d\s().-]{10,20})$/i.test(textMessage.trim());
           if (!simpleControl) {
-            localRouting = await interpretConversationLocally(textMessage);
+            localRouting = await interpretConversationLocally(resolvedFromNumber, textMessage);
           }
-          rememberConversation('user', textMessage);
+          rememberConversation(resolvedFromNumber, 'user', textMessage);
         }
 
         try {
           console.log('🤖 Processando com a Inteligência IA do AssinaJur...');
+          const localDocumentComplete = Boolean(documentData?.name && hasValidCpfCnpjCheckDigits(documentData?.cpfCnpj));
           let data = await callAssinaJur({
             fromNumber: resolvedFromNumber,
             message: textMessage,
             messageType: isImage ? 'IMAGE' : isReadableDocument ? 'DOCUMENT' : isAudio ? 'AUDIO' : 'TEXT',
-            mediaBase64: documentData ? undefined : mediaBase64,
+            // Uma leitura parcial não deve impedir a contingência do servidor de analisar a imagem original.
+            mediaBase64: localDocumentComplete ? undefined : mediaBase64,
             mediaMimeType,
             documentData,
             naturalCommand: localRouting?.command,
@@ -890,7 +899,7 @@ async function connectToWhatsApp() {
             console.log(`💬 Resposta enviada ao WhatsApp: "${data.reply}"`);
             await sock.sendMessage(rawJid, { text: data.reply });
             console.log('✅ Mensagem entregue com sucesso!');
-            rememberConversation('assistant', data.reply);
+            rememberConversation(resolvedFromNumber, 'assistant', data.reply);
           }
 
           for (const outbound of data.outboundMessages || []) {

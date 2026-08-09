@@ -46,7 +46,6 @@ export async function GET(
     if (!document) {
       return NextResponse.json({ error: 'Documento não encontrado.' }, { status: 404 });
     }
-
     return NextResponse.json({ document });
   } catch (error: any) {
     console.error('Erro ao buscar documento:', error);
@@ -172,10 +171,8 @@ export async function POST(
   }
 }
 
-// Exclusão permanente do documento. Não há restrição de status — inclusive documentos
-// CONCLUÍDOS (já assinados) podem ser excluídos aqui, a pedido explícito do escritório;
-// a interface é responsável por deixar claro que isso apaga o certificado de evidências
-// e o histórico de assinatura de forma irreversível.
+// Exclusão permanente apenas de documentos ainda não concluídos. Documentos assinados
+// preservam o certificado e a trilha de evidências; futuramente poderão ser arquivados.
 export async function DELETE(
   req: Request,
   { params }: { params: { id: string } }
@@ -196,6 +193,12 @@ export async function DELETE(
 
     if (!document) {
       return NextResponse.json({ error: 'Documento não encontrado.' }, { status: 404 });
+    }
+    if (user.role !== 'OFFICE_ADMIN') {
+      return NextResponse.json({ error: 'Apenas o administrador pode excluir documentos.' }, { status: 403 });
+    }
+    if (document.status === 'CONCLUIDO') {
+      return NextResponse.json({ error: 'Documentos concluídos e suas evidências não podem ser excluídos permanentemente.' }, { status: 409 });
     }
 
     const documentTitle = document.title;

@@ -44,6 +44,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activePlan, setActivePlan] = useState('');
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -58,6 +59,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .catch(() => router.push('/login'))
       .finally(() => setLoading(false));
   }, [router]);
+
+  useEffect(() => {
+    fetch('/api/office/plan')
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => setActivePlan(data?.plan || ''))
+      .catch(() => setActivePlan(''));
+  }, []);
+
+  const displayPlan = activePlan === 'SOLO'
+    ? 'Essencial'
+    : activePlan === 'PROFISSIONAL'
+      ? 'Profissional'
+      : activePlan === 'ESCRITORIO'
+        ? 'Escritório'
+        : activePlan || 'Ativo';
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -243,7 +259,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
             <span className="font-medium text-slate-200">
-              ⚡ <strong>Plano Profissional Ativo</strong> — Limite mensal liberado para contratações.
+              ⚡ <strong>Plano {displayPlan} ativo</strong> — Consulte aqui o consumo mensal do escritório.
             </span>
           </div>
           <Link
@@ -271,6 +287,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && searchQuery.trim()) {
+                    router.push(`/documentos?q=${encodeURIComponent(searchQuery.trim())}`);
+                  }
+                }}
                 placeholder="Busque por um documento, cliente ou CPF..."
                 className="w-full bg-slate-50/80 hover:bg-slate-100 focus:bg-white border border-slate-200 focus:border-blue-600 rounded-xl py-2 pl-9 pr-4 text-xs text-slate-800 placeholder-slate-400 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium"
               />
@@ -281,7 +302,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {/* Notificações */}
             <button className="relative p-2 text-slate-500 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors">
               <Bell className="w-5 h-5" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-500 border border-white" />
             </button>
 
             <div className="h-6 w-px bg-slate-200" />

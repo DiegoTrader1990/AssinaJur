@@ -49,6 +49,8 @@ export default function WhatsAppPage() {
   const [activeContact, setActiveContact] = useState<string>('bot');
   const [simulating, setSimulating] = useState(false);
   const [status, setStatus] = useState<'DISCONNECTED' | 'CONNECTING' | 'CONNECTED'>('DISCONNECTED');
+  const [lastHeartbeatAt, setLastHeartbeatAt] = useState<string | null>(null);
+  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
@@ -123,6 +125,26 @@ export default function WhatsAppPage() {
 
       if (dataLogs.status) {
         setStatus(dataLogs.status);
+      }
+      setLastHeartbeatAt(dataLogs.lastHeartbeatAt || null);
+      setLastSyncAt(new Date());
+      if (Array.isArray(dataLogs.logs) && dataLogs.logs.length > 0) {
+        const realMessages: ChatMessage[] = dataLogs.logs
+          .slice()
+          .reverse()
+          .flatMap((log: any) => {
+            const time = new Date(log.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            const actionTaken = String(log.actionTaken || '').startsWith('PENDING_ACTION')
+              ? 'Aguardando confirmação'
+              : String(log.actionTaken || '').startsWith('EXECUTED_ACTION')
+                ? 'Ação confirmada'
+                : log.actionTaken || undefined;
+            return [
+              ...(log.body ? [{ id: `${log.id}-in`, sender: 'lawyer' as const, text: log.body, time }] : []),
+              ...(log.aiResponse ? [{ id: `${log.id}-out`, sender: 'bot' as const, text: log.aiResponse, actionTaken, time }] : []),
+            ];
+          });
+        setMessages(realMessages);
       }
     } catch (err) {
       console.error('Erro ao carregar contatos e registros:', err);
@@ -232,7 +254,7 @@ export default function WhatsAppPage() {
             </h2>
             <p className="text-emerald-100 text-xs">
               {status === 'CONNECTED'
-                ? 'Heartbeat recebido: o bot local está online e sincronizado com o AssinaJur.'
+                ? `Bot local online${lastHeartbeatAt ? ` • último sinal ${new Date(lastHeartbeatAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : ''}.`
                 : 'Inicie o AssinaJur-Bot.bat no computador para ativar o controle remoto.'}
             </p>
           </div>
@@ -245,6 +267,7 @@ export default function WhatsAppPage() {
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Atualizar Dados
         </button>
       </div>
+      {lastSyncAt && <p className="text-[11px] text-slate-400 px-2 -mt-2">Painel sincronizado em {lastSyncAt.toLocaleTimeString('pt-BR')}</p>}
 
       {/* Interface Central de Atendimento Segura */}
       <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 h-[700px]">
@@ -362,7 +385,7 @@ export default function WhatsAppPage() {
                   <p>{msg.text}</p>
                   {msg.actionTaken && (
                     <span className="inline-block mt-1.5 px-2.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-200">
-                      ⚡ Ação do Banco de Dados: {msg.actionTaken}
+                      ⚡ Status do fluxo: {msg.actionTaken}
                     </span>
                   )}
                 </div>

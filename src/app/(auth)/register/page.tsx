@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, Building2, User, Mail, Phone, Lock, FileText, ArrowRight, AlertCircle, Loader2, Sparkles, Check } from 'lucide-react';
+import { ShieldCheck, Building2, User, Mail, Phone, Lock, FileText, ArrowRight, AlertCircle, Loader2, Sparkles, Check, Eye, EyeOff } from 'lucide-react';
 import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
 
 export default function RegisterPage() {
@@ -16,10 +16,13 @@ export default function RegisterPage() {
     adminName: '',
     adminEmail: '',
     adminPassword: '',
+    confirmPassword: '',
+    acceptedTerms: false,
   });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let { name, value } = e.target;
@@ -32,6 +35,17 @@ export default function RegisterPage() {
     e.preventDefault();
     setLoading(true);
     setError('');
+
+    if (formData.adminPassword !== formData.confirmPassword) {
+      setError('As senhas informadas não são iguais.');
+      setLoading(false);
+      return;
+    }
+    if (!formData.acceptedTerms) {
+      setError('Leia e aceite os Termos de Uso e a Política de Privacidade.');
+      setLoading(false);
+      return;
+    }
 
     try {
       const res = await fetch('/api/auth/register-office', {
@@ -229,18 +243,34 @@ export default function RegisterPage() {
               <div className="relative">
                 <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   name="adminPassword"
                   required
-                  minLength={6}
+                  minLength={10}
                   value={formData.adminPassword}
                   onChange={handleChange}
-                  placeholder="Mínimo 6 caracteres"
-                  className="w-full bg-slate-50/80 focus:bg-white border border-slate-200 focus:border-blue-600 rounded-xl py-2.5 pl-10 pr-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-medium"
+                  placeholder="Mínimo 10 caracteres"
+                  className="w-full bg-slate-50/80 focus:bg-white border border-slate-200 focus:border-blue-600 rounded-xl py-2.5 pl-10 pr-10 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-medium"
                 />
+                <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700" aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
           </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Confirmar senha *</label>
+            <div className="relative">
+              <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input type={showPassword ? 'text' : 'password'} name="confirmPassword" required minLength={10} value={formData.confirmPassword} onChange={handleChange} placeholder="Digite a senha novamente" className="w-full bg-slate-50/80 focus:bg-white border border-slate-200 focus:border-blue-600 rounded-xl py-2.5 pl-10 pr-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-medium" />
+            </div>
+          </div>
+
+          <label className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-600">
+            <input type="checkbox" name="acceptedTerms" checked={formData.acceptedTerms} onChange={(event) => setFormData({ ...formData, acceptedTerms: event.target.checked })} required className="mt-0.5 h-4 w-4 accent-blue-600" />
+            <span>Li e aceito os <Link href="/termos" target="_blank" className="font-bold text-blue-700 hover:underline">Termos de Uso</Link> e a <Link href="/privacidade" target="_blank" className="font-bold text-blue-700 hover:underline">Política de Privacidade</Link>.</span>
+          </label>
 
           <button
             type="submit"

@@ -24,26 +24,22 @@ export default function TermosPage() {
         <div className="bg-white border border-slate-200 rounded-2xl p-8 md:p-10 shadow-sm space-y-8">
           <div className="space-y-3">
             <div className="inline-block px-3 py-1 bg-slate-100 border border-slate-200 text-[#2563EB] text-xs font-semibold rounded-full tracking-wide">
-              Conteúdo em preparação
+              Versão de acesso antecipado • 09/08/2026
             </div>
             <h1 className="text-3xl md:text-4xl font-extrabold text-[#0B1D3D] tracking-tight">
               Termos de Uso
             </h1>
           </div>
 
-          <p className="text-slate-600 leading-relaxed">
-            Os Termos de Uso completos do AssinaJur estão em fase de revisão para o lançamento da plataforma.
-          </p>
-
-          <div className="space-y-3 pt-2">
-            <h2 className="text-lg font-bold text-[#0B1D3D]">
-              Durante o teste gratuito:
-            </h2>
-            <ul className="list-disc pl-5 space-y-2 text-slate-600">
-              <li>não é solicitado cartão de crédito;</li>
-              <li>não existe cobrança automática;</li>
-              <li>o usuário pode solicitar suporte pelos canais disponibilizados.</li>
-            </ul>
+          <div className="space-y-6 text-slate-600 leading-relaxed">
+            <section><h2 className="text-lg font-bold text-[#0B1D3D] mb-2">1. Objeto</h2><p>O AssinaJur oferece ferramentas para organização de clientes, preparação de documentos, coleta de assinaturas eletrônicas e registro de evidências técnicas. Durante o acesso antecipado, determinados recursos podem ser ajustados a partir dos testes realizados pelos usuários.</p></section>
+            <section><h2 className="text-lg font-bold text-[#0B1D3D] mb-2">2. Conta e responsabilidade</h2><p>O escritório é responsável pela veracidade dos dados cadastrados, pelas instruções dadas ao sistema, pela revisão das minutas e pela proteção das credenciais de sua equipe. O acesso não deve ser compartilhado com pessoas não autorizadas.</p></section>
+            <section><h2 className="text-lg font-bold text-[#0B1D3D] mb-2">3. Documentos e assinaturas</h2><p>O escritório deve revisar e aprovar todo documento antes de enviá-lo. O AssinaJur registra elementos técnicos que podem contribuir para demonstrar autoria, integridade e manifestação de vontade, mas a adequação do método de assinatura depende do documento, das partes e da legislação aplicável.</p></section>
+            <section><h2 className="text-lg font-bold text-[#0B1D3D] mb-2">4. Inteligência artificial</h2><p>Resultados de OCR e textos produzidos por inteligência artificial são auxiliares e podem conter omissões ou imprecisões. Nenhuma minuta gerada pela IA deve ser utilizada sem conferência e aprovação de advogado responsável.</p></section>
+            <section><h2 className="text-lg font-bold text-[#0B1D3D] mb-2">5. Uso aceitável</h2><p>É proibido usar a plataforma para fraude, violação de direitos, acesso não autorizado, envio de conteúdo malicioso ou tratamento de dados sem fundamento legítimo. O acesso poderá ser suspenso quando necessário para proteger usuários e a plataforma.</p></section>
+            <section><h2 className="text-lg font-bold text-[#0B1D3D] mb-2">6. Teste gratuito</h2><ul className="list-disc pl-5 space-y-2"><li>não é solicitado cartão de crédito;</li><li>não existe cobrança automática;</li><li>o acesso observa os limites informados no cadastro e no painel;</li><li>recursos experimentais podem sofrer alterações.</li></ul></section>
+            <section><h2 className="text-lg font-bold text-[#0B1D3D] mb-2">7. Disponibilidade e suporte</h2><p>A plataforma busca manter disponibilidade contínua, mas poderá passar por manutenção ou sofrer indisponibilidades de serviços de terceiros. Incidentes e dificuldades devem ser comunicados pelo canal de suporte.</p></section>
+            <section><h2 className="text-lg font-bold text-[#0B1D3D] mb-2">8. Encerramento</h2><p>O usuário pode solicitar o encerramento da conta e receber orientação sobre exportação, retenção ou exclusão de dados, observadas obrigações legais e a preservação de documentos e evidências necessárias.</p></section>
           </div>
 
           <div className="border-t border-slate-100 pt-6 text-slate-600">

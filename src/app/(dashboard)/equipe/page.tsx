@@ -208,10 +208,10 @@ export default function TeamPage() {
                 <input
                   type="password"
                   required
-                  minLength={6}
+                  minLength={10}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder="Mínimo 10 caracteres, com letras e números"
                   className="w-full p-2.5 border border-slate-300 rounded-xl text-slate-800 focus:border-gold-500 focus:outline-none"
                 />
               </div>

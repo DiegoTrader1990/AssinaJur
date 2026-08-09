@@ -473,6 +473,31 @@ async function findLatestPendingAction(officeId: string, fromNumber: string): Pr
   return null;
 }
 
+function pendingActionGuidance(action: PendingAction): string {
+  if (action.type === 'CREATE_OR_UPDATE_CLIENT') {
+    const missing = [
+      !action.data.name ? 'nome' : '',
+      !hasValidCpfCnpjCheckDigits(action.data.cpfCnpj) ? 'CPF/CNPJ válido' : '',
+      !normalizePhone(action.data.phone) ? 'telefone/WhatsApp' : '',
+    ].filter(Boolean);
+    return missing.length
+      ? `O cadastro de *${action.data.name || 'cliente'}* está aguardando: *${missing.join(', ')}*. Envie somente o dado faltante para continuar.`
+      : `O cadastro de *${action.data.name}* está pronto. Responda *CONFIRMAR* para gravar ou *CANCELAR* para descartar.`;
+  }
+  if (action.type === 'GENERATE_LEGAL_DRAFT') {
+    if (action.data.approvedAt && !action.data.clientId) return 'A minuta está aprovada, mas falta vincular um cliente. Diga *VINCULAR AO CLIENTE [nome ou CPF]*.';
+    if (action.data.approvedAt) return 'A minuta está aprovada e pronta. Diga *GERAR LINK* para criar o documento definitivo.';
+    return `A minuta versão ${action.data.version} está aguardando revisão. Responda *APROVAR MINUTA*, *ALTERAR: [orientação]* ou *CANCELAR*.`;
+  }
+  if (action.type === 'DELETE_CLIENT') {
+    return action.data.clientId
+      ? `A exclusão de *${action.data.clientName}* aguarda confirmação. Responda *CONFIRMAR* ou *CANCELAR*.`
+      : 'Informe o nome completo ou CPF do cliente que deseja excluir.';
+  }
+  if (action.type === 'GENERATE_KIT') return `O kit *${action.data.kitName}* para *${action.data.clientName}* aguarda *CONFIRMAR* ou *CANCELAR*.`;
+  return `O documento *${action.data.templateName}* para *${action.data.clientName}* aguarda *CONFIRMAR* ou *CANCELAR*.`;
+}
+
 async function executePendingAction(officeId: string, action: PendingAction): Promise<WhatsAppAgentResult> {
   if (action.type === 'DELETE_CLIENT') {
     if (!action.data.clientId) {
@@ -658,6 +683,12 @@ async function createDocumentFromTemplate({
     if (previousEvent && previousSigner) {
       return { document: previousEvent.document, signer: previousSigner, client };
     }
+  }
+  if (office.planStatus !== 'ACTIVE') throw new Error('O plano do escritório está inativo.');
+  const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const monthDocsCount = await prisma.document.count({ where: { officeId, createdAt: { gte: firstDayOfMonth } } });
+  if (monthDocsCount >= office.monthlyDocLimit + office.additionalCredits) {
+    throw new Error('O limite mensal de documentos do plano foi atingido.');
   }
   const title = `${template.title} - ${client.name}`;
   const compiled = await compileTemplateToPdf({
@@ -1234,12 +1265,40 @@ async function handleTextCommand(
   const normalized = text.toLocaleLowerCase('pt-BR');
   const generateLinkIntent = !text.endsWith('?')
     && /\b(?:link|links|documento definitivo|documentos definitivos)\b/i.test(text)
-    && /\b(?:gerar|gere|gera|criar|crie|cria|emitir|emita|preparar|prepare|fa[cç]a|quero|preciso|produzir|produza|disponibilizar|disponibilize)\b/i.test(text);
+    && /\b(?:gerar|gere|gera|criar|crie|cria|emitir|emita|preparar|prepare|pode|fa[cç]a|quero|preciso|produzir|produza|disponibilizar|disponibilize)\b/i.test(text);
   const approvalIntent = !text.endsWith('?') && (
-    /^(?:sim[,!]?\s*)?(?:eu\s+)?(?:aprovo|aprovar|confirmo|confirmar|confirme|aprovad[oa]|confirmad[oa]|minuta\s+aprovada|pode\s+(?:aprovar|salvar|prosseguir|seguir)|est[aá]\s+(?:corret[oa]|aprovad[oa])|pode\s+cadastrar)(?:\s+(?:a|o|essa|esta|minha)?\s*(?:minuta|procura[cç][aã]o|contrato|documento|cadastro))?[.!]?$/i.test(text)
+    /^(?:sim|certo|ok|pode seguir|est[aá] certo)[.!]?$/i.test(text)
+    || /^(?:sim[,!]?\s*)?(?:eu\s+)?(?:aprovo|aprovar|confirmo|confirmar|confirme|aprovad[oa]|confirmad[oa]|minuta\s+aprovada|pode\s+(?:aprovar|salvar|prosseguir|seguir)|est[aá]\s+(?:corret[oa]|aprovad[oa])|pode\s+cadastrar)(?:\s+(?:a|o|essa|esta|minha)?\s*(?:minuta|procura[cç][aã]o|contrato|documento|cadastro))?[.!]?$/i.test(text)
     || /^(?:aprovar|confirmar)(?:\s+(?:a|o))?\s+(?:minuta|procura[cç][aã]o|contrato|documento)$/i.test(text)
     || (generateLinkIntent && /\b(?:aprovo|aprovei|j[aá]\s+aprovei|aprovad[oa]|confirmo|confirmad[oa])\b/i.test(text))
   );
+
+  if (/^(?:o\s+que\s+falta|qual\s+o\s+próximo\s+passo|em\s+que\s+etapa\s+estamos|onde\s+paramos)\??$/i.test(text)) {
+    const action = await findLatestPendingAction(officeId, fromNumber);
+    return {
+      replyText: action ? pendingActionGuidance(action) : 'Não existe uma ação pendente. Diga naturalmente o que deseja fazer no AssinaJur.',
+      actionTaken: action ? encodePendingAction(action) : 'NO_PENDING_ACTION',
+    };
+  }
+
+  if (/^(?:voltar|recomeçar|reiniciar|começar de novo)$/i.test(text)) {
+    const action = await findLatestPendingAction(officeId, fromNumber);
+    return {
+      replyText: action
+        ? 'A etapa atual foi encerrada sem executar alterações. Pode começar novamente e me dizer o que deseja fazer.'
+        : 'Não havia etapa pendente. Pode me dizer o que deseja fazer agora.',
+      actionTaken: action ? `${EXECUTED_PREFIX}${action.id}` : 'NO_PENDING_ACTION',
+    };
+  }
+
+  if (/^(?:continuar|continue|prosseguir|pode continuar)(?:\s+(?:a\s+)?minuta)?$/i.test(text)) {
+    const action = await findLatestPendingAction(officeId, fromNumber);
+    if (!action) return { replyText: 'Não encontrei uma etapa pendente para continuar. Diga o que deseja fazer.', actionTaken: 'NO_PENDING_ACTION' };
+    if (action.type === 'GENERATE_LEGAL_DRAFT' && action.data.approvedAt && action.data.clientId) {
+      return executeLegalDraftLinkSafely(officeId, action);
+    }
+    return { replyText: pendingActionGuidance(action), actionTaken: encodePendingAction(action) };
+  }
 
   if (approvalIntent) {
     const action = await findLatestPendingAction(officeId, fromNumber);

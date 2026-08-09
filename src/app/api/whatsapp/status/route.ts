@@ -18,7 +18,7 @@ export async function GET() {
     const logs = await prisma.whatsAppLog.findMany({
       where: { officeId: user.officeId },
       orderBy: { createdAt: 'desc' },
-      take: 10,
+      take: 30,
     });
 
     const heartbeatFresh = session
@@ -42,7 +42,11 @@ export async function GET() {
         fromNumber: l.fromNumber,
         body: l.body,
         aiResponse: l.aiResponse,
-        actionTaken: l.actionTaken,
+        actionTaken: l.actionTaken?.startsWith('PENDING_ACTION:')
+          ? 'PENDING_ACTION'
+          : l.actionTaken?.startsWith('EXECUTED_ACTION:')
+            ? 'EXECUTED_ACTION'
+            : l.actionTaken,
         createdAt: l.createdAt,
       })),
     });

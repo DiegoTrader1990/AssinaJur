@@ -25,6 +25,9 @@ export async function POST(
     if (signer.status === 'ASSINADO') {
       return NextResponse.json({ error: 'Você já assinou este documento.' }, { status: 400 });
     }
+    if (signer.document.status === 'CANCELADO' || signer.document.status === 'EXPIRADO' || (signer.document.expirationDate && new Date(signer.document.expirationDate).getTime() < Date.now())) {
+      return NextResponse.json({ error: 'Este link foi cancelado ou expirou.' }, { status: 400 });
+    }
 
     const body = await req.json();
     const { cpf } = body;

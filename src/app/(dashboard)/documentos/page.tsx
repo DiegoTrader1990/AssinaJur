@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   FileCheck2,
   Plus,
@@ -88,9 +89,10 @@ type SortOrder = 'NEWEST' | 'OLDEST';
 type ViewFormat = 'KANBAN' | 'COMPACT' | 'TABLE';
 
 export default function DocumentsPage() {
+  const searchParams = useSearchParams();
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '');
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('ALL');
   const [dateFilter, setDateFilter] = useState<DateFilter>('ALL');
   const [sortOrder, setSortOrder] = useState<SortOrder>('NEWEST');
@@ -426,13 +428,15 @@ export default function DocumentsPage() {
           >
             Dossiê
           </button>
-          <button
-            onClick={() => handleDelete(doc)}
-            title="Excluir"
-            className="p-1 text-slate-400 hover:text-red-600 rounded-lg border border-slate-200"
-          >
-            <Trash2 className="w-3 h-3" />
-          </button>
+          {doc.status !== 'CONCLUIDO' && (
+            <button
+              onClick={() => handleDelete(doc)}
+              title="Excluir"
+              className="p-1 text-slate-400 hover:text-red-600 rounded-lg border border-slate-200"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          )}
         </div>
       </div>
     );

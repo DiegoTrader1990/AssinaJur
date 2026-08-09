@@ -55,7 +55,7 @@ export default function DashboardPage() {
           const docs = docsData.documents;
           setRecentDocuments(docs.slice(0, 4));
 
-          const pending = docs.filter((d: any) => d.status === 'PENDENTE' || d.status === 'PARCIALMENTE_ASSINADO').length;
+          const pending = docs.filter((d: any) => !['CONCLUIDO', 'CANCELADO', 'EXPIRADO'].includes(d.status)).length;
           const completed = docs.filter((d: any) => d.status === 'CONCLUIDO').length;
 
           setStats((prev) => ({
@@ -128,7 +128,7 @@ export default function DashboardPage() {
             <span>{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Sao_Paulo' })}</span>
             <span>•</span>
             <span className="text-emerald-700 font-bold flex items-center gap-1">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" /> Validade Jurídica Ativa (MP 2.200-2 / Lei 14.063)
+              <ShieldCheck className="w-4 h-4 text-emerald-600" /> Evidências e integridade documental ativas
             </span>
           </p>
         </div>
@@ -334,23 +334,18 @@ export default function DashboardPage() {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="font-heading text-sm font-extrabold text-[#071B3A]">Notificações Recentes</h3>
-              <span className="text-[10px] font-bold text-slate-400">Tempo real</span>
+              <span className="text-[10px] font-bold text-slate-400">Dados do escritório</span>
             </div>
 
             <div className="space-y-2.5">
-              <div className="p-3 rounded-2xl bg-blue-50/60 border border-blue-100 text-xs space-y-1">
-                <span className="font-bold text-blue-900 block font-heading">✓ Sistema de Validade Jurídica Ativo</span>
-                <p className="text-[11px] text-blue-700 leading-snug font-medium">
-                  Seus documentos possuem criptografia SHA-256 e selo imutável (MP 2.200-2/2001).
-                </p>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 text-xs space-y-1">
-                <span className="font-bold text-slate-800 block font-heading">📄 Nova Funcionalidade de Kits</span>
-                <p className="text-[11px] text-slate-500 leading-snug font-medium">
-                  Envie Procuração + Contrato + Declaração em apenas 1 link de assinatura.
-                </p>
-              </div>
+              {loading ? <p className="text-xs text-slate-400">Atualizando atividades...</p> : recentDocuments.length === 0 ? (
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 text-xs"><span className="font-bold text-slate-700">Nenhuma atividade documental ainda.</span><p className="text-[11px] text-slate-500 mt-1">Os documentos criados pelo painel ou WhatsApp aparecerão aqui.</p></div>
+              ) : recentDocuments.slice(0, 2).map((doc) => (
+                <div key={doc.id} className="p-3 rounded-2xl bg-blue-50/60 border border-blue-100 text-xs space-y-1">
+                  <span className="font-bold text-blue-900 block font-heading">📄 {doc.title}</span>
+                  <p className="text-[11px] text-blue-700 leading-snug font-medium">{doc.client?.name || 'Documento avulso'} • {String(doc.status).replaceAll('_', ' ')} • {new Date(doc.createdAt).toLocaleString('pt-BR')}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>
