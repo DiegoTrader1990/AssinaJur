@@ -11,9 +11,18 @@ export interface ClientConversationCorrections {
   address?: string;
 }
 
+export function isSendSignatureLinkIntent(text: string): boolean {
+  const input = String(text || '').trim();
+  if (!input || input.endsWith('?')) return false;
+  if (/\b(?:não\s+(?:envie|enviar|mande|mandar|reenvie|reenviar)|cancele|cancelar)\b/i.test(input)) return false;
+  return /\b(?:enviar|envie|manda|mande|mandar|reenviar|reenvie|cobrar)\b[^.!?]{0,80}\blinks?\b/i.test(input)
+    || /\b(?:enviar|envie|manda|mande|mandar)\b[^.!?]{0,80}\b(?:assinar|assinatura)\b/i.test(input);
+}
+
 export function isGenerateLinkIntent(text: string): boolean {
   const input = String(text || '').trim();
   if (/\b(?:não\s+(?:quero|gere|gerar|crie|criar|envie|enviar)|não\s+precisa|cancele|cancelar)\b/i.test(input)) return false;
+  if (isSendSignatureLinkIntent(input)) return false;
   return !input.endsWith('?')
     && /\b(?:link|links|documento definitivo|documentos definitivos|para assinatura)\b/i.test(input)
     && /\b(?:gerar|gere|gera|geramos|criar|crie|cria|emitir|emita|preparar|prepare|enviar|envie|finalizar|finalize|vamos|pode|fa[cç]a|quero|preciso|produzir|produza|disponibilizar|disponibilize)\b/i.test(input);

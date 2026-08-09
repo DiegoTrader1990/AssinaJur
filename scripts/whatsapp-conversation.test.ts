@@ -6,6 +6,7 @@ import {
   isApprovalIntent,
   isCancelIntent,
   isGenerateLinkIntent,
+  isSendSignatureLinkIntent,
   looksLikeUnverifiedOperationalClaim,
 } from '../src/lib/whatsapp/conversation';
 
@@ -54,6 +55,15 @@ test('reconhece geração efetiva do link sem confundir pergunta', () => {
   assert.equal(isGenerateLinkIntent('Pode finalizar o documento para assinatura'), true);
   assert.equal(isGenerateLinkIntent('O link já foi gerado?'), false);
   assert.equal(isGenerateLinkIntent('Não quero gerar o link agora'), false);
+  assert.equal(isGenerateLinkIntent('Enviar link para Dominick'), false);
+});
+
+test('diferencia envio do link da criação do documento definitivo', () => {
+  assert.equal(isSendSignatureLinkIntent('Enviar link para Dominick'), true);
+  assert.equal(isSendSignatureLinkIntent('Enviar link link para Dominick'), true);
+  assert.equal(isSendSignatureLinkIntent('Envie para ela assinar'), true);
+  assert.equal(isSendSignatureLinkIntent('O link foi enviado?'), false);
+  assert.equal(isSendSignatureLinkIntent('Não envie o link agora'), false);
 });
 
 test('reconhece cancelamentos em linguagem natural', () => {

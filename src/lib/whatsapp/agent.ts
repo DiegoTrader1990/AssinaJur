@@ -8,6 +8,7 @@ import {
   isApprovalIntent,
   isCancelIntent,
   isGenerateLinkIntent,
+  isSendSignatureLinkIntent,
   looksLikeUnverifiedOperationalClaim,
 } from '@/lib/whatsapp/conversation';
 
@@ -1331,6 +1332,61 @@ Mensagem do advogado: ${text}`,
   return answer?.trim() || 'Entendi. Diga o que deseja fazer no AssinaJur ou digite *AJUDA* para consultar os recursos.';
 }
 
+async function prepareSignatureLinkDelivery(officeId: string, clientQuery?: string): Promise<WhatsAppAgentResult> {
+  const query = String(clientQuery || '').trim();
+  const signer = await prisma.signer.findFirst({
+    where: {
+      status: { not: 'ASSINADO' },
+      ...(query ? { name: { contains: query, mode: 'insensitive' as const } } : {}),
+      document: { officeId, status: { notIn: ['CANCELADO', 'CONCLUIDO', 'EXPIRADO'] } },
+    },
+    include: { document: { include: { office: true } } },
+    orderBy: { document: { createdAt: 'desc' } },
+  });
+  if (!signer) {
+    return {
+      replyText: query
+        ? `Não encontrei assinatura pendente para “${query}”.`
+        : 'Não encontrei uma assinatura pendente recente para enviar.',
+      actionTaken: 'REMIND_SIGNATURE_EMPTY',
+    };
+  }
+  const phone = normalizePhone(signer.phone);
+  if (!phone) {
+    return {
+      replyText: `Encontrei ${signer.name}, mas o cadastro do signatário não possui WhatsApp.`,
+      actionTaken: 'REMIND_SIGNATURE_NO_PHONE',
+    };
+  }
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.assinajur.com.br';
+  const groupStart = new Date(signer.document.createdAt.getTime() - 2 * 60 * 1000);
+  const relatedSigners = await prisma.signer.findMany({
+    where: {
+      status: { not: 'ASSINADO' },
+      name: signer.name,
+      phone: signer.phone,
+      document: {
+        officeId,
+        clientId: signer.document.clientId,
+        createdAt: { gte: groupStart, lte: signer.document.createdAt },
+        status: { notIn: ['CANCELADO', 'CONCLUIDO', 'EXPIRADO'] },
+      },
+    },
+    include: { document: { include: { office: true } } },
+    orderBy: { document: { createdAt: 'asc' } },
+    take: 6,
+  });
+  const signersToNotify = relatedSigners.length > 0 ? relatedSigners : [signer];
+  return {
+    replyText: `📤 Vou enviar agora ${signersToNotify.length === 1 ? 'o link' : `${signersToNotify.length} links`} para *${signer.name}* em ${maskPhone(phone)}.`,
+    actionTaken: 'REMIND_SIGNATURE',
+    outboundMessages: signersToNotify.map((item) => ({
+      to: phone,
+      text: `Olá, ${item.name}! O escritório ${item.document.office.tradeName || item.document.office.name} enviou o documento “${item.document.title}” para sua assinatura. Acesse: ${appUrl}/assinar/${item.token}`,
+    })),
+  };
+}
+
 async function handleTextCommand(
   officeId: string,
   fromNumber: string,
@@ -1341,6 +1397,7 @@ async function handleTextCommand(
   const text = originalBody.trim();
   const normalized = text.toLocaleLowerCase('pt-BR');
   const generateLinkIntent = isGenerateLinkIntent(text);
+  const sendSignatureLinkIntent = isSendSignatureLinkIntent(text);
   const cancelIntent = isCancelIntent(text);
   const approvalIntent = isApprovalIntent(text, generateLinkIntent);
 
@@ -1539,6 +1596,22 @@ async function handleTextCommand(
         generic: !existingPending.data.clientId,
       });
     }
+    if (sendSignatureLinkIntent) {
+      if (!existingPending.data.approvedAt) {
+        return {
+          replyText: 'Entendi que deseja enviar para assinatura. Antes disso, preciso da sua aprovação expressa da prévia. Responda *APROVAR MINUTA* ou *CONFIRMAR*. Depois da aprovação, você poderá pedir para gerar e enviar o link.',
+          actionTaken: encodePendingAction(existingPending),
+        };
+      }
+      const generated = await executeLegalDraftLinkSafely(officeId, existingPending);
+      if (!generated.actionTaken.startsWith(EXECUTED_PREFIX)) return generated;
+      const delivery = await prepareSignatureLinkDelivery(officeId, existingPending.data.clientName);
+      return {
+        ...generated,
+        replyText: `${generated.replyText}\n\n${delivery.replyText}`,
+        outboundMessages: delivery.outboundMessages,
+      };
+    }
     if (asksAboutClientQualification(text) && existingPending.data.clientId) {
       const client = await prisma.client.findFirst({ where: { id: existingPending.data.clientId, officeId } });
       if (client) {
@@ -1617,7 +1690,7 @@ async function handleTextCommand(
       };
     }
     const explicitRevision = text.match(/^(?:alterar|altere|revisar|revise|modificar|modifique|mudar|mude)\s*:?\s*(.+)$/i)?.[1]?.trim();
-    const startsAnotherAction = /\b(?:cadastrar|cadastre|buscar|procurar|status|cobrar|excluir|remover|gerar link|criar link|aprovar|confirmar|cancelar|ajuda|menu)\b/i.test(text);
+    const startsAnotherAction = /\b(?:cadastrar|cadastre|buscar|procurar|status|cobrar|excluir|remover|gerar link|criar link|enviar|envie|mandar|mande|reenviar|reenvie|aprovar|confirmar|cancelar|ajuda|menu)\b/i.test(text);
     const looksLikeDraftDetails = /\b(?:ela|ele|cliente|outorgante|outorgado|contratante|contratado|solteir[oa]|casad[oa]|advogad[oa]|residente|domiciliad[oa]|procura[cç][aã]o|contrato|poderes|valor|percentual|cl[aá]usula|geral|espec[ií]fic[oa])\b/i.test(text);
     const naturalStatement = !startsAnotherAction && !text.endsWith('?') && looksLikeDraftDetails ? text : '';
     const revision = explicitRevision || cleanOptional(localRouting?.revision) || naturalStatement;
@@ -1819,55 +1892,12 @@ async function handleTextCommand(
     };
   }
 
-  const remindMatch = normalized.match(/^(?:(?:cobrar|lembrar|reenviar)\s+(?:cliente\s+)?|enviar\s+(?:o\s+)?links?\s+(?:de assinatura\s+)?para\s+)(.+)$/i);
+  const remindMatch = normalized.match(/^(?:(?:cobrar|lembrar|reenviar|reenvie)\s+(?:cliente\s+)?|(?:enviar|envie|mandar|mande)\s+(?:o\s+)?links?(?:\s+links?)?\s+(?:de assinatura\s+)?para\s+)(.+)$/i);
   if (remindMatch) {
-    const query = remindMatch[1].trim();
-    const signer = await prisma.signer.findFirst({
-      where: {
-        status: { not: 'ASSINADO' },
-        name: { contains: query, mode: 'insensitive' },
-        document: { officeId, status: { notIn: ['CANCELADO', 'CONCLUIDO', 'EXPIRADO'] } },
-      },
-      include: { document: { include: { office: true } } },
-      orderBy: { document: { createdAt: 'desc' } },
-    });
-    if (!signer) {
-      return { replyText: `Não encontrei assinatura pendente para “${query}”.`, actionTaken: 'REMIND_SIGNATURE_EMPTY' };
-    }
-    const phone = normalizePhone(signer.phone);
-    if (!phone) {
-      return {
-        replyText: `Encontrei ${signer.name}, mas o cadastro do signatário não possui WhatsApp.`,
-        actionTaken: 'REMIND_SIGNATURE_NO_PHONE',
-      };
-    }
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.assinajur.com.br';
-    const groupStart = new Date(signer.document.createdAt.getTime() - 2 * 60 * 1000);
-    const relatedSigners = await prisma.signer.findMany({
-      where: {
-        status: { not: 'ASSINADO' },
-        name: signer.name,
-        phone: signer.phone,
-        document: {
-          officeId,
-          clientId: signer.document.clientId,
-          createdAt: { gte: groupStart, lte: signer.document.createdAt },
-          status: { notIn: ['CANCELADO', 'CONCLUIDO', 'EXPIRADO'] },
-        },
-      },
-      include: { document: { include: { office: true } } },
-      orderBy: { document: { createdAt: 'asc' } },
-      take: 6,
-    });
-    const signersToNotify = relatedSigners.length > 0 ? relatedSigners : [signer];
-    return {
-      replyText: `📤 Vou enviar agora ${signersToNotify.length === 1 ? 'o link' : `${signersToNotify.length} links`} para *${signer.name}* em ${maskPhone(phone)}.`,
-      actionTaken: 'REMIND_SIGNATURE',
-      outboundMessages: signersToNotify.map((item) => ({
-        to: phone,
-        text: `Olá, ${item.name}! O escritório ${item.document.office.tradeName || item.document.office.name} enviou o documento “${item.document.title}” para sua assinatura. Acesse: ${appUrl}/assinar/${item.token}`,
-      })),
-    };
+    return prepareSignatureLinkDelivery(officeId, remindMatch[1].trim());
+  }
+  if (sendSignatureLinkIntent) {
+    return prepareSignatureLinkDelivery(officeId);
   }
 
   const genericDraftMatch = text.match(/\b(procura[cç][aã]o|contrato|declara[cç][aã]o|peti[cç][aã]o|termo|minuta|modelo)\b/i);
