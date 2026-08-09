@@ -55,6 +55,7 @@ interface LegalDraftRequest {
   legalArea?: string;
   instructions?: string;
   suggestedDocuments?: string[];
+  generic?: boolean;
 }
 
 interface LegalDraftDocument {
@@ -691,6 +692,12 @@ async function generateLegalDraftDocuments(officeId: string, action: PendingLega
       actionTaken: encodePendingAction(action),
     };
   }
+  if (!action.data.clientId) {
+    return {
+      replyText: 'A minuta genérica está aprovada, mas ainda não possui cliente vinculado. Para criar o documento definitivo e o link, diga *VINCULAR AO CLIENTE [nome ou CPF]*.',
+      actionTaken: encodePendingAction(action),
+    };
+  }
   const client = await prisma.client.findFirst({ where: { id: action.data.clientId, officeId }, select: { id: true, name: true } });
   if (!client) {
     return { replyText: 'O cliente desta minuta não está mais disponível.', actionTaken: `${EXECUTED_PREFIX}${action.id}` };
@@ -784,6 +791,11 @@ async function findSingleClient(officeId: string, query: string) {
   return clients;
 }
 
+function inferDraftClientQuery(text: string, fallback: string): string {
+  const explicitlyNamed = text.match(/\b(?:d[oa]\s+)?cliente\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ' -]{1,120})(?:[,.]|$)/i)?.[1]?.trim();
+  return explicitlyNamed || fallback.trim().replace(/^(?:o|a)\s+cliente\s+/i, '');
+}
+
 function cleanDraftText(value: unknown, maxLength: number): string {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
 }
@@ -817,8 +829,28 @@ async function buildLegalDraftPreviewFiles(
   fromNumber: string,
   action: PendingLegalDraftAction
 ): Promise<OutboundWhatsAppMessage[]> {
-  const { client, office, user } = await getAutomationContext(officeId, action.data.clientId);
-  const variables = buildTemplateVariables(client, office, user);
+  const context = action.data.clientId ? await getAutomationContext(officeId, action.data.clientId) : null;
+  const [office, user] = context
+    ? [context.office, context.user]
+    : await Promise.all([
+        prisma.office.findUnique({ where: { id: officeId } }),
+        prisma.user.findFirst({ where: { officeId, active: true }, orderBy: { createdAt: 'asc' } }),
+      ]);
+  if (!office || !user) throw new Error('Escritório ou advogado responsável não encontrado.');
+  const variables = context
+    ? buildTemplateVariables(context.client, office, user)
+    : {
+        cliente_nome: '[CLIENTE NÃO VINCULADO]',
+        cliente_cpf: '[INFORMAR CPF]',
+        cliente_rg: '[INFORMAR RG]',
+        cliente_endereco: '[INFORMAR ENDEREÇO]',
+        cliente_estado_civil: '[INFORMAR ESTADO CIVIL]',
+        cliente_profissao: '[INFORMAR PROFISSÃO]',
+        advogado_nome: user.name,
+        advogado_oab: user.oabNumber || office.oabNumber || '—',
+        escritorio_nome: office.tradeName || office.name,
+        cidade: '[INFORMAR CIDADE]',
+      };
   const officeName = office.tradeName || office.name;
   const messages: OutboundWhatsAppMessage[] = [];
   for (const [index, document] of action.data.documents.entries()) {
@@ -844,8 +876,38 @@ async function buildLegalDraftPreviewFiles(
 async function prepareLegalDraftTask(officeId: string, request: LegalDraftRequest): Promise<WhatsAppAgentResult> {
   const clientQuery = cleanDraftText(request.clientQuery, 200);
   if (!clientQuery) {
+    if (request.generic) {
+      return {
+        replyText: 'Estou preparando uma minuta genérica, sem cadastrar ou vincular cliente. Ela poderá ser revisada em PDF, mas será necessário associar um cliente antes de gerar link de assinatura.',
+        actionTaken: 'LOCAL_AI_GENERIC_DRAFT_REQUESTED',
+        localAiTask: {
+          type: 'CREATE_LEGAL_DRAFT',
+          clientId: '',
+          clientName: 'MINUTA GENÉRICA — SEM CLIENTE VINCULADO',
+          clientContext: {
+            nome: '[CLIENTE NÃO VINCULADO]',
+            cpfCnpj: '[INFORMAR CPF]',
+            rg: '[INFORMAR RG]',
+            endereco: '[INFORMAR ENDEREÇO]',
+          },
+          request: {
+            ...request,
+            kind: request.kind === 'KIT' ? 'KIT' : 'DOCUMENT',
+            clientQuery: '',
+            generic: true,
+          },
+        },
+      };
+    }
     return {
-      replyText: 'Perfeito. Para qual cliente devo redigir? Informe o nome ou CPF. Se quiser, acrescente também a área e os termos principais.',
+      replyText: [
+        'Posso fazer de duas formas:',
+        '',
+        '1. *Documento para assinatura:* informe o nome/CPF de um cliente cadastrado. O vínculo é necessário somente quando você quiser gerar o documento definitivo e o link.',
+        '2. *Somente minuta/modelo:* diga *FAÇA UMA MINUTA GENÉRICA* e eu preparo o PDF com campos em aberto, sem cadastrar ninguém.',
+        '',
+        'Qual opção você deseja?',
+      ].join('\n'),
       actionTaken: 'LEGAL_DRAFT_CLIENT_REQUIRED',
     };
   }
@@ -853,7 +915,7 @@ async function prepareLegalDraftTask(officeId: string, request: LegalDraftReques
   if (clients.length !== 1) {
     return {
       replyText: clients.length === 0
-        ? `Não encontrei o cliente “${clientQuery}”. Confirme o nome ou cadastre-o primeiro.`
+        ? `Não encontrei o cliente “${clientQuery}”. Para gerar link, confirme o nome ou cadastre-o. Se deseja apenas redigir sem cadastro, diga *FAÇA UMA MINUTA GENÉRICA*.`
         : `Encontrei mais de um cliente para “${clientQuery}”. Informe o nome completo ou CPF.`,
       actionTaken: 'LEGAL_DRAFT_CLIENT_NOT_UNIQUE',
     };
@@ -885,6 +947,7 @@ async function prepareLegalDraftTask(officeId: string, request: LegalDraftReques
         suggestedDocuments: Array.isArray(request.suggestedDocuments)
           ? request.suggestedDocuments.map((item) => cleanDraftText(item, 160)).filter(Boolean).slice(0, 6)
           : [],
+        generic: false,
       },
     },
   };
@@ -902,7 +965,7 @@ async function finalizeLegalDraft(officeId: string, fromNumber: string, draftPac
         contentHtml: cleanDraftText(document?.contentHtml, 18000),
       })).filter((document) => document.title && document.contentHtml.length >= 200)
     : [];
-  if (!client || documents.length === 0) {
+  if ((clientId && !client) || documents.length === 0) {
     return {
       replyText: 'A IA não conseguiu montar uma minuta completa com segurança. Envie novamente o tipo de documento, o cliente e os termos desejados.',
       actionTaken: 'LEGAL_DRAFT_INCOMPLETE',
@@ -914,8 +977,8 @@ async function finalizeLegalDraft(officeId: string, fromNumber: string, draftPac
     createdAt: new Date().toISOString(),
     data: {
       kind: draftPackage.kind === 'KIT' ? 'KIT' : 'DOCUMENT',
-      clientId: client.id,
-      clientName: client.name,
+      clientId: client?.id || '',
+      clientName: client?.name || 'MINUTA GENÉRICA — SEM CLIENTE VINCULADO',
       legalArea: cleanDraftText(draftPackage.legalArea, 120) || undefined,
       requestSummary: cleanDraftText(draftPackage.requestSummary, 600) || undefined,
       documents,
@@ -1139,6 +1202,35 @@ async function handleTextCommand(
 
   const existingPending = await findLatestPendingAction(officeId, fromNumber);
   if (existingPending?.type === 'GENERATE_LEGAL_DRAFT') {
+    const linkClientMatch = text.match(/^(?:vincular|associar)\s+(?:a\s+minuta\s+)?(?:ao|a)\s+cliente\s+(.+)$/i);
+    if (linkClientMatch) {
+      const clients = await findSingleClient(officeId, linkClientMatch[1].trim());
+      if (clients.length !== 1) {
+        return {
+          replyText: clients.length === 0
+            ? `Não encontrei o cliente “${linkClientMatch[1].trim()}”. Confirme o nome/CPF ou cadastre-o primeiro.`
+            : 'Encontrei mais de um cliente. Informe o nome completo ou CPF.',
+          actionTaken: encodePendingAction(existingPending),
+        };
+      }
+      const linkedAction: PendingLegalDraftAction = {
+        ...existingPending,
+        id: randomUUID(),
+        createdAt: new Date().toISOString(),
+        data: {
+          ...existingPending.data,
+          clientId: clients[0].id,
+          clientName: clients[0].name,
+          approvedAt: undefined,
+          version: existingPending.data.version + 1,
+        },
+      };
+      return {
+        replyText: `${legalDraftPreview(linkedAction)}\n\n_O cliente foi vinculado e os dados foram preenchidos. Revise esta nova versão antes de aprovar._`,
+        actionTaken: encodePendingAction(linkedAction),
+        outboundMessages: await buildLegalDraftPreviewFiles(officeId, fromNumber, linkedAction),
+      };
+    }
     const fullTextMatch = text.match(/^(?:ver|mostrar|mostre)\s+(?:o\s+)?(?:texto|conte[uú]do|[ií]ntegra)(?:\s+(\d+))?$/i);
     if (fullTextMatch) {
       if (existingPending.data.documents.length > 1 && !fullTextMatch[1]) {
@@ -1180,26 +1272,29 @@ async function handleTextCommand(
     }
     const revision = text.match(/^(?:alterar|altere|revisar|revise|modificar|modifique|mudar|mude)\s*:?\s*(.+)$/i)?.[1]?.trim();
     if (revision) {
-      const client = await prisma.client.findFirst({ where: { id: existingPending.data.clientId, officeId } });
-      if (!client) return { replyText: 'O cliente desta minuta não está mais disponível.', actionTaken: `${EXECUTED_PREFIX}${existingPending.id}` };
+      const client = existingPending.data.clientId
+        ? await prisma.client.findFirst({ where: { id: existingPending.data.clientId, officeId } })
+        : null;
+      if (existingPending.data.clientId && !client) return { replyText: 'O cliente desta minuta não está mais disponível.', actionTaken: `${EXECUTED_PREFIX}${existingPending.id}` };
       return {
         replyText: 'Vou revisar a minuta com essas orientações. Aguarde alguns instantes…',
         actionTaken: encodePendingAction(existingPending),
         localAiTask: {
           type: 'REVISE_LEGAL_DRAFT',
-          clientId: client.id,
-          clientName: client.name,
+          clientId: client?.id || '',
+          clientName: client?.name || existingPending.data.clientName,
           clientContext: {
-            nome: client.name,
-            cpfCnpj: client.cpfCnpj,
-            rg: client.rg || '',
-            endereco: [client.address, client.number, client.neighborhood, client.city, client.state].filter(Boolean).join(', '),
+            nome: client?.name || '[CLIENTE NÃO VINCULADO]',
+            cpfCnpj: client?.cpfCnpj || '[INFORMAR CPF]',
+            rg: client?.rg || '[INFORMAR RG]',
+            endereco: client ? [client.address, client.number, client.neighborhood, client.city, client.state].filter(Boolean).join(', ') : '[INFORMAR ENDEREÇO]',
           },
           request: {
             kind: existingPending.data.kind,
-            clientQuery: client.name,
+            clientQuery: client?.name || '',
             legalArea: existingPending.data.legalArea,
             instructions: existingPending.data.requestSummary,
+            generic: !client,
           },
           existingDraft: existingPending.data,
           revisionInstructions: revision.slice(0, 3000),
@@ -1375,6 +1470,18 @@ async function handleTextCommand(
     };
   }
 
+  const genericDraftMatch = text.match(/\b(procura[cç][aã]o|contrato|declara[cç][aã]o|peti[cç][aã]o|termo|minuta|modelo)\b/i);
+  if (genericDraftMatch && /\b(?:gen[eé]ric[oa]|sem\s+(?:cadastrar|cadastro|vincular|cliente)|s[oó]\s+(?:a\s+)?minuta|apenas\s+(?:a\s+)?minuta)\b/i.test(text)) {
+    return prepareLegalDraftTask(officeId, {
+      kind: /\bkit\b/i.test(text) ? 'KIT' : 'DOCUMENT',
+      clientQuery: '',
+      title: genericDraftMatch[1],
+      legalArea: /\b(?:inss|previdenci[aá]ri[oa]|aposentadoria|benef[ií]cio)\b/i.test(text) ? 'Previdenciário' : undefined,
+      instructions: text,
+      generic: true,
+    });
+  }
+
   const freeDraftMatch = text.match(/^(?:redigir|redija|elaborar|elabore)\s+(?:um|uma)?\s*(.+?)\s+para\s+(?:o\s+cliente\s+|a\s+cliente\s+)?(.+)$/i);
   if (freeDraftMatch) {
     return prepareLegalDraftTask(officeId, {
@@ -1419,7 +1526,9 @@ async function handleTextCommand(
 
   const templateMatch = text.match(/^(?:gerar|criar|preparar|faça)\s+(.+?)\s+para\s+(.+)$/i);
   if (templateMatch) {
-    const [, templateQuery, clientQuery] = templateMatch;
+    const [, rawTemplateQuery, rawClientQuery] = templateMatch;
+    const templateQuery = rawTemplateQuery.trim().replace(/^(?:um|uma|o|a)\s+/i, '');
+    const clientQuery = inferDraftClientQuery(text, rawClientQuery);
     const [templates, clients] = await Promise.all([
       prisma.template.findMany({
         where: { officeId, active: true, title: { contains: templateQuery.trim(), mode: 'insensitive' } },
@@ -1427,11 +1536,18 @@ async function handleTextCommand(
       }),
       findSingleClient(officeId, clientQuery),
     ]);
+    if (templates.length === 0) {
+      return prepareLegalDraftTask(officeId, {
+        kind: 'DOCUMENT',
+        clientQuery,
+        title: templateQuery,
+        legalArea: /\b(?:inss|previdenci[aá]ri[oa]|aposentadoria|benef[ií]cio)\b/i.test(text) ? 'Previdenciário' : undefined,
+        instructions: text,
+      });
+    }
     if (templates.length !== 1 || clients.length !== 1) {
       return {
-        replyText: templates.length === 0
-          ? `Não encontrei um modelo correspondente a “${templateQuery}”.`
-          : clients.length === 0
+        replyText: clients.length === 0
             ? `Não encontrei o cliente “${clientQuery}”.`
             : 'Encontrei mais de uma possibilidade. Informe o nome mais completo do modelo e do cliente.',
         actionTaken: 'TEMPLATE_OR_CLIENT_NOT_UNIQUE',

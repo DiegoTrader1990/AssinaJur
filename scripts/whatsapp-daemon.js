@@ -193,10 +193,12 @@ Use command apenas quando houver uma ação operacional. Formatos permitidos:
 - gerar MODELO para CLIENTE
 - gerar kit KIT para CLIENTE
 
-Quando o advogado pedir para REDIGIR, ELABORAR ou CRIAR conteúdo jurídico novo, não use command. Preencha draftRequest:
-{"kind":"DOCUMENT" ou "KIT","clientQuery":"nome ou CPF","title":"tipo/título","legalArea":"área","instructions":"todos os termos pedidos","suggestedDocuments":["nomes, se for kit"]}
+Quando o advogado pedir para REDIGIR, ELABORAR, CRIAR, FAZER, PREPARAR ou MONTAR uma procuração, contrato, declaração, petição, termo ou outro conteúdo jurídico novo, não use command. Preencha draftRequest:
+{"kind":"DOCUMENT" ou "KIT","clientQuery":"nome ou CPF","title":"tipo/título","legalArea":"área","instructions":"todos os termos pedidos","suggestedDocuments":["nomes, se for kit"],"generic":false}
 Use KIT quando ele pedir para montar um conjunto inteligente de documentos. Use DOCUMENT para uma única procuração, contrato, declaração, termo, petição ou outra minuta.
-Extraia o cliente e os requisitos também do histórico recente quando a mensagem atual for continuação. Se faltar o cliente, deixe clientQuery vazio; o servidor perguntará.
+Use o command "gerar MODELO para CLIENTE" somente quando ele disser claramente que quer usar um modelo já existente/salvo no AssinaJur.
+Extraia o cliente e os requisitos também do histórico recente quando a mensagem atual for continuação, como "então crie um modelo" ou apenas "procuração". Considere especialmente o cliente que acabou de ser cadastrado e citado pelo AssinaJur.
+Se ele pedir somente uma minuta genérica, sem cadastrar ou vincular cliente, deixe clientQuery vazio e defina generic como true. Se faltar o cliente sem essa intenção, deixe clientQuery vazio e generic como false; o servidor explicará as opções.
 
 Se for conversa, dúvida, continuação sem dados suficientes ou discussão de ideias, deixe command vazio e responda em reply de forma natural, profissional e breve. Faça uma pergunta objetiva quando faltar informação.
 Nunca afirme que alterou, cadastrou, excluiu, gerou ou enviou algo; ações reais são executadas e confirmadas pelo servidor.
@@ -238,6 +240,7 @@ Mensagem atual: ${text}`;
           title: String(parsed.draftRequest.title || '').trim().slice(0, 180),
           legalArea: String(parsed.draftRequest.legalArea || '').trim().slice(0, 120),
           instructions: String(parsed.draftRequest.instructions || '').trim().slice(0, 3000),
+          generic: parsed.draftRequest.generic === true,
           suggestedDocuments: Array.isArray(parsed.draftRequest.suggestedDocuments)
             ? parsed.draftRequest.suggestedDocuments.map((item) => String(item || '').trim().slice(0, 160)).filter(Boolean).slice(0, 6)
             : [],
