@@ -59,19 +59,44 @@ export async function PUT(
     }
 
     const body = await req.json();
+    const cleanCpfCnpj = String(body.cpfCnpj ?? existingClient.cpfCnpj).replace(/\D/g, '');
+    const cleanPhone = String(body.phone ?? existingClient.phone).replace(/\D/g, '');
+
+    if (!body.name?.trim() || ![11, 14].includes(cleanCpfCnpj.length)) {
+      return NextResponse.json({ error: 'Informe nome e CPF/CNPJ válidos.' }, { status: 400 });
+    }
+    if (cleanPhone.length < 10 || cleanPhone.length > 13) {
+      return NextResponse.json({ error: 'Informe um telefone/WhatsApp válido com DDD.' }, { status: 400 });
+    }
+    if (body.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) {
+      return NextResponse.json({ error: 'Informe um endereço de e-mail válido.' }, { status: 400 });
+    }
+
+    const duplicateClient = await prisma.client.findFirst({
+      where: {
+        officeId: user.officeId,
+        cpfCnpj: cleanCpfCnpj,
+        id: { not: params.id },
+      },
+      select: { id: true },
+    });
+    if (duplicateClient) {
+      return NextResponse.json({ error: 'Já existe outro cliente com este CPF/CNPJ no escritório.' }, { status: 409 });
+    }
 
     const updatedClient = await prisma.client.update({
       where: { id: params.id },
       data: {
-        name: body.name ?? existingClient.name,
+        name: body.name.trim(),
+        cpfCnpj: cleanCpfCnpj,
         rg: body.rg ?? existingClient.rg,
         issuingOrgan: body.issuingOrgan ?? existingClient.issuingOrgan,
         birthDate: body.birthDate ?? existingClient.birthDate,
         nationality: body.nationality ?? existingClient.nationality,
         maritalStatus: body.maritalStatus ?? existingClient.maritalStatus,
         profession: body.profession ?? existingClient.profession,
-        phone: body.phone ?? existingClient.phone,
-        whatsapp: body.whatsapp ?? existingClient.whatsapp,
+        phone: cleanPhone,
+        whatsapp: body.whatsapp ? String(body.whatsapp).replace(/\D/g, '') : cleanPhone,
         email: body.email ?? existingClient.email,
         cep: body.cep ?? existingClient.cep,
         address: body.address ?? existingClient.address,

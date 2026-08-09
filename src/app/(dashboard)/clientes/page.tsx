@@ -31,7 +31,10 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCw,
-  RotateCcw
+  RotateCcw,
+  Pencil,
+  Trash2,
+  ShieldAlert
 } from 'lucide-react';
 import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
 import { createPortal } from 'react-dom';
@@ -65,6 +68,32 @@ interface Client {
   createdAt: string;
 }
 
+const EMPTY_CLIENT_FORM = {
+  name: '',
+  cpfCnpj: '',
+  rg: '',
+  issuingOrgan: '',
+  birthDate: '',
+  nationality: 'Brasileira',
+  maritalStatus: '',
+  profession: '',
+  phone: '',
+  whatsapp: '',
+  email: '',
+  cep: '',
+  address: '',
+  number: '',
+  complement: '',
+  neighborhood: '',
+  city: '',
+  state: '',
+  legalRepresentative: '',
+  financialResponsible: '',
+  notes: '',
+  legalArea: 'Previdenciário',
+  processNumber: '',
+};
+
 export default function ClientsPage() {
   const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
@@ -80,6 +109,10 @@ export default function ClientsPage() {
   // Modais
   const [showModal, setShowModal] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -101,31 +134,7 @@ export default function ClientsPage() {
   const [activeTab, setActiveTab] = useState<'resumo' | 'pessoais' | 'documentos' | 'historico'>('resumo');
 
   // Formulário do Cliente
-  const [formData, setFormData] = useState({
-    name: '',
-    cpfCnpj: '',
-    rg: '',
-    issuingOrgan: '',
-    birthDate: '',
-    nationality: 'Brasileira',
-    maritalStatus: '',
-    profession: '',
-    phone: '',
-    whatsapp: '',
-    email: '',
-    cep: '',
-    address: '',
-    number: '',
-    complement: '',
-    neighborhood: '',
-    city: '',
-    state: '',
-    legalRepresentative: '',
-    financialResponsible: '',
-    notes: '',
-    legalArea: 'Previdenciário',
-    processNumber: '',
-  });
+  const [formData, setFormData] = useState(EMPTY_CLIENT_FORM);
 
   useEffect(() => {
     fetchClients();
@@ -177,6 +186,56 @@ export default function ClientsPage() {
     if (name === 'cpfCnpj') value = maskCpfCnpj(value);
     if (name === 'phone' || name === 'whatsapp') value = maskPhone(value);
     setFormData({ ...formData, [name]: value });
+  };
+
+  const closeClientForm = () => {
+    setShowModal(false);
+    setEditingClient(null);
+    setFormError('');
+    setOcrDocPreview(null);
+    setOcrSuccess(false);
+    currentFileRef.current = null;
+    setFormData(EMPTY_CLIENT_FORM);
+  };
+
+  const openCreateClient = () => {
+    setEditingClient(null);
+    setFormData(EMPTY_CLIENT_FORM);
+    setFormError('');
+    setShowModal(true);
+  };
+
+  const openEditClient = (client: Client) => {
+    setEditingClient(client);
+    setFormData({
+      name: client.name || '',
+      cpfCnpj: maskCpfCnpj(client.cpfCnpj || ''),
+      rg: client.rg || '',
+      issuingOrgan: client.issuingOrgan || '',
+      birthDate: client.birthDate || '',
+      nationality: client.nationality || 'Brasileira',
+      maritalStatus: client.maritalStatus || '',
+      profession: client.profession || '',
+      phone: maskPhone(client.phone || ''),
+      whatsapp: maskPhone(client.whatsapp || ''),
+      email: client.email || '',
+      cep: client.cep || '',
+      address: client.address || '',
+      number: client.number || '',
+      complement: client.complement || '',
+      neighborhood: client.neighborhood || '',
+      city: client.city || '',
+      state: client.state || '',
+      legalRepresentative: client.legalRepresentative || '',
+      financialResponsible: client.financialResponsible || '',
+      notes: client.notes || '',
+      legalArea: client.legalArea || 'Previdenciário',
+      processNumber: client.processNumber || '',
+    });
+    setFormError('');
+    setOcrDocPreview(null);
+    setOcrSuccess(false);
+    setShowModal(true);
   };
 
   const processOcrFile = async (file: File) => {
@@ -337,14 +396,14 @@ export default function ClientsPage() {
     }
   };
 
-  const handleCreateClient = async (e: React.FormEvent) => {
+  const handleSaveClient = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     setFormError('');
 
     try {
-      const res = await fetch('/api/clients', {
-        method: 'POST',
+      const res = await fetch(editingClient ? `/api/clients/${editingClient.id}` : '/api/clients', {
+        method: editingClient ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
@@ -352,40 +411,39 @@ export default function ClientsPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'Erro ao cadastrar cliente.');
+        throw new Error(data.error || `Erro ao ${editingClient ? 'atualizar' : 'cadastrar'} cliente.`);
       }
 
-      setShowModal(false);
-      setFormData({
-        name: '',
-        cpfCnpj: '',
-        rg: '',
-        issuingOrgan: '',
-        birthDate: '',
-        nationality: 'Brasileira',
-        maritalStatus: '',
-        profession: '',
-        phone: '',
-        whatsapp: '',
-        email: '',
-        cep: '',
-        address: '',
-        number: '',
-        complement: '',
-        neighborhood: '',
-        city: '',
-        state: '',
-        legalRepresentative: '',
-        financialResponsible: '',
-        notes: '',
-        legalArea: 'Previdenciário',
-        processNumber: '',
-      });
-      fetchClients();
+      if (editingClient && data.client) {
+        setSelectedClient(data.client);
+      }
+      closeClientForm();
+      await fetchClients();
     } catch (err: any) {
       setFormError(err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteClient = async () => {
+    if (!clientToDelete || deleteConfirmation.trim().toUpperCase() !== 'EXCLUIR') return;
+
+    setDeleting(true);
+    setFormError('');
+    try {
+      const res = await fetch(`/api/clients/${clientToDelete.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao excluir cliente.');
+
+      setClients((current) => current.filter((client) => client.id !== clientToDelete.id));
+      if (selectedClient?.id === clientToDelete.id) setSelectedClient(null);
+      setClientToDelete(null);
+      setDeleteConfirmation('');
+    } catch (err: any) {
+      setFormError(err.message);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -399,7 +457,7 @@ export default function ClientsPage() {
         </div>
 
         <button
-          onClick={() => setShowModal(true)}
+          onClick={openCreateClient}
           className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md text-xs transition-all font-heading"
         >
           <UserPlus className="w-4 h-4" /> Novo Cliente
@@ -492,12 +550,34 @@ export default function ClientsPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => setSelectedClient(client)}
-                        className="px-3.5 py-1.5 bg-slate-100 hover:bg-[#071B3A] hover:text-white text-slate-700 font-bold rounded-xl text-xs transition-all font-heading"
-                      >
-                        Abrir Ficha
-                      </button>
+                      <div className="inline-flex items-center gap-1.5">
+                        <button
+                          onClick={() => setSelectedClient(client)}
+                          className="px-3.5 py-1.5 bg-slate-100 hover:bg-[#071B3A] hover:text-white text-slate-700 font-bold rounded-xl text-xs transition-all font-heading"
+                        >
+                          Abrir Ficha
+                        </button>
+                        <button
+                          onClick={() => openEditClient(client)}
+                          title="Editar cliente"
+                          aria-label={`Editar ${client.name}`}
+                          className="p-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl transition-colors"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setClientToDelete(client);
+                            setDeleteConfirmation('');
+                            setFormError('');
+                          }}
+                          title="Excluir cliente"
+                          aria-label={`Excluir ${client.name}`}
+                          className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -532,11 +612,13 @@ export default function ClientsPage() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3.5 border-b border-slate-100 gap-3">
               <div className="flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-blue-600" />
-                <h2 className="font-heading text-base font-extrabold text-[#071B3A]">Cadastrar Novo Cliente</h2>
+                <h2 className="font-heading text-base font-extrabold text-[#071B3A]">
+                  {editingClient ? 'Editar Cliente' : 'Cadastrar Novo Cliente'}
+                </h2>
               </div>
 
               <div className="flex items-center gap-2.5">
-                <button
+                {!editingClient && <button
                   type="button"
                   onClick={() => {
                     if (currentFileRef.current) {
@@ -557,7 +639,7 @@ export default function ClientsPage() {
                       <span>Preencher por Foto/RG (IA)</span>
                     </>
                   )}
-                </button>
+                </button>}
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -567,12 +649,7 @@ export default function ClientsPage() {
                   className="hidden"
                 />
 
-                <button onClick={() => {
-                  setShowModal(false);
-                  setOcrDocPreview(null);
-                  setOcrSuccess(false);
-                  currentFileRef.current = null;
-                }} className="text-slate-400 hover:text-slate-600 font-bold p-1">
+                <button onClick={closeClientForm} className="text-slate-400 hover:text-slate-600 font-bold p-1">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -696,7 +773,7 @@ export default function ClientsPage() {
 
               {/* Coluna da Direita: Formulário de Cadastro */}
               <div className={ocrDocPreview ? 'md:col-span-6' : 'w-full'}>
-                <form onSubmit={handleCreateClient} className="space-y-4 text-xs">
+                <form onSubmit={handleSaveClient} className="space-y-4 text-xs">
                   <div className="grid md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">
@@ -878,7 +955,7 @@ export default function ClientsPage() {
                   <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
                     <button
                       type="button"
-                      onClick={() => setShowModal(false)}
+                      onClick={closeClientForm}
                       className="px-4 py-2.5 text-slate-600 hover:text-slate-800 font-bold text-xs font-heading"
                     >
                       Cancelar
@@ -889,7 +966,7 @@ export default function ClientsPage() {
                       className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md text-xs transition-all flex items-center gap-2 font-heading"
                     >
                       {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                      Salvar Cadastro do Cliente
+                      {editingClient ? 'Salvar Alterações' : 'Salvar Cadastro do Cliente'}
                     </button>
                   </div>
                 </form>
@@ -914,9 +991,27 @@ export default function ClientsPage() {
                   <p className="text-xs text-slate-400 font-medium">CPF/CNPJ: {maskCpfCnpj(selectedClient.cpfCnpj)}</p>
                 </div>
               </div>
-              <button onClick={() => setSelectedClient(null)} className="text-slate-400 hover:text-slate-600 font-bold">
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => openEditClient(selectedClient)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold font-heading"
+                >
+                  <Pencil className="w-3.5 h-3.5" /> Editar
+                </button>
+                <button
+                  onClick={() => {
+                    setClientToDelete(selectedClient);
+                    setDeleteConfirmation('');
+                    setFormError('');
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold font-heading"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Excluir
+                </button>
+                <button onClick={() => setSelectedClient(null)} className="text-slate-400 hover:text-slate-600 font-bold p-1">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Navegação de Abas da Ficha */}
@@ -997,6 +1092,59 @@ export default function ClientsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Confirmação segura de exclusão */}
+      {clientToDelete && mounted && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[10000] bg-[#071B3A]/55 backdrop-blur-sm flex items-center justify-center p-4 font-sans">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-rose-100">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mb-4">
+              <ShieldAlert className="w-6 h-6" />
+            </div>
+            <h2 className="font-heading text-lg font-extrabold text-[#071B3A]">Excluir cliente?</h2>
+            <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+              O cadastro de <strong>{clientToDelete.name}</strong> será removido. Documentos já emitidos e suas evidências permanecem preservados no sistema.
+            </p>
+            <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mt-5 mb-1.5">
+              Digite EXCLUIR para confirmar
+            </label>
+            <input
+              autoFocus
+              value={deleteConfirmation}
+              onChange={(event) => setDeleteConfirmation(event.target.value)}
+              className="w-full p-3 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:border-rose-500"
+              placeholder="EXCLUIR"
+            />
+            {formError && (
+              <div className="mt-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs">
+                {formError}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setClientToDelete(null);
+                  setDeleteConfirmation('');
+                  setFormError('');
+                }}
+                className="px-4 py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-bold font-heading"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteClient}
+                disabled={deleting || deleteConfirmation.trim().toUpperCase() !== 'EXCLUIR'}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl text-xs font-bold font-heading transition-colors"
+              >
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                Excluir definitivamente
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Modal de Zoom / Tela Cheia do Documento */}
