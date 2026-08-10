@@ -145,7 +145,7 @@ async function renderTemplatePdf({
       });
     }
 
-    if (withHeader) {
+    if (withHeader && !embeddedLetterhead) {
       page.drawRectangle({ x: 40, y: height - 60, width: width - 80, height: 3, color: goldColor });
       page.drawText(officeName.toUpperCase(), { x: 40, y: height - 45, size: 11, font: boldFont, color: navyColor });
       page.drawText(title.toUpperCase(), { x: 40, y: height - 85, size: 14, font: boldFont, color: navyColor });
@@ -301,21 +301,38 @@ export async function compileTemplateToPdf({
 
 export async function applyLetterheadToPdfBuffer(pdfBuffer: Buffer, letterheadBuffer: Buffer): Promise<Buffer> {
   try {
-    const doc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
+    const userDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
     const letterheadDoc = await PDFDocument.load(letterheadBuffer, { ignoreEncryption: true });
-    const [embeddedLetterhead] = await doc.embedPdf(letterheadDoc, [0]);
 
-    const pages = doc.getPages();
-    for (const page of pages) {
-      const { width, height } = page.getSize();
-      page.drawPage(embeddedLetterhead, {
+    const resultDoc = await PDFDocument.create();
+    const [embeddedLetterhead] = await resultDoc.embedPdf(letterheadDoc, [0]);
+
+    const pageCount = userDoc.getPageCount();
+    for (let i = 0; i < pageCount; i++) {
+      const origPage = userDoc.getPage(i);
+      const { width, height } = origPage.getSize();
+
+      const [embeddedUserPage] = await resultDoc.embedPdf(userDoc, [i]);
+      const newPage = resultDoc.addPage([width, height]);
+
+      // 1. Desenha o Papel Timbrado no Plano de Fundo (Camada 0)
+      newPage.drawPage(embeddedLetterhead, {
+        x: 0,
+        y: 0,
+        width,
+        height,
+      });
+
+      // 2. Desenha a Página do Documento por Cima (Camada 1)
+      newPage.drawPage(embeddedUserPage, {
         x: 0,
         y: 0,
         width,
         height,
       });
     }
-    const saved = await doc.save();
+
+    const saved = await resultDoc.save();
     return Buffer.from(saved);
   } catch (lhErr) {
     console.error('Erro ao mesclar papel timbrado no PDF:', lhErr);
