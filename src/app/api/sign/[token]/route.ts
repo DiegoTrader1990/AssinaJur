@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getSignatureOrderBlock, signatureOrderError } from '@/lib/signatureOrder';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,6 +58,11 @@ export async function GET(
     if (document.expirationDate && new Date(document.expirationDate).getTime() < Date.now()) {
       await prisma.document.update({ where: { id: document.id }, data: { status: 'EXPIRADO' } });
       return NextResponse.json({ error: 'O prazo de validade deste link de assinatura expirou.' }, { status: 400 });
+    }
+
+    const blocker = await getSignatureOrderBlock(document.id, signer.id);
+    if (blocker) {
+      return NextResponse.json({ error: signatureOrderError(blocker), orderEnforced: true, waitingFor: blocker.name }, { status: 409 });
     }
 
     // Registrar evento de abertura do link (primeira visualização)

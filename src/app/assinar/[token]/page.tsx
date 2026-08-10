@@ -187,6 +187,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [step, setStep] = useState<'IDENTIFY' | 'SELFIE' | 'SIGN' | 'SUCCESS'>('IDENTIFY');
   const [signer, setSigner] = useState<SignerInfo | null>(null);
   const [document, setDocument] = useState<DocumentInfo | null>(null);
+  const isRogadoConsent = Boolean(document?.isIlliterate && signer?.role === 'CLIENTE');
+  const isRogoSigner = signer?.role === 'ASSINANTE_A_ROGO';
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -800,9 +802,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           confirmCpf: cpf || signer?.cpf,
-          signatureType: signatureMode,
+          signatureType: isRogadoConsent ? 'CONSENTIMENTO_A_ROGO' : signatureMode,
           signatureImage,
-          signedConsentText: `Declaro que li e concordo com os termos do documento ${document?.title || 'documento'}, autorizo minha assinatura eletrônica e a captura das fotos de prova de presença ao vivo, nos termos da MP 2.200-2/2001 e Lei 14.063/2020.`,
+          signedConsentText: isRogadoConsent
+            ? `Declaro que o documento ${document?.title || 'documento'} foi lido e explicado para mim, que compreendi e concordo com seu conteúdo e autorizo ${document?.rogoName || 'o assinante a rogo cadastrado'} a assiná-lo a meu rogo. Confirmo também a captura das fotos de prova de presença ao vivo.`
+            : `Declaro que li e concordo com os termos do documento ${document?.title || 'documento'}, autorizo minha assinatura eletrônica e a captura das fotos de prova de presença ao vivo, nos termos da MP 2.200-2/2001 e Lei 14.063/2020.`,
           selfieCenterImage: currentSelfies.center,
           selfieLeftImage: currentSelfies.left,
           selfieRightImage: currentSelfies.right,
@@ -1109,8 +1113,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         {step === 'SIGN' && (
           <form onSubmit={handleSubmitSignature} className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-5">
             <div className="text-center space-y-1">
-              <h2 className="font-heading text-base font-extrabold text-[#071B3A]">Sua Assinatura Eletrônica</h2>
-              <p className="text-xs text-slate-500 font-medium">Escolha o formato e assine no quadro abaixo.</p>
+              <h2 className="font-heading text-base font-extrabold text-[#071B3A]">{isRogadoConsent ? 'Ciência e Autorização do Cliente' : isRogoSigner ? 'Assinatura Eletrônica a Rogo' : 'Sua Assinatura Eletrônica'}</h2>
+              <p className="text-xs text-slate-500 font-medium">{isRogadoConsent ? 'Confirme que o documento foi lido, compreendido e que você autoriza a assinatura a rogo.' : 'Escolha o formato e assine no quadro abaixo.'}</p>
             </div>
 
             <div className="flex items-center justify-between text-[11px] text-slate-700 bg-slate-50 border border-slate-200 rounded-2xl py-2 px-3.5 font-bold font-heading">
@@ -1145,13 +1149,13 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   Assinatura a Rogo (Art. 595 do Código Civil)
                 </div>
                 <p className="text-[11px] text-emerald-800 font-medium leading-tight">
-                  Outorgante: <strong>{signer?.name}</strong> <br />
+                  Cliente: <strong>{document.signers.find((item) => item.role === 'CLIENTE')?.name || signer?.name}</strong> <br />
                   Acompanhante a Rogo: <strong>{document.rogoName}</strong> ({document.rogoRelationship || 'Acompanhante'}) • CPF: {maskCpfCnpj(document.rogoCpf || '')}
                 </p>
               </div>
             )}
 
-            <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-heading">
+            {!isRogadoConsent && <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-heading">
               <button
                 type="button"
                 onClick={() => setSignatureMode('SELO_DIGITAL')}
@@ -1179,9 +1183,15 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               >
                 <PenTool className="w-3.5 h-3.5" /> Nome
               </button>
-            </div>
+            </div>}
 
-            {signatureMode === 'SELO_DIGITAL' ? (
+            {isRogadoConsent ? (
+              <div className="p-5 bg-gradient-to-b from-blue-50 to-white rounded-2xl border-2 border-blue-200 text-center space-y-2 shadow-xs">
+                <ShieldCheck className="w-9 h-9 text-blue-700 mx-auto" />
+                <h3 className="font-heading font-black text-xs text-[#071B3A] uppercase tracking-wider">Manifestação eletrônica de ciência</h3>
+                <p className="text-[11px] text-slate-600 font-medium leading-relaxed">Esta etapa não substitui a assinatura do assinante a rogo. Ela registra sua presença, compreensão e autorização em evidência própria.</p>
+              </div>
+            ) : signatureMode === 'SELO_DIGITAL' ? (
               <div className="p-5 bg-gradient-to-b from-slate-50 to-white rounded-2xl border-2 border-emerald-200 text-center space-y-2 shadow-xs">
                 <div className="w-10 h-10 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto">
                   <ShieldCheck className="w-6 h-6" />
@@ -1239,9 +1249,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 className="w-4 h-4 text-[#071B3A] rounded border-slate-300 mt-0.5 focus:ring-[#071B3A]"
               />
               <span className="leading-relaxed">
-                Declaro que li e concordo com os termos do documento <strong>{document?.title}</strong>, autorizo
-                minha assinatura eletrônica e a captura das fotos de prova de presença ao vivo, nos termos da MP
-                2.200-2/2001 e Lei 14.063/2020.
+                {isRogadoConsent ? <>
+                  Declaro que o documento <strong>{document?.title}</strong> foi lido e explicado para mim, que compreendi e concordo com seu conteúdo e autorizo <strong>{document?.rogoName}</strong> a assiná-lo a meu rogo. Confirmo a captura das fotos de prova de presença ao vivo.
+                </> : <>
+                  Declaro que li e concordo com os termos do documento <strong>{document?.title}</strong>, autorizo minha assinatura eletrônica e a captura das fotos de prova de presença ao vivo, nos termos da MP 2.200-2/2001 e Lei 14.063/2020.
+                </>}
               </span>
             </label>
 
@@ -1256,7 +1268,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 </>
               ) : (
                 <>
-                  <CheckCircle2 className="w-5 h-5 stroke-[2.5]" /> Concluir e Assinar Documento
+                  <CheckCircle2 className="w-5 h-5 stroke-[2.5]" /> {isRogadoConsent ? 'Confirmar Ciência e Autorização' : 'Concluir e Assinar Documento'}
                 </>
               )}
             </button>

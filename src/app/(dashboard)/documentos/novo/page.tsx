@@ -83,6 +83,9 @@ export default function NewDocumentPage() {
   const [rogoName, setRogoName] = useState('');
   const [rogoCpf, setRogoCpf] = useState('');
   const [rogoRelationship, setRogoRelationship] = useState('Acompanhante / Familiar');
+  const [rogoPhone, setRogoPhone] = useState('');
+  const [rogoEmail, setRogoEmail] = useState('');
+  const [enforceSignatureOrder, setEnforceSignatureOrder] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -237,6 +240,21 @@ export default function NewDocumentPage() {
     ]);
   };
 
+  const handleRogoToggle = (enabled: boolean) => {
+    setIsIlliterate(enabled);
+    if (!enabled) return;
+    setEnforceSignatureOrder(true);
+    setSigners((current) => {
+      const missingWitnesses = Math.max(0, 2 - current.filter((signer) => signer.role === 'TESTEMUNHA').length);
+      return [
+        ...current,
+        ...Array.from({ length: missingWitnesses }, (_, index) => ({
+          name: '', cpf: '', email: '', phone: '', role: 'TESTEMUNHA', signatureOrder: current.length + index + 1,
+        })),
+      ];
+    });
+  };
+
   const handleRemoveSigner = (index: number) => {
     if (signers.length === 1) return;
     setSigners(signers.filter((_, i) => i !== index));
@@ -280,6 +298,9 @@ export default function NewDocumentPage() {
           rogoName: isIlliterate ? rogoName : null,
           rogoCpf: isIlliterate ? rogoCpf : null,
           rogoRelationship: isIlliterate ? rogoRelationship : null,
+          rogoPhone: isIlliterate ? rogoPhone : null,
+          rogoEmail: isIlliterate ? rogoEmail : null,
+          enforceSignatureOrder,
         }),
       });
 
@@ -584,7 +605,7 @@ export default function NewDocumentPage() {
               <input
                 type="checkbox"
                 checked={isIlliterate}
-                onChange={(e) => setIsIlliterate(e.target.checked)}
+                onChange={(e) => handleRogoToggle(e.target.checked)}
                 className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
               />
               <span className="font-heading font-extrabold text-xs text-[#071B3A]">
@@ -595,7 +616,7 @@ export default function NewDocumentPage() {
             {isIlliterate && (
               <div className="pt-3 border-t border-blue-100 space-y-3 animate-in fade-in duration-300">
                 <p className="text-[11px] text-slate-600 font-medium">
-                  Cadastre o acompanhante de confiança (familiar ou amigo) que assinará a rogo pelo cliente no mesmo celular.
+                  O sistema criará um link exclusivo para o cliente registrar ciência, outro para o assinante a rogo e um para cada uma das duas testemunhas. Cada participante confirma o próprio CPF e realiza 3 selfies.
                 </p>
 
                 <div className="grid md:grid-cols-3 gap-3">
@@ -634,9 +655,33 @@ export default function NewDocumentPage() {
                     />
                   </div>
                 </div>
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">WhatsApp do Assinante a Rogo *</label>
+                    <input type="text" required={isIlliterate} value={rogoPhone} onChange={(e) => setRogoPhone(maskPhone(e.target.value))}
+                      placeholder="(73) 99999-9999" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">E-mail do Assinante a Rogo</label>
+                    <input type="email" value={rogoEmail} onChange={(e) => setRogoEmail(e.target.value)}
+                      placeholder="email@exemplo.com" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                  </div>
+                </div>
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] font-medium text-amber-900">
+                  Duas testemunhas foram adicionadas à lista acima. Preencha os dados delas antes de avançar. A ordem protegida será: cliente → assinante a rogo → testemunha 1 → testemunha 2.
+                </div>
               </div>
             )}
           </div>
+
+          <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 cursor-pointer">
+            <input type="checkbox" checked={enforceSignatureOrder} disabled={isIlliterate}
+              onChange={(e) => setEnforceSignatureOrder(e.target.checked)} className="mt-0.5 w-4 h-4 text-blue-600 rounded" />
+            <span>
+              <span className="block text-xs font-extrabold text-[#071B3A] font-heading">Exigir ordem sequencial de assinatura</span>
+              <span className="block mt-1 text-[11px] text-slate-600 font-medium">O próximo link só será liberado quando o participante anterior concluir. No fluxo a rogo esta proteção é obrigatória.</span>
+            </span>
+          </label>
 
           <div className="flex justify-between pt-4 border-t border-slate-100">
             <button

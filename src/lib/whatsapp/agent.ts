@@ -1384,6 +1384,21 @@ async function prepareSignatureLinkDelivery(officeId: string, clientQuery?: stri
     };
   }
 
+  const documentParticipants = await prisma.signer.findMany({
+    where: { documentId: signer.documentId },
+    select: { role: true },
+  });
+  if (signer.document.isIlliterate) {
+    const hasRogoSigner = documentParticipants.some((item) => item.role === 'ASSINANTE_A_ROGO');
+    const witnessCount = documentParticipants.filter((item) => item.role === 'TESTEMUNHA').length;
+    if (!hasRogoSigner || witnessCount < 2) {
+      return {
+        replyText: `O documento “${signer.document.title}” está marcado como assinatura a rogo, mas ainda não possui assinante a rogo e duas testemunhas completos. Nenhum link foi enviado.`,
+        actionTaken: 'ROGO_PARTICIPANTS_INCOMPLETE',
+      };
+    }
+  }
+
   if (query) {
     const distinctClients = new Map<string, typeof signer>();
     for (const candidate of signerMatches) {
@@ -1461,6 +1476,58 @@ async function handleTextCommand(
   const sendSignatureLinkIntent = signatureLinkCommand.matched;
   const cancelIntent = isCancelIntent(text);
   const approvalIntent = isApprovalIntent(text, generateLinkIntent);
+
+  const participantMatch = text.match(/^(?:adicione|adicionar|inclua|incluir|acrescente|acrescentar)\s+(.+?)\s+(?:cpf\s*[:\-]?\s*)?(\d{3}\D?\d{3}\D?\d{3}\D?\d{2})\s+(?:telefone|whatsapp|wtts|fone)\s*[:\-]?\s*(\+?\d[\d\s().-]{8,})\s+como\s+(testemunha|assinante\s+a\s+rogo)(?:\s+(?:no|ao)\s+(?:último\s+)?documento)?\s*$/i);
+  if (participantMatch) {
+    const [, participantName, cpfInput, phoneInput, roleInput] = participantMatch;
+    const cpf = normalizeCpfCnpj(cpfInput);
+    const phone = normalizePhone(phoneInput);
+    if (!hasValidCpfCnpjCheckDigits(cpf) || !phone) {
+      return { replyText: 'Informe CPF válido e WhatsApp do participante. Exemplo: adicione Maria da Silva CPF 000.000.000-00 telefone 73 99999-9999 como testemunha.', actionTaken: 'ADD_SIGNER_INVALID_DATA' };
+    }
+    const document = await prisma.document.findFirst({
+      where: { officeId, status: { notIn: ['CONCLUIDO', 'CANCELADO', 'EXPIRADO'] } },
+      include: { signers: { orderBy: { signatureOrder: 'asc' } } },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (!document) return { replyText: 'Não encontrei documento recente aguardando participantes.', actionTaken: 'ADD_SIGNER_DOCUMENT_NOT_FOUND' };
+    if (document.signers.some((item) => normalizeCpfCnpj(item.cpf) === cpf)) {
+      return { replyText: `Este CPF já participa do documento “${document.title}”.`, actionTaken: 'ADD_SIGNER_DUPLICATE' };
+    }
+    const role = /rogo/i.test(roleInput) ? 'ASSINANTE_A_ROGO' : 'TESTEMUNHA';
+    if (role === 'ASSINANTE_A_ROGO' && document.signers.some((item) => item.role === 'ASSINANTE_A_ROGO')) {
+      return { replyText: `O documento “${document.title}” já possui um assinante a rogo.`, actionTaken: 'ADD_ROGO_DUPLICATE' };
+    }
+    const newSigner = await prisma.$transaction(async (tx) => {
+      if (role === 'ASSINANTE_A_ROGO') {
+        await tx.signer.updateMany({
+          where: { documentId: document.id, signatureOrder: { gte: 2 } },
+          data: { signatureOrder: { increment: 1 } },
+        });
+      }
+      const created = await tx.signer.create({
+        data: {
+          documentId: document.id, name: participantName.trim(), cpf, phone, role,
+          signatureOrder: role === 'ASSINANTE_A_ROGO' ? 2 : Math.max(0, ...document.signers.map((item) => item.signatureOrder)) + 1,
+          status: 'PENDENTE', authMethod: 'LINK_CPF_PRESENCA',
+        },
+      });
+      if (role === 'ASSINANTE_A_ROGO') {
+        await tx.document.update({ where: { id: document.id }, data: { isIlliterate: true, rogoName: participantName.trim(), rogoCpf: cpf, rogoRelationship: 'Pessoa indicada pelo cliente' } });
+        const orderEvent = await tx.documentEvent.findFirst({ where: { documentId: document.id, eventType: 'SIGNATURE_ORDER_ENFORCED' } });
+        if (!orderEvent) await tx.documentEvent.create({ data: { documentId: document.id, eventType: 'SIGNATURE_ORDER_ENFORCED', description: 'Ordem sequencial protegida ativada para o fluxo a rogo.' } });
+      }
+      await tx.documentEvent.create({
+        data: { documentId: document.id, signerId: created.id, eventType: 'SIGNER_ADDED_BY_WHATSAPP', description: `${participantName.trim()} incluído como ${role === 'ASSINANTE_A_ROGO' ? 'assinante a rogo' : 'testemunha'} pelo controle remoto do WhatsApp.` },
+      });
+      return created;
+    });
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.assinajur.com.br';
+    return {
+      replyText: `✅ *${newSigner.name}* foi incluído como *${role === 'ASSINANTE_A_ROGO' ? 'assinante a rogo' : 'testemunha'}* em “${document.title}”.\n\nLink individual: ${appUrl}/assinar/${newSigner.token}\n\nCada participante usará o próprio CPF e fará suas 3 selfies.`,
+      actionTaken: 'SIGNER_ADDED_BY_WHATSAPP',
+    };
+  }
 
   const stampPositionIntent = /\b(?:posicione|posicionar|coloque|mova|alterar|altere|defina|ajuste)\b[\s\S]{0,80}\b(?:selo|carimbo|assinatura)\b|\b(?:selo|carimbo|assinatura)\b[\s\S]{0,80}\b(?:página|pagina|topo|superior|centro|meio|inferior|embaixo|rodapé|rodape|margem|esquerda|direita)\b/i.test(text);
   if (stampPositionIntent) {

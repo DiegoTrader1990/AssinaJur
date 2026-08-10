@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { logAuditEvent } from '@/lib/audit';
 import { generateFinalPdfCertificate } from '@/lib/pdfCertificate';
 import { queueSignatureCompletionMessages } from '@/lib/whatsapp/signatureCompletion';
+import { getSignatureOrderBlock, signatureOrderError } from '@/lib/signatureOrder';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +46,10 @@ export async function POST(
     }
     if (signer.document.status === 'CANCELADO' || signer.document.status === 'EXPIRADO' || (signer.document.expirationDate && new Date(signer.document.expirationDate).getTime() < Date.now())) {
       return NextResponse.json({ error: 'Este link foi cancelado ou expirou.' }, { status: 400 });
+    }
+    const blocker = await getSignatureOrderBlock(signer.document.id, signer.id);
+    if (blocker) {
+      return NextResponse.json({ error: signatureOrderError(blocker), orderEnforced: true, waitingFor: blocker.name }, { status: 409 });
     }
 
     // 1. Validação do CPF informado
@@ -128,6 +133,8 @@ export async function POST(
       });
     }
 
+    const isRogadoConsent = signer.document.isIlliterate && signer.role === 'CLIENTE';
+    const isRogoSigner = signer.role === 'ASSINANTE_A_ROGO';
     await prisma.documentEvent.create({
       data: {
         documentId: signer.document.id,
@@ -149,8 +156,12 @@ export async function POST(
       data: {
         documentId: signer.document.id,
         signerId: signer.id,
-        eventType: 'SIGNATURE_SUBMITTED',
-        description: `Assinatura eletrônica concluída com sucesso por ${signer.name} (${signer.role}).`,
+        eventType: isRogadoConsent ? 'ROGO_CONSENT_RECORDED' : 'SIGNATURE_SUBMITTED',
+        description: isRogadoConsent
+          ? `Ciência, compreensão e autorização para assinatura a rogo registradas por ${signer.name}.`
+          : isRogoSigner
+            ? `Assinatura eletrônica a rogo concluída por ${signer.name}, com identidade e presença verificadas.`
+            : `Assinatura eletrônica concluída com sucesso por ${signer.name} (${signer.role}).`,
         ipAddress: clientIp,
         userAgent,
         metadata: JSON.stringify({

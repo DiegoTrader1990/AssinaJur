@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getSignatureOrderBlock, signatureOrderError } from '@/lib/signatureOrder';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,10 @@ export async function POST(
     }
     if (signer.document.status === 'CANCELADO' || signer.document.status === 'EXPIRADO' || (signer.document.expirationDate && new Date(signer.document.expirationDate).getTime() < Date.now())) {
       return NextResponse.json({ error: 'Este link foi cancelado ou expirou.' }, { status: 400 });
+    }
+    const blocker = await getSignatureOrderBlock(signer.document.id, signer.id);
+    if (blocker) {
+      return NextResponse.json({ error: signatureOrderError(blocker), orderEnforced: true, waitingFor: blocker.name }, { status: 409 });
     }
 
     const body = await req.json();

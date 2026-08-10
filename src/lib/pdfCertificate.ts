@@ -162,6 +162,9 @@ async function embedBase64Image(
 
 // Rótulos públicos em português amigável (sem OTP ou nomes técnicos)
 const PUBLIC_EVENT_LABELS: Record<string, string> = {
+  ROGO_FLOW_CONFIGURED: 'Fluxo a rogo configurado',
+  ROGO_CONSENT_RECORDED: 'Ciência e autorização do cliente',
+  SIGNATURE_ORDER_ENFORCED: 'Ordem de assinatura protegida',
   DOCUMENT_CREATED: 'Documento criado',
   DOCUMENT_GENERATED_BY_WHATSAPP: 'Documento gerado pelo WhatsApp',
   LINK_SENT: 'Link de assinatura enviado',
@@ -177,6 +180,21 @@ const PUBLIC_EVENT_LABELS: Record<string, string> = {
   DOCUMENT_COMPLETED: 'Documento finalizado e certificado emitido',
   DOCUMENT_CANCELLED: 'Documento cancelado',
 };
+
+const SIGNER_ROLE_LABELS: Record<string, string> = {
+  CLIENTE: 'Cliente / Outorgante',
+  ASSINANTE_A_ROGO: 'Assinante a Rogo',
+  TESTEMUNHA: 'Testemunha',
+  ADVOGADO: 'Advogado',
+  CONTRATANTE: 'Contratante',
+  CONTRATADO: 'Contratado',
+  REPRESENTANTE_LEGAL: 'Representante Legal',
+  RESPONSAVEL_FINANCEIRO: 'Responsável Financeiro',
+};
+
+function signerRoleLabel(role?: string | null) {
+  return SIGNER_ROLE_LABELS[String(role || '')] || String(role || 'Signatário').replace(/_/g, ' ');
+}
 
 export async function generateFinalPdfCertificate(documentId: string) {
   const doc = await prisma.document.findUnique({
@@ -277,7 +295,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
       const stampH = Math.min(pH * customStamp.height, 92);
       const stampX = Math.min(pW - stampW - 8, Math.max(8, pW * customStamp.x));
       const stampY = Math.min(pH - stampH - 8, Math.max(8, pH * (1 - customStamp.y - customStamp.height)));
-      const signerNames = safeText(doc.signers.map((item) => item.name).join(', '), 180);
+      const witnessCount = doc.signers.filter((item) => item.role === 'TESTEMUNHA').length;
+      const signerSummary = doc.isIlliterate
+        ? `${safeText(doc.rogoName || 'Assinante a rogo', 70)} (A ROGO) + ${witnessCount} TESTEMUNHAS`
+        : doc.signers.length > 2
+          ? `${doc.signers.length} PARTICIPANTES COM EVIDÊNCIAS INDIVIDUAIS`
+          : doc.signers.map((item) => item.name).join(', ');
+      const signerNames = safeText(signerSummary, 180);
       const qrStampSize = Math.min(38, Math.max(26, stampH - 27));
       const contentX = stampX + qrStampSize + 20;
       const contentW = stampX + stampW - contentX - 8;
@@ -287,13 +311,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
       p.drawRectangle({ x: stampX, y: stampY, width: stampW, height: stampH, color: rgb(1, 1, 1), opacity: 0.98, borderWidth: 1.35, borderColor: navy });
       p.drawRectangle({ x: stampX, y: stampY + stampH - 17, width: stampW, height: 17, color: navy });
       p.drawRectangle({ x: stampX, y: stampY + stampH - 4, width: stampW, height: 4, color: gold });
-      p.drawText('ASSINATURA ELETRÔNICA E PRESENÇA VERIFICADAS', { x: stampX + 9, y: stampY + stampH - 13, size: 5.8, font: bold, color: rgb(1, 1, 1) });
+      p.drawText(doc.signers.length > 1 ? 'ASSINATURAS E PRESENÇAS VERIFICADAS' : 'ASSINATURA ELETRÔNICA E PRESENÇA VERIFICADAS', { x: stampX + 9, y: stampY + stampH - 13, size: 5.8, font: bold, color: rgb(1, 1, 1) });
       p.drawImage(qrImage, { x: stampX + 8, y: stampY + 6, width: qrStampSize, height: qrStampSize });
       p.drawLine({ start: { x: contentX - 8, y: stampY + 6 }, end: { x: contentX - 8, y: stampY + stampH - 22 }, thickness: 0.7, color: panelBorder });
       nameLines.forEach((line, lineIndex) => {
         p.drawText(line, { x: contentX, y: stampY + stampH - 29 - lineIndex * 8.2, size: 7, font: bold, color: text });
       });
-      p.drawText('CPF + 3 SELFIES + GEOLOCALIZAÇÃO', { x: contentX, y: stampY + 22, size: 5.2, font: bold, color: navy });
+      p.drawText(doc.signers.length > 1 ? `${doc.signers.length} CPFs + ${doc.signers.length * 3} SELFIES + GEOLOCALIZAÇÃO` : 'CPF + 3 SELFIES + GEOLOCALIZAÇÃO', { x: contentX, y: stampY + 22, size: 5.2, font: bold, color: navy });
       p.drawText(formatBrasiliaDateTime(signedAt, false).replace(/\s*\(.+$/, ''), { x: contentX, y: stampY + 13, size: 5.4, font: regular, color: muted });
       p.drawText(`VALIDAR: ${verificationCode}`, { x: contentX, y: stampY + 4, size: 5.6, font: mono, color: navy });
     } else if (sigPos === 'TOP') {
@@ -706,7 +730,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const phoneLines = fieldLines(formatFullPhone(signer.phone), halfWidth, { size: 9 });
     const dateLines = fieldLines(formatBrasiliaDateTime(signer.signedAt), halfWidth, { font: bold, size: 8.5 });
     const ipLines = fieldLines(signer.ipAddress || 'Não informado', halfWidth, { font: mono, size: 8 });
-    const roleLines = fieldLines(signer.role || 'Signatário', halfWidth, { size: 8.5 });
+    const roleLines = fieldLines(signerRoleLabel(signer.role), halfWidth, { size: 8.5 });
     const userAgentLines = fieldLines(signer.userAgent || 'Não informado', innerWidth, { size: 7.2 });
     const locationLines = fieldLines(locationText, innerWidth, { size: 7.8 });
     const authenticationLines = fieldLines(authenticationText, innerWidth, { size: 7.8 });
@@ -761,7 +785,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     );
     drawTwoColumns(
       { label: 'Endereço IP', value: signer.ipAddress || 'Não informado', options: { font: mono, size: 8 } },
-      { label: 'Qualificação', value: signer.role || 'Signatário', options: { size: 8.5 } },
+      { label: 'Qualificação', value: signerRoleLabel(signer.role), options: { size: 8.5 } },
       rowHeight(ipLines.length, roleLines.length, 8.5)
     );
 

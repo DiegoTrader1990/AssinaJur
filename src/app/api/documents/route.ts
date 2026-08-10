@@ -113,6 +113,9 @@ export async function POST(req: Request) {
       rogoName,
       rogoCpf,
       rogoRelationship,
+      rogoPhone,
+      rogoEmail,
+      enforceSignatureOrder,
     } = body;
 
     if (!title || !originalFileId || !signers || !Array.isArray(signers) || signers.length === 0) {
@@ -152,6 +155,43 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Todos os signatários precisam ter nome e CPF/CNPJ válido.' }, { status: 400 });
     }
 
+    if (isIlliterate) {
+      if (!rogoName || !hasValidCpfCnpjCheckDigits(String(rogoCpf || '')) || !String(rogoPhone || '').replace(/\D/g, '')) {
+        return NextResponse.json({ error: 'No fluxo a rogo, informe nome, CPF válido e WhatsApp do assinante a rogo.' }, { status: 400 });
+      }
+      const witnesses = signers.filter((signer: any) => signer?.role === 'TESTEMUNHA');
+      if (witnesses.length < 2) {
+        return NextResponse.json({ error: 'O fluxo a rogo exige duas testemunhas identificadas, cada uma com seu próprio link e prova de presença.' }, { status: 400 });
+      }
+      if (signers[0]?.role !== 'CLIENTE') {
+        return NextResponse.json({ error: 'No fluxo a rogo, o primeiro participante deve ser o cliente que registrará ciência e autorização.' }, { status: 400 });
+      }
+      if (witnesses.some((witness: any) => !String(witness?.phone || '').replace(/\D/g, ''))) {
+        return NextResponse.json({ error: 'Informe o WhatsApp de cada testemunha para que todas recebam seus links individuais.' }, { status: 400 });
+      }
+      const rogoDigits = String(rogoCpf).replace(/\D/g, '');
+      if (signers.some((signer: any) => String(signer?.cpf || '').replace(/\D/g, '') === rogoDigits)) {
+        return NextResponse.json({ error: 'O assinante a rogo deve ser uma pessoa diferente dos demais participantes.' }, { status: 400 });
+      }
+      const participantCpfs = [...signers.map((signer: any) => String(signer.cpf).replace(/\D/g, '')), rogoDigits];
+      if (new Set(participantCpfs).size !== participantCpfs.length) {
+        return NextResponse.json({ error: 'Cliente, assinante a rogo e testemunhas devem ser pessoas distintas, com CPFs diferentes.' }, { status: 400 });
+      }
+    }
+
+    const rogoWitnesses = isIlliterate ? signers.slice(1).filter((signer: any) => signer.role === 'TESTEMUNHA') : [];
+    const rogoAdditionalSigners = isIlliterate ? signers.slice(1).filter((signer: any) => signer.role !== 'TESTEMUNHA') : [];
+    const orderedSignerInputs = isIlliterate
+      ? [
+          { ...signers[0], signatureOrder: 1 },
+          {
+            name: String(rogoName).trim(), cpf: String(rogoCpf), email: rogoEmail || '', phone: rogoPhone || '',
+            role: 'ASSINANTE_A_ROGO', signatureOrder: 2, authMethod: 'LINK_CPF_PRESENCA',
+          },
+          ...[...rogoWitnesses, ...rogoAdditionalSigners].map((signer: any, index: number) => ({ ...signer, signatureOrder: index + 3 })),
+        ]
+      : signers.map((signer: any, index: number) => ({ ...signer, signatureOrder: index + 1 }));
+
     // Criar documento e signatários em transação
     const result = await prisma.$transaction(async (tx) => {
       const doc = await tx.document.create({
@@ -175,8 +215,8 @@ export async function POST(req: Request) {
       });
 
       const signerRecords = [];
-      for (let i = 0; i < signers.length; i++) {
-        const s = signers[i];
+      for (let i = 0; i < orderedSignerInputs.length; i++) {
+        const s = orderedSignerInputs[i];
         const createdSigner = await tx.signer.create({
           data: {
             documentId: doc.id,
@@ -201,6 +241,28 @@ export async function POST(req: Request) {
           description: `Documento "${doc.title}" criado por ${user.name}.`,
         },
       });
+
+      if (enforceSignatureOrder || isIlliterate) {
+        await tx.documentEvent.create({
+          data: {
+            documentId: doc.id,
+            userId: user.id,
+            eventType: 'SIGNATURE_ORDER_ENFORCED',
+            description: 'Ordem sequencial de participação configurada e protegida pelo sistema.',
+          },
+        });
+      }
+
+      if (isIlliterate) {
+        await tx.documentEvent.create({
+          data: {
+            documentId: doc.id,
+            userId: user.id,
+            eventType: 'ROGO_FLOW_CONFIGURED',
+            description: `Fluxo a rogo configurado para ${signers[0].name}, com ${rogoName} como assinante a rogo e duas testemunhas independentes.`,
+          },
+        });
+      }
 
       return { doc, signerRecords };
     });

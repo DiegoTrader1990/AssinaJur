@@ -58,6 +58,9 @@ interface VerificationResult {
 }
 
 const PUBLIC_EVENT_LABELS: Record<string, string> = {
+  ROGO_FLOW_CONFIGURED: 'Fluxo a rogo configurado',
+  ROGO_CONSENT_RECORDED: 'Ciência e autorização do cliente',
+  SIGNATURE_ORDER_ENFORCED: 'Ordem de assinatura protegida',
   DOCUMENT_CREATED: 'Documento criado',
   LINK_SENT: 'Link enviado',
   LINK_OPENED: 'Link acessado',
@@ -66,6 +69,13 @@ const PUBLIC_EVENT_LABELS: Record<string, string> = {
   SIGNATURE_SUBMITTED: 'Assinatura eletrônica concluída',
   DOCUMENT_COMPLETED: 'Documento finalizado e certificado emitido',
   DOCUMENT_CANCELLED: 'Documento cancelado',
+};
+
+const SIGNER_ROLE_LABELS: Record<string, string> = {
+  CLIENTE: 'Cliente / Outorgante',
+  ASSINANTE_A_ROGO: 'Assinante a Rogo',
+  TESTEMUNHA: 'Testemunha',
+  ADVOGADO: 'Advogado',
 };
 
 export default function VerificationResultPage({ params }: { params: { code: string } }) {
@@ -267,7 +277,7 @@ export default function VerificationResultPage({ params }: { params: { code: str
               <div key={idx} className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                 <div className="space-y-1">
                   <div className="font-extrabold text-slate-900 text-sm">
-                    {s.name} <span className="text-slate-500 font-medium">({s.role})</span>
+                    {s.name} <span className="text-slate-500 font-medium">({SIGNER_ROLE_LABELS[s.role] || s.role.replace(/_/g, ' ')})</span>
                   </div>
                   <div className="text-slate-700 font-mono">CPF: <strong className="text-slate-900">{maskCpfCnpj(s.cpf)}</strong></div>
                   {s.phone && <div className="text-slate-700 font-mono">Telefone: <strong className="text-slate-900">{maskPhone(s.phone)}</strong></div>}
