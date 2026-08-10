@@ -76,6 +76,8 @@ export default function NewDocumentPage() {
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
   const dragOffsetRef = useRef<{ x: number; y: number } | null>(null);
+  const isResizingRef = useRef<boolean>(false);
+  const resizeStartRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const [customMessage, setCustomMessage] = useState('');
 
   // Assinatura a Rogo (Clientes Analfabetos / com Limitação)
@@ -225,8 +227,24 @@ export default function NewDocumentPage() {
   }, [file, uploadedFile, step, placementPage, signaturePosition]);
 
   const moveStamp = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!dragOffsetRef.current || !previewContainerRef.current) return;
+    if (!previewContainerRef.current) return;
     const bounds = previewContainerRef.current.getBoundingClientRect();
+
+    if (isResizingRef.current && resizeStartRef.current) {
+      const deltaX = event.clientX - resizeStartRef.current.startX;
+      const newWidthPx = Math.max(110, Math.min(bounds.width * 0.7, resizeStartRef.current.startWidth + deltaX));
+      const newWidthRatio = newWidthPx / bounds.width;
+      const newHeightRatio = Math.max(0.075, newWidthRatio * 0.28);
+      setStampPlacement((current) => ({
+        ...current,
+        width: newWidthRatio,
+        height: newHeightRatio,
+        x: Math.min(current.x, 1 - newWidthRatio),
+      }));
+      return;
+    }
+
+    if (!dragOffsetRef.current) return;
     const nextX = (event.clientX - bounds.left - dragOffsetRef.current.x) / bounds.width;
     const nextY = (event.clientY - bounds.top - dragOffsetRef.current.y) / bounds.height;
     setStampPlacement((current) => ({
@@ -946,14 +964,22 @@ export default function NewDocumentPage() {
                   ref={previewContainerRef}
                   className="relative mx-auto w-full max-w-[640px] shadow-2xl bg-white touch-none select-none rounded-xl overflow-hidden"
                   onPointerMove={moveStamp}
-                  onPointerUp={() => { dragOffsetRef.current = null; }}
-                  onPointerCancel={() => { dragOffsetRef.current = null; }}
+                  onPointerUp={() => {
+                    dragOffsetRef.current = null;
+                    isResizingRef.current = false;
+                    resizeStartRef.current = null;
+                  }}
+                  onPointerCancel={() => {
+                    dragOffsetRef.current = null;
+                    isResizingRef.current = false;
+                    resizeStartRef.current = null;
+                  }}
                 >
                   <canvas ref={previewCanvasRef} className="block w-full h-auto rounded-xl pointer-events-none min-h-[500px]" />
                   <div
                     role="button"
                     tabIndex={0}
-                    className="absolute rounded-md border-2 border-[#071B3A] bg-white/95 shadow-lg cursor-move overflow-hidden"
+                    className="absolute rounded-lg border-2 border-[#071B3A] bg-white/98 shadow-2xl cursor-move overflow-hidden group"
                     style={{
                       left: `${stampPlacement.x * 100}%`,
                       top: `${stampPlacement.y * 100}%`,
@@ -970,14 +996,56 @@ export default function NewDocumentPage() {
                       };
                     }}
                   >
-                    <div className="h-1.5 bg-[#D4AF37]" />
+                    {/* Barra Superior Dourada Luxo */}
+                    <div className="h-1.5 bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-600" />
+                    
                     <div className="flex h-[calc(100%-6px)] text-[#071B3A] leading-tight">
-                      <div className="w-[24%] bg-[#071B3A] text-white flex items-center justify-center text-[7px] sm:text-[9px] font-black">QR</div>
-                      <div className="flex-1 px-2 py-1 min-w-0">
-                        <div className="text-[7px] sm:text-[9px] font-extrabold">ASSINATURA ELETRÔNICA VERIFICADA</div>
-                        <div className="text-[7px] sm:text-[9px] font-bold truncate">{signers[0]?.name || 'Nome do signatário'}</div>
-                        <div className="text-[6px] sm:text-[8px] font-mono text-[#071B3A]">VALIDAR: código AssinaJur</div>
+                      {/* Bloco Lateral QR Code & Certificação */}
+                      <div className="w-[25%] bg-[#071B3A] text-white flex flex-col items-center justify-center p-1 font-black relative overflow-hidden select-none">
+                        <span className="text-[9px] sm:text-[11px] font-black tracking-widest text-[#D4AF37]">QR</span>
+                        <span className="text-[4.5px] sm:text-[6px] text-slate-300 uppercase font-mono tracking-tighter">AssinaJur</span>
                       </div>
+                      
+                      {/* Bloco Conteúdo Textual com Nome na Primeira Linha */}
+                      <div className="flex-1 px-2 py-1 min-w-0 flex flex-col justify-between select-none">
+                        <div>
+                          {/* PRIMEIRA LINHA: NOME DO SIGNATÁRIO EM DESTAQUE PROMINENTE */}
+                          <div className="text-[8px] sm:text-[10px] font-black text-[#071B3A] truncate font-heading tracking-wide uppercase">
+                            {signers[0]?.name || 'DOMINICK QUINTO SOARES'}
+                          </div>
+                          {/* SEGUNDA LINHA: TIPO DE ASSINATURA */}
+                          <div className="text-[6px] sm:text-[8px] font-extrabold text-emerald-700 uppercase flex items-center gap-1">
+                            <span>✓ ASSINATURA ELETRÔNICA QUALIFICADA</span>
+                          </div>
+                        </div>
+                        {/* RODAPÉ DE VALIDAÇÃO */}
+                        <div className="text-[5.5px] sm:text-[7.5px] font-mono text-slate-600 border-t border-slate-200 pt-0.5 mt-0.5 flex justify-between items-center">
+                          <span>VALIDAR: <strong className="text-[#071B3A]">código AssinaJur</strong></span>
+                          <span className="text-[5px] text-amber-700 font-sans font-bold">ICP-Brasil</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ALÇA INTERATIVA DE REDIMENSIONAMENTO NO PRÓPRIO SELO */}
+                    <div
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const bounds = previewContainerRef.current?.getBoundingClientRect();
+                        if (!bounds) return;
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                        isResizingRef.current = true;
+                        resizeStartRef.current = { startX: e.clientX, startWidth: stampPlacement.width * bounds.width };
+                      }}
+                      onPointerUp={(e) => {
+                        e.stopPropagation();
+                        isResizingRef.current = false;
+                        resizeStartRef.current = null;
+                      }}
+                      className="absolute bottom-0 right-0 w-4 h-4 bg-[#D4AF37] hover:bg-amber-400 cursor-se-resize flex items-center justify-center rounded-tl-sm shadow-md z-30 transition-transform active:scale-125"
+                      title="Arraste aqui para redimensionar o selo"
+                    >
+                      <div className="w-1.5 h-1.5 border-r-2 border-b-2 border-[#071B3A]" />
                     </div>
                   </div>
                   {renderingPreview && (

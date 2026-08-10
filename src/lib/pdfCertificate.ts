@@ -308,16 +308,18 @@ export async function generateFinalPdfCertificate(documentId: string) {
       const signedAt = doc.signers.find((item) => item.signedAt)?.signedAt || doc.completedAt || new Date();
       p.drawRectangle({ x: stampX + 2.5, y: stampY - 2.5, width: stampW, height: stampH, color: rgb(0.78, 0.81, 0.86), opacity: 0.35 });
       p.drawRectangle({ x: stampX, y: stampY, width: stampW, height: stampH, color: rgb(1, 1, 1), opacity: 0.98, borderWidth: 1.35, borderColor: navy });
-      p.drawRectangle({ x: stampX, y: stampY + stampH - 17, width: stampW, height: 17, color: navy });
       p.drawRectangle({ x: stampX, y: stampY + stampH - 4, width: stampW, height: 4, color: gold });
-      p.drawText(doc.signers.length > 1 ? 'ASSINATURAS E PRESENÇAS VERIFICADAS' : 'ASSINATURA ELETRÔNICA E PRESENÇA VERIFICADAS', { x: stampX + 9, y: stampY + stampH - 13, size: 5.8, font: bold, color: rgb(1, 1, 1) });
-      p.drawImage(qrImage, { x: stampX + 8, y: stampY + 6, width: qrStampSize, height: qrStampSize });
-      p.drawLine({ start: { x: contentX - 8, y: stampY + 6 }, end: { x: contentX - 8, y: stampY + stampH - 22 }, thickness: 0.7, color: panelBorder });
+
       nameLines.forEach((line, lineIndex) => {
-        p.drawText(line, { x: contentX, y: stampY + stampH - 29 - lineIndex * 8.2, size: 7, font: bold, color: text });
+        p.drawText(line.toUpperCase(), { x: contentX, y: stampY + stampH - 15 - lineIndex * 8.5, size: 7.2, font: bold, color: navy });
       });
-      p.drawText(doc.signers.length > 1 ? `${doc.signers.length} CPFs + ${doc.signers.length * 3} SELFIES + GEOLOCALIZAÇÃO` : 'CPF + 3 SELFIES + GEOLOCALIZAÇÃO', { x: contentX, y: stampY + 22, size: 5.2, font: bold, color: navy });
-      p.drawText(formatBrasiliaDateTime(signedAt, false).replace(/\s*\(.+$/, ''), { x: contentX, y: stampY + 13, size: 5.4, font: regular, color: muted });
+
+      p.drawText('ASSINATURA ELETRÔNICA QUALIFICADA', { x: contentX, y: stampY + stampH - 31, size: 5.6, font: bold, color: green });
+      p.drawImage(qrImage, { x: stampX + 8, y: stampY + 6, width: qrStampSize, height: qrStampSize });
+      p.drawLine({ start: { x: contentX - 8, y: stampY + 6 }, end: { x: contentX - 8, y: stampY + stampH - 8 }, thickness: 0.7, color: panelBorder });
+
+      p.drawText(doc.signers.length > 1 ? `${doc.signers.length} CPFs + SELFIES + GEOLOCALIZAÇÃO` : 'CPF + 3 SELFIES + GEOLOCALIZAÇÃO', { x: contentX, y: stampY + 20, size: 5.2, font: regular, color: text });
+      p.drawText(formatBrasiliaDateTime(signedAt, false).replace(/\s*\(.+$/, ''), { x: contentX, y: stampY + 12, size: 5.2, font: regular, color: muted });
       p.drawText(`VALIDAR: ${verificationCode}`, { x: contentX, y: stampY + 4, size: 5.6, font: mono, color: navy });
     } else if (sigPos === 'TOP') {
       const stripH = 22;
