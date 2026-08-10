@@ -26,6 +26,7 @@ export async function POST(
       geoAccuracy,
       geoCity,
       geoState,
+      rogo,
     } = body;
 
     const signer = await prisma.signer.findUnique({
@@ -47,12 +48,13 @@ export async function POST(
     if (signer.document.status === 'CANCELADO' || signer.document.status === 'EXPIRADO' || (signer.document.expirationDate && new Date(signer.document.expirationDate).getTime() < Date.now())) {
       return NextResponse.json({ error: 'Este link foi cancelado ou expirou.' }, { status: 400 });
     }
+
     const blocker = await getSignatureOrderBlock(signer.document.id, signer.id);
     if (blocker) {
       return NextResponse.json({ error: signatureOrderError(blocker), orderEnforced: true, waitingFor: blocker.name }, { status: 409 });
     }
 
-    // 1. Validação do CPF informado
+    // 1. Validação do CPF do Cliente Titular
     const cleanConfirmCpf = (confirmCpf || '').replace(/\D/g, '');
     const cleanSignerCpf = (signer.cpf || '').replace(/\D/g, '');
 
@@ -63,26 +65,46 @@ export async function POST(
       );
     }
 
-    // 2. Validação da Prova de Presença (3 selfies obrigatórias: centro, esquerda, direita)
+    // 2. Validação da Prova de Presença (3 selfies do Cliente)
     if (!selfieCenterImage || !selfieLeftImage || !selfieRightImage) {
       return NextResponse.json(
-        { error: 'É necessário concluir a prova de presença ao vivo (3 fotos: frontal, perfil esquerdo e perfil direito) antes de assinar.' },
+        { error: 'É necessário concluir a prova de presença ao vivo (3 fotos) antes de assinar.' },
         { status: 400 }
       );
     }
 
-    // 3. Captura do Endereço IP e Dispositivo
+    const isRogadoConsent = signer.document.isIlliterate && signer.role === 'CLIENTE';
+
+    // 3. Se for fluxo a rogo e dados do acompanhante foram enviados no mesmo link, validar dados do Acompanhante
+    if (isRogadoConsent && rogo) {
+      if (!rogo.selfieCenterImage || !rogo.selfieLeftImage || !rogo.selfieRightImage) {
+        return NextResponse.json(
+          { error: 'O Assinante a Rogo também deve concluir sua prova de presença com 3 fotos no mesmo aparelho.' },
+          { status: 400 }
+        );
+      }
+      const cleanRogoCpf = (rogo.cpf || '').replace(/\D/g, '');
+      if (!cleanRogoCpf) {
+        return NextResponse.json(
+          { error: 'Informe o CPF do Assinante a Rogo.' },
+          { status: 400 }
+        );
+      }
+    }
+
     const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '127.0.0.1';
     const userAgent = req.headers.get('user-agent') || 'Mobile Browser';
 
-    // 4. Gravação da Assinatura do Signatário
+    // 4. Atualizar o Signatário Titular (Cliente)
     const updatedSigner = await prisma.signer.update({
       where: { id: signer.id },
       data: {
         status: 'ASSINADO',
-        signatureType: signatureType || 'DESENHADA',
+        signatureType: signatureType || (isRogadoConsent ? 'SELO_DIGITAL' : 'DESENHADA'),
         signatureImage: signatureImage || null,
-        signedConsentText: signedConsentText || 'Declaro que li os documentos, concordo com seu conteúdo e reconheço esta manifestação como minha assinatura eletrônica.',
+        signedConsentText: signedConsentText || (isRogadoConsent
+          ? 'Declaro ciência e concordância integral com este documento, autorizando a assinatura a rogo realizada em meu nome.'
+          : 'Declaro que li os documentos, concordo com seu conteúdo e reconheço esta manifestação como minha assinatura eletrônica.'),
         selfieCenterImage,
         selfieLeftImage,
         selfieRightImage,
@@ -97,10 +119,53 @@ export async function POST(
       },
     });
 
-    // 5. Atualização do Status do Documento
-    const allSigners = signer.document.signers;
-    const otherSigners = allSigners.filter((s) => s.id !== signer.id);
-    const allCompleted = otherSigners.every((s) => s.status === 'ASSINADO');
+    // 5. Se for fluxo a rogo e dados do acompanhante foram enviados no mesmo link, atualizar o Assinante a Rogo
+    if (isRogadoConsent && rogo) {
+      const rogoSignerRecord = signer.document.signers.find((s) => s.role === 'ASSINANTE_A_ROGO');
+      if (rogoSignerRecord) {
+        await prisma.signer.update({
+          where: { id: rogoSignerRecord.id },
+          data: {
+            name: rogo.name || rogoSignerRecord.name,
+            cpf: (rogo.cpf || rogoSignerRecord.cpf).replace(/\D/g, ''),
+            status: 'ASSINADO',
+            signatureType: rogo.signatureType || 'DESENHADA',
+            signatureImage: rogo.signatureImage || null,
+            signedConsentText: rogo.signedConsentText || `Assino a rogo pelo cliente ${signer.name}, declarando a veracidade das informações apresentadas.`,
+            selfieCenterImage: rogo.selfieCenterImage,
+            selfieLeftImage: rogo.selfieLeftImage,
+            selfieRightImage: rogo.selfieRightImage,
+            geoLat: typeof geoLat === 'number' ? geoLat : null,
+            geoLng: typeof geoLng === 'number' ? geoLng : null,
+            geoAccuracy: typeof geoAccuracy === 'number' ? geoAccuracy : null,
+            geoCity: geoCity || null,
+            geoState: geoState || null,
+            signedAt: new Date(),
+            ipAddress: clientIp,
+            userAgent,
+          },
+        });
+
+        await prisma.documentEvent.create({
+          data: {
+            documentId: signer.document.id,
+            signerId: rogoSignerRecord.id,
+            eventType: 'SIGNATURE_SUBMITTED',
+            description: `Assinatura eletrônica a rogo concluída no mesmo link por ${rogo.name || rogoSignerRecord.name} em favor de ${signer.name}.`,
+            ipAddress: clientIp,
+            userAgent,
+          },
+        });
+      }
+    }
+
+    // 6. Atualização do Status do Documento
+    const freshDoc = await prisma.document.findUnique({
+      where: { id: signer.document.id },
+      include: { signers: true },
+    });
+    const allSigners = freshDoc?.signers || signer.document.signers;
+    const allCompleted = allSigners.every((s) => s.status === 'ASSINADO');
 
     let newDocStatus = 'PARCIALMENTE_ASSINADO';
     if (allCompleted) {
@@ -115,40 +180,26 @@ export async function POST(
       },
     });
 
-    // 6. Registros de Trilha Pública de Eventos em Português Amigável (Sem OTP)
-    const existingIdentityConfirmation = await prisma.documentEvent.findFirst({
-      where: { documentId: signer.document.id, signerId: signer.id, eventType: 'IDENTITY_CONFIRMED' },
-      select: { id: true },
+    // Registros da Trilha de Auditoria
+    await prisma.documentEvent.create({
+      data: {
+        documentId: signer.document.id,
+        signerId: signer.id,
+        eventType: 'IDENTITY_CONFIRMED',
+        description: `CPF confirmado pelo signatário ${signer.name}.`,
+        ipAddress: clientIp,
+        userAgent,
+      },
     });
-    if (!existingIdentityConfirmation) {
-      await prisma.documentEvent.create({
-        data: {
-          documentId: signer.document.id,
-          signerId: signer.id,
-          eventType: 'IDENTITY_CONFIRMED',
-          description: `CPF confirmado pelo signatário ${signer.name}.`,
-          ipAddress: clientIp,
-          userAgent,
-        },
-      });
-    }
 
-    const isRogadoConsent = signer.document.isIlliterate && signer.role === 'CLIENTE';
-    const isRogoSigner = signer.role === 'ASSINANTE_A_ROGO';
     await prisma.documentEvent.create({
       data: {
         documentId: signer.document.id,
         signerId: signer.id,
         eventType: 'LIVENESS_CAPTURED',
-        description: `Prova de presença ao vivo concluída com 3 fotos (frontal, perfil esquerdo e perfil direito) para ${signer.name}.`,
+        description: `Prova de presença ao vivo concluída com 3 fotos para ${signer.name}.`,
         ipAddress: clientIp,
         userAgent,
-        metadata: JSON.stringify({
-          geoLat: typeof geoLat === 'number' ? geoLat : null,
-          geoLng: typeof geoLng === 'number' ? geoLng : null,
-          geoCity: geoCity || null,
-          geoState: geoState || null,
-        }),
       },
     });
 
@@ -159,20 +210,13 @@ export async function POST(
         eventType: isRogadoConsent ? 'ROGO_CONSENT_RECORDED' : 'SIGNATURE_SUBMITTED',
         description: isRogadoConsent
           ? `Ciência, compreensão e autorização para assinatura a rogo registradas por ${signer.name}.`
-          : isRogoSigner
-            ? `Assinatura eletrônica a rogo concluída por ${signer.name}, com identidade e presença verificadas.`
-            : `Assinatura eletrônica concluída com sucesso por ${signer.name} (${signer.role}).`,
+          : `Assinatura eletrônica concluída com sucesso por ${signer.name}.`,
         ipAddress: clientIp,
         userAgent,
-        metadata: JSON.stringify({
-          signatureType,
-          authMethod: 'CPF_LIVENESS_3SELFIES',
-          cpfConfirmed: true,
-        }),
       },
     });
 
-    // 7. Se todas as assinaturas forem concluídas, GERA O PDF FINAL E CERTIFICADO DE EVIDÊNCIAS
+    // Se todas as assinaturas forem concluídas, GERA O PDF FINAL E CERTIFICADO DE EVIDÊNCIAS
     if (allCompleted) {
       await prisma.documentEvent.create({
         data: {
