@@ -110,10 +110,10 @@ export default function SettingsPage() {
         method: 'POST',
         body: formDataObj,
       });
-      if (!res.ok) throw new Error('Erro ao enviar papel timbrado');
       const data = await res.json();
-      if (data.letterhead) {
-        setLetterhead(data.letterhead);
+      if (!res.ok) throw new Error(data.error || 'Erro ao enviar papel timbrado');
+      if (data.letterhead || data.file) {
+        setLetterhead(data.letterhead || data.file);
       }
     } catch (err: any) {
       alert(err.message);

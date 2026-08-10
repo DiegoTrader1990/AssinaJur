@@ -84,12 +84,23 @@ export async function POST(req: Request) {
     });
 
     if (office?.letterheadFileId) {
-      const oldFile = await prisma.storageFile.findUnique({
-        where: { id: office.letterheadFileId },
+      const oldFileId = office.letterheadFileId;
+      await prisma.office.update({
+        where: { id: user.officeId },
+        data: { letterheadFileId: null },
       });
+
+      const oldFile = await prisma.storageFile.findUnique({
+        where: { id: oldFileId },
+      });
+
       if (oldFile) {
-        await deleteFile(oldFile.storageKey);
-        await prisma.storageFile.delete({ where: { id: oldFile.id } });
+        try {
+          await deleteFile(oldFile.storageKey);
+          await prisma.storageFile.delete({ where: { id: oldFile.id } });
+        } catch (delErr) {
+          console.warn('[Letterhead API] Aviso ao remover arquivo antigo:', delErr);
+        }
       }
     }
 
@@ -113,17 +124,20 @@ export async function POST(req: Request) {
       description: 'Papel timbrado enviado com sucesso: ' + (file.name || 'papel-timbrado.pdf'),
     });
 
+    const fileData = {
+      id: storageRecord.id,
+      originalName: storageRecord.originalName,
+      sizeBytes: storageRecord.sizeBytes,
+    };
+
     return NextResponse.json({
       success: true,
-      file: {
-        id: storageRecord.id,
-        originalName: storageRecord.originalName,
-        sizeBytes: storageRecord.sizeBytes,
-      },
+      file: fileData,
+      letterhead: fileData,
     });
   } catch (error: any) {
     console.error('Erro ao enviar papel timbrado:', error);
-    return NextResponse.json({ error: 'Erro ao salvar papel timbrado.' }, { status: 500 });
+    return NextResponse.json({ error: error?.message || 'Erro ao salvar papel timbrado.' }, { status: 500 });
   }
 }
 
@@ -143,19 +157,24 @@ export async function DELETE() {
       return NextResponse.json({ error: 'Nenhum papel timbrado cadastrado.' }, { status: 404 });
     }
 
-    const storageFile = await prisma.storageFile.findUnique({
-      where: { id: office.letterheadFileId },
-    });
-
-    if (storageFile) {
-      await deleteFile(storageFile.storageKey);
-      await prisma.storageFile.delete({ where: { id: storageFile.id } });
-    }
-
+    const oldFileId = office.letterheadFileId;
     await prisma.office.update({
       where: { id: user.officeId },
       data: { letterheadFileId: null },
     });
+
+    const storageFile = await prisma.storageFile.findUnique({
+      where: { id: oldFileId },
+    });
+
+    if (storageFile) {
+      try {
+        await deleteFile(storageFile.storageKey);
+        await prisma.storageFile.delete({ where: { id: storageFile.id } });
+      } catch (delErr) {
+        console.warn('[Letterhead API] Aviso ao apagar arquivo no storage:', delErr);
+      }
+    }
 
     await logAuditEvent({
       officeId: user.officeId,
@@ -167,6 +186,6 @@ export async function DELETE() {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Erro ao remover papel timbrado:', error);
-    return NextResponse.json({ error: 'Erro ao remover papel timbrado.' }, { status: 500 });
+    return NextResponse.json({ error: error?.message || 'Erro ao remover papel timbrado.' }, { status: 500 });
   }
 }
