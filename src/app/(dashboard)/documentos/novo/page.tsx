@@ -168,11 +168,7 @@ export default function NewDocumentPage() {
       setRenderingPreview(true);
       try {
         const pdfjs = await import('pdfjs-dist');
-        try {
-          pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-        } catch {
-          pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs';
-        }
+        pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version || '4.10.38'}/build/pdf.worker.min.mjs`;
         const bytes = new Uint8Array(await file.arrayBuffer());
         const pdf = await pdfjs.getDocument({ data: bytes }).promise;
         if (cancelled) return;
@@ -931,19 +927,12 @@ export default function NewDocumentPage() {
               <div className="overflow-auto rounded-xl border border-slate-300 bg-slate-200/70 p-3 max-h-[680px]">
                 <div
                   ref={previewContainerRef}
-                  className="relative mx-auto w-full max-w-[640px] min-h-[620px] shadow-2xl bg-white touch-none select-none rounded-xl overflow-hidden"
+                  className="relative mx-auto w-full max-w-[640px] shadow-2xl bg-white touch-none select-none rounded-xl overflow-hidden"
                   onPointerMove={moveStamp}
                   onPointerUp={() => { dragOffsetRef.current = null; }}
                   onPointerCancel={() => { dragOffsetRef.current = null; }}
                 >
-                  {pdfObjectUrl && (
-                    <iframe
-                      src={`${pdfObjectUrl}#page=${placementPage}&toolbar=0&navpanes=0`}
-                      className="w-full h-[620px] border-0 pointer-events-none rounded-xl block"
-                      title="Visualização da página do documento"
-                    />
-                  )}
-                  <canvas ref={previewCanvasRef} className="block max-w-full h-auto absolute inset-0 pointer-events-none opacity-0" />
+                  <canvas ref={previewCanvasRef} className="block w-full h-auto rounded-xl pointer-events-none" />
                   <div
                     role="button"
                     tabIndex={0}
