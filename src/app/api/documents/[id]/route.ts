@@ -197,9 +197,8 @@ export async function DELETE(
     if (user.role !== 'OFFICE_ADMIN') {
       return NextResponse.json({ error: 'Apenas o administrador pode excluir documentos.' }, { status: 403 });
     }
-    if (document.status === 'CONCLUIDO') {
-      return NextResponse.json({ error: 'Documentos concluídos e suas evidências não podem ser excluídos permanentemente.' }, { status: 409 });
-    }
+    // Permite a exclusão de qualquer documento do escritório (rascunhos, em andamento ou concluídos)
+    // pelo usuário autorizado do escritório.
 
     const documentTitle = document.title;
     const originalFileId = document.originalFileId;

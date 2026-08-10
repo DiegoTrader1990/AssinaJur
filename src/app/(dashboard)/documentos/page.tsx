@@ -428,15 +428,13 @@ export default function DocumentsPage() {
           >
             Dossiê
           </button>
-          {doc.status !== 'CONCLUIDO' && (
-            <button
-              onClick={() => handleDelete(doc)}
-              title="Excluir"
-              className="p-1 text-slate-400 hover:text-red-600 rounded-lg border border-slate-200"
-            >
-              <Trash2 className="w-3 h-3" />
-            </button>
-          )}
+          <button
+            onClick={() => handleDelete(doc)}
+            title="Excluir Documento"
+            className="p-1 text-slate-400 hover:text-red-600 rounded-lg border border-slate-200 transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
     );
@@ -688,6 +686,13 @@ export default function DocumentsPage() {
                       >
                         Dossiê
                       </button>
+                      <button
+                        onClick={() => handleDelete(doc)}
+                        title="Excluir Documento"
+                        className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg border border-slate-200 inline-flex items-center align-middle"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -746,6 +751,21 @@ export default function DocumentsPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* Botão de Exclusão no Dossiê */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = selectedDoc;
+                    setSelectedDoc(null);
+                    handleDelete(target);
+                  }}
+                  className="px-4 py-2 bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 font-extrabold rounded-xl text-xs flex items-center gap-1.5 font-heading transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-600" /> Excluir Documento Definitivamente
+                </button>
               </div>
             </div>
           </div>
