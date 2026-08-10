@@ -318,9 +318,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
       p.drawImage(qrImage, { x: stampX + 8, y: stampY + 6, width: qrStampSize, height: qrStampSize });
       p.drawLine({ start: { x: contentX - 8, y: stampY + 6 }, end: { x: contentX - 8, y: stampY + stampH - 8 }, thickness: 0.7, color: panelBorder });
 
-      p.drawText(doc.signers.length > 1 ? `${doc.signers.length} CPFs + SELFIES + GEOLOCALIZAÇÃO` : 'CPF + 3 SELFIES + GEOLOCALIZAÇÃO', { x: contentX, y: stampY + 20, size: 5.2, font: regular, color: text });
-      p.drawText(formatBrasiliaDateTime(signedAt, false).replace(/\s*\(.+$/, ''), { x: contentX, y: stampY + 12, size: 5.2, font: regular, color: muted });
-      p.drawText(`VALIDAR: ${verificationCode}`, { x: contentX, y: stampY + 4, size: 5.6, font: mono, color: navy });
+      p.drawText(doc.signers.length > 1 ? `${doc.signers.length} CPFs + SELFIES + GEOLOCALIZAÇÃO` : 'CPF + 3 SELFIES + GEOLOCALIZAÇÃO', { x: contentX, y: stampY + 22, size: 5.4, font: regular, color: text });
+      p.drawText(formatBrasiliaDateTime(signedAt, false).replace(/\s*\(.+$/, ''), { x: contentX, y: stampY + 14, size: 5.4, font: regular, color: muted });
+      p.drawText(`CÓDIGO DE VALIDAÇÃO: ${verificationCode}`, { x: contentX, y: stampY + 4, size: 7.2, font: bold, color: navy });
     } else if (sigPos === 'TOP') {
       const stripH = 22;
       const stripY = pH - stripH;

@@ -1019,9 +1019,9 @@ export default function NewDocumentPage() {
                           </div>
                         </div>
                         {/* RODAPÉ DE VALIDAÇÃO */}
-                        <div className="text-[5.5px] sm:text-[7.5px] font-mono text-slate-600 border-t border-slate-200 pt-0.5 mt-0.5 flex justify-between items-center">
-                          <span>VALIDAR: <strong className="text-[#071B3A]">código AssinaJur</strong></span>
-                          <span className="text-[5px] text-amber-700 font-sans font-bold">ICP-Brasil</span>
+                        <div className="text-[7px] sm:text-[9.5px] font-mono text-slate-700 border-t border-slate-200 pt-0.5 mt-0.5 flex justify-between items-center font-bold">
+                          <span>CÓD: <strong className="text-[#071B3A] font-black text-[8.5px] sm:text-[11px] font-mono">AJ-A1B2-C3D4</strong></span>
+                          <span className="text-[6px] sm:text-[8px] text-amber-700 font-sans font-black">ICP-Brasil</span>
                         </div>
                       </div>
                     </div>
