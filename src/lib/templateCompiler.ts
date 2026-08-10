@@ -298,3 +298,27 @@ export async function compileTemplateToPdf({
     : `CUSTOM:${rendered.pageCount}:0.3100:0.6200:0.3800:0.0850`;
   return { storageRecord, hash: rendered.hash, compiledText: rendered.compiledText, pageCount: rendered.pageCount, signaturePosition: position };
 }
+
+export async function applyLetterheadToPdfBuffer(pdfBuffer: Buffer, letterheadBuffer: Buffer): Promise<Buffer> {
+  try {
+    const doc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
+    const letterheadDoc = await PDFDocument.load(letterheadBuffer, { ignoreEncryption: true });
+    const [embeddedLetterhead] = await doc.embedPdf(letterheadDoc, [0]);
+
+    const pages = doc.getPages();
+    for (const page of pages) {
+      const { width, height } = page.getSize();
+      page.drawPage(embeddedLetterhead, {
+        x: 0,
+        y: 0,
+        width,
+        height,
+      });
+    }
+    const saved = await doc.save();
+    return Buffer.from(saved);
+  } catch (lhErr) {
+    console.error('Erro ao mesclar papel timbrado no PDF:', lhErr);
+    return pdfBuffer;
+  }
+}

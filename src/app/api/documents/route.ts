@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
-import { getFileBuffer } from '@/lib/storage';
+import { getFileBuffer, saveFile } from '@/lib/storage';
 import { calculateHash } from '@/lib/pdfHash';
+import { applyLetterheadToPdfBuffer } from '@/lib/templateCompiler';
 import { PDFDocument } from 'pdf-lib';
 
 export const dynamic = 'force-dynamic';
@@ -140,8 +141,36 @@ export async function POST(req: Request) {
     if (!originalBuffer) {
       return NextResponse.json({ error: 'O PDF original não foi encontrado no armazenamento.' }, { status: 400 });
     }
-    const verifiedOriginalHash = calculateHash(originalBuffer);
-    const originalPdf = await PDFDocument.load(originalBuffer, { ignoreEncryption: true });
+
+    let finalBuffer = originalBuffer;
+    let finalFileId = originalFileId;
+
+    if (office.letterheadFileId) {
+      const letterheadRecord = await prisma.storageFile.findUnique({
+        where: { id: office.letterheadFileId },
+      });
+      if (letterheadRecord) {
+        const letterheadBytes = await getFileBuffer(user.officeId, letterheadRecord.storageKey);
+        if (letterheadBytes) {
+          try {
+            finalBuffer = await applyLetterheadToPdfBuffer(originalBuffer, letterheadBytes);
+            const mergedRecord = await saveFile({
+              officeId: user.officeId,
+              uploadedBy: user.id,
+              fileBuffer: finalBuffer,
+              originalName: originalFile.originalName,
+              mimeType: 'application/pdf',
+            });
+            finalFileId = mergedRecord.id;
+          } catch (lhErr) {
+            console.error('Erro ao mesclar papel timbrado no PDF enviado:', lhErr);
+          }
+        }
+      }
+    }
+
+    const verifiedOriginalHash = calculateHash(finalBuffer);
+    const originalPdf = await PDFDocument.load(finalBuffer, { ignoreEncryption: true });
     const safeSignaturePosition = normalizeSignaturePosition(signaturePosition, originalPdf.getPageCount());
     if (clientId && !linkedClient) {
       return NextResponse.json({ error: 'O cliente informado não pertence a este escritório.' }, { status: 400 });
@@ -201,7 +230,7 @@ export async function POST(req: Request) {
           title,
           documentType: documentType || 'Não informado',
           signaturePosition: safeSignaturePosition,
-          originalFileId,
+          originalFileId: finalFileId,
           originalHash: verifiedOriginalHash,
           status: 'PRONTO_PARA_ENVIO',
           expirationDate: expirationDate ? new Date(expirationDate) : null,

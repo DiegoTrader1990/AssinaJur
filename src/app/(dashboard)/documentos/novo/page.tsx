@@ -171,7 +171,11 @@ export default function NewDocumentPage() {
         const containerWidth = previewContainerRef.current?.clientWidth || 600;
         const scale = Math.max(0.75, containerWidth / baseViewport.width);
         const viewport = pdfPage.getViewport({ scale });
-        const canvas = previewCanvasRef.current;
+        let canvas = previewCanvasRef.current;
+        if (!canvas) {
+          await new Promise((res) => setTimeout(res, 120));
+          canvas = previewCanvasRef.current;
+        }
         if (!canvas || cancelled) return;
         const context = canvas.getContext('2d');
         if (!context) return;
