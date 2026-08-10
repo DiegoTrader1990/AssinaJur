@@ -216,12 +216,29 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [rogoSelfieImages, setRogoSelfieImages] = useState<Record<SelfieKey, string | null>>({ center: null, left: null, right: null });
   const rogoSelfieImagesRef = useRef<Record<SelfieKey, string | null>>({ center: null, left: null, right: null });
 
-  const [activePerson, setActivePerson] = useState<'CLIENT' | 'ROGO'>('CLIENT');
+  // Selfies das Testemunhas (no mesmo link)
+  const [witness1Name, setWitness1Name] = useState('');
+  const [witness1Cpf, setWitness1Cpf] = useState('');
+  const [witness1SelfieImages, setWitness1SelfieImages] = useState<Record<SelfieKey, string | null>>({ center: null, left: null, right: null });
+  const witness1SelfieImagesRef = useRef<Record<SelfieKey, string | null>>({ center: null, left: null, right: null });
+
+  const [witness2Name, setWitness2Name] = useState('');
+  const [witness2Cpf, setWitness2Cpf] = useState('');
+  const [witness2SelfieImages, setWitness2SelfieImages] = useState<Record<SelfieKey, string | null>>({ center: null, left: null, right: null });
+  const witness2SelfieImagesRef = useRef<Record<SelfieKey, string | null>>({ center: null, left: null, right: null });
+
+  const [activePerson, setActivePerson] = useState<'CLIENT' | 'ROGO' | 'WITNESS_1' | 'WITNESS_2'>('CLIENT');
 
   const updateCurrentSelfieImages = (newImages: Record<SelfieKey, string | null>) => {
     if (activePerson === 'ROGO') {
       rogoSelfieImagesRef.current = newImages;
       setRogoSelfieImages(newImages);
+    } else if (activePerson === 'WITNESS_1') {
+      witness1SelfieImagesRef.current = newImages;
+      setWitness1SelfieImages(newImages);
+    } else if (activePerson === 'WITNESS_2') {
+      witness2SelfieImagesRef.current = newImages;
+      setWitness2SelfieImages(newImages);
     } else {
       selfieImagesRef.current = newImages;
       setSelfieImages(newImages);
@@ -552,7 +569,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     triggerAutomaticCapture(activeKeyRef.current);
   };
 
-  const startSelfieCamera = async (targetKey?: SelfieKey, isSingleRetake: boolean = false, person: 'CLIENT' | 'ROGO' = activePerson) => {
+  const startSelfieCamera = async (targetKey?: SelfieKey, isSingleRetake: boolean = false, person: 'CLIENT' | 'ROGO' | 'WITNESS_1' | 'WITNESS_2' = activePerson) => {
     setActivePerson(person);
     unlockAndPreloadAudios();
     setError('');
@@ -728,6 +745,30 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           signatureType: signatureMode,
           signatureImage,
           signedConsentText: `Assino a rogo pelo cliente ${signer?.name}, autorizando expressamente a assinatura deste documento.`,
+        };
+      }
+
+      if (witness1Name.trim() && witness1Cpf.trim() && witness1SelfieImagesRef.current.center) {
+        payload.witness1 = {
+          name: witness1Name,
+          cpf: witness1Cpf,
+          selfieCenterImage: witness1SelfieImagesRef.current.center,
+          selfieLeftImage: witness1SelfieImagesRef.current.left,
+          selfieRightImage: witness1SelfieImagesRef.current.right,
+          signatureType: signatureMode,
+          signatureImage,
+        };
+      }
+
+      if (witness2Name.trim() && witness2Cpf.trim() && witness2SelfieImagesRef.current.center) {
+        payload.witness2 = {
+          name: witness2Name,
+          cpf: witness2Cpf,
+          selfieCenterImage: witness2SelfieImagesRef.current.center,
+          selfieLeftImage: witness2SelfieImagesRef.current.left,
+          selfieRightImage: witness2SelfieImagesRef.current.right,
+          signatureType: signatureMode,
+          signatureImage,
         };
       }
 

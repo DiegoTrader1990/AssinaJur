@@ -206,8 +206,9 @@ const PUBLIC_EVENT_LABELS: Record<string, string> = {
 
 const SIGNER_ROLE_LABELS: Record<string, string> = {
   CLIENTE: 'Cliente / Outorgante',
-  ASSINANTE_A_ROGO: 'Assinante a Rogo',
-  TESTEMUNHA: 'Testemunha',
+  ASSINANTE_A_ROGO: 'Assinante a Rogo (Acompanhante)',
+  TESTEMUNHA: '1ª Testemunha Instrumentária',
+  TESTEMUNHA_2: '2ª Testemunha Instrumentária',
   ADVOGADO: 'Advogado',
   CONTRATANTE: 'Contratante',
   CONTRATADO: 'Contratado',

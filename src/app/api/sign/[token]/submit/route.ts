@@ -27,6 +27,8 @@ export async function POST(
       geoCity,
       geoState,
       rogo,
+      witness1,
+      witness2,
     } = body;
 
     const signer = await prisma.signer.findUnique({
@@ -157,6 +159,106 @@ export async function POST(
           },
         });
       }
+    }
+
+    // 5b. Se dados da 1ª Testemunha foram enviados no mesmo link, registrar assinatura
+    if (witness1 && witness1.name && witness1.cpf && witness1.selfieCenterImage) {
+      let witness1Signer = signer.document.signers.find((s) => s.role === 'TESTEMUNHA');
+      if (!witness1Signer) {
+        witness1Signer = await prisma.signer.create({
+          data: {
+            documentId: signer.document.id,
+            name: witness1.name,
+            cpf: witness1.cpf.replace(/\D/g, ''),
+            role: 'TESTEMUNHA',
+            status: 'PENDENTE',
+          },
+        });
+      }
+
+      await prisma.signer.update({
+        where: { id: witness1Signer.id },
+        data: {
+          name: witness1.name,
+          cpf: witness1.cpf.replace(/\D/g, ''),
+          status: 'ASSINADO',
+          signatureType: witness1.signatureType || 'DESENHADA',
+          signatureImage: witness1.signatureImage || null,
+          signedConsentText: `Assino como 1ª Testemunha Instrumentária do documento ${signer.document.title}.`,
+          selfieCenterImage: witness1.selfieCenterImage,
+          selfieLeftImage: witness1.selfieLeftImage,
+          selfieRightImage: witness1.selfieRightImage,
+          geoLat: typeof geoLat === 'number' ? geoLat : null,
+          geoLng: typeof geoLng === 'number' ? geoLng : null,
+          geoAccuracy: typeof geoAccuracy === 'number' ? geoAccuracy : null,
+          geoCity: geoCity || null,
+          geoState: geoState || null,
+          signedAt: new Date(),
+          ipAddress: clientIp,
+          userAgent,
+        },
+      });
+
+      await prisma.documentEvent.create({
+        data: {
+          documentId: signer.document.id,
+          signerId: witness1Signer.id,
+          eventType: 'SIGNATURE_SUBMITTED',
+          description: `Assinatura da 1ª Testemunha Instrumentária registrada no mesmo aparelho por ${witness1.name}.`,
+          ipAddress: clientIp,
+          userAgent,
+        },
+      });
+    }
+
+    // 5c. Se dados da 2ª Testemunha foram enviados no mesmo link, registrar assinatura
+    if (witness2 && witness2.name && witness2.cpf && witness2.selfieCenterImage) {
+      let witness2Signer = signer.document.signers.find((s) => s.role === 'TESTEMUNHA_2');
+      if (!witness2Signer) {
+        witness2Signer = await prisma.signer.create({
+          data: {
+            documentId: signer.document.id,
+            name: witness2.name,
+            cpf: witness2.cpf.replace(/\D/g, ''),
+            role: 'TESTEMUNHA_2',
+            status: 'PENDENTE',
+          },
+        });
+      }
+
+      await prisma.signer.update({
+        where: { id: witness2Signer.id },
+        data: {
+          name: witness2.name,
+          cpf: witness2.cpf.replace(/\D/g, ''),
+          status: 'ASSINADO',
+          signatureType: witness2.signatureType || 'DESENHADA',
+          signatureImage: witness2.signatureImage || null,
+          signedConsentText: `Assino como 2ª Testemunha Instrumentária do documento ${signer.document.title}.`,
+          selfieCenterImage: witness2.selfieCenterImage,
+          selfieLeftImage: witness2.selfieLeftImage,
+          selfieRightImage: witness2.selfieRightImage,
+          geoLat: typeof geoLat === 'number' ? geoLat : null,
+          geoLng: typeof geoLng === 'number' ? geoLng : null,
+          geoAccuracy: typeof geoAccuracy === 'number' ? geoAccuracy : null,
+          geoCity: geoCity || null,
+          geoState: geoState || null,
+          signedAt: new Date(),
+          ipAddress: clientIp,
+          userAgent,
+        },
+      });
+
+      await prisma.documentEvent.create({
+        data: {
+          documentId: signer.document.id,
+          signerId: witness2Signer.id,
+          eventType: 'SIGNATURE_SUBMITTED',
+          description: `Assinatura da 2ª Testemunha Instrumentária registrada no mesmo aparelho por ${witness2.name}.`,
+          ipAddress: clientIp,
+          userAgent,
+        },
+      });
     }
 
     // 6. Atualização do Status do Documento
