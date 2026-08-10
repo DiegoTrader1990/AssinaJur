@@ -431,31 +431,63 @@ export default function NewDocumentPage() {
 
         <div className="space-y-3 pt-4 border-t border-slate-100">
           <h2 className="text-xs font-extrabold text-[#071B3A] uppercase tracking-wider font-heading">
-            Links de Assinatura Direta
+            {createdDocument.isIlliterate || createdDocument.signers.some((s: any) => s.role === 'ASSINANTE_A_ROGO') ? 'Link Único de Assinatura a Rogo (Mesmo Celular)' : 'Links de Assinatura Direta'}
           </h2>
-          {createdDocument.signers.map((s: any) => (
-            <div key={s.id} className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 flex items-center justify-between gap-4">
-              <div>
-                <div className="font-bold text-slate-900 text-sm font-heading">{s.name}</div>
-                <div className="text-xs text-slate-500 font-medium">{s.role} • CPF: {s.cpf}</div>
-              </div>
+          
+          {createdDocument.isIlliterate || createdDocument.signers.some((s: any) => s.role === 'ASSINANTE_A_ROGO') ? (
+            <div className="p-5 bg-gradient-to-r from-blue-50/90 to-indigo-50/70 rounded-2xl border border-blue-200 space-y-3 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="font-extrabold text-[#071B3A] text-sm font-heading flex items-center gap-2">
+                    <span>{createdDocument.signers.find((s: any) => s.role === 'CLIENTE')?.name || createdDocument.signers[0]?.name}</span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-blue-600 text-white text-[10px] uppercase tracking-wider font-bold">Fluxo A Rogo Unificado</span>
+                  </div>
+                  <div className="text-xs text-slate-600 font-medium leading-relaxed">
+                    📱 <strong>1 Único Celular:</strong> O cliente e o acompanhante a rogo ({createdDocument.rogoName || createdDocument.signers.find((s: any) => s.role === 'ASSINANTE_A_ROGO')?.name || 'Acompanhante'}) assinarão em sequência no mesmo link abaixo.
+                  </div>
+                </div>
 
-              <button
-                onClick={() => handleCopyLink(s.token)}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-xs transition-all flex items-center gap-2 shrink-0 font-heading"
-              >
-                {copiedToken === s.token ? (
-                  <>
-                    <Check className="w-4 h-4 stroke-[3]" /> Copiado!
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4" /> Copiar Link
-                  </>
-                )}
-              </button>
+                <button
+                  onClick={() => handleCopyLink(createdDocument.signers.find((s: any) => s.role === 'CLIENTE')?.token || createdDocument.signers[0]?.token)}
+                  className="px-5 py-3 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold rounded-xl text-xs shadow-md transition-all flex items-center justify-center gap-2 shrink-0 font-heading"
+                >
+                  {copiedToken === (createdDocument.signers.find((s: any) => s.role === 'CLIENTE')?.token || createdDocument.signers[0]?.token) ? (
+                    <>
+                      <Check className="w-4 h-4 stroke-[3]" /> Copiado!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" /> Copiar Link Único de Assinatura
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
-          ))}
+          ) : (
+            createdDocument.signers.map((s: any) => (
+              <div key={s.id} className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 flex items-center justify-between gap-4">
+                <div>
+                  <div className="font-bold text-slate-900 text-sm font-heading">{s.name}</div>
+                  <div className="text-xs text-slate-500 font-medium">{s.role} • CPF: {s.cpf}</div>
+                </div>
+
+                <button
+                  onClick={() => handleCopyLink(s.token)}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-xs transition-all flex items-center gap-2 shrink-0 font-heading"
+                >
+                  {copiedToken === s.token ? (
+                    <>
+                      <Check className="w-4 h-4 stroke-[3]" /> Copiado!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" /> Copiar Link
+                    </>
+                  )}
+                </button>
+              </div>
+            ))
+          )}
         </div>
 
         <div className="pt-6 flex justify-between items-center border-t border-slate-100">
