@@ -107,24 +107,28 @@ function addLinkAnnotation(
   page: PDFPage,
   { x, y, width, height, url }: { x: number; y: number; width: number; height: number; url: string }
 ) {
-  const linkAnnotation = pdfDoc.context.obj({
-    Type: 'Annot',
-    Subtype: 'Link',
-    Rect: [x, y, x + width, y + height],
-    Border: [0, 0, 0],
-    A: {
-      Type: 'Action',
-      S: 'URI',
-      URI: PDFString.of(url),
-    },
-  });
-  const linkAnnotationRef = pdfDoc.context.register(linkAnnotation);
-  const node = (page as any).node;
-  const existingAnnots = node.Annots();
-  if (existingAnnots) {
-    existingAnnots.push(linkAnnotationRef);
-  } else {
-    node.set(PDFName.of('Annots'), pdfDoc.context.obj([linkAnnotationRef]));
+  try {
+    const linkAnnotation = pdfDoc.context.obj({
+      Type: 'Annot',
+      Subtype: 'Link',
+      Rect: [x, Math.max(0, y), x + width, Math.max(0, y + height)],
+      Border: [0, 0, 0],
+      F: 4,
+      A: {
+        Type: 'Action',
+        S: 'URI',
+        URI: PDFString.of(url),
+      },
+    });
+    const linkAnnotationRef = pdfDoc.context.register(linkAnnotation);
+    const annots = (page as any).node.get(PDFName.of('Annots'));
+    if (annots && typeof annots.push === 'function') {
+      annots.push(linkAnnotationRef);
+    } else {
+      (page as any).node.set(PDFName.of('Annots'), pdfDoc.context.obj([linkAnnotationRef]));
+    }
+  } catch (err) {
+    console.error('Erro ao adicionar link interativo no PDF:', err);
   }
 }
 
@@ -143,14 +147,9 @@ async function embedBase64Image(
     if (cover) {
       bytes = Buffer.from(await sharp(bytes)
         .rotate()
-        .resize(cover.width, cover.height, { fit: 'cover', position: 'attention' })
+        .resize(cover.width, cover.height, { fit: 'cover', position: 'top' })
         .png({ compressionLevel: 9, adaptiveFiltering: true })
         .toBuffer());
-      return await pdfDoc.embedPng(bytes);
-    }
-
-    // Detectar cabeçalho PNG: 0x89 0x50 0x4E 0x47
-    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
       return await pdfDoc.embedPng(bytes);
     }
     return await pdfDoc.embedJpg(bytes);
@@ -712,11 +711,12 @@ export async function generateFinalPdfCertificate(documentId: string) {
   for (const signer of doc.signers) {
     const hasPhotos = Boolean(signer.selfieCenterImage || signer.selfieLeftImage || signer.selfieRightImage);
     const hasLocation = signer.geoLat != null && signer.geoLng != null;
+    const mapsUrlStr = hasLocation ? `https://maps.google.com/?q=${Number(signer.geoLat)},${Number(signer.geoLng)}` : '';
     const locationText = hasLocation
-      ? `${signer.geoCity ? `${safeText(signer.geoCity, 200)}${signer.geoState ? '/' + signer.geoState : ''} - ` : ''}${Number(
+      ? `${signer.geoCity ? `${safeText(signer.geoCity, 200)}${signer.geoState ? '/' + signer.geoState : ''} — ` : ''}${Number(
           signer.geoLat
-        ).toFixed(6)}, ${Number(signer.geoLng).toFixed(6)}${
-          signer.geoAccuracy != null ? ` (precisão aproximada: ${Math.round(signer.geoAccuracy)} m)` : ''
+        ).toFixed(6)}, ${Number(signer.geoLng).toFixed(6)} [Abrir Mapa: ${mapsUrlStr}]${
+          signer.geoAccuracy != null ? ` (precisão: ${Math.round(signer.geoAccuracy)}m)` : ''
         }`
       : 'Não coletada (permissão não concedida)';
     const authenticationText = 'CPF + Prova de presença ao vivo (3 fotos) + Geolocalização do dispositivo';
