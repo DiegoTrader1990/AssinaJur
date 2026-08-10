@@ -168,9 +168,16 @@ export default function NewDocumentPage() {
       setRenderingPreview(true);
       try {
         const pdfjs = await import('pdfjs-dist');
-        pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version || '4.10.38'}/build/pdf.worker.min.mjs`;
+        const pdfjsVersion = pdfjs.version || '4.10.38';
+        pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.min.mjs`;
         const bytes = new Uint8Array(await file.arrayBuffer());
-        const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+        const loadingTask = pdfjs.getDocument({
+          data: bytes,
+          cMapUrl: `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/cmaps/`,
+          cMapPacked: true,
+          standardFontDataUrl: `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/standard_fonts/`,
+        });
+        const pdf = await loadingTask.promise;
         if (cancelled) return;
         setPdfPageCount(pdf.numPages);
         const safePage = Math.min(Math.max(1, placementPage), pdf.numPages);
@@ -190,8 +197,8 @@ export default function NewDocumentPage() {
         if (!context) return;
         canvas.width = Math.round(viewport.width);
         canvas.height = Math.round(viewport.height);
-        canvas.style.width = `${Math.round(viewport.width)}px`;
-        canvas.style.height = `${Math.round(viewport.height)}px`;
+        canvas.style.width = '100%';
+        canvas.style.height = 'auto';
         activeRender = pdfPage.render({ canvasContext: context, viewport });
         await activeRender.promise;
       } catch (previewError) {
