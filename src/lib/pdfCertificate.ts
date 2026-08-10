@@ -102,6 +102,30 @@ function wrapTextToWidth(text: any, font: any, size: number, maximumWidth: numbe
   return lines.length ? lines : ['Não informado'];
 }
 
+function parseUserAgentFriendly(ua: string | null | undefined): string {
+  if (!ua) return 'Não informado';
+  const str = String(ua);
+
+  let browser = 'Navegador Web';
+  if (str.includes('Edg/')) browser = 'Microsoft Edge';
+  else if (str.includes('Chrome/')) browser = 'Google Chrome';
+  else if (str.includes('Firefox/')) browser = 'Mozilla Firefox';
+  else if (str.includes('Safari/') && !str.includes('Chrome/')) browser = 'Apple Safari';
+  else if (str.includes('OPR/') || str.includes('Opera/')) browser = 'Opera';
+
+  let os = 'Desktop';
+  if (str.includes('Windows NT 10.0')) os = 'Windows 10/11';
+  else if (str.includes('Windows NT 6.3')) os = 'Windows 8.1';
+  else if (str.includes('Windows NT 6.1')) os = 'Windows 7';
+  else if (str.includes('Mac OS X')) os = 'macOS';
+  else if (str.includes('Android')) os = 'Android Mobile';
+  else if (str.includes('iPhone')) os = 'iOS (iPhone)';
+  else if (str.includes('iPad')) os = 'iOS (iPad)';
+  else if (str.includes('Linux')) os = 'Linux';
+
+  return `${browser} (${os})`;
+}
+
 function addLinkAnnotation(
   pdfDoc: PDFDocument,
   page: PDFPage,
@@ -109,14 +133,14 @@ function addLinkAnnotation(
 ) {
   try {
     const linkAnnotation = pdfDoc.context.obj({
-      Type: 'Annot',
-      Subtype: 'Link',
+      Type: PDFName.of('Annot'),
+      Subtype: PDFName.of('Link'),
       Rect: [x, Math.max(0, y), x + width, Math.max(0, y + height)],
       Border: [0, 0, 0],
       F: 4,
       A: {
-        Type: 'Action',
-        S: 'URI',
+        Type: PDFName.of('Action'),
+        S: PDFName.of('URI'),
         URI: PDFString.of(url),
       },
     });
@@ -447,8 +471,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
     }
   });
 
-  // ── 2. CERTIFICADO COMPACTO: UMA FOLHA DE EVIDÊNCIAS POR DOCUMENTO ──
-  const compactCertificate = doc.signers.length === 1;
+  // ── 2. CERTIFICADO COMPLETO MULTI-PÁGINAS COM TRILHA DE AUDITORIA ──
+  const compactCertificate = false;
   if (compactCertificate) {
     const certificatePage = pdfDoc.addPage([PAGE_W, PAGE_H]);
     const signer = doc.signers[0];
@@ -517,8 +541,18 @@ export async function generateFinalPdfCertificate(documentId: string) {
       ? `${signer.geoCity || ''}${signer.geoState ? '/' + signer.geoState : ''} | ${Number(signer.geoLat).toFixed(6)}, ${Number(signer.geoLng).toFixed(6)}${signer.geoAccuracy != null ? ` | precisão ${Math.round(signer.geoAccuracy)} m` : ''}`
       : 'Não coletada';
     compactValue(rightX, 524, compactLocation, 225, 6.8, regular, signer.geoLat != null ? linkBlue : muted, 2);
+    if (signer.geoLat != null && signer.geoLng != null) {
+      const mapsUrl = `https://www.google.com/maps?q=${Number(signer.geoLat)},${Number(signer.geoLng)}`;
+      addLinkAnnotation(pdfDoc, certificatePage, {
+        x: rightX,
+        y: 512,
+        width: 225,
+        height: 20,
+        url: mapsUrl,
+      });
+    }
     compactLabel(leftX, 505, 'Dispositivo e navegador');
-    compactValue(leftX, 493, signer.userAgent || 'Não informado', CW - 28, 6.4, regular, text, 2);
+    compactValue(leftX, 493, parseUserAgentFriendly(signer.userAgent), CW - 28, 7.8, bold, navy, 1);
 
     certificatePage.drawText('2. PROVA DE PRESENÇA AO VIVO - 3 REGISTROS FACIAIS', { x: CX, y: 458, size: 7.4, font: bold, color: navy });
     const compactPhotos: Array<[string, string | null]> = [
@@ -534,8 +568,23 @@ export async function generateFinalPdfCertificate(documentId: string) {
       const embedded = await embedBase64Image(pdfDoc, imageData, { width: 560, height: 528 });
       certificatePage.drawRectangle({ x: compactPhotoX - 2, y: 309, width: compactPhotoW + 4, height: compactPhotoH + 4, color: navy });
       certificatePage.drawRectangle({ x: compactPhotoX - 2, y: 441, width: compactPhotoW + 4, height: 4, color: gold });
-      if (embedded) certificatePage.drawImage(embedded, { x: compactPhotoX, y: 311, width: compactPhotoW, height: compactPhotoH - 2 });
-      certificatePage.drawRectangle({ x: compactPhotoX, y: 311, width: compactPhotoW, height: 18, color: navy, opacity: 0.93 });
+
+      const imgFrameH = compactPhotoH - 18;
+      certificatePage.drawRectangle({ x: compactPhotoX, y: 329, width: compactPhotoW, height: imgFrameH, color: rgb(0.88, 0.92, 0.97) });
+
+      if (embedded) {
+        const imgW = embedded.width;
+        const imgH = embedded.height;
+        const scale = Math.min(compactPhotoW / imgW, imgFrameH / imgH);
+        const drawW = Math.round(imgW * scale);
+        const drawH = Math.round(imgH * scale);
+        const offsetX = compactPhotoX + (compactPhotoW - drawW) / 2;
+        const offsetY = 329 + (imgFrameH - drawH) / 2;
+
+        certificatePage.drawImage(embedded, { x: offsetX, y: offsetY, width: drawW, height: drawH });
+      }
+
+      certificatePage.drawRectangle({ x: compactPhotoX, y: 311, width: compactPhotoW, height: 18, color: navy });
       certificatePage.drawText(label, { x: compactPhotoX + 7, y: 317, size: 5.8, font: bold, color: rgb(1, 1, 1) });
       certificatePage.drawText('VALIDADA', { x: compactPhotoX + compactPhotoW - 41, y: 317, size: 4.8, font: bold, color: gold });
       compactPhotoX += compactPhotoW + compactPhotoGap;
@@ -816,7 +865,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       rowHeight(ipLines.length, roleLines.length, 8.5)
     );
 
-    cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Dispositivo e navegador completos', signer.userAgent || 'Não informado', { size: 7.2, lineHeight: 9.2 });
+    cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Dispositivo e navegador completos', parseUserAgentFriendly(signer.userAgent), { size: 8, lineHeight: 9.8, font: bold, color: navy });
     const locationTop = cursor;
     cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Geolocalização completa do dispositivo', locationText, { size: 7.8, lineHeight: 9.8, color: hasLocation ? linkBlue : muted });
 
@@ -885,18 +934,18 @@ export async function generateFinalPdfCertificate(documentId: string) {
           color: navy,
         });
         page.drawRectangle({ x: photoX - 2, y: cardY + cardH - 2, width: boxW + 4, height: 4, color: gold });
-        page.drawRectangle({ x: photoX, y: cardY + 27, width: boxW, height: boxH, color: rgb(0.88, 0.92, 0.97) });
+        const imgFrameH = boxH - 22;
+        page.drawRectangle({ x: photoX, y: cardY + 49, width: boxW, height: imgFrameH, color: rgb(0.88, 0.92, 0.97) });
 
         if (embedded) {
-          // Escala proporcional sem distorção, centralizada no cartão vertical.
           const imgW = embedded.width;
           const imgH = embedded.height;
-          const scale = Math.min(boxW / imgW, boxH / imgH);
+          const scale = Math.min(boxW / imgW, imgFrameH / imgH);
           const drawW = Math.round(imgW * scale);
           const drawH = Math.round(imgH * scale);
 
           const offsetX = photoX + (boxW - drawW) / 2;
-          const offsetY = cardY + 27 + (boxH - drawH) / 2;
+          const offsetY = cardY + 49 + (imgFrameH - drawH) / 2;
 
           page.drawImage(embedded, {
             x: offsetX,
