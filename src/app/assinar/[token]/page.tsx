@@ -1052,6 +1052,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 }
                 setError('');
                 setStep('ROGO_SELFIE');
+                startSelfieCamera(undefined, false, 'ROGO');
               }}
               className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
             >
@@ -1084,9 +1085,28 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             )}
 
             <div className={cameraActive ? 'space-y-3' : 'hidden'}>
-              <div className="relative rounded-3xl overflow-hidden border-4 border-blue-500 aspect-[3/4] sm:aspect-[4/3] bg-black">
+              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[3/4] sm:aspect-[4/3] bg-black ${
+                frameState === 'GREEN' ? 'border-emerald-500 shadow-emerald-500/50 shadow-xl'
+                : frameState === 'YELLOW' ? 'border-amber-400'
+                : frameState === 'FLASH' ? 'border-white animate-pulse'
+                : 'border-slate-600'
+              }`}>
                 <video ref={selfieVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
-                <div className="absolute bottom-0 left-0 right-0 bg-[#071B3A]/90 text-blue-300 text-xs font-bold text-center py-3 px-4 backdrop-blur-sm">
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                  <div className={`w-[70%] h-[75%] rounded-[50%] border-[3px] border-dashed transition-all duration-300 ${
+                    frameState === 'GREEN' ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' 
+                    : frameState === 'YELLOW' ? 'border-amber-400/70 bg-amber-500/5'
+                    : 'border-white/30'
+                  }`} />
+                </div>
+                {cameraActive && countdownSecs !== null && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-30 bg-black/30 backdrop-blur-[2px]">
+                    <div className="w-24 h-24 rounded-full bg-black/80 border-4 border-amber-400 backdrop-blur-md flex items-center justify-center shadow-2xl animate-pulse">
+                      <span className="text-5xl font-black text-amber-400 font-mono tracking-tighter">{countdownSecs}</span>
+                    </div>
+                  </div>
+                )}
+                <div className="absolute bottom-0 left-0 right-0 bg-[#071B3A]/90 text-blue-300 text-xs font-bold text-center py-3 px-4 backdrop-blur-sm flex items-center justify-center gap-2 font-heading">
                   <span>{selfieInstruction}</span>
                 </div>
               </div>
@@ -1196,9 +1216,15 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 </span>
               </div>
               <div className="text-[11px] text-slate-700 space-y-1">
-                <p className="font-bold text-[#071B3A]">{signer?.name?.toUpperCase()}</p>
-                <p className="font-mono text-slate-600">CPF: {signer?.cpf ? formatFullCpf(signer.cpf) : '000.000.000-00'}</p>
-                <p className="text-[10px] text-emerald-700 font-extrabold uppercase">✓ PROVA DE PRESENÇA + GEOLOCALIZAÇÃO VINCULADOS</p>
+                <p className="font-bold text-[#071B3A]">
+                  {isRogadoConsent ? `CLIENTE: ${signer?.name?.toUpperCase()} • A ROGO: ${rogoName?.toUpperCase()}` : signer?.name?.toUpperCase()}
+                </p>
+                <p className="font-mono text-slate-600">
+                  {isRogadoConsent ? `CPF Cliente: ${signer?.cpf ? formatFullCpf(signer.cpf) : ''} | CPF A Rogo: ${rogoCpf ? formatFullCpf(rogoCpf) : ''}` : `CPF: ${signer?.cpf ? formatFullCpf(signer.cpf) : ''}`}
+                </p>
+                <p className="text-[10px] text-emerald-700 font-extrabold uppercase">
+                  {isRogadoConsent ? '✓ 6 FOTOS DE PRESENÇA (3 CLIENTE + 3 ACOMPANHANTE) VINCULADOS' : '✓ PROVA DE PRESENÇA + GEOLOCALIZAÇÃO VINCULADOS'}
+                </p>
               </div>
             </div>
 
