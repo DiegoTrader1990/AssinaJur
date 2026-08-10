@@ -62,13 +62,29 @@ export async function getSessionUser(): Promise<AuthUser | null> {
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      include: {
-        office: true,
-        permissions: true,
+      select: {
+        id: true,
+        officeId: true,
+        name: true,
+        email: true,
+        role: true,
+        active: true,
+        office: {
+          select: {
+            id: true,
+            name: true,
+            active: true,
+          },
+        },
+        permissions: {
+          select: {
+            permission: true,
+          },
+        },
       },
     });
 
-    if (!user || !user.active || !user.office.active) {
+    if (!user || !user.active || (user.office && !user.office.active)) {
       return null;
     }
 
@@ -78,8 +94,8 @@ export async function getSessionUser(): Promise<AuthUser | null> {
       name: user.name,
       email: user.email,
       role: user.role as UserRole,
-      officeName: user.office.name,
-      permissions: user.permissions.map((p) => p.permission),
+      officeName: user.office?.name || 'Escritório',
+      permissions: (user.permissions || []).map((p) => p.permission),
     };
   } catch (error) {
     console.error('Erro ao resolver sessão do usuário:', error);
