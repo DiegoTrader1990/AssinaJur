@@ -155,7 +155,11 @@ export default function NewDocumentPage() {
       setRenderingPreview(true);
       try {
         const pdfjs = await import('pdfjs-dist');
-        pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+        try {
+          pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+        } catch {
+          pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs';
+        }
         const bytes = new Uint8Array(await file.arrayBuffer());
         const pdf = await pdfjs.getDocument({ data: bytes }).promise;
         if (cancelled) return;
@@ -164,8 +168,8 @@ export default function NewDocumentPage() {
         if (safePage !== placementPage) setPlacementPage(safePage);
         const pdfPage = await pdf.getPage(safePage);
         const baseViewport = pdfPage.getViewport({ scale: 1 });
-        const availableWidth = Math.min(680, previewContainerRef.current?.clientWidth || 680);
-        const scale = Math.max(0.65, availableWidth / baseViewport.width);
+        const containerWidth = previewContainerRef.current?.clientWidth || 600;
+        const scale = Math.max(0.75, containerWidth / baseViewport.width);
         const viewport = pdfPage.getViewport({ scale });
         const canvas = previewCanvasRef.current;
         if (!canvas || cancelled) return;

@@ -25,7 +25,8 @@ import {
   Volume2,
   VolumeX,
   Scale,
-  UserCheck
+  UserCheck,
+  ChevronDown
 } from 'lucide-react';
 import { formatBrasiliaDateTime } from '@/lib/dateUtils';
 import { maskCpfCnpj } from '@/lib/formatters';
@@ -48,6 +49,8 @@ interface DocumentInfo {
   status: string;
   officeName: string;
   officeLogo?: string;
+  customMessage?: string;
+  previewText?: string;
   isIlliterate?: boolean;
   rogoName?: string;
   rogoCpf?: string;
@@ -229,6 +232,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [audioEnabled, setAudioEnabled] = useState<boolean>(true);
   const audioEnabledRef = useRef<boolean>(true);
   const [currentYaw, setCurrentYaw] = useState<number>(0.5);
+
+  const [showDocPreview, setShowDocPreview] = useState(false);
 
   // Geolocalização
   const [geo, setGeo] = useState<{ lat: number | null; lng: number | null; accuracy: number | null; city: string | null; state: string | null }>({
@@ -428,7 +433,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     if (elapsed >= 3000) {
       setCountdownSecs(null);
       centeredStartTimeRef.current = null;
-      triggerAutomaticCapture('center');
+      triggerAutomaticCapture(currentKey);
     }
   };
 
@@ -1061,6 +1066,32 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 {isRogadoConsent ? `Desenhe ou confirme a assinatura a rogo pelo cliente ${signer?.name}.` : 'Escolha o formato e assine no quadro abaixo.'}
               </p>
             </div>
+            {/* Botão para ler / visualizar documento integral */}
+            <button
+              type="button"
+              onClick={() => setShowDocPreview(!showDocPreview)}
+              className="w-full py-3 px-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl text-xs font-bold text-[#071B3A] flex items-center justify-between transition-all font-heading shadow-xs"
+            >
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-blue-600" />
+                <span>Ler / Visualizar Documento</span>
+              </div>
+              <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${showDocPreview ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showDocPreview && (
+              <div className="p-4 bg-slate-50/90 rounded-2xl border border-slate-200 space-y-2 text-xs max-h-64 overflow-y-auto animate-in fade-in duration-200">
+                <h4 className="font-heading font-extrabold text-[#071B3A] text-sm">{document?.title}</h4>
+                {document?.customMessage && (
+                  <p className="text-slate-700 italic bg-amber-50 p-2.5 rounded-xl border border-amber-200 text-[11px] font-medium">
+                    "{document.customMessage}"
+                  </p>
+                )}
+                <div className="text-slate-700 font-serif leading-relaxed text-[11px] whitespace-pre-wrap pt-2 border-t border-slate-200">
+                  {document?.previewText || 'Documento jurídico anexado em formato PDF. As assinaturas e provas de presença serão vinculadas ao Certificado de Evidências Jurídicas.'}
+                </div>
+              </div>
+            )}
 
             <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-heading">
               <button
