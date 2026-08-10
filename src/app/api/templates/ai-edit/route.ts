@@ -48,13 +48,30 @@ export async function POST(req: Request) {
       );
     }
 
-    const systemPrompt = `Você é um editor especializado em documentos jurídicos para escritórios de advocacia brasileiros.
-Você receberá o conteúdo HTML atual de um modelo de documento jurídico e um comando de modificação.
-Você deve retornar APENAS o HTML modificado, sem explicações adicionais e sem blocos markdown de código (como \`\`\`html).
-CRÍTICO: NUNCA remova, modifique ou adicione variáveis de modelo no formato {{nome_da_variavel}}. Esses são espaços reservados para preenchimento automático e devem ser preservados exatamente como aparecem.
-Mantenha a mesma estrutura HTML e formatação original.
-Mantenha o documento em linguagem jurídica formal em português do Brasil.
-Se o comando pedir para alterar porcentagens, valores ou cláusulas, aplique a alteração de forma precisa.`;
+    const systemPrompt = `Você é um assistente especialista em redação e formatação de modelos de documentos jurídicos brasileiros para o sistema AssinaJur.
+Você receberá o conteúdo HTML atual de um modelo e uma instrução de alteração do advogado.
+
+SUA MISSÃO PRINCIPAL:
+1. Retorne APENAS o código HTML resultante da alteração, sem explicações, sem texto introdutório e sem blocos markdown de código (NÃO use \`\`\`html ou \`\`\`).
+2. Se o usuário pedir para remover dados pessoais, anonimizar, limpar dados ou transformar um documento específico em modelo reutilizável, substitua dados reais pelas variáveis de preenchimento automático do AssinaJur:
+   - Nomes de clientes -> {{cliente_nome}}
+   - CPF -> {{cliente_cpf}}
+   - RG -> {{cliente_rg}}
+   - Nacionalidade -> {{cliente_nacionalidade}}
+   - Telefone/WhatsApp -> {{cliente_telefone}}
+   - Endereço -> {{cliente_endereco}}
+   - Estado Civil -> {{cliente_estado_civil}}
+   - Profissão -> {{cliente_profissao}}
+   - Nome do Advogado -> {{advogado_nome}}
+   - OAB do Advogado -> {{advogado_oab}}
+   - Nome do Escritório -> {{escritorio_nome}}
+   - Valor de Honorarios -> {{valor_honorarios}}
+   - Porcentagem / Percentual de Êxito -> {{percentual_exito}}
+   - Cidade -> {{cidade}}
+   - Data -> {{data_atual}}
+3. Se o documento já possuir variáveis {{nome_da_variavel}}, PRESERVE-AS exatamente como estão, a menos que o comando peça para alterá-las.
+4. Mantenha a mesma estrutura e formatação HTML original (tags <strong>, <h1>, <h2>, <p>, <ul>, <li>, etc).
+5. Mantenha o tom estritamente formal e jurídico da advocacia brasileira.`;
 
     const userPrompt = `Comando de modificação: ${command}\n\nConteúdo HTML atual:\n${contentHtml}`;
 
@@ -94,8 +111,8 @@ Se o comando pedir para alterar porcentagens, valores ou cláusulas, aplique a a
       );
     }
 
-    // Clean up possible markdown code block wrapping
-    aiResult = aiResult.replace(/^```html\s*/i, '').replace(/```\s*$/, '').trim();
+    // Limpar blocos de código markdown se houver
+    aiResult = aiResult.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/, '').trim();
 
     // Validate if tags are missing
     const originalTags = contentHtml.match(/\{\{[a-zA-Z_]+\}\}/g) || [];
@@ -113,6 +130,7 @@ Se o comando pedir para alterar porcentagens, valores ou cláusulas, aplique a a
     return NextResponse.json({
       success: true,
       contentHtml: aiResult,
+      html: aiResult,
       ...(warnings.length > 0 ? { warnings } : {}),
     });
   } catch (error) {

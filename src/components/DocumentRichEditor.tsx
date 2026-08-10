@@ -101,8 +101,11 @@ export function DocumentRichEditor({
     }
   };
 
-  const handleAiEdit = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleAiEdit = async (e?: any) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (!aiCommand.trim() || !editorRef.current) return;
 
     const currentHtml = editorRef.current.innerHTML;
@@ -131,13 +134,14 @@ export function DocumentRichEditor({
       }
 
       const data = await response.json();
+      const updatedHtml = data.contentHtml || data.html;
       
-      if (data.html) {
-        editorRef.current.innerHTML = data.html;
-        onChange(data.html);
+      if (updatedHtml) {
+        editorRef.current.innerHTML = updatedHtml;
+        onChange(updatedHtml);
         
         // Check for missing tags
-        const newTagsMatch = data.html.match(/{{[^}]+}}/g) || [];
+        const newTagsMatch = updatedHtml.match(/{{[^}]+}}/g) || [];
         const newTags = Array.from(new Set(newTagsMatch));
         
         const missingTags = currentTags.filter(tag => !newTags.includes(tag));
@@ -146,10 +150,12 @@ export function DocumentRichEditor({
         }
         
         setAiCommand('');
+      } else {
+        throw new Error(data.error || 'A IA não retornou o HTML formatado');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro na IA Copilot:', error);
-      setAiWarning('Ocorreu um erro ao tentar usar a IA. Tente novamente.');
+      setAiWarning(error?.message || 'Ocorreu um erro ao tentar usar a IA. Tente novamente.');
     } finally {
       setIsProcessingAi(false);
     }
@@ -311,19 +317,27 @@ export function DocumentRichEditor({
             </span>
           </div>
           
-          <form onSubmit={handleAiEdit} className="flex gap-2">
+          <div className="flex gap-2">
             <div className="relative flex-1">
               <input
                 type="text"
                 value={aiCommand}
                 onChange={(e) => setAiCommand(e.target.value)}
-                placeholder="Ex: Altere o percentual de êxito para 30%..."
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleAiEdit(e);
+                  }
+                }}
+                placeholder="Ex: Remova dados pessoais e substitua por variáveis ou altere honorários..."
                 className="w-full pl-3 pr-10 py-2 rounded-xl border border-blue-200 focus:border-blue-400 focus:ring focus:ring-blue-200 focus:ring-opacity-50 text-sm outline-none transition-all"
                 disabled={isProcessingAi}
               />
             </div>
             <button
-              type="submit"
+              type="button"
+              onClick={handleAiEdit}
               disabled={isProcessingAi || !aiCommand.trim()}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold font-heading flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -336,7 +350,7 @@ export function DocumentRichEditor({
                 </>
               )}
             </button>
-          </form>
+          </div>
           
           {aiWarning && (
             <div className="mt-2 text-xs text-amber-600 font-medium bg-amber-50 p-2 rounded-lg border border-amber-200">
