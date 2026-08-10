@@ -587,7 +587,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       if (embedded) {
         const imgW = embedded.width;
         const imgH = embedded.height;
-        const scale = Math.max(compactPhotoW / imgW, imgFrameH / imgH);
+        const scale = Math.min(compactPhotoW / imgW, imgFrameH / imgH);
         const drawW = Math.round(imgW * scale);
         const drawH = Math.round(imgH * scale);
         const offsetX = compactPhotoX + (compactPhotoW - drawW) / 2;
@@ -1041,7 +1041,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
         if (embedded) {
           const imgW = embedded.width;
           const imgH = embedded.height;
-          const scale = Math.max(boxW / imgW, imgFrameH / imgH);
+          const scale = Math.min(boxW / imgW, imgFrameH / imgH);
           const drawW = Math.round(imgW * scale);
           const drawH = Math.round(imgH * scale);
 

@@ -488,7 +488,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           sourceX = (sourceWidth - cropWidth) / 2;
         } else if (sourceRatio < targetRatio) {
           cropHeight = sourceWidth / targetRatio;
-          sourceY = 0;
+          sourceY = (sourceHeight - cropHeight) / 2;
         }
 
         ctx.save();
