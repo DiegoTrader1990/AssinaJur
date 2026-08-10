@@ -95,6 +95,19 @@ export default function NewDocumentPage() {
 
   const [letterhead, setLetterhead] = useState<{id: string; originalName: string; sizeBytes: number} | null>(null);
   const [uploadingLetterhead, setUploadingLetterhead] = useState(false);
+  const [pdfObjectUrl, setPdfObjectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setPdfObjectUrl(url);
+      return () => {
+        URL.revokeObjectURL(url);
+      };
+    } else {
+      setPdfObjectUrl(null);
+    }
+  }, [file]);
 
   useEffect(() => {
     fetch('/api/clients')
@@ -918,12 +931,19 @@ export default function NewDocumentPage() {
               <div className="overflow-auto rounded-xl border border-slate-300 bg-slate-200/70 p-3 max-h-[680px]">
                 <div
                   ref={previewContainerRef}
-                  className="relative mx-auto w-fit shadow-2xl bg-white touch-none select-none"
+                  className="relative mx-auto w-full max-w-[640px] min-h-[620px] shadow-2xl bg-white touch-none select-none rounded-xl overflow-hidden"
                   onPointerMove={moveStamp}
                   onPointerUp={() => { dragOffsetRef.current = null; }}
                   onPointerCancel={() => { dragOffsetRef.current = null; }}
                 >
-                  <canvas ref={previewCanvasRef} className="block max-w-full h-auto" />
+                  {pdfObjectUrl && (
+                    <iframe
+                      src={`${pdfObjectUrl}#page=${placementPage}&toolbar=0&navpanes=0`}
+                      className="w-full h-[620px] border-0 pointer-events-none rounded-xl block"
+                      title="Visualização da página do documento"
+                    />
+                  )}
+                  <canvas ref={previewCanvasRef} className="block max-w-full h-auto absolute inset-0 pointer-events-none opacity-0" />
                   <div
                     role="button"
                     tabIndex={0}
