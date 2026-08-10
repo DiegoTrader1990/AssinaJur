@@ -75,39 +75,51 @@ SUA MISSÃO PRINCIPAL:
 
     const userPrompt = `Comando de modificação: ${command}\n\nConteúdo HTML atual:\n${contentHtml}`;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: systemPrompt }],
-          },
-          contents: [{ parts: [{ text: userPrompt }] }],
-          generationConfig: {
-            temperature: 0.1,
-          },
-        }),
-      }
-    );
+    const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-latest'];
+    let aiResult = '';
+    let lastError = '';
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error('[AI Edit] Erro na API do Gemini:', errText);
-      return NextResponse.json(
-        { success: false, error: 'Falha na comunicação com o serviço de IA' },
-        { status: 502 }
-      );
+    for (const modelName of modelsToTry) {
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              systemInstruction: {
+                parts: [{ text: systemPrompt }],
+              },
+              contents: [{ parts: [{ text: userPrompt }] }],
+              generationConfig: {
+                temperature: 0.1,
+              },
+            }),
+          }
+        );
+
+        if (response.ok) {
+          const json = await response.json();
+          const candidateText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (candidateText) {
+            aiResult = candidateText;
+            break;
+          }
+        } else {
+          lastError = await response.text();
+          console.warn(`[AI Edit] Modelo ${modelName} retornou erro:`, lastError);
+        }
+      } catch (err: any) {
+        lastError = err?.message || String(err);
+        console.warn(`[AI Edit] Falha ao chamar ${modelName}:`, lastError);
+      }
     }
 
-    const json = await response.json();
-    let aiResult = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-
     if (!aiResult) {
+      console.error('[AI Edit] Nenhum modelo Gemini respondeu com sucesso. Último erro:', lastError);
       return NextResponse.json(
-        { success: false, error: 'A IA não retornou o conteúdo esperado' },
-        { status: 500 }
+        { success: false, error: 'O serviço de IA está indisponível no momento. Tente novamente em instantes.' },
+        { status: 502 }
       );
     }
 
@@ -115,9 +127,9 @@ SUA MISSÃO PRINCIPAL:
     aiResult = aiResult.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/, '').trim();
 
     // Validate if tags are missing
-    const originalTags = contentHtml.match(/\{\{[a-zA-Z_]+\}\}/g) || [];
-    const resultTags = aiResult.match(/\{\{[a-zA-Z_]+\}\}/g) || [];
-    const missingTags = originalTags.filter((t: string) => !resultTags.includes(t));
+    const originalTags: string[] = (contentHtml.match(/\{\{[a-zA-Z_]+\}\}/g) as string[]) || [];
+    const resultTags: string[] = (aiResult.match(/\{\{[a-zA-Z_]+\}\}/g) as string[]) || [];
+    const missingTags = originalTags.filter((t) => !resultTags.includes(t));
 
     const warnings: string[] = [];
     if (missingTags.length > 0) {

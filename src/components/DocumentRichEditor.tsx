@@ -117,23 +117,29 @@ export function DocumentRichEditor({
     setIsProcessingAi(true);
     setAiWarning(null);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+
     try {
       const response = await fetch('/api/templates/ai-edit', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        signal: controller.signal,
         body: JSON.stringify({
           contentHtml: currentHtml,
           command: aiCommand,
         }),
       });
-
-      if (!response.ok) {
-        throw new Error('Falha ao processar edição com IA');
-      }
+      clearTimeout(timeoutId);
 
       const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Falha ao processar edição com IA');
+      }
+
       const updatedHtml = data.contentHtml || data.html;
       
       if (updatedHtml) {
