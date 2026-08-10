@@ -26,7 +26,8 @@ import {
   VolumeX,
   Scale,
   UserCheck,
-  ChevronDown
+  ChevronDown,
+  X
 } from 'lucide-react';
 import { formatBrasiliaDateTime } from '@/lib/dateUtils';
 import { maskCpfCnpj } from '@/lib/formatters';
@@ -686,16 +687,21 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   const handleSubmitSignature = async (e: React.FormEvent) => {
     e.preventDefault();
-    const currentClientSelfies = selfieImagesRef.current;
-    const currentRogoSelfies = rogoSelfieImagesRef.current;
+    const clientCenter = selfieImages.center || selfieImagesRef.current.center;
+    const clientLeft = selfieImages.left || selfieImagesRef.current.left;
+    const clientRight = selfieImages.right || selfieImagesRef.current.right;
 
-    if (!currentClientSelfies.center || !currentClientSelfies.left || !currentClientSelfies.right) {
+    const rogoCenter = rogoSelfieImages.center || rogoSelfieImagesRef.current.center;
+    const rogoLeft = rogoSelfieImages.left || rogoSelfieImagesRef.current.left;
+    const rogoRight = rogoSelfieImages.right || rogoSelfieImagesRef.current.right;
+
+    if (!clientCenter || !clientLeft || !clientRight) {
       setError('É necessário concluir a prova de presença do cliente (3 fotos) antes de assinar.');
       return;
     }
 
     if (isRogadoConsent) {
-      if (!currentRogoSelfies.center || !currentRogoSelfies.left || !currentRogoSelfies.right) {
+      if (!rogoCenter || !rogoLeft || !rogoRight) {
         setError('O Assinante a Rogo também deve concluir a prova de presença com 3 fotos no mesmo aparelho.');
         return;
       }
@@ -724,9 +730,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         signatureType: isRogadoConsent ? 'CONSENTIMENTO_A_ROGO' : signatureMode,
         signatureImage: isRogadoConsent ? null : signatureImage,
         signedConsentText: `Declaro que li e concordo com os termos do documento ${document?.title || 'documento'}.`,
-        selfieCenterImage: currentClientSelfies.center,
-        selfieLeftImage: currentClientSelfies.left,
-        selfieRightImage: currentClientSelfies.right,
+        selfieCenterImage: clientCenter,
+        selfieLeftImage: clientLeft,
+        selfieRightImage: clientRight,
         geoLat: geo.lat,
         geoLng: geo.lng,
         geoAccuracy: geo.accuracy,
@@ -739,9 +745,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           name: rogoName,
           cpf: rogoCpf,
           relationship: rogoRelationship,
-          selfieCenterImage: currentRogoSelfies.center,
-          selfieLeftImage: currentRogoSelfies.left,
-          selfieRightImage: currentRogoSelfies.right,
+          selfieCenterImage: rogoCenter,
+          selfieLeftImage: rogoLeft,
+          selfieRightImage: rogoRight,
           signatureType: signatureMode,
           signatureImage,
           signedConsentText: `Assino a rogo pelo cliente ${signer?.name}, autorizando expressamente a assinatura deste documento.`,
@@ -858,6 +864,15 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 Olá, <strong className="text-[#071B3A]">{signer?.name}</strong>! Confirme seu CPF abaixo para acessar o documento e iniciar a prova de presença ao vivo.
               </p>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setShowDocPreview(true)}
+              className="w-full py-3 px-4 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-2xl text-xs font-extrabold text-[#071B3A] flex items-center justify-center gap-2 transition-all font-heading shadow-xs mb-3"
+            >
+              <FileText className="w-4 h-4 text-blue-600" />
+              <span>📄 Ler / Visualizar Documento Integral</span>
+            </button>
 
             <form onSubmit={handleConfirmCpf} className="space-y-4">
               <div>
@@ -1323,6 +1338,49 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               <p className="text-xs text-slate-500 font-medium leading-relaxed">
                 A presença do cliente e a assinatura a rogo foram vinculadas ao Certificado de Evidências Jurídicas.
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL DE LEITURA DO DOCUMENTO INTEGRAL */}
+        {showDocPreview && (
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-2xl rounded-3xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
+              <div className="p-5 bg-[#071B3A] text-white flex items-center justify-between font-heading">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-amber-400" />
+                  <h3 className="font-extrabold text-sm truncate">{document?.title || 'Visualização do Documento'}</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDocPreview(false)}
+                  className="p-1.5 text-slate-300 hover:text-white rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto space-y-4 font-serif text-slate-800 text-xs sm:text-sm leading-relaxed bg-slate-50/50">
+                {document?.customMessage && (
+                  <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 font-sans text-xs">
+                    <strong>Mensagem do Escritório:</strong> "{document.customMessage}"
+                  </div>
+                )}
+                <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs whitespace-pre-wrap font-serif text-slate-800 text-xs sm:text-sm">
+                  {document?.previewText || 'Documento jurídico anexado em formato PDF. As assinaturas e provas de presença serão vinculadas ao Certificado de Evidências Jurídicas.'}
+                </div>
+              </div>
+
+              <div className="p-4 bg-white border-t border-slate-200 flex justify-between items-center">
+                <span className="text-[11px] text-slate-500 font-medium font-heading">AssinaJur • Validade MP 2.200-2</span>
+                <button
+                  type="button"
+                  onClick={() => setShowDocPreview(false)}
+                  className="px-6 py-2.5 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-xl text-xs font-heading shadow-md"
+                >
+                  Fechar Leitura
+                </button>
+              </div>
             </div>
           </div>
         )}
