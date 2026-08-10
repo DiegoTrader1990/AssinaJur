@@ -313,8 +313,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
           : doc.signers.map((item) => item.name).join(', ');
       const signerNames = safeText(signerSummary, 180);
       const qrStampSize = Math.min(38, Math.max(26, stampH - 27));
-      const contentX = stampX + qrStampSize + 20;
-      const contentW = stampX + stampW - contentX - 8;
+      const contentX = stampX + qrStampSize + 15;
+      const contentW = stampX + stampW - contentX - 10;
       const nameLines = wrapTextToWidth(signerNames, bold, 7.1, contentW).slice(0, 2);
       const signedAt = doc.signers.find((item) => item.signedAt)?.signedAt || doc.completedAt || new Date();
       p.drawRectangle({ x: stampX + 2.5, y: stampY - 2.5, width: stampW, height: stampH, color: rgb(0.78, 0.81, 0.86), opacity: 0.35 });
@@ -330,24 +330,24 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
       p.drawText('ASSINATURA ELETRÔNICA QUALIFICADA', { x: contentX, y: stampY + stampH - 33, size: 5.4, font: bold, color: green });
       p.drawImage(qrImage, { x: stampX + 8, y: stampY + 6, width: qrStampSize, height: qrStampSize });
-      p.drawLine({ start: { x: contentX - 8, y: stampY + 6 }, end: { x: contentX - 8, y: stampY + stampH - 8 }, thickness: 0.7, color: panelBorder });
+      p.drawLine({ start: { x: contentX - 7, y: stampY + 6 }, end: { x: contentX - 7, y: stampY + stampH - 8 }, thickness: 0.7, color: panelBorder });
 
-      // Se o signatário desenhou uma rubrica opcional, desenha por cima do selo
+      // Se o signatário desenhou uma rubrica opcional, desenha por cima do selo com opacidade suave
       if (drawnSigImg) {
-        const sigW = Math.min(stampW * 0.65, 110);
-        const sigH = Math.min(stampH * 0.65, 40);
+        const sigW = Math.min(stampW * 0.6, 100);
+        const sigH = Math.min(stampH * 0.6, 36);
         p.drawImage(drawnSigImg, {
           x: stampX + (stampW - sigW) / 2 + 10,
           y: stampY + (stampH - sigH) / 2,
           width: sigW,
           height: sigH,
-          opacity: 0.88,
+          opacity: 0.75,
         });
       }
 
-      p.drawText(doc.signers.length > 1 ? `${doc.signers.length} CPFs + SELFIES + GEOLOCALIZAÇÃO` : 'CPF + 3 SELFIES + GEOLOCALIZAÇÃO', { x: contentX, y: stampY + 20, size: 5.2, font: regular, color: text });
-      p.drawText(formatBrasiliaDateTime(signedAt, false).replace(/\s*\(.+$/, ''), { x: contentX, y: stampY + 12, size: 5.2, font: regular, color: muted });
-      p.drawText(`CÓDIGO DE VALIDAÇÃO: ${verificationCode}`, { x: contentX, y: stampY + 4, size: 7.2, font: bold, color: navy });
+      p.drawText(doc.signers.length > 1 ? `${doc.signers.length} CPFs + SELFIES + GEOLOCALIZAÇÃO` : 'CPF + 3 SELFIES + GEOLOCALIZAÇÃO', { x: contentX, y: stampY + 20, size: 5.1, font: regular, color: text });
+      p.drawText(formatBrasiliaDateTime(signedAt, false).replace(/\s*\(.+$/, ''), { x: contentX, y: stampY + 12, size: 5.1, font: regular, color: muted });
+      p.drawText(`CÓD: ${verificationCode}`, { x: contentX, y: stampY + 4, size: 6.8, font: bold, color: navy });
     } else if (sigPos === 'TOP') {
       const stripH = 22;
       const stripY = pH - stripH;
