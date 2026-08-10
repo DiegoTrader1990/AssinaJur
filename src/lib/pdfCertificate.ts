@@ -471,6 +471,18 @@ export async function generateFinalPdfCertificate(documentId: string) {
     }
   });
 
+  const drawFrame = (p: PDFPage, subtitle: string) => {
+    const cleanSubtitle = safeText(subtitle, 120);
+    p.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: paperBg });
+    p.drawRectangle({ x: 20, y: 20, width: 555.28, height: 801.89, borderWidth: 1.2, borderColor: panelBorder });
+    p.drawRectangle({ x: 20, y: 760, width: 555.28, height: 61.89, color: navy });
+    p.drawRectangle({ x: 20, y: 757, width: 555.28, height: 3, color: gold });
+    p.drawText('ASSINAJUR', { x: CX, y: 794, size: 14, font: bold, color: rgb(1, 1, 1) });
+    p.drawText('ASSINATURA ELETRÔNICA PARA ADVOCACIA', { x: CX, y: 780, size: 6.2, font: regular, color: rgb(0.72, 0.79, 0.9) });
+    const subtitleWidth = bold.widthOfTextAtSize(cleanSubtitle, 8.2);
+    p.drawText(cleanSubtitle, { x: CR - subtitleWidth, y: 787, size: 8.2, font: bold, color: rgb(1, 1, 1) });
+  };
+
   // ── 2. CERTIFICADO COMPACTO DE 1 PÁGINA (GARANTE 2 FOLHAS NO TOTAL PARA DOCUMENTOS DE 1 A 2 SIGNATÁRIOS) ──
   const compactCertificate = doc.signers.length <= 2;
   if (compactCertificate) {
@@ -641,6 +653,105 @@ export async function generateFinalPdfCertificate(documentId: string) {
       certificatePage.drawText(milestone, { x: itemX + 15, y: itemY + 1, size: 6.4, font: bold, color: navy });
     });
     certificatePage.drawText(safeText(`Concluído em ${formatBrasiliaDateTime(doc.completedAt || new Date())}`, 220), { x: CX + 16, y: auditY + 7, size: 5.7, font: italic, color: muted });
+
+    // ── PÁGINA 2 DO CERTIFICADO: TRILHA PÚBLICA DE EVENTOS (DETALHAMENTO CRONOLÓGICO) ──
+    if (publicEvents.length > 0) {
+      const timelinePage = pdfDoc.addPage([PAGE_W, PAGE_H]);
+      drawFrame(timelinePage, '6. TRILHA PÚBLICA DE EVENTOS - DETALHAMENTO CRONOLÓGICO');
+
+      const timelineTitleLines = wrapTextToWidth(doc.title, bold, 11, CW);
+      timelineTitleLines.forEach((line, index) => {
+        timelinePage.drawText(line, { x: CX, y: 736 - index * 12, size: 11, font: bold, color: navy });
+      });
+      timelinePage.drawText(`Código de Autenticidade: ${verificationCode}`, { x: CX, y: 718, size: 8, font: mono, color: muted });
+
+      const dateColX = CX + 6;
+      const dateColWidth = 106;
+      const eventColX = dateColX + dateColWidth + 8;
+      const eventColWidth = 126;
+      const descColX = eventColX + eventColWidth + 8;
+      const descColWidth = CR - descColX - 6;
+      const headerHeight = 18;
+
+      const headerY = 690;
+      timelinePage.drawRectangle({ x: CX, y: headerY - 4, width: CW, height: headerHeight, color: navy });
+      timelinePage.drawText('DATA E HORA (BRT)', { x: dateColX, y: headerY, size: 7, font: bold, color: rgb(1, 1, 1) });
+      timelinePage.drawText('EVENTO', { x: eventColX, y: headerY, size: 7, font: bold, color: rgb(1, 1, 1) });
+      timelinePage.drawText('DESCRIÇÃO', { x: descColX, y: headerY, size: 7, font: bold, color: rgb(1, 1, 1) });
+
+      let rowY = headerY - 4;
+      const rows = publicEvents.map((ev) => {
+        const dateText = formatBrasiliaDateTime(ev.createdAt, true).replace(' (Horário de Brasília — UTC−3)', '');
+        const eventLabel = PUBLIC_EVENT_LABELS[ev.eventType] || ev.eventType;
+        const dateLines = wrapTextToWidth(dateText, mono, 7, dateColWidth - 8);
+        const eventLines = wrapTextToWidth(eventLabel, bold, 7.2, eventColWidth - 8);
+        const descLines = wrapTextToWidth(ev.description, regular, 7, descColWidth - 6);
+        const lineCount = Math.max(1, dateLines.length, eventLines.length, descLines.length);
+        const height = Math.max(26, 15 + lineCount * 9.5);
+        return { dateLines, eventLines, descLines, height };
+      });
+
+      rows.forEach((row, index) => {
+        rowY -= row.height;
+        if (index % 2 === 1) {
+          timelinePage.drawRectangle({ x: CX, y: rowY, width: CW, height: row.height, color: panelBg });
+        }
+        let dateY = rowY + row.height - 13;
+        for (const line of row.dateLines) {
+          timelinePage.drawText(line, { x: dateColX, y: dateY, size: 7, font: mono, color: text });
+          dateY -= 9.5;
+        }
+
+        let eventY = rowY + row.height - 13;
+        for (const line of row.eventLines) {
+          timelinePage.drawText(line, { x: eventColX, y: eventY, size: 7.2, font: bold, color: navy });
+          eventY -= 9.5;
+        }
+
+        let descY = rowY + row.height - 13;
+        for (const line of row.descLines) {
+          timelinePage.drawText(line, { x: descColX, y: descY, size: 7, font: regular, color: text });
+          descY -= 9.5;
+        }
+
+        timelinePage.drawLine({ start: { x: eventColX - 4, y: rowY }, end: { x: eventColX - 4, y: rowY + row.height }, thickness: 0.35, color: panelBorder });
+        timelinePage.drawLine({ start: { x: descColX - 4, y: rowY }, end: { x: descColX - 4, y: rowY + row.height }, thickness: 0.35, color: panelBorder });
+        timelinePage.drawLine({ start: { x: CX, y: rowY }, end: { x: CR, y: rowY }, thickness: 0.5, color: panelBorder });
+      });
+
+      timelinePage.drawRectangle({ x: 20, y: 20, width: 555.28, height: 34, color: rgb(0.96, 0.97, 0.99) });
+      timelinePage.drawText(`Trilha de auditoria concluída com ${publicEvents.length} evento(s) registrado(s). MP 2.200-2/2001 | Lei 14.063/2020.`, { x: CX, y: 34, size: 6.6, font: italic, color: muted });
+    }
+
+    pdfDoc.setTitle(`${doc.title} - Assinado Eletronicamente`);
+    pdfDoc.setAuthor(doc.office.name);
+    pdfDoc.setSubject(`Certificado de Evidências - Código ${verificationCode}`);
+    pdfDoc.setKeywords(['Assinatura Eletrônica', 'MP 2200-2/2001', 'Lei 14063/2020', 'AssinaJur', 'Horário de Brasília']);
+
+    const finalPdfBytes = await pdfDoc.save();
+    const finalBuffer = Buffer.from(finalPdfBytes);
+    const signedHash = calculateHash(finalBuffer);
+
+    const signedStorageFile = await saveFile({
+      officeId: doc.officeId,
+      fileBuffer: finalBuffer,
+      originalName: `${doc.title.replace(/[^a-zA-Z0-9]/g, '_')}_ASSINADO.pdf`,
+      mimeType: 'application/pdf',
+    });
+
+    await prisma.document.update({
+      where: { id: doc.id },
+      data: {
+        signedFileId: signedStorageFile.id,
+        signedHash,
+      },
+    });
+
+    return {
+      signedStorageFile,
+      signedHash,
+      verificationCode,
+    };
   }
 
   if (!compactCertificate) {
@@ -648,17 +759,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
   let page = pdfDoc.addPage([PAGE_W, PAGE_H]);
   let manifestPageCount = 1;
 
-  const drawFrame = (p: PDFPage, subtitle: string) => {
-    const cleanSubtitle = safeText(subtitle, 120);
-    p.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: paperBg });
-    p.drawRectangle({ x: 20, y: 20, width: 555.28, height: 801.89, borderWidth: 1.2, borderColor: panelBorder });
-    p.drawRectangle({ x: 20, y: 760, width: 555.28, height: 61.89, color: navy });
-    p.drawRectangle({ x: 20, y: 757, width: 555.28, height: 3, color: gold });
-    p.drawText('ASSINAJUR', { x: CX, y: 794, size: 14, font: bold, color: rgb(1, 1, 1) });
-    p.drawText('ASSINATURA ELETRÔNICA PARA ADVOCACIA', { x: CX, y: 780, size: 6.2, font: regular, color: rgb(0.72, 0.79, 0.9) });
-    const subtitleWidth = bold.widthOfTextAtSize(cleanSubtitle, 8.2);
-    p.drawText(cleanSubtitle, { x: CR - subtitleWidth, y: 787, size: 8.2, font: bold, color: rgb(1, 1, 1) });
-  };
+
 
   // SEÇÃO 1: CABEÇALHO DO CERTIFICADO
   drawFrame(page, 'CERTIFICADO DE EVIDENCIAS JURIDICAS - REGISTRO IMUTAVEL');
