@@ -98,16 +98,15 @@ export default function NewDocumentPage() {
   const [pdfObjectUrl, setPdfObjectUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (file) {
-      const url = URL.createObjectURL(file);
-      setPdfObjectUrl(url);
-      return () => {
-        URL.revokeObjectURL(url);
-      };
-    } else {
-      setPdfObjectUrl(null);
+    if (uploadedFile?.id) {
+      fetch(`/api/documents/preview-page?fileId=${uploadedFile.id}&info=true`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.totalPages) setPdfPageCount(data.totalPages);
+        })
+        .catch((err) => console.error('Erro ao obter total de páginas:', err));
     }
-  }, [file]);
+  }, [uploadedFile]);
 
   useEffect(() => {
     fetch('/api/clients')
@@ -947,7 +946,15 @@ export default function NewDocumentPage() {
                   onPointerUp={() => { dragOffsetRef.current = null; }}
                   onPointerCancel={() => { dragOffsetRef.current = null; }}
                 >
-                  <canvas ref={previewCanvasRef} className="block w-full h-auto rounded-xl pointer-events-none" />
+                  {uploadedFile?.id ? (
+                    <img
+                      src={`/api/documents/preview-page?fileId=${uploadedFile.id}&page=${placementPage}`}
+                      className="block w-full h-auto rounded-xl pointer-events-none select-none shadow-md"
+                      alt={`Página ${placementPage} do documento`}
+                    />
+                  ) : (
+                    <canvas ref={previewCanvasRef} className="block w-full h-auto rounded-xl pointer-events-none" />
+                  )}
                   <div
                     role="button"
                     tabIndex={0}
