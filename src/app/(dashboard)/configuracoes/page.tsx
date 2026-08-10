@@ -58,8 +58,8 @@ export default function SettingsPage() {
     fetch('/api/office/letterhead')
       .then((res) => res.json())
       .then((data) => {
-        if (data.letterhead) {
-          setLetterhead(data.letterhead);
+        if (data.letterhead || data.file) {
+          setLetterhead(data.letterhead || data.file);
         }
       })
       .catch((err) => console.error('Erro ao carregar papel timbrado:', err));

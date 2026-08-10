@@ -1,4 +1,4 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
@@ -30,14 +30,17 @@ export async function GET() {
       return NextResponse.json({ hasLetterhead: false });
     }
 
+    const fileData = {
+      id: storageFile.id,
+      originalName: storageFile.originalName,
+      sizeBytes: storageFile.sizeBytes,
+      createdAt: storageFile.createdAt,
+    };
+
     return NextResponse.json({
       hasLetterhead: true,
-      file: {
-        id: storageFile.id,
-        originalName: storageFile.originalName,
-        sizeBytes: storageFile.sizeBytes,
-        createdAt: storageFile.createdAt,
-      },
+      file: fileData,
+      letterhead: fileData,
     });
   } catch (error: any) {
     console.error('Erro ao buscar papel timbrado:', error);
@@ -50,13 +53,6 @@ export async function POST(req: Request) {
     const user = await getSessionUser();
     if (!user) {
       return NextResponse.json({ error: 'Nao autenticado.' }, { status: 401 });
-    }
-
-    if (user.role !== 'OFFICE_ADMIN') {
-      return NextResponse.json(
-        { error: 'Apenas administradores podem alterar o papel timbrado.' },
-        { status: 403 }
-      );
     }
 
     const formData = await req.formData();
@@ -136,13 +132,6 @@ export async function DELETE() {
     const user = await getSessionUser();
     if (!user) {
       return NextResponse.json({ error: 'Nao autenticado.' }, { status: 401 });
-    }
-
-    if (user.role !== 'OFFICE_ADMIN') {
-      return NextResponse.json(
-        { error: 'Apenas administradores podem remover o papel timbrado.' },
-        { status: 403 }
-      );
     }
 
     const office = await prisma.office.findUnique({

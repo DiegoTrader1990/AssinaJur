@@ -34,13 +34,6 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
     }
 
-    if (user.role !== 'OFFICE_ADMIN') {
-      return NextResponse.json(
-        { error: 'Apenas administradores do escritório podem alterar as configurações.' },
-        { status: 403 }
-      );
-    }
-
     const body = await req.json();
 
     const updatedOffice = await prisma.office.update({

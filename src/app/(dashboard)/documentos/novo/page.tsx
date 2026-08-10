@@ -93,6 +93,9 @@ export default function NewDocumentPage() {
   const [dragActive, setDragActive] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
+  const [letterhead, setLetterhead] = useState<{id: string; originalName: string; sizeBytes: number} | null>(null);
+  const [uploadingLetterhead, setUploadingLetterhead] = useState(false);
+
   useEffect(() => {
     fetch('/api/clients')
       .then((res) => res.json())
@@ -100,7 +103,49 @@ export default function NewDocumentPage() {
         if (data.clients) setClients(data.clients);
       })
       .catch((err) => console.error('Erro ao carregar clientes:', err));
+
+    fetch('/api/office/letterhead')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.letterhead || data.file) {
+          setLetterhead(data.letterhead || data.file);
+        }
+      })
+      .catch((err) => console.error('Erro ao carregar papel timbrado:', err));
   }, []);
+
+  const handleUploadLetterhead = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const lFile = e.target.files[0];
+    if (lFile.type !== 'application/pdf') {
+      alert('Por favor, selecione um arquivo PDF.');
+      return;
+    }
+    setUploadingLetterhead(true);
+    const fData = new FormData();
+    fData.append('file', lFile);
+    try {
+      const res = await fetch('/api/office/letterhead', { method: 'POST', body: fData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao enviar papel timbrado.');
+      setLetterhead(data.letterhead || data.file);
+    } catch (err: any) {
+      alert(err.message || 'Erro ao enviar papel timbrado.');
+    } finally {
+      setUploadingLetterhead(false);
+    }
+  };
+
+  const handleRemoveLetterhead = async () => {
+    if (!confirm('Deseja remover o papel timbrado oficial do escritório?')) return;
+    try {
+      const res = await fetch('/api/office/letterhead', { method: 'DELETE' });
+      if (!res.ok) throw new Error('Erro ao remover papel timbrado.');
+      setLetterhead(null);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
 
   useEffect(() => {
     if (!file || step !== 3 || signaturePosition !== 'CUSTOM') return;
@@ -461,6 +506,63 @@ export default function NewDocumentPage() {
               <span className="font-bold bg-emerald-200 text-emerald-900 px-3 py-1 rounded-full text-[11px]">Pronto</span>
             </div>
           )}
+
+          {/* Seção Papel Timbrado Oficial do Escritório */}
+          <div className="pt-4 border-t border-slate-200 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-extrabold text-[#071B3A] uppercase tracking-wider font-heading">
+                <FileText className="w-4 h-4 text-blue-600" />
+                <span>Papel Timbrado Oficial do Escritório</span>
+              </div>
+              {letterhead && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold text-[10px]">
+                  <CheckCircle className="w-3 h-3" /> Ativo
+                </span>
+              )}
+            </div>
+
+            <p className="text-xs text-slate-500">
+              O papel timbrado do escritório é inserido automaticamente como plano de fundo no PDF de todos os documentos gerados.
+            </p>
+
+            {letterhead ? (
+              <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-100 rounded-xl text-blue-700">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-800">{letterhead.originalName}</p>
+                    <p className="text-[10px] text-slate-400">{(letterhead.sizeBytes / 1024).toFixed(1)} KB</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-100 cursor-pointer text-xs transition-colors">
+                    Substituir
+                    <input type="file" accept="application/pdf" onChange={handleUploadLetterhead} className="hidden" />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleRemoveLetterhead}
+                    className="px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 font-bold rounded-xl hover:bg-red-100 text-xs transition-colors"
+                  >
+                    Remover
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <label className="flex items-center justify-between p-3.5 border border-dashed border-slate-300 hover:border-blue-500 rounded-2xl cursor-pointer bg-slate-50/50 hover:bg-slate-50 transition-colors text-xs">
+                <div className="flex items-center gap-3">
+                  <Upload className="w-4 h-4 text-slate-400" />
+                  <span className="font-semibold text-slate-600">Clique para enviar um PDF de Papel Timbrado</span>
+                </div>
+                <span className="px-3 py-1.5 bg-white border border-slate-300 font-bold text-slate-700 rounded-xl text-xs">
+                  {uploadingLetterhead ? 'Enviando...' : 'Selecionar PDF'}
+                </span>
+                <input type="file" accept="application/pdf" onChange={handleUploadLetterhead} className="hidden" />
+              </label>
+            )}
+          </div>
 
           <div className="flex justify-end pt-4">
             <button
