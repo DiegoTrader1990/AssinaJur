@@ -471,8 +471,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
     }
   });
 
-  // ── 2. CERTIFICADO COMPLETO MULTI-PÁGINAS COM TRILHA DE AUDITORIA ──
-  const compactCertificate = false;
+  // ── 2. CERTIFICADO COMPACTO DE 1 PÁGINA (GARANTE 2 FOLHAS NO TOTAL PARA DOCUMENTOS DE 1 A 2 SIGNATÁRIOS) ──
+  const compactCertificate = doc.signers.length <= 2;
   if (compactCertificate) {
     const certificatePage = pdfDoc.addPage([PAGE_W, PAGE_H]);
     const signer = doc.signers[0];
