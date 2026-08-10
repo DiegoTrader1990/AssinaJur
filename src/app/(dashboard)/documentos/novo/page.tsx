@@ -161,21 +161,29 @@ export default function NewDocumentPage() {
   };
 
   useEffect(() => {
-    if (!file || step !== 3 || signaturePosition !== 'CUSTOM') return;
+    if ((!file && !uploadedFile?.id) || step !== 3 || signaturePosition !== 'CUSTOM') return;
     let cancelled = false;
     let activeRender: any = null;
     const renderPage = async () => {
       setRenderingPreview(true);
       try {
-        const pdfjs = await import('pdfjs-dist');
-        const pdfjsVersion = pdfjs.version || '4.10.38';
-        pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.min.mjs`;
-        const bytes = new Uint8Array(await file.arrayBuffer());
+        // @ts-ignore
+        const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+        let bytes: Uint8Array | null = null;
+        if (file) {
+          bytes = new Uint8Array(await file.arrayBuffer());
+        } else if (uploadedFile?.id) {
+          const res = await fetch(`/api/documents/upload?fileId=${uploadedFile.id}`);
+          if (res.ok) {
+            bytes = new Uint8Array(await res.arrayBuffer());
+          }
+        }
+
+        if (!bytes || cancelled) return;
+
         const loadingTask = pdfjs.getDocument({
           data: bytes,
-          cMapUrl: `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/cmaps/`,
-          cMapPacked: true,
-          standardFontDataUrl: `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/standard_fonts/`,
+          verbosity: 0,
         });
         const pdf = await loadingTask.promise;
         if (cancelled) return;
@@ -212,7 +220,7 @@ export default function NewDocumentPage() {
       cancelled = true;
       activeRender?.cancel?.();
     };
-  }, [file, step, placementPage, signaturePosition]);
+  }, [file, uploadedFile, step, placementPage, signaturePosition]);
 
   const moveStamp = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!dragOffsetRef.current || !previewContainerRef.current) return;

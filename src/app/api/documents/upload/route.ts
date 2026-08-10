@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
-import { saveFile } from '@/lib/storage';
+import { prisma } from '@/lib/prisma';
+import { getFileBuffer, saveFile } from '@/lib/storage';
 import { calculateHash } from '@/lib/pdfHash';
 
 export const dynamic = 'force-dynamic';
@@ -56,5 +57,42 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error('Erro no upload de PDF:', error);
     return NextResponse.json({ error: 'Erro ao processar upload do PDF: ' + (error?.message || '') }, { status: 500 });
+  }
+}
+
+export async function GET(req: Request) {
+  try {
+    const user = await getSessionUser();
+    if (!user) {
+      return new Response('Não autenticado', { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const fileId = searchParams.get('fileId');
+    if (!fileId) {
+      return new Response('fileId é obrigatório', { status: 400 });
+    }
+
+    const storageRecord = await prisma.storageFile.findFirst({
+      where: { id: fileId, officeId: user.officeId },
+    });
+    if (!storageRecord) {
+      return new Response('Arquivo não encontrado', { status: 404 });
+    }
+
+    const buffer = await getFileBuffer(user.officeId, storageRecord.storageKey);
+    if (!buffer) {
+      return new Response('Conteúdo não encontrado em disco', { status: 404 });
+    }
+
+    return new Response(new Uint8Array(buffer), {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${storageRecord.originalName}"`,
+      },
+    });
+  } catch (err: any) {
+    console.error('Erro ao buscar arquivo no upload route:', err);
+    return new Response('Erro ao carregar arquivo', { status: 500 });
   }
 }
