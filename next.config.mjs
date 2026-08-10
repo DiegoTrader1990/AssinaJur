@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
-    serverComponentsExternalPackages: ['pdf-lib', '@prisma/client', 'bcryptjs', '@napi-rs/canvas', 'sharp', 'pdfjs-dist']
+    serverComponentsExternalPackages: ['pdf-lib', '@prisma/client', 'bcryptjs', 'sharp']
   },
   async headers() {
     return [

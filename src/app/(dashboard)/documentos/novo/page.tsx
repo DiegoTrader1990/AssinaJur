@@ -166,8 +166,10 @@ export default function NewDocumentPage() {
     const renderPage = async () => {
       setRenderingPreview(true);
       try {
-        // @ts-ignore
-        const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+        const pdfjs = await import('pdfjs-dist');
+        const pdfjsVersion = pdfjs.version || '4.10.38';
+        pdfjs.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
+
         let bytes: Uint8Array | null = null;
         if (file) {
           bytes = new Uint8Array(await file.arrayBuffer());
@@ -182,7 +184,9 @@ export default function NewDocumentPage() {
 
         const loadingTask = pdfjs.getDocument({
           data: bytes,
-          verbosity: 0,
+          cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/cmaps/`,
+          cMapPacked: true,
+          standardFontDataUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/standard_fonts/`,
         });
         const pdf = await loadingTask.promise;
         if (cancelled) return;
@@ -190,13 +194,10 @@ export default function NewDocumentPage() {
         const safePage = Math.min(Math.max(1, placementPage), pdf.numPages);
         if (safePage !== placementPage) setPlacementPage(safePage);
         const pdfPage = await pdf.getPage(safePage);
-        const baseViewport = pdfPage.getViewport({ scale: 1 });
-        const containerWidth = previewContainerRef.current?.clientWidth || 600;
-        const scale = Math.max(0.75, containerWidth / baseViewport.width);
-        const viewport = pdfPage.getViewport({ scale });
+        const viewport = pdfPage.getViewport({ scale: 1.5 });
         let canvas = previewCanvasRef.current;
         if (!canvas) {
-          await new Promise((res) => setTimeout(res, 120));
+          await new Promise((res) => setTimeout(res, 200));
           canvas = previewCanvasRef.current;
         }
         if (!canvas || cancelled) return;
@@ -206,6 +207,8 @@ export default function NewDocumentPage() {
         canvas.height = Math.round(viewport.height);
         canvas.style.width = '100%';
         canvas.style.height = 'auto';
+        context.fillStyle = '#FFFFFF';
+        context.fillRect(0, 0, canvas.width, canvas.height);
         activeRender = pdfPage.render({ canvasContext: context, viewport });
         await activeRender.promise;
       } catch (previewError) {
@@ -946,15 +949,7 @@ export default function NewDocumentPage() {
                   onPointerUp={() => { dragOffsetRef.current = null; }}
                   onPointerCancel={() => { dragOffsetRef.current = null; }}
                 >
-                  {uploadedFile?.id ? (
-                    <img
-                      src={`/api/documents/preview-page?fileId=${uploadedFile.id}&page=${placementPage}`}
-                      className="block w-full h-auto rounded-xl pointer-events-none select-none shadow-md"
-                      alt={`Página ${placementPage} do documento`}
-                    />
-                  ) : (
-                    <canvas ref={previewCanvasRef} className="block w-full h-auto rounded-xl pointer-events-none" />
-                  )}
+                  <canvas ref={previewCanvasRef} className="block w-full h-auto rounded-xl pointer-events-none min-h-[500px]" />
                   <div
                     role="button"
                     tabIndex={0}
