@@ -80,7 +80,7 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error('Erro no login:', error);
     return NextResponse.json(
-      { error: 'Erro interno ao realizar login.' },
+      { error: error?.message || 'Erro interno ao realizar login. Tente novamente.' },
       { status: 500 }
     );
   }
