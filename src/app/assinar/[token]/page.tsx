@@ -229,15 +229,17 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const witness2SelfieImagesRef = useRef<Record<SelfieKey, string | null>>({ center: null, left: null, right: null });
 
   const [activePerson, setActivePerson] = useState<'CLIENT' | 'ROGO' | 'WITNESS_1' | 'WITNESS_2'>('CLIENT');
+  const activePersonRef = useRef<'CLIENT' | 'ROGO' | 'WITNESS_1' | 'WITNESS_2'>('CLIENT');
 
-  const updateCurrentSelfieImages = (newImages: Record<SelfieKey, string | null>) => {
-    if (activePerson === 'ROGO') {
+  const updateCurrentSelfieImages = (newImages: Record<SelfieKey, string | null>, targetPerson?: 'CLIENT' | 'ROGO' | 'WITNESS_1' | 'WITNESS_2') => {
+    const personToUpdate = targetPerson || activePersonRef.current;
+    if (personToUpdate === 'ROGO') {
       rogoSelfieImagesRef.current = newImages;
       setRogoSelfieImages(newImages);
-    } else if (activePerson === 'WITNESS_1') {
+    } else if (personToUpdate === 'WITNESS_1') {
       witness1SelfieImagesRef.current = newImages;
       setWitness1SelfieImages(newImages);
-    } else if (activePerson === 'WITNESS_2') {
+    } else if (personToUpdate === 'WITNESS_2') {
       witness2SelfieImagesRef.current = newImages;
       setWitness2SelfieImages(newImages);
     } else {
@@ -517,9 +519,17 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       }
 
       const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
-      const currentTargetSelfies = activePerson === 'ROGO' ? rogoSelfieImagesRef.current : selfieImagesRef.current;
+      const currentPerson = activePersonRef.current;
+      const currentTargetSelfies = currentPerson === 'ROGO'
+        ? rogoSelfieImagesRef.current
+        : currentPerson === 'WITNESS_1'
+        ? witness1SelfieImagesRef.current
+        : currentPerson === 'WITNESS_2'
+        ? witness2SelfieImagesRef.current
+        : selfieImagesRef.current;
+
       const updatedSelfies = { ...currentTargetSelfies, [key]: dataUrl };
-      updateCurrentSelfieImages(updatedSelfies);
+      updateCurrentSelfieImages(updatedSelfies, currentPerson);
 
       if (singleRetakeKey) {
         setSelfieInstruction(`✓ Foto de ${LIVENESS_STEPS.find(s => s.key === key)?.label} atualizada!`);
@@ -550,7 +560,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         stopSelfieCamera();
 
         setTimeout(() => {
-          if (isRogadoConsent && activePerson === 'CLIENT') {
+          if (isRogadoConsent && activePersonRef.current === 'CLIENT') {
             setStep('ROGO_TRANSITION');
           } else {
             setStep('SIGN');
@@ -570,7 +580,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     triggerAutomaticCapture(activeKeyRef.current);
   };
 
-  const startSelfieCamera = async (targetKey?: SelfieKey, isSingleRetake: boolean = false, person: 'CLIENT' | 'ROGO' | 'WITNESS_1' | 'WITNESS_2' = activePerson) => {
+  const startSelfieCamera = async (targetKey?: SelfieKey, isSingleRetake: boolean = false, person: 'CLIENT' | 'ROGO' | 'WITNESS_1' | 'WITNESS_2' = activePersonRef.current) => {
+    activePersonRef.current = person;
     setActivePerson(person);
     unlockAndPreloadAudios();
     setError('');
@@ -583,7 +594,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     } else {
       setSingleRetakeKey(null);
       if (!targetKey) {
-        updateCurrentSelfieImages({ center: null, left: null, right: null });
+        updateCurrentSelfieImages({ center: null, left: null, right: null }, person);
       }
     }
 
