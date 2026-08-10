@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 import { compileTemplateToPdf } from '@/lib/templateCompiler';
+import { getFileBuffer } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +15,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { clientId, kitId, customVariables } = body;
+    const { clientId, kitId, customVariables, customContents } = body;
 
     if (!clientId || !kitId) {
       return NextResponse.json(
@@ -66,6 +67,18 @@ export async function POST(req: Request) {
       ...(customVariables || {}),
     };
 
+    // Carregar papel timbrado do escritório (se configurado)
+    let letterheadBuffer: Buffer | undefined;
+    if (office.letterheadFileId) {
+      const letterheadFile = await prisma.storageFile.findUnique({
+        where: { id: office.letterheadFileId },
+      });
+      if (letterheadFile) {
+        const buf = await getFileBuffer(office.id, letterheadFile.storageKey);
+        if (buf) letterheadBuffer = buf;
+      }
+    }
+
     const createdDocuments = [];
     let mainSignerToken = '';
 
@@ -73,13 +86,17 @@ export async function POST(req: Request) {
     for (const item of kit.items) {
       const template = item.template;
 
+      // Usar conteúdo customizado (editado pelo advogado) se disponível
+      const finalContentHtml = customContents?.[template.id] || template.contentHtml;
+
       const compiledResult = await compileTemplateToPdf({
         officeId: user.officeId,
         uploadedBy: user.id,
         title: `${template.title} - ${client.name}`,
-        contentHtml: template.contentHtml,
+        contentHtml: finalContentHtml,
         variables: variableValues,
         officeName: office.name,
+        letterheadBuffer,
       });
 
       const doc = await prisma.document.create({

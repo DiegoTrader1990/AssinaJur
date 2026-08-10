@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { FolderArchive, Send, CheckCircle2, Copy, Check, FileText, ArrowLeft, Loader2, AlertCircle, Sparkles } from 'lucide-react';
+import { FolderArchive, Send, CheckCircle2, Copy, Check, FileText, ArrowLeft, Loader2, AlertCircle, Sparkles, ChevronDown } from 'lucide-react';
+import dynamic from 'next/dynamic';
+
+const DocumentRichEditor = dynamic(() => import('@/components/DocumentRichEditor').then(mod => mod.DocumentRichEditor), { ssr: false });
 
 interface Client {
   id: string;
@@ -19,7 +22,7 @@ interface LegalKit {
   items: Array<{
     id: string;
     displayOrder: number;
-    template: { title: string };
+    template: { id: string; title: string; contentHtml: string };
   }>;
 }
 
@@ -43,6 +46,10 @@ export default function DispatchKitPage() {
   const [error, setError] = useState('');
   const [result, setResult] = useState<any | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const [showReviewStep, setShowReviewStep] = useState(false);
+  const [customContents, setCustomContents] = useState<Record<string, string>>({});
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -68,6 +75,33 @@ export default function DispatchKitPage() {
     }
   };
 
+  const selectedKit = kits.find((k) => k.id === selectedKitId);
+
+  const handleReviewStep = async () => {
+    if (!selectedKit) return;
+    
+    const contents: Record<string, string> = {};
+    
+    for (const item of selectedKit.items) {
+      if (item.template.contentHtml) {
+        contents[item.template.id] = item.template.contentHtml;
+      } else {
+        try {
+          const res = await fetch(`/api/templates/${item.template.id}`);
+          const data = await res.json();
+          if (data.template) {
+            contents[item.template.id] = data.template.contentHtml;
+            item.template.contentHtml = data.template.contentHtml;
+          }
+        } catch (error) {
+          console.error("Failed to fetch template", error);
+        }
+      }
+    }
+    setCustomContents(contents);
+    setShowReviewStep(true);
+  };
+
   const handleGeneratePackage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClientId || !selectedKitId) {
@@ -86,6 +120,7 @@ export default function DispatchKitPage() {
           clientId: selectedClientId,
           kitId: selectedKitId,
           customVariables: variables,
+          customContents,
         }),
       });
 
@@ -171,8 +206,6 @@ export default function DispatchKitPage() {
       </div>
     );
   }
-
-  const selectedKit = kits.find((k) => k.id === selectedKitId);
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -279,6 +312,69 @@ export default function DispatchKitPage() {
             </div>
           </div>
         </div>
+
+        {/* Revisar e Editar Minutas */}
+        {selectedClientId && selectedKitId && (
+          <div className="pt-4 border-t border-slate-100">
+            {!showReviewStep ? (
+              <button
+                type="button"
+                onClick={handleReviewStep}
+                className="w-full py-3 border-2 border-dashed border-slate-300 rounded-xl text-slate-600 font-bold hover:bg-slate-50 hover:border-slate-400 hover:text-slate-800 transition-all text-sm"
+              >
+                4. Revisar e Editar Minutas (Opcional)
+              </button>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#0B1D3D] uppercase tracking-wider block">
+                    4. Revisar e Editar Minutas
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowReviewStep(false)}
+                    className="text-xs text-slate-500 font-semibold hover:text-slate-700"
+                  >
+                    Ocultar Revisão
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {selectedKit?.items.map((item) => (
+                    <div key={item.id} className="border border-slate-200 rounded-xl overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedItemId(expandedItemId === item.id ? null : item.id)}
+                        className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-gold-500" />
+                          <span className="font-bold text-sm text-[#0B1D3D]">{item.template.title}</span>
+                        </div>
+                        <ChevronDown className={`w-4 h-4 transition-transform ${expandedItemId === item.id ? 'rotate-180' : ''}`} />
+                      </button>
+                      {expandedItemId === item.id && (
+                        <div className="p-4 border-t border-slate-200">
+                          <DocumentRichEditor
+                            value={customContents[item.template.id] || ''}
+                            onChange={(html) => setCustomContents(prev => ({...prev, [item.template.id]: html}))}
+                            showAiCopilot={true}
+                          />
+                          <button 
+                            type="button"
+                            onClick={() => setCustomContents(prev => ({...prev, [item.template.id]: item.template.contentHtml}))}
+                            className="mt-2 text-xs text-slate-500 hover:text-slate-700 font-semibold"
+                          >
+                            Restaurar Original
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="pt-4 flex justify-between items-center border-t border-slate-100">
           <button

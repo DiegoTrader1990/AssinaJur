@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { FileText, Plus, Search, Edit3, Copy, X, CheckCircle, AlertCircle, Loader2, Code } from 'lucide-react';
+import { FileText, Plus, Search, Edit3, Copy, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import dynamic from 'next/dynamic';
+
+const DocumentRichEditor = dynamic(() => import('@/components/DocumentRichEditor').then(mod => mod.DocumentRichEditor), { ssr: false });
 
 interface Template {
   id: string;
@@ -27,6 +30,8 @@ export default function TemplatesPage() {
     description: '',
   });
 
+  const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -50,29 +55,27 @@ export default function TemplatesPage() {
     }
   };
 
-  const handleInsertTag = (tag: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      contentHtml: prev.contentHtml + ` {{${tag}}} `,
-    }));
-  };
-
   const handleCreateTemplate = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     setError('');
 
     try {
-      const res = await fetch('/api/templates', {
-        method: 'POST',
+      const isEditing = !!editingTemplate;
+      const url = isEditing ? `/api/templates/${editingTemplate.id}` : '/api/templates';
+      const method = isEditing ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao cadastrar modelo.');
+      if (!res.ok) throw new Error(data.error || 'Erro ao salvar modelo.');
 
       setShowModal(false);
+      setEditingTemplate(null);
       setFormData({
         title: '',
         category: 'Previdenciário',
@@ -103,23 +106,7 @@ export default function TemplatesPage() {
     }
   };
 
-  const standardTags = [
-    'cliente_nome',
-    'cliente_cpf',
-    'cliente_rg',
-    'cliente_nacionalidade',
-    'cliente_telefone',
-    'cliente_endereco',
-    'cliente_estado_civil',
-    'cliente_profissao',
-    'advogado_nome',
-    'advogado_oab',
-    'escritorio_nome',
-    'valor_honorarios',
-    'percentual_exito',
-    'cidade',
-    'data_atual',
-  ];
+
 
   return (
     <div className="space-y-6">
@@ -180,21 +167,40 @@ export default function TemplatesPage() {
 
                 <div className="pt-3 border-t border-slate-200 flex items-center justify-between text-xs">
                   <span className="text-slate-400 font-medium">{tpl.documentType}</span>
-                  <button
-                    onClick={() => {
-                      setFormData({
-                        title: `${tpl.title} (Cópia)`,
-                        category: tpl.category,
-                        documentType: tpl.documentType,
-                        contentHtml: tpl.contentHtml,
-                        description: tpl.description || '',
-                      });
-                      setShowModal(true);
-                    }}
-                    className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 font-bold rounded-lg hover:bg-slate-100 flex items-center gap-1"
-                  >
-                    <Copy className="w-3.5 h-3.5 text-gold-600" /> Duplicar Modelo
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setFormData({
+                          title: tpl.title,
+                          category: tpl.category,
+                          documentType: tpl.documentType,
+                          contentHtml: tpl.contentHtml,
+                          description: tpl.description || '',
+                        });
+                        setEditingTemplate(tpl);
+                        setShowModal(true);
+                      }}
+                      className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 font-bold rounded-lg hover:bg-slate-100 flex items-center gap-1 text-xs"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-blue-600" /> Editar
+                    </button>
+                    <button
+                      onClick={() => {
+                        setFormData({
+                          title: `${tpl.title} (Cópia)`,
+                          category: tpl.category,
+                          documentType: tpl.documentType,
+                          contentHtml: tpl.contentHtml,
+                          description: tpl.description || '',
+                        });
+                        setEditingTemplate(null);
+                        setShowModal(true);
+                      }}
+                      className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 font-bold rounded-lg hover:bg-slate-100 flex items-center gap-1"
+                    >
+                      <Copy className="w-3.5 h-3.5 text-gold-600" /> Duplicar Modelo
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -209,9 +215,9 @@ export default function TemplatesPage() {
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <FileText className="w-5 h-5 text-gold-500" />
-                <h2 className="text-lg font-bold text-[#0B1D3D]">Novo Modelo Jurídico</h2>
+                <h2 className="text-lg font-bold text-[#0B1D3D]">{editingTemplate ? 'Editar Modelo' : 'Novo Modelo Jurídico'}</h2>
               </div>
-              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => { setShowModal(false); setEditingTemplate(null); }} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -269,41 +275,21 @@ export default function TemplatesPage() {
                 </div>
               </div>
 
-              {/* Barra de Inserção de Tags Variáveis */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                  <Code className="w-4 h-4 text-gold-500" /> Inserir Tags Variáveis de Preenchimento Automático
-                </label>
-                <div className="flex flex-wrap gap-1.5 bg-slate-100 p-2.5 rounded-xl border border-slate-200">
-                  {standardTags.map((tag) => (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => handleInsertTag(tag)}
-                      className="px-2.5 py-1 bg-white border border-slate-300 hover:border-gold-500 hover:text-gold-600 rounded-lg text-[11px] font-mono text-slate-700 font-semibold transition-colors"
-                    >
-                      {`{{${tag}}}`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Texto do Modelo *</label>
-                <textarea
-                  rows={10}
-                  required
+                <DocumentRichEditor
                   value={formData.contentHtml}
-                  onChange={(e) => setFormData({ ...formData, contentHtml: e.target.value })}
-                  placeholder="Escreva a minuta usando as tags variáveis acima. Ex: Pelo presente instrumento, {{cliente_nome}}, CPF {{cliente_cpf}}..."
-                  className="w-full p-3 border border-slate-300 rounded-xl text-slate-800 font-serif text-sm focus:border-gold-500 focus:outline-none"
+                  onChange={(html) => setFormData({ ...formData, contentHtml: html })}
+                  showAiCopilot={true}
+                  showTags={false}
+                  placeholder="Escreva a minuta do modelo jurídico..."
                 />
               </div>
 
               <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={() => { setShowModal(false); setEditingTemplate(null); }}
                   className="px-4 py-2.5 text-slate-600 font-semibold text-xs"
                 >
                   Cancelar

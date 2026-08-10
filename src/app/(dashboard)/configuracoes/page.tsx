@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Settings, Building2, Palette, FileText, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { Settings, Building2, Palette, FileText, CheckCircle, AlertCircle, Loader2, Upload } from 'lucide-react';
 
 export default function SettingsPage() {
   const [formData, setFormData] = useState({
@@ -25,6 +25,9 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+
+  const [letterhead, setLetterhead] = useState<{id: string; originalName: string; sizeBytes: number} | null>(null);
+  const [uploadingLetterhead, setUploadingLetterhead] = useState(false);
 
   useEffect(() => {
     fetch('/api/office')
@@ -51,6 +54,15 @@ export default function SettingsPage() {
       })
       .catch((err) => console.error('Erro ao carregar dados do escritório:', err))
       .finally(() => setLoading(false));
+
+    fetch('/api/office/letterhead')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.letterhead) {
+          setLetterhead(data.letterhead);
+        }
+      })
+      .catch((err) => console.error('Erro ao carregar papel timbrado:', err));
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -78,6 +90,46 @@ export default function SettingsPage() {
       setError(err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleUploadLetterhead = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    if (file.type !== 'application/pdf') {
+      alert('Por favor, selecione um arquivo PDF.');
+      return;
+    }
+
+    setUploadingLetterhead(true);
+    const formDataObj = new FormData();
+    formDataObj.append('file', file);
+
+    try {
+      const res = await fetch('/api/office/letterhead', {
+        method: 'POST',
+        body: formDataObj,
+      });
+      if (!res.ok) throw new Error('Erro ao enviar papel timbrado');
+      const data = await res.json();
+      if (data.letterhead) {
+        setLetterhead(data.letterhead);
+      }
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setUploadingLetterhead(false);
+    }
+  };
+
+  const handleRemoveLetterhead = async () => {
+    if (!confirm('Deseja realmente remover o papel timbrado?')) return;
+    try {
+      const res = await fetch('/api/office/letterhead', { method: 'DELETE' });
+      if (!res.ok) throw new Error('Erro ao remover papel timbrado');
+      setLetterhead(null);
+    } catch (err: any) {
+      alert(err.message);
     }
   };
 
@@ -245,6 +297,83 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Papel Timbrado Oficial */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+          <div className="flex items-center gap-2 text-[#071B3A] font-extrabold border-b border-slate-100 pb-3 font-heading">
+            <FileText className="w-5 h-5 text-blue-600" />
+            <span>Papel Timbrado Oficial do Escritório</span>
+          </div>
+
+          <p className="text-xs text-slate-500 font-medium">
+            Envie um PDF com o papel timbrado oficial do escritório. Ele será aplicado automaticamente como plano de fundo em todos os contratos, procurações e declarações gerados pelo sistema.
+          </p>
+
+          {!letterhead ? (
+            <div className="border-2 border-dashed rounded-2xl p-6 text-center border-slate-300 hover:border-blue-600 transition-colors relative">
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={handleUploadLetterhead}
+                disabled={uploadingLetterhead}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+              />
+              <div className="flex flex-col items-center gap-2">
+                {uploadingLetterhead ? (
+                  <>
+                    <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+                    <span className="text-xs font-bold text-slate-700 font-heading">Enviando papel timbrado...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-8 h-8 text-slate-400" />
+                    <span className="text-xs font-bold text-slate-700 font-heading">Clique ou arraste o PDF aqui</span>
+                    <span className="text-[10px] text-slate-500">Apenas arquivos PDF são aceitos</span>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="border border-slate-200 rounded-2xl p-4 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center shrink-0">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-800 font-heading">{letterhead.originalName}</p>
+                  <p className="text-[10px] text-slate-500">{(letterhead.sizeBytes / 1024).toFixed(1)} KB</p>
+                </div>
+                <div className="ml-4 flex items-center gap-1 bg-emerald-100 text-emerald-700 px-2 py-1 rounded-lg text-[10px] font-bold">
+                  <CheckCircle className="w-3 h-3" />
+                  Ativo
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    onChange={handleUploadLetterhead}
+                    disabled={uploadingLetterhead}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                  />
+                  <button type="button" disabled={uploadingLetterhead} className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-[10px] font-bold hover:bg-slate-50 transition-colors pointer-events-none">
+                    Substituir
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRemoveLetterhead}
+                  disabled={uploadingLetterhead}
+                  className="px-3 py-1.5 bg-red-50 text-red-600 border border-red-100 rounded-lg text-[10px] font-bold hover:bg-red-100 transition-colors"
+                >
+                  Remover
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Seção 3: Mensagens e Rodapé */}

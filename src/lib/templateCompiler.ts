@@ -107,16 +107,24 @@ async function renderTemplatePdf({
   variables,
   officeName,
   watermark,
+  letterheadBuffer,
 }: {
   title: string;
   contentHtml: string;
   variables: VariableValues;
   officeName: string;
   watermark?: string;
+  letterheadBuffer?: Buffer;
 }) {
   const compiledText = replaceTemplateVariables(contentHtml, variables);
   const presentationHtml = emphasizeDocumentNames(compiledText, variables);
   const pdfDoc = await PDFDocument.create();
+
+  let embeddedLetterhead: Awaited<ReturnType<typeof pdfDoc.embedPdf>>[number] | undefined;
+  if (letterheadBuffer) {
+    const letterheadDoc = await PDFDocument.load(letterheadBuffer);
+    [embeddedLetterhead] = await pdfDoc.embedPdf(letterheadDoc, [0]);
+  }
   const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const pageSize: [number, number] = [595.28, 841.89];
@@ -127,6 +135,16 @@ async function renderTemplatePdf({
   const addPage = (withHeader: boolean) => {
     const page = pdfDoc.addPage(pageSize);
     const { width, height } = page.getSize();
+
+    if (embeddedLetterhead) {
+      page.drawPage(embeddedLetterhead, {
+        x: 0,
+        y: 0,
+        width: pageSize[0],
+        height: pageSize[1],
+      });
+    }
+
     if (withHeader) {
       page.drawRectangle({ x: 40, y: height - 60, width: width - 80, height: 3, color: goldColor });
       page.drawText(officeName.toUpperCase(), { x: 40, y: height - 45, size: 11, font: boldFont, color: navyColor });
@@ -226,12 +244,14 @@ export async function compileTemplatePreviewToPdf({
   variables,
   officeName,
   version,
+  letterheadBuffer,
 }: {
   title: string;
   contentHtml: string;
   variables: VariableValues;
   officeName: string;
   version: number;
+  letterheadBuffer?: Buffer;
 }) {
   return renderTemplatePdf({
     title: `${title} - MINUTA V${version}`,
@@ -239,6 +259,7 @@ export async function compileTemplatePreviewToPdf({
     variables,
     officeName,
     watermark: 'MINUTA - NAO ASSINADA',
+    letterheadBuffer,
   });
 }
 
@@ -249,6 +270,7 @@ export async function compileTemplateToPdf({
   contentHtml,
   variables,
   officeName,
+  letterheadBuffer,
 }: {
   officeId: string;
   uploadedBy?: string;
@@ -256,12 +278,13 @@ export async function compileTemplateToPdf({
   contentHtml: string;
   variables: VariableValues;
   officeName: string;
+  letterheadBuffer?: Buffer;
 }) {
   const unresolvedFields = contentHtml.match(/\[(?:INFORMAR|PREENCHER|DESCREVER|DEFINIR|REVISAR|INSERIR)[^\]]*\]/gi) || [];
   if (unresolvedFields.length > 0) {
     throw new Error(`A minuta ainda contém campo(s) pendente(s): ${[...new Set(unresolvedFields)].slice(0, 3).join(', ')}. Revise a minuta antes de gerar o documento definitivo.`);
   }
-  const rendered = await renderTemplatePdf({ title, contentHtml, variables, officeName });
+  const rendered = await renderTemplatePdf({ title, contentHtml, variables, officeName, letterheadBuffer });
   const storageRecord = await saveFile({
     officeId,
     uploadedBy,

@@ -36,6 +36,7 @@ model Office {
   defaultFooter      String?
   clientEmailMessage String?
   address            String?
+  letterheadFileId   String?  // ID do StorageFile com o PDF do papel timbrado
   active             Boolean  @default(true)
   
   // Planos e Limites (Fase 5)
