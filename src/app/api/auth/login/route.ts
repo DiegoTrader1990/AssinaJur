@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { verifyPassword, signToken, TOKEN_COOKIE_NAME, UserRole } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 
+// Deployment Release Version: 2026.08.10.1
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
