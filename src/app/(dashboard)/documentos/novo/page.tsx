@@ -767,8 +767,71 @@ export default function NewDocumentPage() {
             {isIlliterate && (
               <div className="pt-3 border-t border-blue-100 space-y-3 animate-in fade-in duration-300">
                 <p className="text-[11px] text-slate-600 font-medium">
-                  O sistema criará um link exclusivo para o cliente registrar ciência, outro para o assinante a rogo e um para cada uma das duas testemunhas. Cada participante confirma o próprio CPF e realiza 3 selfies.
+                  O sistema colherá a prova de presença e biometria do cliente titular e do acompanhante a rogo. Você pode optar por adicionar 0, 1 ou 2 testemunhas instrumentárias abaixo.
                 </p>
+
+                {/* Seletor Rápido de Testemunhas */}
+                <div className="p-3.5 bg-blue-50/50 rounded-xl border border-blue-200/60 space-y-2">
+                  <label className="block text-[11px] font-extrabold text-[#071B3A] uppercase tracking-wider font-heading">
+                    Deseja Adicionar Testemunhas Instrumentárias a este Documento?
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSigners(current => current.filter(s => s.role !== 'TESTEMUNHA'));
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        signers.filter(s => s.role === 'TESTEMUNHA').length === 0
+                          ? 'bg-[#071B3A] text-white shadow-xs'
+                          : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      Sem Testemunhas (Somente A Rogo)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSigners(current => {
+                          const withoutWitnesses = current.filter(s => s.role !== 'TESTEMUNHA');
+                          return [
+                            ...withoutWitnesses,
+                            { name: '', cpf: '', email: '', phone: '', role: 'TESTEMUNHA', signatureOrder: withoutWitnesses.length + 1 }
+                          ];
+                        });
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        signers.filter(s => s.role === 'TESTEMUNHA').length === 1
+                          ? 'bg-[#071B3A] text-white shadow-xs'
+                          : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      + 1 Testemunha
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSigners(current => {
+                          const withoutWitnesses = current.filter(s => s.role !== 'TESTEMUNHA');
+                          return [
+                            ...withoutWitnesses,
+                            { name: '', cpf: '', email: '', phone: '', role: 'TESTEMUNHA', signatureOrder: withoutWitnesses.length + 1 },
+                            { name: '', cpf: '', email: '', phone: '', role: 'TESTEMUNHA', signatureOrder: withoutWitnesses.length + 2 }
+                          ];
+                        });
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        signers.filter(s => s.role === 'TESTEMUNHA').length >= 2
+                          ? 'bg-[#071B3A] text-white shadow-xs'
+                          : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      + 2 Testemunhas (Recomendado)
+                    </button>
+                  </div>
+                </div>
 
                 <div className="grid md:grid-cols-3 gap-3">
                   <div>
