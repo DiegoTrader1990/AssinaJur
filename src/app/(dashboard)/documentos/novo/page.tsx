@@ -25,6 +25,12 @@ import {
 } from 'lucide-react';
 import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
 
+function formatFullCpf(cpf: string): string {
+  const clean = String(cpf || '').replace(/\D/g, '');
+  if (clean.length !== 11) return cpf || '000.000.000-00';
+  return `${clean.substring(0, 3)}.${clean.substring(3, 6)}.${clean.substring(6, 9)}-${clean.substring(9, 11)}`;
+}
+
 interface UploadedFile {
   id: string;
   name: string;
@@ -1010,11 +1016,15 @@ export default function NewDocumentPage() {
                       <div className="flex-1 px-2 py-1 min-w-0 flex flex-col justify-between select-none">
                         <div>
                           {/* PRIMEIRA LINHA: NOME DO SIGNATÁRIO EM DESTAQUE PROMINENTE */}
-                          <div className="text-[8px] sm:text-[10px] font-black text-[#071B3A] truncate font-heading tracking-wide uppercase">
+                          <div className="text-[8px] sm:text-[10.5px] font-black text-[#071B3A] truncate font-heading tracking-wide uppercase">
                             {signers[0]?.name || 'DOMINICK QUINTO SOARES'}
                           </div>
-                          {/* SEGUNDA LINHA: TIPO DE ASSINATURA */}
-                          <div className="text-[6px] sm:text-[8px] font-extrabold text-emerald-700 uppercase flex items-center gap-1">
+                          {/* LINHA DO CPF LOGO ABAIXO DO NOME */}
+                          <div className="text-[6.5px] sm:text-[8.5px] font-bold text-slate-700 font-mono tracking-tight">
+                            CPF: {signers[0]?.cpf ? formatFullCpf(signers[0].cpf) : '000.000.000-00'}
+                          </div>
+                          {/* TERCEIRA LINHA: TIPO DE ASSINATURA */}
+                          <div className="text-[5.5px] sm:text-[7.5px] font-extrabold text-emerald-700 uppercase flex items-center gap-1 mt-0.5">
                             <span>✓ ASSINATURA ELETRÔNICA QUALIFICADA</span>
                           </div>
                         </div>

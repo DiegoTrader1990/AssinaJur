@@ -279,6 +279,17 @@ export async function generateFinalPdfCertificate(documentId: string) {
     height: Math.min(0.22, Math.max(0.065, Number(customStampMatch[5]))),
   } : null;
 
+  let drawnSigImg: any = null;
+  const activeSigner = doc.signers[0];
+  if (activeSigner?.signatureImage && activeSigner.signatureImage.startsWith('data:image/')) {
+    try {
+      const sigBytes = Buffer.from(activeSigner.signatureImage.split(',')[1], 'base64');
+      drawnSigImg = await pdfDoc.embedPng(sigBytes);
+    } catch (sigErr) {
+      console.warn('Erro ao carregar imagem de rubrica:', sigErr);
+    }
+  }
+
   originalPages.forEach((p, idx) => {
     const { width: pW, height: pH } = p.getSize();
     // O carimbo precisa caber em qualquer página sem abreviar dados com "...".
@@ -311,15 +322,31 @@ export async function generateFinalPdfCertificate(documentId: string) {
       p.drawRectangle({ x: stampX, y: stampY + stampH - 4, width: stampW, height: 4, color: gold });
 
       nameLines.forEach((line, lineIndex) => {
-        p.drawText(line.toUpperCase(), { x: contentX, y: stampY + stampH - 15 - lineIndex * 8.5, size: 7.2, font: bold, color: navy });
+        p.drawText(line.toUpperCase(), { x: contentX, y: stampY + stampH - 14 - lineIndex * 8.5, size: 7.2, font: bold, color: navy });
       });
 
-      p.drawText('ASSINATURA ELETRÔNICA QUALIFICADA', { x: contentX, y: stampY + stampH - 31, size: 5.6, font: bold, color: green });
+      const firstSignerCpf = formatFullCpf(doc.signers[0]?.cpf || '');
+      p.drawText(`CPF: ${firstSignerCpf}`, { x: contentX, y: stampY + stampH - 24, size: 6.2, font: bold, color: text });
+
+      p.drawText('ASSINATURA ELETRÔNICA QUALIFICADA', { x: contentX, y: stampY + stampH - 33, size: 5.4, font: bold, color: green });
       p.drawImage(qrImage, { x: stampX + 8, y: stampY + 6, width: qrStampSize, height: qrStampSize });
       p.drawLine({ start: { x: contentX - 8, y: stampY + 6 }, end: { x: contentX - 8, y: stampY + stampH - 8 }, thickness: 0.7, color: panelBorder });
 
-      p.drawText(doc.signers.length > 1 ? `${doc.signers.length} CPFs + SELFIES + GEOLOCALIZAÇÃO` : 'CPF + 3 SELFIES + GEOLOCALIZAÇÃO', { x: contentX, y: stampY + 22, size: 5.4, font: regular, color: text });
-      p.drawText(formatBrasiliaDateTime(signedAt, false).replace(/\s*\(.+$/, ''), { x: contentX, y: stampY + 14, size: 5.4, font: regular, color: muted });
+      // Se o signatário desenhou uma rubrica opcional, desenha por cima do selo
+      if (drawnSigImg) {
+        const sigW = Math.min(stampW * 0.65, 110);
+        const sigH = Math.min(stampH * 0.65, 40);
+        p.drawImage(drawnSigImg, {
+          x: stampX + (stampW - sigW) / 2 + 10,
+          y: stampY + (stampH - sigH) / 2,
+          width: sigW,
+          height: sigH,
+          opacity: 0.88,
+        });
+      }
+
+      p.drawText(doc.signers.length > 1 ? `${doc.signers.length} CPFs + SELFIES + GEOLOCALIZAÇÃO` : 'CPF + 3 SELFIES + GEOLOCALIZAÇÃO', { x: contentX, y: stampY + 20, size: 5.2, font: regular, color: text });
+      p.drawText(formatBrasiliaDateTime(signedAt, false).replace(/\s*\(.+$/, ''), { x: contentX, y: stampY + 12, size: 5.2, font: regular, color: muted });
       p.drawText(`CÓDIGO DE VALIDAÇÃO: ${verificationCode}`, { x: contentX, y: stampY + 4, size: 7.2, font: bold, color: navy });
     } else if (sigPos === 'TOP') {
       const stripH = 22;
