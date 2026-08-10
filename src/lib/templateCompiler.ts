@@ -306,29 +306,47 @@ export async function applyLetterheadToPdfBuffer(pdfBuffer: Buffer, letterheadBu
 
     const resultDoc = await PDFDocument.create();
     const [embeddedLetterhead] = await resultDoc.embedPdf(letterheadDoc, [0]);
+    const letterheadSize = letterheadDoc.getPage(0).getSize();
+    const pageW = letterheadSize.width || 595.28;
+    const pageH = letterheadSize.height || 841.89;
+
+    // Reserva 85pt no topo para o logotipo/cabeçalho timbrado e 50pt na base para o endereço
+    const topMargin = 85;
+    const bottomMargin = 50;
+    const sideMargin = 15;
+
+    const usableW = pageW - sideMargin * 2;
+    const usableH = pageH - topMargin - bottomMargin;
 
     const pageCount = userDoc.getPageCount();
     for (let i = 0; i < pageCount; i++) {
       const origPage = userDoc.getPage(i);
-      const { width, height } = origPage.getSize();
+      const { width: origW, height: origH } = origPage.getSize();
+
+      const scale = Math.min(usableW / origW, usableH / origH);
+      const fitW = origW * scale;
+      const fitH = origH * scale;
+
+      const posX = (pageW - fitW) / 2;
+      const posY = bottomMargin + (usableH - fitH) / 2;
 
       const [embeddedUserPage] = await resultDoc.embedPdf(userDoc, [i]);
-      const newPage = resultDoc.addPage([width, height]);
+      const newPage = resultDoc.addPage([pageW, pageH]);
 
-      // 1. Desenha o Papel Timbrado no Plano de Fundo (Camada 0)
+      // 1. Desenha o documento do cliente ajustado entre as margens do timbrado
+      newPage.drawPage(embeddedUserPage, {
+        x: posX,
+        y: posY,
+        width: fitW,
+        height: fitH,
+      });
+
+      // 2. Desenha o Papel Timbrado por cima (com logotipo, OAB e endereço totalmente nítidos)
       newPage.drawPage(embeddedLetterhead, {
         x: 0,
         y: 0,
-        width,
-        height,
-      });
-
-      // 2. Desenha a Página do Documento por Cima (Camada 1)
-      newPage.drawPage(embeddedUserPage, {
-        x: 0,
-        y: 0,
-        width,
-        height,
+        width: pageW,
+        height: pageH,
       });
     }
 
