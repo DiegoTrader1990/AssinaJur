@@ -75,7 +75,7 @@ SUA MISSÃO PRINCIPAL:
 
     const userPrompt = `Comando de modificação: ${command}\n\nConteúdo HTML atual:\n${contentHtml}`;
 
-    const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-latest'];
+    const modelsToTry = ['gemini-flash-latest', 'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash-latest'];
     let aiResult = '';
     let lastError = '';
 
