@@ -347,15 +347,6 @@ export default function NewDocumentPage() {
     setIsIlliterate(enabled);
     if (!enabled) return;
     setEnforceSignatureOrder(true);
-    setSigners((current) => {
-      const missingWitnesses = Math.max(0, 2 - current.filter((signer) => signer.role === 'TESTEMUNHA').length);
-      return [
-        ...current,
-        ...Array.from({ length: missingWitnesses }, (_, index) => ({
-          name: '', cpf: '', email: '', phone: '', role: 'TESTEMUNHA', signatureOrder: current.length + index + 1,
-        })),
-      ];
-    });
   };
 
   const handleRemoveSigner = (index: number) => {

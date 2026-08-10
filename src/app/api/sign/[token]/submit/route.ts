@@ -266,8 +266,9 @@ export async function POST(
       where: { id: signer.document.id },
       include: { signers: true },
     });
-    const allSigners = freshDoc?.signers || signer.document.signers;
-    const allCompleted = allSigners.every((s) => s.status === 'ASSINADO');
+    const rawSigners = freshDoc?.signers || signer.document.signers;
+    const allSigners = rawSigners.filter((s) => s.name && s.name.trim().length > 0);
+    const allCompleted = allSigners.length > 0 && allSigners.every((s) => s.status === 'ASSINADO');
 
     let newDocStatus = 'PARCIALMENTE_ASSINADO';
     if (allCompleted) {

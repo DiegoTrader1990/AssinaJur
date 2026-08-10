@@ -185,18 +185,11 @@ export async function POST(req: Request) {
     }
 
     if (isIlliterate) {
-      if (!rogoName || !hasValidCpfCnpjCheckDigits(String(rogoCpf || '')) || !String(rogoPhone || '').replace(/\D/g, '')) {
-        return NextResponse.json({ error: 'No fluxo a rogo, informe nome, CPF válido e WhatsApp do assinante a rogo.' }, { status: 400 });
-      }
-      const witnesses = signers.filter((signer: any) => signer?.role === 'TESTEMUNHA');
-      if (witnesses.length < 2) {
-        return NextResponse.json({ error: 'O fluxo a rogo exige duas testemunhas identificadas, cada uma com seu próprio link e prova de presença.' }, { status: 400 });
+      if (!rogoName || !hasValidCpfCnpjCheckDigits(String(rogoCpf || ''))) {
+        return NextResponse.json({ error: 'No fluxo a rogo, informe o nome e CPF válido do assinante a rogo.' }, { status: 400 });
       }
       if (signers[0]?.role !== 'CLIENTE') {
-        return NextResponse.json({ error: 'No fluxo a rogo, o primeiro participante deve ser o cliente que registrará ciência e autorização.' }, { status: 400 });
-      }
-      if (witnesses.some((witness: any) => !String(witness?.phone || '').replace(/\D/g, ''))) {
-        return NextResponse.json({ error: 'Informe o WhatsApp de cada testemunha para que todas recebam seus links individuais.' }, { status: 400 });
+        return NextResponse.json({ error: 'No fluxo a rogo, o primeiro participante deve ser o cliente titular.' }, { status: 400 });
       }
       const rogoDigits = String(rogoCpf).replace(/\D/g, '');
       if (signers.some((signer: any) => String(signer?.cpf || '').replace(/\D/g, '') === rogoDigits)) {
