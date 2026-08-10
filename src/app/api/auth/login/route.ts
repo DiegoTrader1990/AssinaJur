@@ -3,7 +3,6 @@ import { prisma } from '@/lib/prisma';
 import { verifyPassword, signToken, TOKEN_COOKIE_NAME, UserRole } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 
-// Deployment Release Version: 2026.08.10.1
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
@@ -20,9 +19,25 @@ export async function POST(req: Request) {
 
     const cleanEmail = String(email).trim().toLowerCase();
 
+    // Seleção específica dos campos necessários para o login (evita falha por colunas recém-adicionadas)
     const user = await prisma.user.findUnique({
       where: { email: cleanEmail },
-      include: { office: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        active: true,
+        passwordHash: true,
+        officeId: true,
+        office: {
+          select: {
+            id: true,
+            name: true,
+            active: true,
+          },
+        },
+      },
     });
 
     if (!user || !user.active) {
@@ -54,7 +69,7 @@ export async function POST(req: Request) {
       role: user.role as UserRole,
     });
 
-    // Registra o log de auditoria sem bloquear o fluxo principal de login
+    // Registra o log de auditoria de forma assíncrona isolada
     try {
       await logAuditEvent({
         officeId: user.officeId,
