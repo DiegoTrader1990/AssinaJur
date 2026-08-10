@@ -582,23 +582,23 @@ export async function generateFinalPdfCertificate(documentId: string) {
       certificatePage.drawRectangle({ x: compactPhotoX - 2, y: 441, width: compactPhotoW + 4, height: 4, color: gold });
 
       const imgFrameH = compactPhotoH - 18;
-      certificatePage.drawRectangle({ x: compactPhotoX, y: 329, width: compactPhotoW, height: imgFrameH, color: rgb(0.88, 0.92, 0.97) });
+      certificatePage.drawRectangle({ x: compactPhotoX, y: 327, width: compactPhotoW, height: imgFrameH, color: rgb(0.88, 0.92, 0.97) });
 
       if (embedded) {
         const imgW = embedded.width;
         const imgH = embedded.height;
-        const scale = Math.min(compactPhotoW / imgW, imgFrameH / imgH);
+        const scale = Math.max(compactPhotoW / imgW, imgFrameH / imgH);
         const drawW = Math.round(imgW * scale);
         const drawH = Math.round(imgH * scale);
         const offsetX = compactPhotoX + (compactPhotoW - drawW) / 2;
-        const offsetY = 329 + (imgFrameH - drawH) / 2;
+        const offsetY = 327 + (imgFrameH - drawH) / 2;
 
         certificatePage.drawImage(embedded, { x: offsetX, y: offsetY, width: drawW, height: drawH });
       }
 
-      certificatePage.drawRectangle({ x: compactPhotoX, y: 311, width: compactPhotoW, height: 18, color: navy });
-      certificatePage.drawText(label, { x: compactPhotoX + 7, y: 317, size: 5.8, font: bold, color: rgb(1, 1, 1) });
-      certificatePage.drawText('VALIDADA', { x: compactPhotoX + compactPhotoW - 41, y: 317, size: 4.8, font: bold, color: gold });
+      certificatePage.drawRectangle({ x: compactPhotoX, y: 309, width: compactPhotoW, height: 18, color: navy });
+      certificatePage.drawText(label, { x: compactPhotoX + 7, y: 315, size: 5.8, font: bold, color: rgb(1, 1, 1) });
+      certificatePage.drawText('VALIDADA', { x: compactPhotoX + compactPhotoW - 41, y: 315, size: 4.8, font: bold, color: gold });
       compactPhotoX += compactPhotoW + compactPhotoGap;
     }
 
@@ -1036,17 +1036,17 @@ export async function generateFinalPdfCertificate(documentId: string) {
         });
         page.drawRectangle({ x: photoX - 2, y: cardY + cardH - 2, width: boxW + 4, height: 4, color: gold });
         const imgFrameH = boxH - 22;
-        page.drawRectangle({ x: photoX, y: cardY + 49, width: boxW, height: imgFrameH, color: rgb(0.88, 0.92, 0.97) });
+        page.drawRectangle({ x: photoX, y: cardY + 47, width: boxW, height: imgFrameH, color: rgb(0.88, 0.92, 0.97) });
 
         if (embedded) {
           const imgW = embedded.width;
           const imgH = embedded.height;
-          const scale = Math.min(boxW / imgW, imgFrameH / imgH);
+          const scale = Math.max(boxW / imgW, imgFrameH / imgH);
           const drawW = Math.round(imgW * scale);
           const drawH = Math.round(imgH * scale);
 
           const offsetX = photoX + (boxW - drawW) / 2;
-          const offsetY = cardY + 49 + (imgFrameH - drawH) / 2;
+          const offsetY = cardY + 47 + (imgFrameH - drawH) / 2;
 
           page.drawImage(embedded, {
             x: offsetX,
