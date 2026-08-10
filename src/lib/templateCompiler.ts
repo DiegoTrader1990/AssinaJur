@@ -310,10 +310,10 @@ export async function applyLetterheadToPdfBuffer(pdfBuffer: Buffer, letterheadBu
     const pageW = letterheadSize.width || 595.28;
     const pageH = letterheadSize.height || 841.89;
 
-    // Reserva 85pt no topo para o logotipo/cabeçalho timbrado e 50pt na base para o endereço
-    const topMargin = 85;
-    const bottomMargin = 50;
-    const sideMargin = 15;
+    // Reserva 118pt no topo para o logotipo/cabeçalho timbrado e 88pt na base para o endereço
+    const topMargin = 118;
+    const bottomMargin = 88;
+    const sideMargin = 35;
 
     const usableW = pageW - sideMargin * 2;
     const usableH = pageH - topMargin - bottomMargin;

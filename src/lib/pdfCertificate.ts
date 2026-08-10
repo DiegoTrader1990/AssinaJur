@@ -297,14 +297,12 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const stampText = `Documento assinado eletronicamente  |  Código: ${verificationCode}  |  Página ${idx + 1}/${totalOrigPages}  |  AssinaJur`;
 
     if (customStamp) {
-      const footerText = `AssinaJur | ${verificationCode} | Página ${idx + 1}/${totalOrigPages} | Validação pública em assinajur.com.br/verificar`;
-      p.drawLine({ start: { x: 12, y: 17 }, end: { x: pW - 12, y: 17 }, thickness: 0.45, color: navy, opacity: 0.48 });
-      p.drawText(footerText, { x: 14, y: 7, size: 5.2, font: regular, color: muted });
       if (idx + 1 !== customStamp.page) return;
       const stampW = Math.min(pW * customStamp.width, pW - 16);
       const stampH = Math.min(pH * customStamp.height, 92);
-      const stampX = Math.min(pW - stampW - 8, Math.max(8, pW * customStamp.x));
-      const stampY = Math.min(pH - stampH - 8, Math.max(8, pH * (1 - customStamp.y - customStamp.height)));
+      const stampX = Math.min(pW - stampW - 12, Math.max(12, pW * customStamp.x));
+      const rawY = pH * (1 - customStamp.y - customStamp.height);
+      const stampY = Math.max(88, Math.min(pH - stampH - 120, rawY));
       const witnessCount = doc.signers.filter((item) => item.role === 'TESTEMUNHA').length;
       const signerSummary = doc.isIlliterate
         ? `${safeText(doc.rogoName || 'Assinante a rogo', 70)} (A ROGO) + ${witnessCount} TESTEMUNHAS`
