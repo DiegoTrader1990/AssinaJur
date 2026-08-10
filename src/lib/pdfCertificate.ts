@@ -581,8 +581,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
       certificatePage.drawRectangle({ x: compactPhotoX - 2, y: 309, width: compactPhotoW + 4, height: compactPhotoH + 4, color: navy });
       certificatePage.drawRectangle({ x: compactPhotoX - 2, y: 441, width: compactPhotoW + 4, height: 4, color: gold });
 
-      const imgFrameH = compactPhotoH - 18;
-      certificatePage.drawRectangle({ x: compactPhotoX, y: 327, width: compactPhotoW, height: imgFrameH, color: rgb(0.88, 0.92, 0.97) });
+      const imgFrameH = compactPhotoH - 26;
+      certificatePage.drawRectangle({ x: compactPhotoX, y: 335, width: compactPhotoW, height: imgFrameH, color: rgb(0.88, 0.92, 0.97) });
 
       if (embedded) {
         const imgW = embedded.width;
@@ -591,7 +591,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
         const drawW = Math.round(imgW * scale);
         const drawH = Math.round(imgH * scale);
         const offsetX = compactPhotoX + (compactPhotoW - drawW) / 2;
-        const offsetY = 327 + (imgFrameH - drawH) / 2;
+        const offsetY = 335 + (imgFrameH - drawH) / 2;
 
         certificatePage.drawImage(embedded, { x: offsetX, y: offsetY, width: drawW, height: drawH });
       }
@@ -1035,8 +1035,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
           color: navy,
         });
         page.drawRectangle({ x: photoX - 2, y: cardY + cardH - 2, width: boxW + 4, height: 4, color: gold });
-        const imgFrameH = boxH - 22;
-        page.drawRectangle({ x: photoX, y: cardY + 47, width: boxW, height: imgFrameH, color: rgb(0.88, 0.92, 0.97) });
+        const imgFrameH = boxH - 30;
+        page.drawRectangle({ x: photoX, y: cardY + 55, width: boxW, height: imgFrameH, color: rgb(0.88, 0.92, 0.97) });
 
         if (embedded) {
           const imgW = embedded.width;
@@ -1046,7 +1046,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
           const drawH = Math.round(imgH * scale);
 
           const offsetX = photoX + (boxW - drawW) / 2;
-          const offsetY = cardY + 47 + (imgFrameH - drawH) / 2;
+          const offsetY = cardY + 55 + (imgFrameH - drawH) / 2;
 
           page.drawImage(embedded, {
             x: offsetX,

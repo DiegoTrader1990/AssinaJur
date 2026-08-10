@@ -472,8 +472,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     try {
-      canvas.width = 480;
-      canvas.height = 640;
+      canvas.width = 560;
+      canvas.height = 520;
       const ctx = canvas.getContext('2d');
       if (ctx) {
         const sourceWidth = video.videoWidth;
