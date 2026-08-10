@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { verifyPassword, signToken, TOKEN_COOKIE_NAME, UserRole } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -15,8 +17,10 @@ export async function POST(req: Request) {
       );
     }
 
+    const cleanEmail = String(email).trim().toLowerCase();
+
     const user = await prisma.user.findUnique({
-      where: { email: String(email).trim().toLowerCase() },
+      where: { email: cleanEmail },
       include: { office: true },
     });
 
@@ -27,7 +31,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!user.office.active) {
+    if (user.office && !user.office.active) {
       return NextResponse.json(
         { error: 'O acesso do escritório está suspenso ou inativo.' },
         { status: 403 }
@@ -49,12 +53,17 @@ export async function POST(req: Request) {
       role: user.role as UserRole,
     });
 
-    await logAuditEvent({
-      officeId: user.officeId,
-      userId: user.id,
-      eventType: 'USER_LOGIN',
-      description: `Login efetuado por ${user.name} (${user.email}).`,
-    });
+    // Registra o log de auditoria sem bloquear o fluxo principal de login
+    try {
+      await logAuditEvent({
+        officeId: user.officeId,
+        userId: user.id,
+        eventType: 'USER_LOGIN',
+        description: `Login efetuado por ${user.name} (${user.email}).`,
+      });
+    } catch (auditErr) {
+      console.warn('Erro ao salvar audit log (não impeditivo):', auditErr);
+    }
 
     const response = NextResponse.json({
       success: true,
@@ -64,7 +73,7 @@ export async function POST(req: Request) {
         email: user.email,
         role: user.role,
         officeId: user.officeId,
-        officeName: user.office.name,
+        officeName: user.office?.name || 'Escritório',
       },
     });
 
