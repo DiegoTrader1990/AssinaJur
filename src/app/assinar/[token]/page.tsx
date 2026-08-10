@@ -510,14 +510,14 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         activeKeyRef.current = 'left';
         setActiveSelfieKey('left');
         centeredStartTimeRef.current = null;
-        warmupUntilRef.current = Date.now() + 2000;
+        warmupUntilRef.current = Date.now() + 800;
         setSelfieInstruction('✓ Foto 1 Salva! Agora vire o rosto para a ESQUERDA ←');
         playGoogleAudio('step1', audioEnabledRef.current);
       } else if (key === 'left') {
         activeKeyRef.current = 'right';
         setActiveSelfieKey('right');
         centeredStartTimeRef.current = null;
-        warmupUntilRef.current = Date.now() + 2000;
+        warmupUntilRef.current = Date.now() + 800;
         setSelfieInstruction('✓ Foto 2 Salva! Agora vire o rosto para a DIREITA →');
         playGoogleAudio('step2', audioEnabledRef.current);
       } else if (key === 'right') {
@@ -539,6 +539,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         setCapturingSelfie(false);
       }, 500);
     }
+  };
+
+  const handleManualCapture = () => {
+    if (isCapturingRef.current) return;
+    triggerAutomaticCapture(activeKeyRef.current);
   };
 
   const startSelfieCamera = async (targetKey?: SelfieKey, isSingleRetake: boolean = false, person: 'CLIENT' | 'ROGO' = activePerson) => {
@@ -894,6 +899,27 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   <span>{selfieInstruction}</span>
                 </div>
               </div>
+
+              {/* Botão de Captura Manual Direta */}
+              <button
+                type="button"
+                onClick={handleManualCapture}
+                disabled={capturingSelfie}
+                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading"
+              >
+                {capturingSelfie ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" /> Capturando Foto...
+                  </>
+                ) : (
+                  <>
+                    <Camera className="w-4 h-4 text-white" />
+                    {activeSelfieKey === 'center' && '📸 Tirar Foto 1 (Frontal)'}
+                    {activeSelfieKey === 'left' && '📸 Tirar Foto 2 (Perfil Esquerdo)'}
+                    {activeSelfieKey === 'right' && '📸 Tirar Foto 3 (Perfil Direito)'}
+                  </>
+                )}
+              </button>
             </div>
 
             {clientSelfieComplete && (
@@ -1022,6 +1048,27 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   <span>{selfieInstruction}</span>
                 </div>
               </div>
+
+              {/* Botão de Captura Manual Direta para o Assinante a Rogo */}
+              <button
+                type="button"
+                onClick={handleManualCapture}
+                disabled={capturingSelfie}
+                className="w-full py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading"
+              >
+                {capturingSelfie ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" /> Capturando Foto...
+                  </>
+                ) : (
+                  <>
+                    <Camera className="w-4 h-4 text-white" />
+                    {activeSelfieKey === 'center' && '📸 Tirar Foto 1 (Frontal)'}
+                    {activeSelfieKey === 'left' && '📸 Tirar Foto 2 (Perfil Esquerdo)'}
+                    {activeSelfieKey === 'right' && '📸 Tirar Foto 3 (Perfil Direito)'}
+                  </>
+                )}
+              </button>
             </div>
 
             {rogoSelfieComplete && (
