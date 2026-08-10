@@ -1018,10 +1018,10 @@ export default function NewDocumentPage() {
                             <span>✓ ASSINATURA ELETRÔNICA QUALIFICADA</span>
                           </div>
                         </div>
-                        {/* RODAPÉ DE VALIDAÇÃO */}
+                        {/* RODAPÉ DE VALIDAÇÃO JURÍDICA */}
                         <div className="text-[7px] sm:text-[9.5px] font-mono text-slate-700 border-t border-slate-200 pt-0.5 mt-0.5 flex justify-between items-center font-bold">
                           <span>CÓD: <strong className="text-[#071B3A] font-black text-[8.5px] sm:text-[11px] font-mono">AJ-A1B2-C3D4</strong></span>
-                          <span className="text-[6px] sm:text-[8px] text-amber-700 font-sans font-black">ICP-Brasil</span>
+                          <span className="text-[6px] sm:text-[8px] text-slate-600 font-sans font-extrabold">Lei 14.063/20</span>
                         </div>
                       </div>
                     </div>
