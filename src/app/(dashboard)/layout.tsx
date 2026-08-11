@@ -92,8 +92,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       items: [
         { label: 'Documentos', href: '/documentos', icon: FileCheck2 },
         { label: 'WhatsApp IA', href: '/whatsapp', icon: MessageSquare, badge: 'IA Robô' },
-        { label: 'Kits Jurídicos', href: '/kits', icon: FolderArchive, badge: 'Diferencial' },
-        { label: 'Modelos & Tags', href: '/modelos', icon: FileText },
+        { label: 'Kits & Modelos', href: '/kits', icon: FolderArchive, badge: 'Diferencial' },
       ],
     },
     {
