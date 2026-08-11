@@ -196,12 +196,12 @@ export default function SettingsPage() {
 
           <div className="grid md:grid-cols-3 gap-4 text-xs font-medium">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">CPF ou CNPJ *</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">CPF ou CNPJ (Opcional se Sociedade de Fato)</label>
               <input
                 type="text"
-                required
                 value={formData.cpfCnpj}
                 onChange={(e) => setFormData({ ...formData, cpfCnpj: e.target.value })}
+                placeholder="Deixe em branco caso não possua CNPJ"
                 className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none font-mono"
               />
             </div>

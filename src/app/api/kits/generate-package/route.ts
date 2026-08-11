@@ -51,13 +51,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Kit jurídico não possui modelos cadastrados.' }, { status: 400 });
     }
 
+    const activeLawyers = await prisma.user.findMany({
+      where: { officeId: user.officeId, active: true },
+      select: { name: true, oabNumber: true },
+      orderBy: { name: 'asc' },
+    });
+
     const fullAddress = (office as any).address
       ? String((office as any).address)
       : 'Rua José Rodrigues, nº 219, Centro, Porto Seguro/BA, CEP 45810-000';
 
-    const fullOfficeQualification = `${office.name}, pessoa jurídica inscrita no CNPJ sob o nº ${office.cpfCnpj || '00.000.000/0001-00'}, com sede na ${fullAddress}, e-mail: ${office.email || 'contato@rodriguesesoares.adv.br'}, telefone/WhatsApp: ${office.phone || '(73) 98117-1111'}`;
+    const lawyerTextList = activeLawyers.length > 0
+      ? activeLawyers.map(l => `${l.name.toUpperCase()}${l.oabNumber ? ` (inscrito(a) na ${l.oabNumber})` : ''}`).join(' e ')
+      : 'DR. DIEGO DOS SANTOS RODRIGUES (OAB/BA 51.881) e DRA. DOMINICK QUINTO SOARES (OAB/BA 62.443)';
 
-    const jointPatronosQualification = `DR. DIEGO DOS SANTOS RODRIGUES, inscrito na OAB/BA sob o nº 51.881, e DRA. DOMINICK QUINTO SOARES, inscrita na OAB/BA sob o nº 62.443, ambos integrantes de ${office.name}, com escritório profissional localizado na ${fullAddress}`;
+    const cnpjPart = office.cpfCnpj && office.cpfCnpj.trim() !== ''
+      ? `pessoa jurídica inscrita no CNPJ sob o nº ${office.cpfCnpj}, `
+      : '';
+
+    const fullOfficeQualification = `${office.name}, ${cnpjPart}representada por seus patronos ${lawyerTextList}, com escritório profissional na ${fullAddress}, e-mail: ${office.email || 'contato@rodriguesesoares.adv.br'}, telefone/WhatsApp: ${office.phone || '(73) 98117-1111'}`;
+
+    const jointPatronosQualification = `${lawyerTextList}, integrantes da sociedade ${office.name}, com escritório profissional em ${fullAddress}`;
+
+    const mainLawyer = activeLawyers.find(l => l.name.toLowerCase().includes('diego')) || activeLawyers[0] || { name: user.name, oabNumber: 'OAB/BA 51.881' };
+    const secondLawyer = activeLawyers.find(l => l.name.toLowerCase().includes('dominick')) || activeLawyers[1] || { name: 'Dra. Dominick Quinto Soares', oabNumber: 'OAB/BA 62.443' };
 
     // Montar mapa completo de variáveis para substituição automática
     const variableValues = {
@@ -69,12 +86,12 @@ export async function POST(req: Request) {
       cliente_endereco: client.address || '—',
       cliente_estado_civil: client.maritalStatus || '—',
       cliente_profissao: client.profession || '—',
-      advogado_nome: user.name,
-      advogado_oab: office.oabNumber || 'OAB/BA 51.881',
-      advogada_nome: 'Dra. Dominick Quinto Soares',
-      advogada_oab: 'OAB/BA 62.443',
+      advogado_nome: mainLawyer.name,
+      advogado_oab: mainLawyer.oabNumber || 'OAB/BA 51.881',
+      advogada_nome: secondLawyer.name,
+      advogada_oab: secondLawyer.oabNumber || 'OAB/BA 62.443',
       escritorio_nome: office.name,
-      escritorio_cnpj: office.cpfCnpj || '—',
+      escritorio_cnpj: office.cpfCnpj || 'Não possui CNPJ (Sociedade de Fato)',
       escritorio_endereco: fullAddress,
       escritorio_telefone: office.phone || '(73) 98117-1111 / (73) 98825-0201',
       escritorio_email: office.email || 'contato@rodriguesesoares.adv.br',
