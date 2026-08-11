@@ -345,13 +345,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
       p.drawRectangle({ x: stampX, y: stampY + stampH - 4, width: stampW, height: 4, color: gold });
 
       nameLines.forEach((line, lineIndex) => {
-        p.drawText(line.toUpperCase(), { x: contentX, y: stampY + stampH - 14 - lineIndex * 8.5, size: 7.2, font: bold, color: navy });
+        p.drawText(line.toUpperCase(), { x: contentX, y: stampY + stampH - 13 - lineIndex * 8.5, size: 7.0, font: bold, color: navy });
       });
 
+      const yAfterName = stampY + stampH - 13 - nameLines.length * 8.5;
       const firstSignerCpf = formatFullCpf(doc.signers[0]?.cpf || '');
-      p.drawText(`CPF: ${firstSignerCpf}`, { x: contentX, y: stampY + stampH - 24, size: 6.2, font: bold, color: text });
-
-      p.drawText('ASSINATURA ELETRÔNICA QUALIFICADA', { x: contentX, y: stampY + stampH - 33, size: 5.4, font: bold, color: green });
+      p.drawText(`CPF: ${firstSignerCpf}`, { x: contentX, y: yAfterName - 2, size: 6.0, font: bold, color: text });
+      p.drawText('ASSINATURA ELETRÔNICA QUALIFICADA', { x: contentX, y: yAfterName - 10, size: 5.2, font: bold, color: green });
       p.drawImage(qrImage, { x: stampX + 8, y: stampY + 6, width: qrStampSize, height: qrStampSize });
       p.drawLine({ start: { x: contentX - 7, y: stampY + 6 }, end: { x: contentX - 7, y: stampY + stampH - 8 }, thickness: 0.7, color: panelBorder });
 
@@ -920,26 +920,26 @@ export async function generateFinalPdfCertificate(documentId: string) {
       (12 + locationLines.length * 9.8 + 5) +
       (12 + authenticationLines.length * 9.8 + 5) +
       (signer.signatureImage ? 65 : 0);
-    const photosHeight = hasPhotos ? 225 : 0;
-    const panelH = 28 + dataHeight + photosHeight + 10;
+    const photosHeight = hasPhotos ? 155 : 0;
+    const panelH = 24 + dataHeight + photosHeight + 8;
     ensureSpace(panelH + 10);
 
     const pTop = y;
     const pY = pTop - panelH;
     page.drawRectangle({ x: CX, y: pY, width: CW, height: panelH, color: panelBg, borderWidth: 0.9, borderColor: panelBorder });
-    page.drawRectangle({ x: CX, y: pTop - 24, width: CW, height: 24, color: navy });
+    page.drawRectangle({ x: CX, y: pTop - 22, width: CW, height: 22, color: navy });
     page.drawRectangle({ x: CX, y: pTop - 3, width: CW, height: 3, color: gold });
     
-    page.drawText('2. DADOS COMPLETOS DO SIGNATÁRIO', {
+    page.drawText(`2. DADOS DO SIGNATÁRIO — ${signerRoleLabel(signer.role).toUpperCase()}`, {
       x: padX,
-      y: pTop - 15,
-      size: 7.5,
+      y: pTop - 14,
+      size: 7.2,
       font: bold,
       color: rgb(1, 1, 1),
     });
 
     const col2X = padX + halfWidth + gapWidth;
-    let cursor = pTop - 32;
+    let cursor = pTop - 28;
 
     const drawTwoColumns = (
       left: { label: string; value: any; options?: any },
@@ -952,28 +952,28 @@ export async function generateFinalPdfCertificate(documentId: string) {
     };
 
     drawTwoColumns(
-      { label: 'Nome completo', value: signer.name, options: { font: bold, size: 9.5 } },
-      { label: 'CPF completo', value: formatFullCpf(signer.cpf), options: { font: bold, size: 9.5 } },
-      rowHeight(nameLines.length, cpfLines.length, 9.5)
+      { label: 'Nome completo', value: signer.name, options: { font: bold, size: 9 } },
+      { label: 'CPF completo', value: formatFullCpf(signer.cpf), options: { font: bold, size: 9 } },
+      rowHeight(nameLines.length, cpfLines.length, 9)
     );
     drawTwoColumns(
-      { label: 'Telefone completo', value: formatFullPhone(signer.phone), options: { size: 9 } },
-      { label: 'Data e hora da assinatura', value: formatBrasiliaDateTime(signer.signedAt), options: { font: bold, size: 8.5 } },
-      rowHeight(phoneLines.length, dateLines.length, 9)
+      { label: 'Telefone completo', value: formatFullPhone(signer.phone), options: { size: 8.5 } },
+      { label: 'Data e hora da assinatura', value: formatBrasiliaDateTime(signer.signedAt), options: { font: bold, size: 8 } },
+      rowHeight(phoneLines.length, dateLines.length, 8.5)
     );
     drawTwoColumns(
-      { label: 'Endereço IP', value: signer.ipAddress || 'Não informado', options: { font: mono, size: 8 } },
-      { label: 'Qualificação', value: signerRoleLabel(signer.role), options: { size: 8.5 } },
-      rowHeight(ipLines.length, roleLines.length, 8.5)
+      { label: 'Endereço IP', value: signer.ipAddress || 'Não informado', options: { font: mono, size: 7.8 } },
+      { label: 'Qualificação', value: signerRoleLabel(signer.role), options: { size: 8 } },
+      rowHeight(ipLines.length, roleLines.length, 8)
     );
 
-    cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Dispositivo e navegador completos', parseUserAgentFriendly(signer.userAgent), { size: 8, lineHeight: 9.8, font: bold, color: navy });
+    cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Dispositivo e navegador completos', parseUserAgentFriendly(signer.userAgent), { size: 7.5, lineHeight: 9, font: bold, color: navy });
     const locationTop = cursor;
-    cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Geolocalização completa do dispositivo', locationText, { size: 7.8, lineHeight: 9.8, color: hasLocation ? linkBlue : muted });
+    cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Geolocalização completa do dispositivo', locationText, { size: 7.5, lineHeight: 9, color: hasLocation ? linkBlue : muted });
 
     if (hasLocation) {
       const mapsUrl = `https://www.google.com/maps?q=${Number(signer.geoLat)},${Number(signer.geoLng)}`;
-      const locationBlockHeight = 12 + locationLines.length * 9.8;
+      const locationBlockHeight = 12 + locationLines.length * 9;
       addLinkAnnotation(pdfDoc, page, {
         x: padX,
         y: locationTop - locationBlockHeight,
@@ -983,28 +983,28 @@ export async function generateFinalPdfCertificate(documentId: string) {
       });
     }
 
-    cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Método de autenticação completo', authenticationText, { size: 7.8, lineHeight: 9.8 });
+    cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Método de autenticação completo', authenticationText, { size: 7.5, lineHeight: 9 });
 
     // Assinatura gráfica
     if (signer.signatureImage && signer.signatureImage.startsWith('data:image/png;base64,')) {
       try {
         const base64Data = signer.signatureImage.replace(/^data:image\/png;base64,/, '');
         const sigPng = await pdfDoc.embedPng(Buffer.from(base64Data, 'base64'));
-        page.drawText('ASSINATURA GRÁFICA', { x: padX, y: cursor, size: 6.5, font: bold, color: muted });
-        const sigScale = Math.min(160 / sigPng.width, 48 / sigPng.height);
-        page.drawImage(sigPng, { x: padX, y: cursor - 52, width: sigPng.width * sigScale, height: sigPng.height * sigScale });
-        cursor -= 65;
+        page.drawText('ASSINATURA GRÁFICA', { x: padX, y: cursor, size: 6.2, font: bold, color: muted });
+        const sigScale = Math.min(140 / sigPng.width, 38 / sigPng.height);
+        page.drawImage(sigPng, { x: padX, y: cursor - 42, width: sigPng.width * sigScale, height: sigPng.height * sigScale });
+        cursor -= 48;
       } catch (sigErr) {
         console.error('Erro ao renderizar assinatura gráfica no PDF:', sigErr);
       }
     }
 
-    // SEÇÃO 4: EVIDÊNCIAS COLETADAS — 3 SELFIES (CENTRO / PERFIL ESQUERDO / PERFIL DIREITO)
+    // SEÇÃO 3: EVIDÊNCIAS COLETADAS — 3 SELFIES (CENTRO / PERFIL ESQUERDO / PERFIL DIREITO)
     if (hasPhotos) {
-      page.drawText('3. PROVA DE PRESENÇA AO VIVO', {
+      page.drawText('3. PROVA DE PRESENÇA AO VIVO (REGISTRO FACIAL HD)', {
         x: padX,
         y: cursor,
-        size: 7.5,
+        size: 7.2,
         font: bold,
         color: navy,
       });
@@ -1015,17 +1015,17 @@ export async function generateFinalPdfCertificate(documentId: string) {
         ['3. Perfil Direito', signer.selfieRightImage],
       ];
 
-      // Cartões verticais para acompanhar melhor o enquadramento natural de selfie.
-      const boxW = 135;
-      const boxH = 155;
-      const cardH = 187;
-      const gap = 27;
+      // Cartões verticais otimizados em HD para ajuste compacto.
+      const boxW = 118;
+      const boxH = 118;
+      const cardH = 138;
+      const gap = 20;
       const photosTotalWidth = boxW * 3 + gap * 2;
       let photoX = padX + Math.max(0, (innerWidth - photosTotalWidth) / 2);
 
       for (const [label, img] of photoLabels) {
         const embedded = await embedBase64Image(pdfDoc, img, { width: 540, height: 620 });
-        const cardY = cursor - cardH - 16;
+        const cardY = cursor - cardH - 12;
 
         page.drawRectangle({
           x: photoX - 2,
@@ -1035,9 +1035,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
           borderWidth: 0,
           color: navy,
         });
-        page.drawRectangle({ x: photoX - 2, y: cardY + cardH - 2, width: boxW + 4, height: 4, color: gold });
-        const imgFrameH = boxH - 30;
-        page.drawRectangle({ x: photoX, y: cardY + 55, width: boxW, height: imgFrameH, color: rgb(0.88, 0.92, 0.97) });
+        page.drawRectangle({ x: photoX - 2, y: cardY + cardH - 2, width: boxW + 4, height: 3, color: gold });
+        const imgFrameH = boxH - 22;
+        page.drawRectangle({ x: photoX, y: cardY + 40, width: boxW, height: imgFrameH, color: rgb(0.88, 0.92, 0.97) });
 
         if (embedded) {
           const imgW = embedded.width;
@@ -1047,7 +1047,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
           const drawH = Math.round(imgH * scale);
 
           const offsetX = photoX + (boxW - drawW) / 2;
-          const offsetY = cardY + 55 + (imgFrameH - drawH) / 2;
+          const offsetY = cardY + 40 + (imgFrameH - drawH) / 2;
 
           page.drawImage(embedded, {
             x: offsetX,
@@ -1058,14 +1058,14 @@ export async function generateFinalPdfCertificate(documentId: string) {
         }
 
         page.drawText(safeText(label, 40).toUpperCase(), {
-          x: photoX + 7,
-          y: cardY + 11,
-          size: 6.4,
+          x: photoX + 5,
+          y: cardY + 9,
+          size: 5.8,
           font: bold,
           color: rgb(1, 1, 1),
         });
-        page.drawRectangle({ x: photoX + boxW - 46, y: cardY + 7, width: 39, height: 13, color: paleGreen });
-        page.drawText('VALIDADA', { x: photoX + boxW - 41, y: cardY + 11, size: 5.2, font: bold, color: green });
+        page.drawRectangle({ x: photoX + boxW - 44, y: cardY + 5, width: 38, height: 12, color: paleGreen });
+        page.drawText('VALIDADA', { x: photoX + boxW - 40, y: cardY + 8, size: 4.8, font: bold, color: green });
         photoX += boxW + gap;
       }
     }
