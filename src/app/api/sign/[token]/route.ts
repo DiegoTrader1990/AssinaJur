@@ -119,6 +119,7 @@ export async function GET(
         rogoCpf: document.rogoCpf,
         rogoRelationship: document.rogoRelationship,
         signers: document.signers,
+        pdfUrl: `/api/sign/${params.token}/document`,
       },
     });
   } catch (error: any) {

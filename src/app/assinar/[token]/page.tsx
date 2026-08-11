@@ -1371,23 +1371,35 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 </button>
               </div>
 
-              <div className="p-6 overflow-y-auto space-y-4 font-serif text-slate-800 text-xs sm:text-sm leading-relaxed bg-slate-50/50">
+              <div className="p-4 overflow-y-auto space-y-3 font-sans text-slate-800 text-xs flex-1 bg-slate-50">
                 {document?.customMessage && (
                   <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 font-sans text-xs">
                     <strong>Mensagem do Escritório:</strong> "{document.customMessage}"
                   </div>
                 )}
-                <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs whitespace-pre-wrap font-serif text-slate-800 text-xs sm:text-sm">
-                  {document?.previewText || 'Documento jurídico anexado em formato PDF. As assinaturas e provas de presença serão vinculadas ao Certificado de Evidências Jurídicas.'}
+                
+                <div className="w-full h-[55vh] min-h-[350px] bg-slate-100 rounded-2xl border border-slate-300 overflow-hidden shadow-inner relative">
+                  <iframe
+                    src={`/api/sign/${params.token}/document`}
+                    className="w-full h-full border-0"
+                    title={document?.title || 'Documento em PDF'}
+                  />
                 </div>
               </div>
 
-              <div className="p-4 bg-white border-t border-slate-200 flex justify-between items-center">
-                <span className="text-[11px] text-slate-500 font-medium font-heading">AssinaJur • Validade MP 2.200-2</span>
+              <div className="p-4 bg-white border-t border-slate-200 flex flex-wrap gap-2 justify-between items-center">
+                <a
+                  href={`/api/sign/${params.token}/document`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl text-xs flex items-center gap-1.5 border border-blue-200 transition-colors font-heading"
+                >
+                  <span>↗ Abrir PDF Completo</span>
+                </a>
                 <button
                   type="button"
                   onClick={() => setShowDocPreview(false)}
-                  className="px-6 py-2.5 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-xl text-xs font-heading shadow-md"
+                  className="px-6 py-2 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-xl text-xs font-heading shadow-md transition-all"
                 >
                   Fechar Leitura
                 </button>
