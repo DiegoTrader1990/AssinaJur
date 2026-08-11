@@ -69,7 +69,13 @@ function emphasizeDocumentNames(html: string, variables: VariableValues): string
 }
 
 function parseRichParagraphs(html: string): RichParagraph[] {
-  const normalized = html
+  // Strip CSS style tags, script tags, and comments before parsing
+  const cleanedHtml = html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+
+  const normalized = cleanedHtml
     .replace(/\r/g, '')
     .replace(/<\s*br\s*\/?>/gi, '\n')
     .replace(/<\s*h1[^>]*>/gi, '\n[[H1]]')
@@ -155,16 +161,21 @@ async function renderTemplatePdf({
 
   let page = addPage(true);
   const { width, height } = page.getSize();
-  let currentY = height - 110;
+  // Margem superior ampliada para não colidir com papel timbrado/cabeçalho
+  const startTopMargin = embeddedLetterhead ? 135 : 115;
+  const subsequentTopMargin = embeddedLetterhead ? 125 : 100;
+  const bottomMarginLimit = embeddedLetterhead ? 85 : 65;
+
+  let currentY = height - startTopMargin;
   const marginX = 40;
   const maxWidth = width - 80;
   const paragraphs = parseRichParagraphs(presentationHtml);
   let signaturePlacement: { page: number; x: number; y: number; width: number; height: number } | null = null;
   let explicitSignatureLineFound = false;
   const ensureLineSpace = (lineHeight: number) => {
-    if (currentY - lineHeight < 58) {
+    if (currentY - lineHeight < bottomMarginLimit) {
       page = addPage(false);
-      currentY = height - 60;
+      currentY = height - subsequentTopMargin;
     }
   };
 
