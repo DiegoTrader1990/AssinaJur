@@ -399,93 +399,6 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Modal de Cadastro de Advogado */}
-        {showAddLawyerModal && (
-          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 font-sans animate-in fade-in zoom-in duration-200">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div className="flex items-center gap-2 text-[#071B3A] font-extrabold font-heading">
-                  <UserPlus className="w-5 h-5 text-blue-600" />
-                  <span>Adicionar Advogado Patrono</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowAddLawyerModal(false)}
-                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <form onSubmit={handleAddLawyer} className="space-y-3 text-xs">
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Nome Completo do Advogado(a) *</label>
-                  <input
-                    type="text"
-                    required
-                    value={newLawyer.name}
-                    onChange={(e) => setNewLawyer({ ...newLawyer, name: e.target.value })}
-                    placeholder="Ex: Dr. Diego dos Santos Rodrigues ou Dra. Dominick Quinto Soares"
-                    className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Inscrição OAB *</label>
-                  <input
-                    type="text"
-                    required
-                    value={newLawyer.oabNumber}
-                    onChange={(e) => setNewLawyer({ ...newLawyer, oabNumber: e.target.value })}
-                    placeholder="Ex: OAB/BA 51.881 ou OAB/BA 62.443"
-                    className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">E-mail Profissional (Opcional)</label>
-                  <input
-                    type="email"
-                    value={newLawyer.email}
-                    onChange={(e) => setNewLawyer({ ...newLawyer, email: e.target.value })}
-                    placeholder="advogado@escritorio.adv.br"
-                    className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Telefone / WhatsApp (Opcional)</label>
-                  <input
-                    type="text"
-                    value={newLawyer.phone}
-                    onChange={(e) => setNewLawyer({ ...newLawyer, phone: e.target.value })}
-                    placeholder="(73) 98825-0201"
-                    className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
-                  />
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddLawyerModal(false)}
-                    className="px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={addingLawyer}
-                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center gap-2"
-                  >
-                    {addingLawyer ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                    Salvar Advogado
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
         {/* Seção 2: Identidade Visual */}
         <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
           <div className="flex items-center gap-2 text-[#071B3A] font-extrabold border-b border-slate-100 pb-3 font-heading">
@@ -642,6 +555,93 @@ export default function SettingsPage() {
           </button>
         </div>
       </form>
+
+      {/* Modal de Cadastro de Advogado */}
+      {showAddLawyerModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 font-sans animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2 text-[#071B3A] font-extrabold font-heading">
+                <UserPlus className="w-5 h-5 text-blue-600" />
+                <span>Adicionar Advogado Patrono</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddLawyerModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddLawyer} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Nome Completo do Advogado(a) *</label>
+                <input
+                  type="text"
+                  required
+                  value={newLawyer.name}
+                  onChange={(e) => setNewLawyer({ ...newLawyer, name: e.target.value })}
+                  placeholder="Ex: Dr. Diego dos Santos Rodrigues ou Dra. Dominick Quinto Soares"
+                  className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Inscrição OAB *</label>
+                <input
+                  type="text"
+                  required
+                  value={newLawyer.oabNumber}
+                  onChange={(e) => setNewLawyer({ ...newLawyer, oabNumber: e.target.value })}
+                  placeholder="Ex: OAB/BA 51.881 ou OAB/BA 62.443"
+                  className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">E-mail Profissional (Opcional)</label>
+                <input
+                  type="email"
+                  value={newLawyer.email}
+                  onChange={(e) => setNewLawyer({ ...newLawyer, email: e.target.value })}
+                  placeholder="advogado@escritorio.adv.br"
+                  className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Telefone / WhatsApp (Opcional)</label>
+                <input
+                  type="text"
+                  value={newLawyer.phone}
+                  onChange={(e) => setNewLawyer({ ...newLawyer, phone: e.target.value })}
+                  placeholder="(73) 98825-0201"
+                  className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddLawyerModal(false)}
+                  className="px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={addingLawyer}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center gap-2"
+                >
+                  {addingLawyer ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                  Salvar Advogado
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
