@@ -27,7 +27,8 @@ import {
   Scale,
   UserCheck,
   ChevronDown,
-  X
+  X,
+  ExternalLink,
 } from 'lucide-react';
 import { formatBrasiliaDateTime } from '@/lib/dateUtils';
 import { maskCpfCnpj } from '@/lib/formatters';
@@ -1378,12 +1379,33 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   </div>
                 )}
                 
-                <div className="w-full h-[55vh] min-h-[350px] bg-slate-100 rounded-2xl border border-slate-300 overflow-hidden shadow-inner relative">
-                  <iframe
-                    src={`/api/sign/${params.token}/document`}
-                    className="w-full h-full border-0"
-                    title={document?.title || 'Documento em PDF'}
-                  />
+                <div className="w-full h-[58vh] min-h-[360px] bg-slate-100 rounded-2xl border border-slate-300 overflow-hidden shadow-inner relative flex flex-col items-center justify-center">
+                  <object
+                    data={`/api/sign/${params.token}/document`}
+                    type="application/pdf"
+                    className="w-full h-full"
+                  >
+                    <embed
+                      src={`/api/sign/${params.token}/document`}
+                      type="application/pdf"
+                      className="w-full h-full"
+                    />
+                    <div className="p-6 text-center space-y-3 bg-white/95 rounded-2xl border border-slate-200 shadow-lg max-w-sm mx-auto">
+                      <FileText className="w-12 h-12 text-blue-600 mx-auto" />
+                      <p className="text-xs font-bold text-[#071B3A] font-heading">
+                        Para visualizar o PDF do documento no seu celular:
+                      </p>
+                      <a
+                        href={`/api/sign/${params.token}/document`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-2 w-full py-3 px-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-xl text-xs shadow-md font-heading transition-all"
+                      >
+                        <ExternalLink className="w-4 h-4 text-amber-400" />
+                        Abrir PDF Completo em Tela Cheia
+                      </a>
+                    </div>
+                  </object>
                 </div>
               </div>
 

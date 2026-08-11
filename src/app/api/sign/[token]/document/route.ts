@@ -33,8 +33,11 @@ export async function GET(
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="${encodeURIComponent(signer.document.title)}.pdf"`,
-        'Cache-Control': 'public, max-age=3600',
+        'Content-Disposition': 'inline',
+        'Content-Length': String(buffer.length),
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'X-Frame-Options': 'ALLOWALL',
       },
     });
   } catch (error: any) {
