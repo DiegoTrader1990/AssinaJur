@@ -61,22 +61,26 @@ export async function POST(req: Request) {
       ? String((office as any).address)
       : 'Rua José Rodrigues, nº 219, Centro, Porto Seguro/BA, CEP 45810-000';
 
-    const lawyerTextList = activeLawyers.length > 0
-      ? activeLawyers.map(l => `${l.name.toUpperCase()}${l.oabNumber ? ` (inscrito(a) na ${l.oabNumber})` : ''}`).join(' e ')
-      : 'DR. DIEGO DOS SANTOS RODRIGUES (OAB/BA 51.881) e DRA. DOMINICK QUINTO SOARES (OAB/BA 62.443)';
-
     const cleanDoc = (office.cpfCnpj || '').replace(/\D/g, '');
     const isCnpj = cleanDoc.length > 11;
 
-    const docTextPart = isCnpj
-      ? `sociedade de advogados inscrita no CNPJ sob o nº ${office.cpfCnpj}, `
-      : cleanDoc.length === 11
-        ? `inscrito no CPF sob o nº ${office.cpfCnpj}, `
-        : '';
+    const lawyerTextList = activeLawyers.length > 0
+      ? activeLawyers.map(l => `${l.name.toUpperCase()}${l.oabNumber ? `, inscrito(a) na ${l.oabNumber}` : ''}`).join(' e ')
+      : 'DR. DIEGO DOS SANTOS RODRIGUES, inscrito na OAB/BA nº 51.881, e DRA. DOMINICK QUINTO SOARES, inscrita na OAB/BA nº 62.443';
 
-    const fullOfficeQualification = `${office.name}, ${docTextPart}representada por seus patronos ${lawyerTextList}, com escritório profissional na ${fullAddress}, e-mail: ${office.email || 'contato@rodriguesesoares.adv.br'}, telefone/WhatsApp: ${office.phone || '(73) 98117-1111'}`;
+    let fullOfficeQualification = '';
+    let jointPatronosQualification = '';
 
-    const jointPatronosQualification = `${lawyerTextList}, integrantes de ${office.name}, com escritório profissional em ${fullAddress}`;
+    if (isCnpj) {
+      // Pessoa Jurídica com CNPJ registrado na OAB
+      fullOfficeQualification = `${office.name}, sociedade de advogados inscrita no CNPJ sob o nº ${office.cpfCnpj}, representada por seus patronos ${lawyerTextList}, com sede na ${fullAddress}, e-mail: ${office.email || 'contato@rodriguesesoares.adv.br'}, telefone/WhatsApp: ${office.phone || '(73) 98117-1111'}`;
+      jointPatronosQualification = `${lawyerTextList}, integrantes de ${office.name}, com escritório profissional na ${fullAddress}`;
+    } else {
+      // Pessoa Física / Advocacia em Conjunto (SEM CNPJ - Conforme Código de Ética e Provimento OAB)
+      const cpfText = cleanDoc.length === 11 ? `inscrito(a) no CPF sob o nº ${office.cpfCnpj}, ` : '';
+      fullOfficeQualification = `${lawyerTextList}, ${cpfText}com escritório profissional localizado na ${fullAddress}, e-mail: ${office.email || 'contato@rodriguesesoares.adv.br'}, telefone/WhatsApp: ${office.phone || '(73) 98117-1111'}`;
+      jointPatronosQualification = `${lawyerTextList}, ${cpfText}com escritório profissional na ${fullAddress}`;
+    }
 
     const mainLawyer = activeLawyers.find(l => l.name.toLowerCase().includes('diego')) || activeLawyers[0] || { name: user.name, oabNumber: 'OAB/BA 51.881' };
     const secondLawyer = activeLawyers.find(l => l.name.toLowerCase().includes('dominick')) || activeLawyers[1] || { name: 'Dra. Dominick Quinto Soares', oabNumber: 'OAB/BA 62.443' };
