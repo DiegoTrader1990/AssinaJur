@@ -484,8 +484,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
     p.drawText(cleanSubtitle, { x: CR - subtitleWidth, y: 787, size: 8.2, font: bold, color: rgb(1, 1, 1) });
   };
 
-  // ── 2. CERTIFICADO COMPACTO DE 1 PÁGINA (GARANTE 2 FOLHAS NO TOTAL PARA DOCUMENTOS DE 1 A 2 SIGNATÁRIOS) ──
-  const compactCertificate = doc.signers.length <= 2;
+  // ── 2. CERTIFICADO COMPACTO DE 1 PÁGINA (APENAS PARA DOCUMENTOS SIMPLES DE 1 ÚNICO SIGNATÁRIO) ──
+  const compactCertificate = doc.signers.length === 1 && !doc.isIlliterate;
   if (compactCertificate) {
     const certificatePage = pdfDoc.addPage([PAGE_W, PAGE_H]);
     const signer = doc.signers[0];

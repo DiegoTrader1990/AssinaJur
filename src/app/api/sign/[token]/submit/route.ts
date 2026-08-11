@@ -123,7 +123,18 @@ export async function POST(
 
     // 5. Se for fluxo a rogo e dados do acompanhante foram enviados no mesmo link, atualizar o Assinante a Rogo
     if (isRogadoConsent && rogo) {
-      const rogoSignerRecord = signer.document.signers.find((s) => s.role === 'ASSINANTE_A_ROGO');
+      let rogoSignerRecord = signer.document.signers.find((s) => s.role === 'ASSINANTE_A_ROGO');
+      if (!rogoSignerRecord) {
+        rogoSignerRecord = await prisma.signer.create({
+          data: {
+            documentId: signer.document.id,
+            name: rogo.name || 'Assinante a Rogo',
+            cpf: (rogo.cpf || '').replace(/\D/g, ''),
+            role: 'ASSINANTE_A_ROGO',
+            status: 'PENDENTE',
+          },
+        });
+      }
       if (rogoSignerRecord) {
         await prisma.signer.update({
           where: { id: rogoSignerRecord.id },
