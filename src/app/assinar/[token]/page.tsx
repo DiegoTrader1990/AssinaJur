@@ -261,6 +261,26 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [currentYaw, setCurrentYaw] = useState<number>(0.5);
 
   const [showDocPreview, setShowDocPreview] = useState(false);
+  const [docBlobUrl, setDocBlobUrl] = useState<string | null>(null);
+  const [loadingDocBlob, setLoadingDocBlob] = useState(false);
+
+  const handleOpenDocPreview = async () => {
+    setShowDocPreview(true);
+    if (!docBlobUrl && params.token) {
+      setLoadingDocBlob(true);
+      try {
+        const res = await fetch(`/api/sign/${params.token}/document`);
+        if (!res.ok) throw new Error('Erro ao carregar arquivo');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        setDocBlobUrl(url);
+      } catch (err) {
+        console.error('Erro ao carregar blob do documento:', err);
+      } finally {
+        setLoadingDocBlob(false);
+      }
+    }
+  };
 
   // Geolocalização
   const [geo, setGeo] = useState<{ lat: number | null; lng: number | null; accuracy: number | null; city: string | null; state: string | null }>({
@@ -877,18 +897,17 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </p>
             </div>
 
-            <a
-              href={`/api/sign/${params.token}/document`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={handleOpenDocPreview}
               className="w-full py-3.5 px-4 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-2xl text-xs font-extrabold text-[#071B3A] flex items-center justify-between transition-all font-heading shadow-xs mb-3"
             >
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-blue-600" />
                 <span>📄 Ler / Visualizar Documento Completo</span>
               </div>
-              <ExternalLink className="w-4 h-4 text-blue-600" />
-            </a>
+              <Eye className="w-4 h-4 text-blue-600" />
+            </button>
 
             <form onSubmit={handleConfirmCpf} className="space-y-4">
               <div>
@@ -1206,19 +1225,18 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 {isRogadoConsent ? `Desenhe ou confirme a assinatura a rogo pelo cliente ${signer?.name}.` : 'Escolha o formato e assine no quadro abaixo.'}
               </p>
             </div>
-            {/* Botão para ler / visualizar documento integral em nova guia */}
-            <a
-              href={`/api/sign/${params.token}/document`}
-              target="_blank"
-              rel="noopener noreferrer"
+            {/* Botão para ler / visualizar documento integral na mesma tela */}
+            <button
+              type="button"
+              onClick={handleOpenDocPreview}
               className="w-full py-3.5 px-4 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-2xl text-xs font-extrabold text-[#071B3A] flex items-center justify-between transition-all font-heading shadow-xs"
             >
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-blue-600" />
                 <span>📄 Ler / Visualizar Documento Completo</span>
               </div>
-              <ExternalLink className="w-4 h-4 text-blue-600" />
-            </a>
+              <Eye className="w-4 h-4 text-blue-600" />
+            </button>
 
             {/* Bloco do Selo Digital Principal (Sempre Ativo) */}
             <div className="p-4 bg-gradient-to-br from-slate-50 via-white to-blue-50/40 rounded-2xl border-2 border-[#071B3A]/20 shadow-md space-y-3">
@@ -1345,6 +1363,76 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           </div>
         )}
 
+        {/* MODAL DE LEITURA DO DOCUMENTO NA MESMA TELA (SEM BLOQUEIO DE IFRAME E SEM ABRIR NOVA GUIA) */}
+        {showDocPreview && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+            <div className="bg-white w-full max-w-2xl rounded-3xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col h-[85vh] max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
+              {/* Cabeçalho do Modal */}
+              <div className="p-4 sm:p-5 bg-[#071B3A] text-white flex items-center justify-between font-heading shrink-0">
+                <div className="flex items-center gap-2 truncate">
+                  <FileText className="w-5 h-5 text-amber-400 shrink-0" />
+                  <h3 className="font-extrabold text-xs sm:text-sm truncate">{document?.title || 'Visualização do Documento'}</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDocPreview(false)}
+                  className="p-1.5 text-slate-300 hover:text-white rounded-xl bg-white/10 hover:bg-white/20 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Corpo de Leitura na Mesma Tela */}
+              <div className="p-3 sm:p-4 overflow-y-auto space-y-3 font-sans text-slate-800 text-xs flex-1 bg-slate-100/70 flex flex-col justify-center items-center">
+                {document?.customMessage && (
+                  <div className="w-full p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 font-sans text-xs shrink-0">
+                    <strong>Mensagem do Escritório:</strong> "{document.customMessage}"
+                  </div>
+                )}
+
+                {loadingDocBlob ? (
+                  <div className="flex flex-col items-center justify-center space-y-3 py-12">
+                    <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
+                    <p className="text-xs font-bold text-[#071B3A] font-heading">Carregando documento na tela...</p>
+                  </div>
+                ) : docBlobUrl ? (
+                  <div className="w-full h-full min-h-[350px] bg-white rounded-2xl border border-slate-300 overflow-hidden shadow-inner relative flex items-center justify-center">
+                    {document?.mimeType?.startsWith('image/') ? (
+                      <img
+                        src={docBlobUrl}
+                        alt={document?.title || 'Documento em Imagem'}
+                        className="max-w-full max-h-full object-contain p-2"
+                      />
+                    ) : (
+                      <iframe
+                        src={docBlobUrl}
+                        className="w-full h-full border-0"
+                        title={document?.title || 'Documento PDF'}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center p-6 space-y-2">
+                    <AlertCircle className="w-10 h-10 text-amber-500 mx-auto" />
+                    <p className="text-xs text-slate-600 font-medium">Não foi possível carregar a prévia do documento.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Rodapé do Modal */}
+              <div className="p-4 bg-white border-t border-slate-200 flex justify-between items-center shrink-0">
+                <span className="text-[11px] text-slate-500 font-medium font-heading">AssinaJur • Validade Legal MP 2.200-2</span>
+                <button
+                  type="button"
+                  onClick={() => setShowDocPreview(false)}
+                  className="px-6 py-2.5 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-xl text-xs font-heading shadow-md transition-all"
+                >
+                  Fechar Leitura
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       <footer className="max-w-md mx-auto w-full text-center text-[11px] text-slate-500 py-4 border-t border-slate-200/60 font-medium">
