@@ -71,15 +71,23 @@ export function DocumentRichEditor({
   const [isProcessingAi, setIsProcessingAi] = useState(false);
   const [aiWarning, setAiWarning] = useState<string | null>(null);
 
-  // For initial value rendering only once
+  // Track first render and external updates without resetting DOM selection
+  const isFirstRender = useRef(true);
+
   useEffect(() => {
-    if (editorRef.current && editorRef.current.innerHTML !== value) {
-      // Only update if it's completely empty (initial load) to avoid cursor jumping
-      if (!editorRef.current.innerHTML || value === '') {
-        editorRef.current.innerHTML = value;
+    if (editorRef.current) {
+      if (isFirstRender.current) {
+        editorRef.current.innerHTML = value || '';
+        isFirstRender.current = false;
+      } else {
+        // Only update innerHTML if value changed externally AND editor is not active user focus
+        const isFocused = document.activeElement === editorRef.current;
+        if (!isFocused && editorRef.current.innerHTML !== value) {
+          editorRef.current.innerHTML = value || '';
+        }
       }
     }
-  }, []);
+  }, [value]);
 
   const handleInput = () => {
     if (editorRef.current) {
@@ -286,13 +294,12 @@ export function DocumentRichEditor({
         </button>
       </div>
 
-      {/* Editor Area */}
       <div 
         ref={editorRef}
         contentEditable
         onInput={handleInput}
-        className="min-h-[300px] p-4 font-serif text-sm text-slate-800 focus:outline-none prose max-w-none empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none"
-        dangerouslySetInnerHTML={{ __html: value }}
+        onBlur={handleInput}
+        className="min-h-[320px] max-h-[600px] overflow-y-auto p-4 font-serif text-sm text-slate-800 focus:outline-none prose max-w-none empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none"
         data-placeholder={placeholder}
         suppressContentEditableWarning
       />
