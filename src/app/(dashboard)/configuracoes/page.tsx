@@ -194,14 +194,42 @@ export default function SettingsPage() {
             </div>
           </div>
 
+          <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-2xl space-y-2 text-xs font-medium">
+            <label className="block text-xs font-extrabold text-[#071B3A] uppercase tracking-wider font-heading">
+              Tipo de Inscrição e Registro de Atuação
+            </label>
+            <div className="flex flex-wrap items-center gap-4 text-slate-700">
+              <label className="flex items-center gap-2 cursor-pointer font-bold">
+                <input
+                  type="radio"
+                  name="docType"
+                  checked={!formData.cpfCnpj || formData.cpfCnpj.replace(/\D/g, '').length <= 11}
+                  onChange={() => {}}
+                  className="accent-blue-600"
+                />
+                Pessoa Física / Advocacia em Conjunto (CPF / OAB dos Patronos)
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer font-bold">
+                <input
+                  type="radio"
+                  name="docType"
+                  checked={formData.cpfCnpj.replace(/\D/g, '').length > 11}
+                  onChange={() => {}}
+                  className="accent-blue-600"
+                />
+                Pessoa Jurídica (CNPJ da Sociedade de Advogados)
+              </label>
+            </div>
+          </div>
+
           <div className="grid md:grid-cols-3 gap-4 text-xs font-medium">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">CPF ou CNPJ (Opcional se Sociedade de Fato)</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">CPF do Advogado ou CNPJ da Sociedade</label>
               <input
                 type="text"
                 value={formData.cpfCnpj}
                 onChange={(e) => setFormData({ ...formData, cpfCnpj: e.target.value })}
-                placeholder="Deixe em branco caso não possua CNPJ"
+                placeholder="Ex: 034.230.445-35 ou 12.345.678/0001-90"
                 className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none font-mono"
               />
             </div>

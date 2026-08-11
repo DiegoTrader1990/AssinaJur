@@ -65,13 +65,18 @@ export async function POST(req: Request) {
       ? activeLawyers.map(l => `${l.name.toUpperCase()}${l.oabNumber ? ` (inscrito(a) na ${l.oabNumber})` : ''}`).join(' e ')
       : 'DR. DIEGO DOS SANTOS RODRIGUES (OAB/BA 51.881) e DRA. DOMINICK QUINTO SOARES (OAB/BA 62.443)';
 
-    const cnpjPart = office.cpfCnpj && office.cpfCnpj.trim() !== ''
-      ? `pessoa jurídica inscrita no CNPJ sob o nº ${office.cpfCnpj}, `
-      : '';
+    const cleanDoc = (office.cpfCnpj || '').replace(/\D/g, '');
+    const isCnpj = cleanDoc.length > 11;
 
-    const fullOfficeQualification = `${office.name}, ${cnpjPart}representada por seus patronos ${lawyerTextList}, com escritório profissional na ${fullAddress}, e-mail: ${office.email || 'contato@rodriguesesoares.adv.br'}, telefone/WhatsApp: ${office.phone || '(73) 98117-1111'}`;
+    const docTextPart = isCnpj
+      ? `sociedade de advogados inscrita no CNPJ sob o nº ${office.cpfCnpj}, `
+      : cleanDoc.length === 11
+        ? `inscrito no CPF sob o nº ${office.cpfCnpj}, `
+        : '';
 
-    const jointPatronosQualification = `${lawyerTextList}, integrantes da sociedade ${office.name}, com escritório profissional em ${fullAddress}`;
+    const fullOfficeQualification = `${office.name}, ${docTextPart}representada por seus patronos ${lawyerTextList}, com escritório profissional na ${fullAddress}, e-mail: ${office.email || 'contato@rodriguesesoares.adv.br'}, telefone/WhatsApp: ${office.phone || '(73) 98117-1111'}`;
+
+    const jointPatronosQualification = `${lawyerTextList}, integrantes de ${office.name}, com escritório profissional em ${fullAddress}`;
 
     const mainLawyer = activeLawyers.find(l => l.name.toLowerCase().includes('diego')) || activeLawyers[0] || { name: user.name, oabNumber: 'OAB/BA 51.881' };
     const secondLawyer = activeLawyers.find(l => l.name.toLowerCase().includes('dominick')) || activeLawyers[1] || { name: 'Dra. Dominick Quinto Soares', oabNumber: 'OAB/BA 62.443' };
