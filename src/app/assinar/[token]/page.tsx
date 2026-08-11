@@ -262,20 +262,56 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   const [showDocPreview, setShowDocPreview] = useState(false);
   const [docBlobUrl, setDocBlobUrl] = useState<string | null>(null);
+  const [pdfPageUrls, setPdfPageUrls] = useState<string[]>([]);
   const [loadingDocBlob, setLoadingDocBlob] = useState(false);
 
   const handleOpenDocPreview = async () => {
     setShowDocPreview(true);
-    if (!docBlobUrl && params.token) {
+    if (pdfPageUrls.length === 0 && !docBlobUrl && params.token) {
       setLoadingDocBlob(true);
       try {
         const res = await fetch(`/api/sign/${params.token}/document`);
         if (!res.ok) throw new Error('Erro ao carregar arquivo');
         const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        setDocBlobUrl(url);
+        const mime = res.headers.get('content-type') || document?.mimeType || '';
+
+        if (mime.startsWith('image/')) {
+          const url = URL.createObjectURL(blob);
+          setDocBlobUrl(url);
+        } else {
+          await loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+          const pdfjsLib = (window as any)['pdfjs-dist/build/pdf'];
+          if (pdfjsLib) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            const arrayBuffer = await blob.arrayBuffer();
+            const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const pageImages: string[] = [];
+
+            for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+              const page = await pdfDoc.getPage(pageNum);
+              const viewport = page.getViewport({ scale: 1.5 });
+              const canvas = window.document.createElement('canvas');
+              const context = canvas.getContext('2d');
+              canvas.height = viewport.height;
+              canvas.width = viewport.width;
+
+              if (context) {
+                await page.render({ canvasContext: context, viewport }).promise;
+                pageImages.push(canvas.toDataURL('image/jpeg', 0.90));
+              }
+            }
+
+            if (pageImages.length > 0) {
+              setPdfPageUrls(pageImages);
+            } else {
+              setDocBlobUrl(URL.createObjectURL(blob));
+            }
+          } else {
+            setDocBlobUrl(URL.createObjectURL(blob));
+          }
+        }
       } catch (err) {
-        console.error('Erro ao carregar blob do documento:', err);
+        console.error('Erro ao renderizar documento para leitura:', err);
       } finally {
         setLoadingDocBlob(false);
       }
@@ -1393,7 +1429,22 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 {loadingDocBlob ? (
                   <div className="flex flex-col items-center justify-center space-y-3 py-12">
                     <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
-                    <p className="text-xs font-bold text-[#071B3A] font-heading">Carregando documento na tela...</p>
+                    <p className="text-xs font-bold text-[#071B3A] font-heading">Renderizando páginas do documento na tela...</p>
+                  </div>
+                ) : pdfPageUrls.length > 0 ? (
+                  <div className="w-full h-full overflow-y-auto space-y-4 pr-1">
+                    {pdfPageUrls.map((url, i) => (
+                      <div key={i} className="bg-white p-2 rounded-2xl border border-slate-300 shadow-md flex flex-col items-center space-y-2">
+                        <span className="text-[10px] font-extrabold text-[#071B3A] font-heading bg-slate-100 px-3 py-0.5 rounded-full border border-slate-200 uppercase tracking-wider">
+                          Página {i + 1} de {pdfPageUrls.length}
+                        </span>
+                        <img
+                          src={url}
+                          alt={`Página ${i + 1} do Documento`}
+                          className="w-full object-contain rounded-lg border border-slate-200"
+                        />
+                      </div>
+                    ))}
                   </div>
                 ) : docBlobUrl ? (
                   <div className="w-full h-full min-h-[350px] bg-white rounded-2xl border border-slate-300 overflow-hidden shadow-inner relative flex items-center justify-center">
