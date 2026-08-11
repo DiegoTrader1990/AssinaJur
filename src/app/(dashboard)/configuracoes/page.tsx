@@ -354,6 +354,20 @@ export default function SettingsPage() {
               />
             </div>
           </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">
+              Endereço Completo do Escritório (Sede / Matriz - Usado em Contratos e Procurações) *
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.address}
+              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+              placeholder="Ex: Rua José Rodrigues, nº 219, Centro, Porto Seguro/BA, CEP 45810-000"
+              className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
+            />
+          </div>
         </div>
 
         {/* Seção 1B: Advogados Integrantes do Escritório */}
