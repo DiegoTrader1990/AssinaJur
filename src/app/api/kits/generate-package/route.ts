@@ -51,19 +51,36 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Kit jurídico não possui modelos cadastrados.' }, { status: 400 });
     }
 
+    const fullAddress = (office as any).address
+      ? String((office as any).address)
+      : 'Rua José Rodrigues, nº 219, Centro, Porto Seguro/BA, CEP 45810-000';
+
+    const fullOfficeQualification = `${office.name}, pessoa jurídica inscrita no CNPJ sob o nº ${office.cpfCnpj || '00.000.000/0001-00'}, com sede na ${fullAddress}, e-mail: ${office.email || 'contato@rodriguesesoares.adv.br'}, telefone/WhatsApp: ${office.phone || '(73) 98117-1111'}`;
+
+    const jointPatronosQualification = `DR. DIEGO DOS SANTOS RODRIGUES, inscrito na OAB/BA sob o nº 51.881, e DRA. DOMINICK QUINTO SOARES, inscrita na OAB/BA sob o nº 62.443, ambos integrantes de ${office.name}, com escritório profissional localizado na ${fullAddress}`;
+
     // Montar mapa completo de variáveis para substituição automática
     const variableValues = {
       cliente_nome: client.name,
       cliente_cpf: client.cpfCnpj,
       cliente_rg: client.rg || '—',
       cliente_nacionalidade: client.nationality || 'Brasileira',
-      cliente_telefone: client.whatsapp || client.phone,
+      cliente_telefone: client.whatsapp || client.phone || '—',
       cliente_endereco: client.address || '—',
       cliente_estado_civil: client.maritalStatus || '—',
       cliente_profissao: client.profession || '—',
       advogado_nome: user.name,
-      advogado_oab: office.oabNumber || 'OAB/SP 123.456',
+      advogado_oab: office.oabNumber || 'OAB/BA 51.881',
+      advogada_nome: 'Dra. Dominick Quinto Soares',
+      advogada_oab: 'OAB/BA 62.443',
       escritorio_nome: office.name,
+      escritorio_cnpj: office.cpfCnpj || '—',
+      escritorio_endereco: fullAddress,
+      escritorio_telefone: office.phone || '(73) 98117-1111 / (73) 98825-0201',
+      escritorio_email: office.email || 'contato@rodriguesesoares.adv.br',
+      escritorio_qualificacao: fullOfficeQualification,
+      patronos_qualificacao_conjunta: jointPatronosQualification,
+      cidade: 'Porto Seguro',
       ...(customVariables || {}),
     };
 
