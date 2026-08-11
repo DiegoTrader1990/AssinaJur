@@ -763,6 +763,17 @@ export default function KitsAndTemplatesPage() {
               </div>
 
               <div>
+                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Descrição Breve do Modelo</label>
+                <input
+                  type="text"
+                  value={templateFormData.description}
+                  onChange={(e) => setTemplateFormData({ ...templateFormData, description: e.target.value })}
+                  placeholder="Ex: Contrato previdenciário completo com cláusula de êxito e proteção de dados."
+                  className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
+                />
+              </div>
+
+              <div>
                 <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
                   Conteúdo da Minuta (Com Tags Dinâmicas e Copilot de IA): *
                 </label>
