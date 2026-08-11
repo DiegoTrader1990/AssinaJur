@@ -1379,42 +1379,39 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   </div>
                 )}
                 
-                <div className="w-full h-[58vh] min-h-[360px] bg-slate-100 rounded-2xl border border-slate-300 overflow-hidden shadow-inner relative flex flex-col items-center justify-center">
+                <div className="w-full min-h-[380px] bg-slate-100/80 rounded-2xl border border-slate-200 p-6 flex flex-col items-center justify-center text-center space-y-4 shadow-inner">
                   {document?.mimeType?.startsWith('image/') ? (
-                    <div className="w-full h-full p-2 overflow-auto flex items-center justify-center bg-slate-900/5">
+                    <div className="w-full h-full max-h-[50vh] overflow-auto flex items-center justify-center">
                       <img
                         src={`/api/sign/${params.token}/document`}
                         alt={document?.title || 'Documento em Imagem'}
-                        className="max-w-full max-h-full object-contain rounded-lg shadow-md"
+                        className="max-w-full max-h-[48vh] object-contain rounded-lg shadow-md border border-slate-200"
                       />
                     </div>
                   ) : (
-                    <object
-                      data={`/api/sign/${params.token}/document`}
-                      type={document?.mimeType || 'application/pdf'}
-                      className="w-full h-full"
-                    >
-                      <embed
-                        src={`/api/sign/${params.token}/document`}
-                        type={document?.mimeType || 'application/pdf'}
-                        className="w-full h-full"
-                      />
-                      <div className="p-6 text-center space-y-3 bg-white/95 rounded-2xl border border-slate-200 shadow-lg max-w-sm mx-auto">
-                        <FileText className="w-12 h-12 text-blue-600 mx-auto" />
-                        <p className="text-xs font-bold text-[#071B3A] font-heading">
-                          Para visualizar este documento no seu celular:
-                        </p>
-                        <a
-                          href={`/api/sign/${params.token}/document`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center gap-2 w-full py-3 px-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-xl text-xs shadow-md font-heading transition-all"
-                        >
-                          <ExternalLink className="w-4 h-4 text-amber-400" />
-                          Abrir Documento Completo em Tela Cheia
-                        </a>
+                    <div className="space-y-4 max-w-sm mx-auto">
+                      <div className="w-20 h-20 bg-blue-100 text-blue-700 rounded-3xl flex items-center justify-center mx-auto shadow-md border border-blue-200">
+                        <FileText className="w-10 h-10" />
                       </div>
-                    </object>
+                      <div className="space-y-1">
+                        <h4 className="font-heading text-base font-extrabold text-[#071B3A]">
+                          {document?.title || 'Documento Jurídico'}
+                        </h4>
+                        <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                          Para ler o arquivo PDF na íntegra com máxima clareza e nitidez no seu aparelho, clique no botão abaixo:
+                        </p>
+                      </div>
+
+                      <a
+                        href={`/api/sign/${params.token}/document`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-4 px-6 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl text-xs flex items-center justify-center gap-2 shadow-xl transition-all font-heading"
+                      >
+                        <ExternalLink className="w-4 h-4 text-amber-400" />
+                        Abrir e Ler PDF em Tela Cheia
+                      </a>
+                    </div>
                   )}
                 </div>
               </div>
