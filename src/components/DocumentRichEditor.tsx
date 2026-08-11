@@ -134,7 +134,7 @@ export function DocumentRichEditor({
     setAiWarning(null);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000);
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
 
     try {
       const response = await fetch('/api/templates/ai-edit', {
@@ -176,8 +176,13 @@ export function DocumentRichEditor({
         throw new Error(data.error || 'A IA não retornou o HTML formatado');
       }
     } catch (error: any) {
+      clearTimeout(timeoutId);
       console.error('Erro na IA Copilot:', error);
-      setAiWarning(error?.message || 'Ocorreu um erro ao tentar usar a IA. Tente novamente.');
+      if (error?.name === 'AbortError') {
+        setAiWarning('O tempo de resposta da IA excedeu o limite. Tente enviar um trecho menor ou refazer o pedido.');
+      } else {
+        setAiWarning(error?.message || 'Ocorreu um erro ao tentar usar a IA. Tente novamente.');
+      }
     } finally {
       setIsProcessingAi(false);
     }
