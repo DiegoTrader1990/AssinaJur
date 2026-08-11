@@ -216,8 +216,21 @@ const SIGNER_ROLE_LABELS: Record<string, string> = {
   RESPONSAVEL_FINANCEIRO: 'Responsável Financeiro',
 };
 
-function signerRoleLabel(role?: string | null) {
-  return SIGNER_ROLE_LABELS[String(role || '')] || String(role || 'Signatário').replace(/_/g, ' ');
+function signerRoleLabel(role?: string | null, isIlliterate?: boolean) {
+  const r = String(role || '');
+  if (r === 'CLIENTE') {
+    return isIlliterate ? 'Cliente Titular (Assinado a Rogo)' : 'Cliente / Outorgante';
+  }
+  if (r === 'ASSINANTE_A_ROGO') {
+    return 'Assinante a Rogo (Acompanhante Indicado)';
+  }
+  if (r === 'TESTEMUNHA') {
+    return '1ª Testemunha Instrumentária';
+  }
+  if (r === 'TESTEMUNHA_2') {
+    return '2ª Testemunha Instrumentária';
+  }
+  return SIGNER_ROLE_LABELS[r] || r.replace(/_/g, ' ');
 }
 
 export async function generateFinalPdfCertificate(documentId: string) {
@@ -328,29 +341,42 @@ export async function generateFinalPdfCertificate(documentId: string) {
       const stampX = Math.min(pW - stampW - 12, Math.max(12, pW * customStamp.x));
       const rawY = pH * (1 - customStamp.y - customStamp.height);
       const stampY = Math.max(88, Math.min(pH - stampH - 120, rawY));
-      const witnessCount = doc.signers.filter((item) => item.role === 'TESTEMUNHA').length;
-      const signerSummary = doc.isIlliterate
-        ? `${safeText(doc.rogoName || 'Assinante a rogo', 70)} (A ROGO) + ${witnessCount} TESTEMUNHAS`
-        : doc.signers.length > 2
+      const clientSigner = doc.signers.find((s) => s.role === 'CLIENTE') || doc.signers[0];
+      const rogoSigner = doc.signers.find((s) => s.role === 'ASSINANTE_A_ROGO');
+      const witnesses = doc.signers.filter((s) => s.role.startsWith('TESTEMUNHA'));
+
+      let signerSummary = '';
+      let cpfSummary = '';
+
+      if (doc.isIlliterate) {
+        const clientName = clientSigner?.name || 'Cliente Titular';
+        const rogoName = rogoSigner?.name || doc.rogoName || 'Acompanhante a Rogo';
+        const witCountText = witnesses.length > 0 ? ` + ${witnesses.length} TESTEMUNHA(S)` : '';
+        signerSummary = `${safeText(clientName, 35)} (CLIENTE) • A ROGO: ${safeText(rogoName, 35)}${witCountText}`;
+        cpfSummary = `CPF Cliente: ${formatFullCpf(clientSigner?.cpf || '')} | CPF A Rogo: ${formatFullCpf(rogoSigner?.cpf || doc.rogoCpf || '')}`;
+      } else {
+        signerSummary = doc.signers.length > 2
           ? `${doc.signers.length} PARTICIPANTES COM EVIDÊNCIAS INDIVIDUAIS`
           : doc.signers.map((item) => item.name).join(', ');
+        cpfSummary = `CPF: ${formatFullCpf(clientSigner?.cpf || '')}`;
+      }
+
       const signerNames = safeText(signerSummary, 180);
       const qrStampSize = Math.min(38, Math.max(26, stampH - 27));
       const contentX = stampX + qrStampSize + 15;
       const contentW = stampX + stampW - contentX - 10;
-      const nameLines = wrapTextToWidth(signerNames, bold, 7.1, contentW).slice(0, 2);
+      const nameLines = wrapTextToWidth(signerNames, bold, 6.8, contentW).slice(0, 2);
       const signedAt = doc.signers.find((item) => item.signedAt)?.signedAt || doc.completedAt || new Date();
       p.drawRectangle({ x: stampX + 2.5, y: stampY - 2.5, width: stampW, height: stampH, color: rgb(0.78, 0.81, 0.86), opacity: 0.35 });
       p.drawRectangle({ x: stampX, y: stampY, width: stampW, height: stampH, color: rgb(1, 1, 1), opacity: 0.98, borderWidth: 1.35, borderColor: navy });
       p.drawRectangle({ x: stampX, y: stampY + stampH - 4, width: stampW, height: 4, color: gold });
 
       nameLines.forEach((line, lineIndex) => {
-        p.drawText(line.toUpperCase(), { x: contentX, y: stampY + stampH - 13 - lineIndex * 8.5, size: 7.0, font: bold, color: navy });
+        p.drawText(line.toUpperCase(), { x: contentX, y: stampY + stampH - 13 - lineIndex * 8.0, size: 6.8, font: bold, color: navy });
       });
 
-      const yAfterName = stampY + stampH - 13 - nameLines.length * 8.5;
-      const firstSignerCpf = formatFullCpf(doc.signers[0]?.cpf || '');
-      p.drawText(`CPF: ${firstSignerCpf}`, { x: contentX, y: yAfterName - 2, size: 6.0, font: bold, color: text });
+      const yAfterName = stampY + stampH - 13 - nameLines.length * 8.0;
+      p.drawText(cpfSummary, { x: contentX, y: yAfterName - 2, size: 5.6, font: bold, color: text });
       p.drawText('ASSINATURA ELETRÔNICA QUALIFICADA', { x: contentX, y: yAfterName - 10, size: 5.2, font: bold, color: green });
       p.drawImage(qrImage, { x: stampX + 8, y: stampY + 6, width: qrStampSize, height: qrStampSize });
       p.drawLine({ start: { x: contentX - 7, y: stampY + 6 }, end: { x: contentX - 7, y: stampY + stampH - 8 }, thickness: 0.7, color: panelBorder });
