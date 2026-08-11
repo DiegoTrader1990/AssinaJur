@@ -49,12 +49,8 @@ export async function POST(req: Request) {
     }
 
     const office = await prisma.office.findUnique({ where: { id: user.officeId } });
-    const activeUsers = await prisma.user.count({ where: { officeId: user.officeId, active: true } });
-    if (!office || office.planStatus !== 'ACTIVE') {
-      return NextResponse.json({ error: 'O plano do escritório está inativo.' }, { status: 403 });
-    }
-    if (activeUsers >= office.maxUsersLimit) {
-      return NextResponse.json({ error: `O limite de ${office.maxUsersLimit} usuário(s) do plano foi atingido.` }, { status: 403 });
+    if (!office) {
+      return NextResponse.json({ error: 'Escritório não encontrado.' }, { status: 404 });
     }
 
     const body = await req.json();
