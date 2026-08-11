@@ -256,9 +256,11 @@ async function renderTemplatePdf({
         if (isExplicitSignatureLine) explicitSignatureLineFound = true;
       }
 
-      // ALINHAMENTO JUSTIFICADO (De uma ponta à outra da página)
-      const shouldJustify = !heading && !isLastLine && line.length > 1 && paragraph.kind === 'BODY';
-      const extraWordSpacing = shouldJustify ? (maxWidth - lineWidth) / (line.length - 1) : 0;
+      // ALINHAMENTO JUSTIFICADO ELEGANTE (De uma ponta à outra da página sem espaçamentos gigantes)
+      const rawExtraSpacing = (line.length > 1) ? (maxWidth - lineWidth) / (line.length - 1) : 0;
+      const hasEnoughLineWidth = lineWidth >= maxWidth * 0.60;
+      const shouldJustify = !heading && !isLastLine && line.length > 1 && paragraph.kind === 'BODY' && hasEnoughLineWidth && rawExtraSpacing <= 7.5;
+      const extraWordSpacing = shouldJustify ? Math.min(rawExtraSpacing, 7.5) : 0;
 
       const startX = heading ? marginX + Math.max(0, (maxWidth - lineWidth) / 2) : marginX;
       let cursorX = startX;
