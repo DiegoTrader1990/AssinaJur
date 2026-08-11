@@ -1,7 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Settings, Building2, Palette, FileText, CheckCircle, AlertCircle, Loader2, Upload } from 'lucide-react';
+import { Settings, Building2, Palette, FileText, CheckCircle, AlertCircle, Loader2, Upload, UserCheck, UserPlus, Plus, Trash2, X } from 'lucide-react';
+
+interface LawyerMember {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  oabNumber?: string;
+  phone?: string;
+  active: boolean;
+}
 
 export default function SettingsPage() {
   const [formData, setFormData] = useState({
@@ -28,6 +38,16 @@ export default function SettingsPage() {
 
   const [letterhead, setLetterhead] = useState<{id: string; originalName: string; sizeBytes: number} | null>(null);
   const [uploadingLetterhead, setUploadingLetterhead] = useState(false);
+
+  const [lawyers, setLawyers] = useState<LawyerMember[]>([]);
+  const [showAddLawyerModal, setShowAddLawyerModal] = useState(false);
+  const [newLawyer, setNewLawyer] = useState({
+    name: '',
+    oabNumber: '',
+    email: '',
+    phone: '',
+  });
+  const [addingLawyer, setAddingLawyer] = useState(false);
 
   useEffect(() => {
     fetch('/api/office')
@@ -63,7 +83,52 @@ export default function SettingsPage() {
         }
       })
       .catch((err) => console.error('Erro ao carregar papel timbrado:', err));
+
+    fetchLawyers();
   }, []);
+
+  const fetchLawyers = () => {
+    fetch('/api/office/team')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.members) {
+          setLawyers(data.members);
+        }
+      })
+      .catch((err) => console.error('Erro ao carregar advogados:', err));
+  };
+
+  const handleAddLawyer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newLawyer.name || !newLawyer.oabNumber) {
+      alert('Por favor, preencha o Nome e o Número da OAB do Advogado(a).');
+      return;
+    }
+    setAddingLawyer(true);
+    try {
+      const res = await fetch('/api/office/team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newLawyer.name,
+          oabNumber: newLawyer.oabNumber,
+          email: newLawyer.email || `${newLawyer.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@escritorio.com`,
+          password: 'AdvogadoPassword123!',
+          role: 'LAWYER',
+          phone: newLawyer.phone,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao adicionar advogado');
+      setShowAddLawyerModal(false);
+      setNewLawyer({ name: '', oabNumber: '', email: '', phone: '' });
+      fetchLawyers();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setAddingLawyer(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -290,6 +355,136 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* Seção 1B: Advogados Integrantes do Escritório */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2 text-[#071B3A] font-extrabold font-heading">
+              <UserCheck className="w-5 h-5 text-blue-600" />
+              <span>Advogados Patronos Integrantes (Usados nas Qualificações Automáticas)</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAddLawyerModal(true)}
+              className="px-3.5 py-1.5 bg-[#071B3A] hover:bg-blue-900 text-white font-bold rounded-xl flex items-center gap-1.5 text-xs transition-colors shadow-xs"
+            >
+              <Plus className="w-3.5 h-3.5 text-gold-400" /> Adicionar Advogado
+            </button>
+          </div>
+
+          <p className="text-xs text-slate-500 font-medium">
+            Cadastre os advogados integrantes da banca. As qualificações conjuntas <code className="bg-slate-100 px-1.5 py-0.5 rounded text-blue-700 font-mono">{"{{patronos_qualificacao_conjunta}}"}</code> nos contratos e procurações incluirão automaticamente estes profissionais.
+          </p>
+
+          <div className="grid md:grid-cols-2 gap-3">
+            {lawyers.map((lawyer) => (
+              <div key={lawyer.id} className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3 text-xs">
+                <div className="space-y-0.5">
+                  <div className="font-extrabold text-[#071B3A] text-xs flex items-center gap-1.5">
+                    <span>{lawyer.name}</span>
+                    <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-extrabold text-[10px]">Ativo</span>
+                  </div>
+                  <div className="text-slate-600 font-mono text-[11px]">
+                    {lawyer.oabNumber ? `Inscrição: ${lawyer.oabNumber}` : 'OAB não informada'}
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {lawyers.length === 0 && (
+              <div className="col-span-2 p-4 text-center text-slate-400 text-xs font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                Nenhum advogado integrante cadastrado ainda. Clique em "+ Adicionar Advogado" para cadastrar.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Modal de Cadastro de Advogado */}
+        {showAddLawyerModal && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 font-sans animate-in fade-in zoom-in duration-200">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2 text-[#071B3A] font-extrabold font-heading">
+                  <UserPlus className="w-5 h-5 text-blue-600" />
+                  <span>Adicionar Advogado Patrono</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddLawyerModal(false)}
+                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleAddLawyer} className="space-y-3 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Nome Completo do Advogado(a) *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newLawyer.name}
+                    onChange={(e) => setNewLawyer({ ...newLawyer, name: e.target.value })}
+                    placeholder="Ex: Dr. Diego dos Santos Rodrigues ou Dra. Dominick Quinto Soares"
+                    className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Inscrição OAB *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newLawyer.oabNumber}
+                    onChange={(e) => setNewLawyer({ ...newLawyer, oabNumber: e.target.value })}
+                    placeholder="Ex: OAB/BA 51.881 ou OAB/BA 62.443"
+                    className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">E-mail Profissional (Opcional)</label>
+                  <input
+                    type="email"
+                    value={newLawyer.email}
+                    onChange={(e) => setNewLawyer({ ...newLawyer, email: e.target.value })}
+                    placeholder="advogado@escritorio.adv.br"
+                    className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Telefone / WhatsApp (Opcional)</label>
+                  <input
+                    type="text"
+                    value={newLawyer.phone}
+                    onChange={(e) => setNewLawyer({ ...newLawyer, phone: e.target.value })}
+                    placeholder="(73) 98825-0201"
+                    className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddLawyerModal(false)}
+                    className="px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={addingLawyer}
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center gap-2"
+                  >
+                    {addingLawyer ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                    Salvar Advogado
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* Seção 2: Identidade Visual */}
         <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
