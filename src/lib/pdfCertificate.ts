@@ -838,22 +838,22 @@ export async function generateFinalPdfCertificate(documentId: string) {
   const padX = CX + 14;
 
   const ensureSpace = (minRemaining: number) => {
-    if (y - minRemaining < 70) {
+    if (y - minRemaining < 50) {
       page = pdfDoc.addPage([PAGE_W, PAGE_H]);
       manifestPageCount += 1;
       drawFrame(page, `CERTIFICADO DE EVIDÊNCIAS JURÍDICAS (Continuação ${manifestPageCount})`);
-      y = 710;
+      y = 724;
     }
   };
 
   const fieldLabel = (x: number, yPos: number, label: string) => {
-    page.drawText(safeText(label, 60).toUpperCase(), { x, y: yPos, size: 6.5, font: bold, color: muted });
+    page.drawText(safeText(label, 60).toUpperCase(), { x, y: yPos, size: 6.2, font: bold, color: muted });
   };
   const fieldValue = (x: number, yPos: number, value: any, options: any = {}) => {
     page.drawText(safeText(value, options.max || 5000), {
       x,
       y: yPos,
-      size: options.size || 9.5,
+      size: options.size || 9.0,
       font: options.font || regular,
       color: options.color || text,
     });
@@ -871,13 +871,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
     options: any = {}
   ) => {
     const size = options.size || 8;
-    const lineHeight = options.lineHeight || size + 2;
+    const lineHeight = options.lineHeight || size + 2.5;
     const lines = fieldLines(value, width, options);
     fieldLabel(x, top, label);
     lines.forEach((line: string, index: number) => {
-      fieldValue(x, top - 12 - index * lineHeight, line, { ...options, max: 5000 });
+      fieldValue(x, top - 11 - index * lineHeight, line, { ...options, max: 5000 });
     });
-    return 12 + lines.length * lineHeight + 5;
+    return 11 + lines.length * lineHeight + 6;
   };
 
   // SEÇÃO 2: DADOS DO DOCUMENTO
@@ -887,13 +887,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
   const officeLines = fieldLines(officeText, documentHalfWidth, { font: bold, size: 8.5 });
   const createdLines = fieldLines(formatBrasiliaDateTime(doc.createdAt), documentHalfWidth, { size: 7.2 });
   const typeLines = fieldLines(doc.documentType || 'Não informado', documentHalfWidth, { font: bold, size: 8.2 });
-  const completedLines = fieldLines(formatBrasiliaDateTime(doc.completedAt || new Date()), documentHalfWidth, { font: bold, size: 7.2 });
+  const completedLines = fieldLines(formatBrasiliaDateTime(doc.completedAt || new Date()), documentHalfWidth, { size: 7.2 });
   const documentRowHeight = (leftLines: number, rightLines: number, size: number) =>
-    12 + Math.max(leftLines, rightLines) * (size + 2) + 6;
+    12 + Math.max(leftLines, rightLines) * (size + 2.5) + 6;
   const documentFirstRowH = documentRowHeight(officeLines.length, createdLines.length, 8.5);
   const documentSecondRowH = documentRowHeight(typeLines.length, completedLines.length, 8.2);
-  const docPanelH = 25 + documentFirstRowH + documentSecondRowH + 8;
-  ensureSpace(docPanelH + 14);
+  const docPanelH = 26 + documentFirstRowH + documentSecondRowH + 10;
+  ensureSpace(docPanelH + 16);
   const docPanelTop = y;
   const docPanelY = docPanelTop - docPanelH;
   page.drawRectangle({ x: CX, y: docPanelY, width: CW, height: docPanelH, color: panelBg, borderWidth: 0.9, borderColor: panelBorder });
@@ -909,7 +909,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
   drawFieldBlock(padX, documentCursor, documentHalfWidth, 'Tipo de documento', doc.documentType || 'Não informado', { font: bold, size: 8.2 });
   drawFieldBlock(documentCol2X, documentCursor, documentHalfWidth, 'Data de conclusão', formatBrasiliaDateTime(doc.completedAt || new Date()), { font: bold, size: 7.2, lineHeight: 9.2, color: green });
 
-  y = docPanelY - 14;
+  y = docPanelY - 18;
 
   // SEÇÃO 3 & 4: DADOS DO SIGNATÁRIO E EVIDÊNCIAS COLETADAS
   for (const signer of doc.signers) {
