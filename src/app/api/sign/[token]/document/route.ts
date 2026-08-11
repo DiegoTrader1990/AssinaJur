@@ -29,10 +29,12 @@ export async function GET(
       return NextResponse.json({ error: 'Arquivo do documento não encontrado no armazenamento.' }, { status: 404 });
     }
 
+    const mimeType = signer.document.originalFile.mimeType || 'application/pdf';
+
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
-        'Content-Type': 'application/pdf',
+        'Content-Type': mimeType,
         'Content-Disposition': 'inline',
         'Content-Length': String(buffer.length),
         'Accept-Ranges': 'bytes',

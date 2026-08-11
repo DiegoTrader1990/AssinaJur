@@ -27,6 +27,9 @@ export async function GET(
                 welcomeMessage: true,
               },
             },
+            originalFile: {
+              select: { mimeType: true },
+            },
             signers: {
               select: {
                 id: true,
@@ -120,6 +123,7 @@ export async function GET(
         rogoRelationship: document.rogoRelationship,
         signers: document.signers,
         pdfUrl: `/api/sign/${params.token}/document`,
+        mimeType: document.originalFile?.mimeType || 'application/pdf',
       },
     });
   } catch (error: any) {
