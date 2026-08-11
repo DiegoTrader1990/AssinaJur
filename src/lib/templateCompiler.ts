@@ -115,7 +115,7 @@ function parseRichParagraphs(html: string): RichParagraph[] {
     .replace(/<\s*li[^>]*>/gi, '\n[[LIST]]')
     .replace(/<\/(?:p|div|h1|h2|h3|li|ol|ul)>/gi, '\n');
 
-  return normalized
+  const parsed = normalized
     .split('\n')
     .map((raw): RichParagraph | null => {
       let line = raw.trim();
@@ -137,6 +137,28 @@ function parseRichParagraphs(html: string): RichParagraph[] {
       return runs.length ? { kind, runs } : null;
     })
     .filter((item): item is RichParagraph => Boolean(item));
+
+  // Merge short label paragraphs ending with ':' (e.g., "OUTORGANTE:", "OBJETO:") into the next paragraph
+  const mergedParagraphs: RichParagraph[] = [];
+  for (let i = 0; i < parsed.length; i++) {
+    const current = parsed[i];
+    const currentText = current.runs.map((r) => r.text).join(' ').trim();
+
+    if (
+      i < parsed.length - 1 &&
+      currentText.endsWith(':') &&
+      currentText.split(/\s+/).length <= 4 &&
+      current.kind === 'BODY' &&
+      parsed[i + 1].kind === 'BODY'
+    ) {
+      const next = parsed[i + 1];
+      next.runs = [...current.runs, { text: ' ', bold: false }, ...next.runs];
+    } else {
+      mergedParagraphs.push(current);
+    }
+  }
+
+  return mergedParagraphs;
 }
 
 async function renderTemplatePdf({
@@ -225,7 +247,7 @@ async function renderTemplatePdf({
 
     let line: Array<{ text: string; bold: boolean }> = [];
     let lineWidth = 0;
-    const drawLine = () => {
+    const drawLine = (isLastLine: boolean) => {
       if (!line.length) return;
       ensureLineSpace(lineHeight);
       if (isExplicitSignatureLine || (isClientSignatureLabel && !explicitSignatureLineFound)) {
@@ -233,29 +255,40 @@ async function renderTemplatePdf({
         signaturePlacement = { page: pdfDoc.getPageCount(), x: 0.31, y: topY, width: 0.38, height: 0.085 };
         if (isExplicitSignatureLine) explicitSignatureLineFound = true;
       }
+
+      // ALINHAMENTO JUSTIFICADO (De uma ponta à outra da página)
+      const shouldJustify = !heading && !isLastLine && line.length > 1 && paragraph.kind === 'BODY';
+      const extraWordSpacing = shouldJustify ? (maxWidth - lineWidth) / (line.length - 1) : 0;
+
       const startX = heading ? marginX + Math.max(0, (maxWidth - lineWidth) / 2) : marginX;
       let cursorX = startX;
       line.forEach((token, index) => {
         const font = token.bold ? boldFont : regularFont;
         const value = `${index > 0 && !/^[,.;:!?)]/.test(token.text) ? ' ' : ''}${token.text}`;
         page.drawText(value, { x: cursorX, y: currentY, size: fontSize, font, color: heading ? navyColor : textColor });
-        cursorX += font.widthOfTextAtSize(value, fontSize);
+        
+        let wordWidth = font.widthOfTextAtSize(value, fontSize);
+        if (shouldJustify && index > 0) {
+          wordWidth += extraWordSpacing;
+        }
+        cursorX += wordWidth;
       });
       currentY -= lineHeight;
       line = [];
       lineWidth = 0;
     };
 
-    for (const token of tokens) {
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
       const font = token.bold ? boldFont : regularFont;
       const value = `${line.length && !/^[,.;:!?)]/.test(token.text) ? ' ' : ''}${token.text}`;
       const width = font.widthOfTextAtSize(value, fontSize);
-      if (line.length && lineWidth + width > maxWidth) drawLine();
+      if (line.length && lineWidth + width > maxWidth) drawLine(false);
       const nextValue = `${line.length && !/^[,.;:!?)]/.test(token.text) ? ' ' : ''}${token.text}`;
       line.push(token);
       lineWidth += font.widthOfTextAtSize(nextValue, fontSize);
     }
-    drawLine();
+    drawLine(true);
     currentY -= heading ? 8 : 6;
   }
 
