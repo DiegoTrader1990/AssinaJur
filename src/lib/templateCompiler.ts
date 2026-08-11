@@ -103,6 +103,13 @@ function cleanHtmlForPdf(html: string): string {
     .join('\n');
 }
 
+function isLabelParagraph(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.endsWith(':') && trimmed.split(/\s+/).length <= 5) return true;
+  if (/^(?:PODERES\s+ESPECIAIS|PODERES\s+GERAIS|OUTORGANTE|OUTORGADOS|OBJETO|HONORÁRIOS|FORO|SUBSTABELECIMENTO)\s*:\s*(?:nos|dos|das|de|do|da|em|para|a|o|os|as)?$/i.test(trimmed)) return true;
+  return false;
+}
+
 function parseRichParagraphs(html: string): RichParagraph[] {
   // Clean HTML attributes and style fragments before parsing
   const cleanedHtml = cleanHtmlForPdf(html);
@@ -138,7 +145,7 @@ function parseRichParagraphs(html: string): RichParagraph[] {
     })
     .filter((item): item is RichParagraph => Boolean(item));
 
-  // Merge short label paragraphs ending with ':' (e.g., "OUTORGANTE:", "OBJETO:") into the next paragraph
+  // Merge short label paragraphs (e.g., "PODERES ESPECIAIS:", "PODERES ESPECIAIS: nos") into the next paragraph
   const mergedParagraphs: RichParagraph[] = [];
   for (let i = 0; i < parsed.length; i++) {
     const current = parsed[i];
@@ -146,13 +153,18 @@ function parseRichParagraphs(html: string): RichParagraph[] {
 
     if (
       i < parsed.length - 1 &&
-      currentText.endsWith(':') &&
-      currentText.split(/\s+/).length <= 4 &&
+      isLabelParagraph(currentText) &&
       current.kind === 'BODY' &&
       parsed[i + 1].kind === 'BODY'
     ) {
       const next = parsed[i + 1];
-      next.runs = [...current.runs, { text: ' ', bold: false }, ...next.runs];
+      let labelRuns = current.runs;
+      // If label runs end with a stray "nos", trim it if next starts with "termos"
+      const lastRun = labelRuns[labelRuns.length - 1];
+      if (lastRun && /^nos$/i.test(lastRun.text.trim()) && next.runs[0] && /^termos/i.test(next.runs[0].text.trim())) {
+        labelRuns = labelRuns.slice(0, -1);
+      }
+      next.runs = [...labelRuns, { text: ' ', bold: false }, ...next.runs];
     } else {
       mergedParagraphs.push(current);
     }
@@ -256,17 +268,19 @@ async function renderTemplatePdf({
         if (isExplicitSignatureLine) explicitSignatureLineFound = true;
       }
 
-      // ALINHAMENTO JUSTIFICADO ELEGANTE (De uma ponta à outra da página sem espaçamentos gigantes)
+      // ALINHAMENTO JUSTIFICADO SUTIL E ELEGANTE (Máximo 3.5px extra por espaço)
       const rawExtraSpacing = (line.length > 1) ? (maxWidth - lineWidth) / (line.length - 1) : 0;
-      const hasEnoughLineWidth = lineWidth >= maxWidth * 0.60;
-      const shouldJustify = !heading && !isLastLine && line.length > 1 && paragraph.kind === 'BODY' && hasEnoughLineWidth && rawExtraSpacing <= 7.5;
-      const extraWordSpacing = shouldJustify ? Math.min(rawExtraSpacing, 7.5) : 0;
+      const hasEnoughLineWidth = lineWidth >= maxWidth * 0.75;
+      const shouldJustify = !heading && !isLastLine && line.length > 1 && paragraph.kind === 'BODY' && hasEnoughLineWidth && rawExtraSpacing <= 5.0;
+      const extraWordSpacing = shouldJustify ? Math.min(rawExtraSpacing, 3.5) : 0;
 
       const startX = heading ? marginX + Math.max(0, (maxWidth - lineWidth) / 2) : marginX;
       let cursorX = startX;
       line.forEach((token, index) => {
         const font = token.bold ? boldFont : regularFont;
-        const value = `${index > 0 && !/^[,.;:!?)]/.test(token.text) ? ' ' : ''}${token.text}`;
+        // Clean space before punctuation
+        let cleanText = token.text.replace(/\s+([,.;:!?])/g, '$1');
+        const value = `${index > 0 && !/^[,.;:!?)]/.test(cleanText) ? ' ' : ''}${cleanText}`;
         page.drawText(value, { x: cursorX, y: currentY, size: fontSize, font, color: heading ? navyColor : textColor });
         
         let wordWidth = font.widthOfTextAtSize(value, fontSize);
