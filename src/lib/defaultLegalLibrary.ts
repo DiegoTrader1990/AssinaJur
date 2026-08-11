@@ -10,20 +10,20 @@ export const ESSENTIAL_LEGAL_TEMPLATES = [
 <p><strong>CONTRATANTE:</strong> {{cliente_nome}}, {{cliente_nacionalidade}}, {{cliente_estado_civil}}, {{cliente_profissao}}, portador(a) do RG nº {{cliente_rg}} e inscrito(a) no CPF sob o nº {{cliente_cpf}}, residente e domiciliado(a) em {{cliente_endereco}}, telefone {{cliente_telefone}}.</p>
 <p><strong>CONTRATADO:</strong> {{advogado_nome}}, advogado(a), inscrito(a) na OAB sob o nº {{advogado_oab}}, integrante de <strong>{{escritorio_nome}}</strong>, doravante denominado(a) CONTRATADO.</p>
 <h2>1. OBJETO</h2>
-<p>O presente contrato tem por objeto a prestação de serviços advocatícios consistentes em <strong>[DESCREVER COM PRECISÃO A DEMANDA, O PROCEDIMENTO E A EXTENSÃO DA ATUAÇÃO]</strong>.</p>
+<p>O presente contrato tem por objeto a prestação de serviços advocatícios consistentes no ajuizamento de ação e acompanhamento integral da causa perante os órgãos jurisdicionais e administrativos competentes.</p>
 <p>Atos, recursos, incidentes, ações autônomas, cumprimento de sentença ou atuação perante instância diversa que não estejam expressamente compreendidos no objeto dependerão de ajuste escrito entre as partes.</p>
 <h2>2. OBRIGAÇÕES DO CONTRATADO</h2>
 <p>O CONTRATADO compromete-se a atuar com independência técnica, zelo e diligência, mantendo o CONTRATANTE informado sobre os atos relevantes e preservando o sigilo profissional, sem garantia de resultado.</p>
 <h2>3. OBRIGAÇÕES DO CONTRATANTE</h2>
 <p>O CONTRATANTE fornecerá informações verdadeiras e documentos completos, comunicará alterações de endereço e telefone, comparecerá aos atos para os quais for convocado e colaborará tempestivamente com a estratégia jurídica definida.</p>
 <h2>4. HONORÁRIOS CONTRATUAIS</h2>
-<p>Pelos serviços descritos, o CONTRATANTE pagará honorários de <strong>{{valor_honorarios}}</strong>, na forma e nos vencimentos seguintes: <strong>[DESCREVER ENTRADA, PARCELAS, VENCIMENTOS E MEIO DE PAGAMENTO]</strong>.</p>
-<p>Em caso de êxito, serão devidos honorários adicionais correspondentes a <strong>{{percentual_exito}}</strong>, calculados sobre <strong>[DEFINIR A BASE DE CÁLCULO]</strong>, exigíveis quando houver recebimento, disponibilização ou reconhecimento do benefício econômico.</p>
+<p>Pelos serviços descritos, o CONTRATANTE pagará honorários de <strong>{{valor_honorarios}}</strong>, na forma e nos vencimentos acordados entre as partes.</p>
+<p>Em caso de êxito, serão devidos honorários adicionais correspondentes a <strong>{{percentual_exito}}</strong>, calculados sobre o valor do proveito econômico obtido, exigíveis quando houver recebimento, disponibilização ou reconhecimento do benefício econômico.</p>
 <p>Honorários de sucumbência eventualmente fixados pertencem ao advogado e não se confundem com os honorários contratados, conforme a legislação aplicável.</p>
 <h2>5. DESPESAS</h2>
 <p>Custas, taxas, emolumentos, deslocamentos, cópias, diligências, perícias e demais despesas necessárias não estão incluídos nos honorários, salvo ajuste escrito, e serão antecipados ou reembolsados pelo CONTRATANTE mediante comprovação.</p>
 <h2>6. INADIMPLEMENTO</h2>
-<p>O atraso no pagamento sujeitará o valor devido à atualização monetária, juros e multa nos percentuais a serem definidos pelo advogado antes do envio: <strong>[PREENCHER CONDIÇÕES]</strong>, observada a legislação aplicável.</p>
+<p>O atraso no pagamento sujeitará o valor devido à atualização monetária, juros e multa, observada a legislação aplicável.</p>
 <h2>7. RESCISÃO, REVOGAÇÃO E RENÚNCIA</h2>
 <p>O contrato poderá ser encerrado por qualquer parte mediante comunicação escrita. Na revogação do mandato, renúncia ou acordo, serão devidos os honorários vencidos e os proporcionais ao trabalho realizado, sem prejuízo das despesas pendentes e do honorário de êxito quando cabível.</p>
 <h2>8. COMUNICAÇÕES E PROTEÇÃO DE DADOS</h2>
@@ -51,7 +51,7 @@ export const ESSENTIAL_LEGAL_TEMPLATES = [
 <p>Confere, ainda, os poderes especiais para receber citação, confessar, reconhecer a procedência do pedido, transigir, desistir, renunciar ao direito sobre o qual se funda a ação, receber valores, dar e receber quitação, firmar compromissos, assinar declaração de hipossuficiência econômica, requerer gratuidade da justiça, levantar alvarás, requisitórios e depósitos, solicitar documentos e informações e praticar os demais atos que exijam autorização expressa, nos termos do art. 105 do Código de Processo Civil.</p>
 <h2>SUBSTABELECIMENTO</h2>
 <p>O(A) OUTORGADO(A) poderá substabelecer os poderes recebidos, com ou sem reserva de iguais poderes, quando necessário ao cumprimento do mandato.</p>
-<p>Esta procuração destina-se especialmente a <strong>[DESCREVER A FINALIDADE OU O PROCESSO, QUANDO HOUVER]</strong>.</p>
+<p>Esta procuração destina-se ao acompanhamento processual e administrativo completo.</p>
 <p><strong>{{cidade}}, {{data_atual}}.</strong></p>
 <p><strong>OUTORGANTE:</strong> {{cliente_nome}}</p>`,
   },
@@ -72,7 +72,7 @@ export const ESSENTIAL_LEGAL_TEMPLATES = [
 <p>Autoriza o acesso e o tratamento dos dados e documentos estritamente necessários à execução deste mandato, inclusive informações mantidas em sistemas previdenciários, observados o sigilo profissional e a legislação de proteção de dados.</p>
 <h2>SUBSTABELECIMENTO</h2>
 <p>O(A) OUTORGADO(A) poderá substabelecer estes poderes, com ou sem reserva, para a adequada condução do caso.</p>
-<p><strong>Benefício ou finalidade específica:</strong> [PREENCHER, SE APLICÁVEL].</p>
+<p><strong>Benefício ou finalidade específica:</strong> Acompanhamento de processos e requerimentos previdenciários.</p>
 <p><strong>{{cidade}}, {{data_atual}}.</strong></p>
 <p><strong>OUTORGANTE:</strong> {{cliente_nome}}</p>`,
   },
