@@ -70,21 +70,37 @@ function emphasizeDocumentNames(html: string, variables: VariableValues): string
 
 function cleanHtmlForPdf(html: string): string {
   if (!html) return '';
-  return html
-    // 1. Remove style, script, comments
+  let cleaned = html;
+
+  // 1. Remove style, script, comments
+  cleaned = cleaned
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    // 2. Remove all span tags and span style fragments completely (both <span ...> and stray span style="...")
+    .replace(/<!--[\s\S]*?-->/g, '');
+
+  // 2. Aggressively strip span tags, style attributes, and Word style artifacts
+  cleaned = cleaned
     .replace(/<\/?span[^>]*>/gi, '')
-    .replace(/\bspan\s+style\s*=\s*"[^"]*"\s*>?/gi, '')
-    .replace(/\bspan\s+style\s*=\s*'[^']*'\s*>?/gi, '')
-    .replace(/\bline-height:\s*[^;"]*;?/gi, '')
-    .replace(/\bfont-family:\s*[^;"]*;?/gi, '')
-    .replace(/\bfont-size:\s*[^;"]*;?/gi, '')
-    // 3. Remove any remaining stray HTML style attributes printed as text
-    .replace(/\bstyle\s*=\s*"[^"]*"/gi, '')
-    .replace(/\bstyle\s*=\s*'[^']*'/gi, '');
+    .replace(/<?\s*span\s+style\s*=\s*"[\s\S]*?"\s*>/gi, '')
+    .replace(/span\s+style\s*=\s*"[^>]*>/gi, '')
+    .replace(/span\s+style\s*=\s*'[^>]*>/gi, '')
+    .replace(/line-height:[^;>]*;?/gi, '')
+    .replace(/font-family:[^;>]*;?/gi, '')
+    .replace(/font-size:[^;>]*;?/gi, '')
+    .replace(/\bsans-serif\b;?/gi, '')
+    .replace(/\bstyle="[^"]*"/gi, '')
+    .replace(/\bstyle='[^']*'/gi, '');
+
+  // 3. Line-by-line cleanup
+  return cleaned
+    .split('\n')
+    .map((line) =>
+      line
+        .replace(/^\s*span\s+style=[^>]*>?/gi, '')
+        .replace(/^\s*line-height:[^>]*>?/gi, '')
+    )
+    .filter((line) => line.trim().length > 0)
+    .join('\n');
 }
 
 function parseRichParagraphs(html: string): RichParagraph[] {
