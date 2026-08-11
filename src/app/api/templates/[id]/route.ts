@@ -81,3 +81,48 @@ export async function PUT(
     return NextResponse.json({ error: 'Erro ao salvar alterações do modelo.' }, { status: 500 });
   }
 }
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const user = await getSessionUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
+    }
+
+    const template = await prisma.template.findFirst({
+      where: { id: params.id, officeId: user.officeId },
+    });
+
+    if (!template) {
+      return NextResponse.json({ error: 'Modelo não encontrado.' }, { status: 404 });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Remover o vínculo do modelo dos kits existentes
+      await tx.kitItem.deleteMany({
+        where: { templateId: params.id },
+      });
+
+      // 2. Desativar o modelo
+      await tx.template.update({
+        where: { id: params.id },
+        data: { active: false },
+      });
+    });
+
+    await logAuditEvent({
+      officeId: user.officeId,
+      userId: user.id,
+      eventType: 'TEMPLATE_DELETED',
+      description: `Modelo de minuta "${template.title}" desativado.`,
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('Erro ao excluir modelo:', error);
+    return NextResponse.json({ error: 'Erro ao excluir modelo de minuta.' }, { status: 500 });
+  }
+}
