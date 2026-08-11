@@ -505,7 +505,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     p.drawRectangle({ x: 20, y: 760, width: 555.28, height: 61.89, color: navy });
     p.drawRectangle({ x: 20, y: 757, width: 555.28, height: 3, color: gold });
     p.drawText('ASSINAJUR', { x: CX, y: 794, size: 14, font: bold, color: rgb(1, 1, 1) });
-    p.drawText('ASSINATURA ELETRÔNICA PARA ADVOCACIA', { x: CX, y: 780, size: 6.2, font: regular, color: rgb(0.72, 0.79, 0.9) });
+    p.drawText('ASSINATURA ELETRÔNICA COM VALIDADE JURÍDICA', { x: CX, y: 780, size: 6.2, font: regular, color: rgb(0.72, 0.79, 0.9) });
     const subtitleWidth = bold.widthOfTextAtSize(cleanSubtitle, 8.2);
     p.drawText(cleanSubtitle, { x: CR - subtitleWidth, y: 787, size: 8.2, font: bold, color: rgb(1, 1, 1) });
   };
@@ -522,7 +522,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     certificatePage.drawRectangle({ x: 20, y: 760, width: 555.28, height: 61.89, color: navy });
     certificatePage.drawRectangle({ x: 20, y: 757, width: 555.28, height: 3, color: gold });
     certificatePage.drawText('ASSINAJUR', { x: CX, y: 794, size: 14, font: bold, color: rgb(1, 1, 1) });
-    certificatePage.drawText('ASSINATURA ELETRÔNICA PARA ADVOCACIA', { x: CX, y: 780, size: 6.2, font: regular, color: rgb(0.72, 0.79, 0.9) });
+    certificatePage.drawText('ASSINATURA ELETRÔNICA COM VALIDADE JURÍDICA', { x: CX, y: 780, size: 6.2, font: regular, color: rgb(0.72, 0.79, 0.9) });
     const compactHeader = 'CERTIFICADO DE EVIDÊNCIAS JURÍDICAS';
     certificatePage.drawText(compactHeader, { x: CR - bold.widthOfTextAtSize(compactHeader, 8.4), y: 787, size: 8.4, font: bold, color: rgb(1, 1, 1) });
 
