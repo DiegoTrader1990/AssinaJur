@@ -142,6 +142,7 @@ function addLinkAnnotation(
         Type: PDFName.of('Action'),
         S: PDFName.of('URI'),
         URI: PDFString.of(url),
+        NewWindow: true,
       },
     });
     const linkAnnotationRef = pdfDoc.context.register(linkAnnotation);
