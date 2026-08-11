@@ -877,14 +877,18 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowDocPreview(true)}
-              className="w-full py-3 px-4 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-2xl text-xs font-extrabold text-[#071B3A] flex items-center justify-center gap-2 transition-all font-heading shadow-xs mb-3"
+            <a
+              href={`/api/sign/${params.token}/document`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3.5 px-4 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-2xl text-xs font-extrabold text-[#071B3A] flex items-center justify-between transition-all font-heading shadow-xs mb-3"
             >
-              <FileText className="w-4 h-4 text-blue-600" />
-              <span>📄 Ler / Visualizar Documento Integral</span>
-            </button>
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-blue-600" />
+                <span>📄 Ler / Visualizar Documento Completo</span>
+              </div>
+              <ExternalLink className="w-4 h-4 text-blue-600" />
+            </a>
 
             <form onSubmit={handleConfirmCpf} className="space-y-4">
               <div>
@@ -1202,32 +1206,19 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 {isRogadoConsent ? `Desenhe ou confirme a assinatura a rogo pelo cliente ${signer?.name}.` : 'Escolha o formato e assine no quadro abaixo.'}
               </p>
             </div>
-            {/* Botão para ler / visualizar documento integral */}
-            <button
-              type="button"
-              onClick={() => setShowDocPreview(!showDocPreview)}
-              className="w-full py-3 px-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl text-xs font-bold text-[#071B3A] flex items-center justify-between transition-all font-heading shadow-xs"
+            {/* Botão para ler / visualizar documento integral em nova guia */}
+            <a
+              href={`/api/sign/${params.token}/document`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3.5 px-4 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-2xl text-xs font-extrabold text-[#071B3A] flex items-center justify-between transition-all font-heading shadow-xs"
             >
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-blue-600" />
-                <span>Ler / Visualizar Documento</span>
+                <span>📄 Ler / Visualizar Documento Completo</span>
               </div>
-              <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${showDocPreview ? 'rotate-180' : ''}`} />
-            </button>
-
-            {showDocPreview && (
-              <div className="p-4 bg-slate-50/90 rounded-2xl border border-slate-200 space-y-2 text-xs max-h-64 overflow-y-auto animate-in fade-in duration-200">
-                <h4 className="font-heading font-extrabold text-[#071B3A] text-sm">{document?.title}</h4>
-                {document?.customMessage && (
-                  <p className="text-slate-700 italic bg-amber-50 p-2.5 rounded-xl border border-amber-200 text-[11px] font-medium">
-                    "{document.customMessage}"
-                  </p>
-                )}
-                <div className="text-slate-700 font-serif leading-relaxed text-[11px] whitespace-pre-wrap pt-2 border-t border-slate-200">
-                  {document?.previewText || 'Documento jurídico anexado em formato PDF. As assinaturas e provas de presença serão vinculadas ao Certificado de Evidências Jurídicas.'}
-                </div>
-              </div>
-            )}
+              <ExternalLink className="w-4 h-4 text-blue-600" />
+            </a>
 
             {/* Bloco do Selo Digital Principal (Sempre Ativo) */}
             <div className="p-4 bg-gradient-to-br from-slate-50 via-white to-blue-50/40 rounded-2xl border-2 border-[#071B3A]/20 shadow-md space-y-3">
@@ -1354,88 +1345,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           </div>
         )}
 
-        {/* MODAL DE LEITURA DO DOCUMENTO INTEGRAL */}
-        {showDocPreview && (
-          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-2xl rounded-3xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
-              <div className="p-5 bg-[#071B3A] text-white flex items-center justify-between font-heading">
-                <div className="flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-amber-400" />
-                  <h3 className="font-extrabold text-sm truncate">{document?.title || 'Visualização do Documento'}</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowDocPreview(false)}
-                  className="p-1.5 text-slate-300 hover:text-white rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="p-4 overflow-y-auto space-y-3 font-sans text-slate-800 text-xs flex-1 bg-slate-50">
-                {document?.customMessage && (
-                  <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 font-sans text-xs">
-                    <strong>Mensagem do Escritório:</strong> "{document.customMessage}"
-                  </div>
-                )}
-                
-                <div className="w-full min-h-[380px] bg-slate-100/80 rounded-2xl border border-slate-200 p-6 flex flex-col items-center justify-center text-center space-y-4 shadow-inner">
-                  {document?.mimeType?.startsWith('image/') ? (
-                    <div className="w-full h-full max-h-[50vh] overflow-auto flex items-center justify-center">
-                      <img
-                        src={`/api/sign/${params.token}/document`}
-                        alt={document?.title || 'Documento em Imagem'}
-                        className="max-w-full max-h-[48vh] object-contain rounded-lg shadow-md border border-slate-200"
-                      />
-                    </div>
-                  ) : (
-                    <div className="space-y-4 max-w-sm mx-auto">
-                      <div className="w-20 h-20 bg-blue-100 text-blue-700 rounded-3xl flex items-center justify-center mx-auto shadow-md border border-blue-200">
-                        <FileText className="w-10 h-10" />
-                      </div>
-                      <div className="space-y-1">
-                        <h4 className="font-heading text-base font-extrabold text-[#071B3A]">
-                          {document?.title || 'Documento Jurídico'}
-                        </h4>
-                        <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                          Para ler o arquivo PDF na íntegra com máxima clareza e nitidez no seu aparelho, clique no botão abaixo:
-                        </p>
-                      </div>
-
-                      <a
-                        href={`/api/sign/${params.token}/document`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full py-4 px-6 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl text-xs flex items-center justify-center gap-2 shadow-xl transition-all font-heading"
-                      >
-                        <ExternalLink className="w-4 h-4 text-amber-400" />
-                        Abrir e Ler PDF em Tela Cheia
-                      </a>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="p-4 bg-white border-t border-slate-200 flex flex-wrap gap-2 justify-between items-center">
-                <a
-                  href={`/api/sign/${params.token}/document`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl text-xs flex items-center gap-1.5 border border-blue-200 transition-colors font-heading"
-                >
-                  <span>↗ Abrir PDF Completo</span>
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setShowDocPreview(false)}
-                  className="px-6 py-2 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-xl text-xs font-heading shadow-md transition-all"
-                >
-                  Fechar Leitura
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
 
       <footer className="max-w-md mx-auto w-full text-center text-[11px] text-slate-500 py-4 border-t border-slate-200/60 font-medium">

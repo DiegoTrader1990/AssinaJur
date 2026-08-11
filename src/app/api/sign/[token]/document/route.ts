@@ -39,7 +39,8 @@ export async function GET(
         'Content-Length': String(buffer.length),
         'Accept-Ranges': 'bytes',
         'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'X-Frame-Options': 'ALLOWALL',
+        'Access-Control-Allow-Origin': '*',
+        'Content-Security-Policy': "frame-ancestors *",
       },
     });
   } catch (error: any) {
