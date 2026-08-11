@@ -68,12 +68,28 @@ function emphasizeDocumentNames(html: string, variables: VariableValues): string
   }, html);
 }
 
-function parseRichParagraphs(html: string): RichParagraph[] {
-  // Strip CSS style tags, script tags, and comments before parsing
-  const cleanedHtml = html
+function cleanHtmlForPdf(html: string): string {
+  if (!html) return '';
+  return html
+    // 1. Remove style, script, comments
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<!--[\s\S]*?-->/g, '');
+    .replace(/<!--[\s\S]*?-->/g, '')
+    // 2. Remove all span tags and span style fragments completely (both <span ...> and stray span style="...")
+    .replace(/<\/?span[^>]*>/gi, '')
+    .replace(/\bspan\s+style\s*=\s*"[^"]*"\s*>?/gi, '')
+    .replace(/\bspan\s+style\s*=\s*'[^']*'\s*>?/gi, '')
+    .replace(/\bline-height:\s*[^;"]*;?/gi, '')
+    .replace(/\bfont-family:\s*[^;"]*;?/gi, '')
+    .replace(/\bfont-size:\s*[^;"]*;?/gi, '')
+    // 3. Remove any remaining stray HTML style attributes printed as text
+    .replace(/\bstyle\s*=\s*"[^"]*"/gi, '')
+    .replace(/\bstyle\s*=\s*'[^']*'/gi, '');
+}
+
+function parseRichParagraphs(html: string): RichParagraph[] {
+  // Clean HTML attributes and style fragments before parsing
+  const cleanedHtml = cleanHtmlForPdf(html);
 
   const normalized = cleanedHtml
     .replace(/\r/g, '')
