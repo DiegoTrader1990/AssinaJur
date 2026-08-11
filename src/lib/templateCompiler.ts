@@ -268,11 +268,9 @@ async function renderTemplatePdf({
         if (isExplicitSignatureLine) explicitSignatureLineFound = true;
       }
 
-      // ALINHAMENTO JUSTIFICADO SUTIL E ELEGANTE (Máximo 3.5px extra por espaço)
-      const rawExtraSpacing = (line.length > 1) ? (maxWidth - lineWidth) / (line.length - 1) : 0;
-      const hasEnoughLineWidth = lineWidth >= maxWidth * 0.75;
-      const shouldJustify = !heading && !isLastLine && line.length > 1 && paragraph.kind === 'BODY' && hasEnoughLineWidth && rawExtraSpacing <= 5.0;
-      const extraWordSpacing = shouldJustify ? Math.min(rawExtraSpacing, 3.5) : 0;
+      // ALINHAMENTO JUSTIFICADO COMPLETO (Margem esquerda à margem direita retas)
+      const shouldJustify = !heading && !isLastLine && line.length > 1 && paragraph.kind === 'BODY';
+      const extraWordSpacing = shouldJustify ? (maxWidth - lineWidth) / (line.length - 1) : 0;
 
       const startX = heading ? marginX + Math.max(0, (maxWidth - lineWidth) / 2) : marginX;
       let cursorX = startX;
