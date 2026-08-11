@@ -97,6 +97,15 @@ export async function ensureDefaultLegalLibrary(officeId: string) {
   const templateIds: string[] = [];
   let templatesCreated = 0;
 
+  // Check if office already has any kits or templates
+  const existingKitsCount = await prisma.legalKit.count({ where: { officeId } });
+  const existingTemplatesCount = await prisma.template.count({ where: { officeId } });
+
+  // If office already has templates or kits, do NOT auto-create or reactivate deleted ones
+  if (existingKitsCount > 0 || existingTemplatesCount > 0) {
+    return { templatesCreated: 0, templatesAvailable: 0, kitCreated: false, kitId: null, kitItemsAdded: 0 };
+  }
+
   for (const definition of ESSENTIAL_LEGAL_TEMPLATES) {
     let template = await prisma.template.findFirst({
       where: { officeId, title: definition.title },
@@ -109,14 +118,10 @@ export async function ensureDefaultLegalLibrary(officeId: string) {
         select: { id: true, active: true },
       });
       templatesCreated += 1;
-    } else if (!template.active) {
-      template = await prisma.template.update({
-        where: { id: template.id },
-        data: { active: true },
-        select: { id: true, active: true },
-      });
     }
-    templateIds.push(template.id);
+    if (template && template.active) {
+      templateIds.push(template.id);
+    }
   }
 
   let kit = await prisma.legalKit.findFirst({
@@ -135,12 +140,6 @@ export async function ensureDefaultLegalLibrary(officeId: string) {
       select: { id: true, active: true },
     });
     kitCreated = true;
-  } else if (!kit.active) {
-    kit = await prisma.legalKit.update({
-      where: { id: kit.id },
-      data: { active: true },
-      select: { id: true, active: true },
-    });
   }
 
   const existingItems = await prisma.kitItem.findMany({
