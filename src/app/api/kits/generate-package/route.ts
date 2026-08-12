@@ -7,16 +7,18 @@ import { getFileBuffer } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 
-function ensureJointAttorneyQualification(contentHtml: string, documentType: string) {
-  if (!['PROCURACAO', 'CONTRATO'].includes(documentType) || /{{\s*patronos_qualificacao_conjunta\s*}}/i.test(contentHtml)) {
+function ensureJointAttorneyQualification(contentHtml: string, documentType: string, title: string) {
+  const isPowerOfAttorney = /PROCUR/i.test(documentType) || /procura[cç][aã]o/i.test(title);
+  const isContract = /CONTRAT/i.test(documentType) || /contrato/i.test(title);
+  if ((!isPowerOfAttorney && !isContract) || /{{\s*patronos_qualificacao_conjunta\s*}}/i.test(contentHtml)) {
     return contentHtml;
   }
 
   // Modelos antigos trazem apenas o primeiro advogado. Ao gerar documentos de kit,
   // aproveitamos os patronos ativos configurados pelo escritório sem alterar o modelo salvo.
-  const labels = documentType === 'PROCURACAO' ? 'OUTORGADOS?' : 'CONTRATADOS?';
+  const labels = isPowerOfAttorney ? 'OUTORGADOS?' : 'CONTRATADOS?';
   const pattern = new RegExp(`<(p|div)([^>]*)>\\s*<strong>\\s*${labels}\\s*:\\s*<\\/strong>[\\s\\S]*?<\\/\\1>`, 'i');
-  const replacementLabel = documentType === 'PROCURACAO' ? 'OUTORGADOS' : 'CONTRATADOS';
+  const replacementLabel = isPowerOfAttorney ? 'OUTORGADOS' : 'CONTRATADOS';
   return contentHtml.replace(
     pattern,
     (_match, tag, attributes) => `<${tag}${attributes}><strong>${replacementLabel}:</strong> {{patronos_qualificacao_conjunta}}.</${tag}>`,
@@ -87,8 +89,13 @@ export async function POST(req: Request) {
       if (/\bOAB\b/i.test(value)) return `inscrito(a) na ${value}`;
       return `inscrito(a) na OAB/${officeState} sob o nº ${value}`;
     };
-    const lawyerTextList = activeLawyers.length > 0
-      ? activeLawyers.map(l => `${l.name}, advogado(a), ${formatOab(l.oabNumber)}`).join(' e ')
+    const orderedLawyers = [...activeLawyers].sort((left, right) => {
+      if (left.name === user.name) return -1;
+      if (right.name === user.name) return 1;
+      return left.name.localeCompare(right.name, 'pt-BR');
+    });
+    const lawyerTextList = orderedLawyers.length > 0
+      ? orderedLawyers.map(l => `${l.name}, advogado(a), ${formatOab(l.oabNumber)}`).join(' e ')
       : 'DR. DIEGO DOS SANTOS RODRIGUES, inscrito na OAB/BA nº 51.881, e DRA. DOMINICK QUINTO SOARES, inscrita na OAB/BA nº 62.443';
 
     let fullOfficeQualification = '';
@@ -115,7 +122,14 @@ export async function POST(req: Request) {
       cliente_rg: client.rg || '—',
       cliente_nacionalidade: client.nationality || 'Brasileira',
       cliente_telefone: client.whatsapp || client.phone || '—',
-      cliente_endereco: client.address || '—',
+      cliente_endereco: [
+        client.address,
+        client.number && !String(client.address || '').includes(client.number) ? `nº ${client.number}` : '',
+        client.complement,
+        client.neighborhood,
+        [client.city, client.state].filter(Boolean).join('/'),
+        client.cep ? `CEP ${client.cep}` : '',
+      ].filter(Boolean).join(', ') || '—',
       cliente_estado_civil: client.maritalStatus || '—',
       cliente_profissao: client.profession || '—',
       advogado_nome: mainLawyer.name,
@@ -129,7 +143,7 @@ export async function POST(req: Request) {
       escritorio_email: office.email || 'contato@rodriguesesoares.adv.br',
       escritorio_qualificacao: fullOfficeQualification,
       patronos_qualificacao_conjunta: jointPatronosQualification,
-      cidade: 'Porto Seguro',
+      cidade: client.city || 'Porto Seguro',
       ...(customVariables || {}),
     };
 
@@ -161,6 +175,7 @@ export async function POST(req: Request) {
       const finalContentHtml = ensureJointAttorneyQualification(
         customContents?.[template.id] || template.contentHtml,
         template.documentType,
+        template.title,
       );
 
       const compiledResult = await compileTemplateToPdf({

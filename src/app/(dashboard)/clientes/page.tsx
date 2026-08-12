@@ -806,7 +806,7 @@ export default function ClientsPage() {
                     </div>
                   </div>
 
-                  <div className="grid md:grid-cols-3 gap-4">
+                  <div className="grid md:grid-cols-4 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">RG</label>
                       <input
@@ -929,14 +929,40 @@ export default function ClientsPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Cidade / UF</label>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">CEP</label>
+                      <input
+                        type="text"
+                        name="cep"
+                        value={formData.cep}
+                        onChange={handleFormChange}
+                        placeholder="00000-000"
+                        className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Cidade</label>
                       <input
                         type="text"
                         name="city"
                         value={formData.city}
                         onChange={handleFormChange}
-                        placeholder="São Paulo / SP"
+                        placeholder="Porto Seguro"
                         className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">UF</label>
+                      <input
+                        type="text"
+                        name="state"
+                        value={formData.state}
+                        onChange={handleFormChange}
+                        maxLength={2}
+                        placeholder="BA"
+                        className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium uppercase focus:border-blue-600 focus:outline-none"
                       />
                     </div>
                   </div>

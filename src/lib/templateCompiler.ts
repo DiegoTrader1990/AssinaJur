@@ -270,7 +270,12 @@ async function renderTemplatePdf({
     }))
     .filter((item) => /^(?:CONTRATANTE|OUTORGANTE|DECLARANTE|ASSINATURA\s+DO\s+CLIENTE)\s*:/i.test(item.text))
     .map((item) => item.index);
-  const lastSignatureLabelIndex = signatureLabelIndexes.at(-1);
+  const signatureCandidate = signatureLabelIndexes.at(-1);
+  // Uma área de assinatura precisa estar ao final do documento. Se OUTORGANTE aparece
+  // somente na qualificação inicial, não há espaço de assinatura a reservar ali.
+  const lastSignatureLabelIndex = signatureCandidate !== undefined && signatureCandidate >= Math.max(0, paragraphs.length - 3)
+    ? signatureCandidate
+    : undefined;
 
   for (let paragraphIndex = 0; paragraphIndex < paragraphs.length; paragraphIndex++) {
     const paragraph = paragraphs[paragraphIndex];
