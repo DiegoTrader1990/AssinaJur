@@ -292,6 +292,7 @@ export default function TemplatesPage() {
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Texto do Modelo *</label>
                 <DocumentRichEditor
+                  key={`${editingTemplate?.id || 'novo'}-${showModal}`}
                   value={showSamples(formData.contentHtml)}
                   onChange={(html) => setFormData({ ...formData, contentHtml: restoreVariables(html) })}
                   showAiCopilot={true}

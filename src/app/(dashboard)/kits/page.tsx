@@ -793,6 +793,7 @@ export default function KitsAndTemplatesPage() {
                   Conteúdo da Minuta (Com Tags Dinâmicas e Copilot de IA): *
                 </label>
                 <DocumentRichEditor
+                  key={`${editingTemplate?.id || 'novo'}-${showTemplateModal}`}
                   value={showSamples(templateFormData.contentHtml)}
                   onChange={(html) => setTemplateFormData({ ...templateFormData, contentHtml: restoreVariables(html) })}
                   showAiCopilot={true}
