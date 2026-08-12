@@ -48,6 +48,7 @@ export default function SettingsPage() {
     phone: '',
   });
   const [addingLawyer, setAddingLawyer] = useState(false);
+  const [removingLawyerId, setRemovingLawyerId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/office')
@@ -127,6 +128,27 @@ export default function SettingsPage() {
       alert(err.message);
     } finally {
       setAddingLawyer(false);
+    }
+  };
+
+  const handleRemoveLawyer = async (lawyer: LawyerMember) => {
+    const confirmed = window.confirm(
+      `Excluir o advogado ${lawyer.name}? Esta ação não pode ser desfeita.`
+    );
+    if (!confirmed) return;
+
+    setRemovingLawyerId(lawyer.id);
+    try {
+      const res = await fetch(`/api/office/team?id=${encodeURIComponent(lawyer.id)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Não foi possível excluir o advogado.');
+      setLawyers((current) => current.filter((item) => item.id !== lawyer.id));
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setRemovingLawyerId(null);
     }
   };
 
@@ -402,6 +424,16 @@ export default function SettingsPage() {
                     {lawyer.oabNumber ? `Inscrição: ${lawyer.oabNumber}` : 'OAB não informada'}
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveLawyer(lawyer)}
+                  disabled={removingLawyerId === lawyer.id}
+                  aria-label={`Excluir ${lawyer.name}`}
+                  title="Excluir advogado"
+                  className="shrink-0 p-2 rounded-xl text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {removingLawyerId === lawyer.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                </button>
               </div>
             ))}
 

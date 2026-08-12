@@ -117,3 +117,72 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Erro ao cadastrar membro da equipe.' }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const user = await getSessionUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
+    }
+
+    if (user.role !== 'OFFICE_ADMIN') {
+      return NextResponse.json(
+        { error: 'Apenas administradores do escritório podem excluir membros.' },
+        { status: 403 }
+      );
+    }
+
+    const memberId = new URL(req.url).searchParams.get('id');
+    if (!memberId) {
+      return NextResponse.json({ error: 'Informe o membro que deseja excluir.' }, { status: 400 });
+    }
+
+    if (memberId === user.id) {
+      return NextResponse.json(
+        { error: 'Você não pode excluir a sua própria conta por esta tela.' },
+        { status: 400 }
+      );
+    }
+
+    const member = await prisma.user.findFirst({
+      where: { id: memberId, officeId: user.officeId },
+      select: { id: true, name: true, role: true },
+    });
+
+    if (!member) {
+      return NextResponse.json({ error: 'Membro não encontrado neste escritório.' }, { status: 404 });
+    }
+
+    if (member.role === 'OFFICE_ADMIN') {
+      const administrators = await prisma.user.count({
+        where: { officeId: user.officeId, role: 'OFFICE_ADMIN', active: true },
+      });
+      if (administrators <= 1) {
+        return NextResponse.json(
+          { error: 'O escritório precisa manter ao menos um administrador ativo.' },
+          { status: 400 }
+        );
+      }
+    }
+
+    await prisma.user.delete({ where: { id: member.id } });
+
+    await logAuditEvent({
+      officeId: user.officeId,
+      userId: user.id,
+      eventType: 'TEAM_MEMBER_REMOVED',
+      description: `Membro ${member.name} (${member.role}) excluído da equipe.`,
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('Erro ao excluir membro:', error);
+    if (error?.code === 'P2003') {
+      return NextResponse.json(
+        { error: 'Este advogado já possui registros vinculados e não pode ser excluído. Mantenha-o cadastrado para preservar o histórico.' },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json({ error: 'Erro ao excluir membro da equipe.' }, { status: 500 });
+  }
+}
