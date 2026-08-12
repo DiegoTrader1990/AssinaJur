@@ -1,8 +1,9 @@
 'use client';
 // Área interna de gestão de processos.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { BriefcaseBusiness, CheckCircle2, FileText, FolderPlus, Loader2, X, Download, User } from 'lucide-react';
 
 type Process = { id: string; title: string; legalArea?: string; status: string; processNumber?: string; protocolNumber?: string; notes?: string; client: { id: string; name: string; cpfCnpj: string; phone?: string }; documents: Array<{ id: string; title: string; status: string; signedFileId?: string }>; createdAt: string };
@@ -10,12 +11,14 @@ type Client = { id: string; name: string; cpfCnpj: string };
 const statuses = [{ id: 'EM_TRIAGEM', label: 'Em triagem' }, { id: 'DOCUMENTACAO_PENDENTE', label: 'Documentação pendente' }, { id: 'PRONTO_PARA_PROTOCOLAR', label: 'Pronto para protocolar' }, { id: 'PROTOCOLADO', label: 'Protocolado' }, { id: 'EM_ANDAMENTO', label: 'Em andamento' }, { id: 'CONCLUIDO', label: 'Concluído / arquivado' }];
 
 export default function ProcessosPage() {
+  const searchParams = useSearchParams();
+  const openedFromDocuments = useRef(false);
   const [processes, setProcesses] = useState<Process[]>([]); const [clients, setClients] = useState<Client[]>([]); const [availableDocuments, setAvailableDocuments] = useState<Array<{id:string;title:string;client?:{id:string};status:string}>>([]); const [loading, setLoading] = useState(true); const [modal, setModal] = useState(false); const [selected, setSelected] = useState<Process | null>(null);
   const [form, setForm] = useState({ clientId: '', title: '', legalArea: 'Previdenciário', status: 'EM_TRIAGEM', processNumber: '', protocolNumber: '', notes: '', documentIds: [] as string[] });
   const load = async () => { setLoading(true); const [p, c] = await Promise.all([fetch('/api/processos').then(r => r.json()), fetch('/api/clients').then(r => r.json())]); setProcesses(p.processes || []); setClients(c.clients || []); setLoading(false); };
   useEffect(() => { load(); }, []);
   useEffect(() => { if (!form.clientId) return void setAvailableDocuments([]); fetch('/api/documents').then(r => r.json()).then(d => setAvailableDocuments((d.documents || []).filter((item:any) => item.client?.id === form.clientId && item.status === 'CONCLUIDO'))); }, [form.clientId]);
-  const signedDocuments = useMemo(() => selected ? [] : [], [selected]);
+  useEffect(() => { const clientId = searchParams.get('clienteId'); if (!clientId || openedFromDocuments.current) return; openedFromDocuments.current = true; const documentIds = (searchParams.get('documentoIds') || '').split(',').filter(Boolean); setForm(current => ({ ...current, clientId, documentIds })); setModal(true); }, [searchParams]);
   const create = async (e: React.FormEvent) => { e.preventDefault(); const r = await fetch('/api/processos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) }); const d = await r.json(); if (!r.ok) return alert(d.error); setModal(false); setForm({ clientId: '', title: '', legalArea: 'Previdenciário', status: 'EM_TRIAGEM', processNumber: '', protocolNumber: '', notes: '', documentIds: [] }); load(); };
   return <div className="space-y-5"><div className="rounded-3xl bg-gradient-to-r from-[#071B3A] to-[#0B3B78] text-white p-6 flex flex-col sm:flex-row gap-4 justify-between"><div><p className="text-[10px] font-extrabold text-blue-200 uppercase tracking-widest">Gestão do escritório</p><h1 className="text-2xl font-black font-heading mt-1">Processos e dossiês</h1><p className="text-sm text-blue-100 mt-2">Organize somente os atendimentos confirmados. Os documentos continuam preservados na Central de Documentos.</p></div><button onClick={() => setModal(true)} className="self-start sm:self-center inline-flex items-center gap-2 bg-white text-[#071B3A] px-5 py-3 rounded-xl text-xs font-extrabold"><FolderPlus className="w-4 h-4" /> Novo processo</button></div>
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{statuses.slice(0, 3).map(s => <div key={s.id} className="bg-white border border-slate-200 rounded-2xl p-4"><p className="text-[10px] font-bold uppercase text-slate-400">{s.label}</p><p className="text-2xl font-black text-[#071B3A] mt-1">{processes.filter(p => p.status === s.id).length}</p></div>)}</div>
