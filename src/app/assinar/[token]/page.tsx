@@ -267,13 +267,22 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [docBlobUrl, setDocBlobUrl] = useState<string | null>(null);
   const [pdfPageUrls, setPdfPageUrls] = useState<string[]>([]);
   const [loadingDocBlob, setLoadingDocBlob] = useState(false);
+  const [previewDocumentId, setPreviewDocumentId] = useState<string | null>(null);
 
-  const handleOpenDocPreview = async () => {
+  const handleOpenDocPreview = async (documentId?: string) => {
+    const targetDocumentId = documentId || document?.id;
+    if (!targetDocumentId) return;
     setShowDocPreview(true);
-    if (pdfPageUrls.length === 0 && !docBlobUrl && params.token) {
+    if (previewDocumentId !== targetDocumentId) {
+      if (docBlobUrl) URL.revokeObjectURL(docBlobUrl);
+      setDocBlobUrl(null);
+      setPdfPageUrls([]);
+      setPreviewDocumentId(targetDocumentId);
+    }
+    if (params.token) {
       setLoadingDocBlob(true);
       try {
-        const res = await fetch(`/api/sign/${params.token}/document`);
+        const res = await fetch(`/api/sign/${params.token}/document?documentId=${encodeURIComponent(targetDocumentId)}`);
         if (!res.ok) throw new Error('Erro ao carregar arquivo');
         const blob = await res.blob();
         const mime = res.headers.get('content-type') || document?.mimeType || '';
@@ -939,7 +948,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
             <button
               type="button"
-              onClick={handleOpenDocPreview}
+              onClick={() => void handleOpenDocPreview()}
               className="w-full py-3.5 px-4 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-2xl text-xs font-extrabold text-[#071B3A] flex items-center justify-between transition-all font-heading shadow-xs mb-3"
             >
               <div className="flex items-center gap-2">
@@ -953,7 +962,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               <div className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 space-y-2">
                 <p className="text-xs font-extrabold text-[#071B3A]">Assinatura única do kit • {kit.documents.length} documentos</p>
                 <div className="space-y-1">
-                  {kit.documents.map((item, index) => <p key={item.id} className="text-[11px] text-slate-700 font-medium">{index + 1}. {item.title}</p>)}
+                  {kit.documents.map((item, index) => <button type="button" onClick={() => handleOpenDocPreview(item.id)} key={item.id} className="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] text-slate-700 font-medium hover:bg-white hover:text-blue-800 transition-colors"><span className="text-blue-600 font-bold">{index + 1}.</span><span className="flex-1">{item.title}</span><Eye className="w-3.5 h-3.5 text-blue-600" /></button>)}
                 </div>
                 <p className="text-[10px] text-slate-500">Ao concluir, sua assinatura será registrada individualmente em cada documento deste kit.</p>
               </div>
@@ -1278,7 +1287,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             {/* Botão para ler / visualizar documento integral na mesma tela */}
             <button
               type="button"
-              onClick={handleOpenDocPreview}
+              onClick={() => void handleOpenDocPreview()}
               className="w-full py-3.5 px-4 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-2xl text-xs font-extrabold text-[#071B3A] flex items-center justify-between transition-all font-heading shadow-xs"
             >
               <div className="flex items-center gap-2">

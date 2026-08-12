@@ -24,12 +24,29 @@ export async function GET(
       return NextResponse.json({ error: 'Documento não encontrado.' }, { status: 404 });
     }
 
-    const buffer = await getFileBuffer(signer.document.officeId, signer.document.originalFile.storageKey);
+    const requestedDocumentId = new URL(req.url).searchParams.get('documentId');
+    const requestedDocument = requestedDocumentId && requestedDocumentId !== signer.document.id
+      ? await prisma.document.findFirst({
+          where: {
+            id: requestedDocumentId,
+            officeId: signer.document.officeId,
+            clientId: signer.document.clientId,
+            kitBatchId: signer.document.kitBatchId || undefined,
+          },
+          include: { originalFile: true },
+        })
+      : signer.document;
+
+    if (!requestedDocument?.originalFile || (requestedDocumentId && !signer.document.kitBatchId && requestedDocumentId !== signer.document.id)) {
+      return NextResponse.json({ error: 'Documento não pertence a esta solicitação de assinatura.' }, { status: 403 });
+    }
+
+    const buffer = await getFileBuffer(signer.document.officeId, requestedDocument.originalFile.storageKey);
     if (!buffer) {
       return NextResponse.json({ error: 'Arquivo do documento não encontrado no armazenamento.' }, { status: 404 });
     }
 
-    const mimeType = signer.document.originalFile.mimeType || 'application/pdf';
+    const mimeType = requestedDocument.originalFile.mimeType || 'application/pdf';
 
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
