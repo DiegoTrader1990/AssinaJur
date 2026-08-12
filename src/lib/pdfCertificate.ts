@@ -255,7 +255,12 @@ export async function generateFinalPdfCertificate(documentId: string) {
     throw new Error('Documento ou arquivo original não encontrado.');
   }
 
-  const publicEvents = dedupePublicAuditEvents(doc.events);
+  // O certificado é a trilha de evidências da assinatura, não o histórico interno
+  // do escritório. Eventos como "documento criado por" ficam no dossiê administrativo
+  // e não devem aparecer como se fossem atos praticados pelo cliente.
+  const publicEvents = dedupePublicAuditEvents(doc.events.filter((event) =>
+    Boolean(event.signerId) || event.eventType === 'DOCUMENT_COMPLETED'
+  ));
 
   const originalBytes = await getFileBuffer(doc.officeId, doc.originalFile.storageKey);
   if (!originalBytes) {
