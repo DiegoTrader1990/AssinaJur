@@ -136,6 +136,7 @@ export async function POST(req: Request) {
       cliente_cpf: client.cpfCnpj,
       cliente_rg: client.rg || '—',
       cliente_nacionalidade: client.nationality || 'Brasileira',
+      cliente_genero: client.gender || '',
       cliente_telefone: client.whatsapp || client.phone || '—',
       cliente_endereco: [
         client.address,

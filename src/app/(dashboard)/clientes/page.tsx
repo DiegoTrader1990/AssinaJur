@@ -47,6 +47,7 @@ interface Client {
   issuingOrgan?: string;
   birthDate?: string;
   nationality?: string;
+  gender?: string;
   maritalStatus?: string;
   profession?: string;
   phone: string;
@@ -75,6 +76,7 @@ const EMPTY_CLIENT_FORM = {
   issuingOrgan: '',
   birthDate: '',
   nationality: 'Brasileira',
+  gender: '',
   maritalStatus: '',
   profession: '',
   phone: '',
@@ -214,6 +216,7 @@ export default function ClientsPage() {
       issuingOrgan: client.issuingOrgan || '',
       birthDate: client.birthDate || '',
       nationality: client.nationality || 'Brasileira',
+      gender: client.gender || '',
       maritalStatus: client.maritalStatus || '',
       profession: client.profession || '',
       phone: maskPhone(client.phone || ''),
@@ -842,6 +845,20 @@ export default function ClientsPage() {
                   </div>
 
                   <div className="grid md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Sexo para qualificação documental</label>
+                      <select
+                        name="gender"
+                        value={formData.gender}
+                        onChange={handleFormChange}
+                        className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-bold focus:border-blue-600 focus:outline-none font-heading"
+                      >
+                        <option value="">Não informado</option>
+                        <option value="MASCULINO">Masculino</option>
+                        <option value="FEMININO">Feminino</option>
+                      </select>
+                      <p className="mt-1 text-[10px] text-slate-400">Usado apenas para redigir a qualificação corretamente.</p>
+                    </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Estado Civil</label>
                       <select

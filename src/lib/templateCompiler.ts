@@ -70,6 +70,27 @@ function emphasizeDocumentNames(html: string, variables: VariableValues): string
   }, html);
 }
 
+function applyClientGenderToQualification(html: string, variables: VariableValues): string {
+  const gender = String(variables.cliente_genero || '').toUpperCase();
+  if (gender !== 'MASCULINO' && gender !== 'FEMININO') return html;
+  const feminine = gender === 'FEMININO';
+  const replacements: Array<[RegExp, string]> = [
+    [/brasileiro\(a\)/gi, feminine ? 'brasileira' : 'brasileiro'],
+    [/solteiro\(a\)/gi, feminine ? 'solteira' : 'solteiro'],
+    [/casado\(a\)/gi, feminine ? 'casada' : 'casado'],
+    [/divorciado\(a\)/gi, feminine ? 'divorciada' : 'divorciado'],
+    [/viúvo\(a\)/gi, feminine ? 'viúva' : 'viúvo'],
+    [/portador\(a\)/gi, feminine ? 'portadora' : 'portador'],
+    [/inscrito\(a\)/gi, feminine ? 'inscrita' : 'inscrito'],
+    [/residente e domiciliado\(a\)/gi, feminine ? 'residente e domiciliada' : 'residente e domiciliado'],
+  ];
+  // A alteração fica restrita à qualificação do cliente; termos dos patronos não são afetados.
+  return html.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/(?:p|div)>/gi, (block, _tag, _attributes, innerHtml) => {
+    if (!/(?:OUTORGANTE|CONTRATANTE|DECLARANTE)\s*:/i.test(innerHtml)) return block;
+    return replacements.reduce((value, [pattern, replacement]) => value.replace(pattern, replacement), block);
+  });
+}
+
 function cleanHtmlForPdf(html: string): string {
   if (!html) return '';
   let cleaned = html;
@@ -220,7 +241,7 @@ async function renderTemplatePdf({
   watermark?: string;
   letterheadBuffer?: Buffer;
 }) {
-  const compiledText = replaceTemplateVariables(contentHtml, variables);
+  const compiledText = applyClientGenderToQualification(replaceTemplateVariables(contentHtml, variables), variables);
   const presentationHtml = emphasizeDocumentNames(compiledText, variables);
   const pdfDoc = await PDFDocument.create();
 

@@ -36,9 +36,10 @@ Identifique e extraia todos os campos visíveis no documento:
 3. NÚMERO DO RG / DOC IDENTIDADE com Órgão Emissor e UF (ex: 163861323 SSP BA)
 4. DATA DE NASCIMENTO no formato DD/MM/AAAA (ex: 30/11/1959)
 5. NACIONALIDADE (ex: Brasileira)
-6. ESTADO CIVIL (ex: Solteiro(a), Casado(a))
-7. PROFISSÃO
-8. ENDEREÇO / LOGRADOURO, NÚMERO, BAIRRO, CIDADE, ESTADO (UF) e CEP
+6. SEXO DO TITULAR, somente se constar expressamente no documento: retorne MASCULINO ou FEMININO; caso contrário, deixe vazio
+7. ESTADO CIVIL (ex: Solteiro(a), Casado(a))
+8. PROFISSÃO
+9. ENDEREÇO / LOGRADOURO, NÚMERO, BAIRRO, CIDADE, ESTADO (UF) e CEP
 
 Retorne EXATAMENTE um objeto JSON válido, sem formatação markdown ou textos adicionais:
 
@@ -49,6 +50,7 @@ Retorne EXATAMENTE um objeto JSON válido, sem formatação markdown ou textos a
   "issuingOrgan": "Órgão Emissor ex: SSP/BA",
   "birthDate": "DD/MM/AAAA",
   "nationality": "Brasileira",
+  "gender": "",
   "maritalStatus": "Solteiro(a)",
   "profession": "",
   "address": "Logradouro",
@@ -135,6 +137,7 @@ export async function POST(req: Request) {
           issuingOrgan: geminiParsed.issuingOrgan || '',
           birthDate: formatToInputDate(geminiParsed.birthDate),
           nationality: geminiParsed.nationality || 'Brasileira',
+          gender: ['MASCULINO', 'FEMININO'].includes(String(geminiParsed.gender || '').toUpperCase()) ? String(geminiParsed.gender).toUpperCase() : '',
           maritalStatus: geminiParsed.maritalStatus || '',
           profession: geminiParsed.profession || '',
           phone: '',

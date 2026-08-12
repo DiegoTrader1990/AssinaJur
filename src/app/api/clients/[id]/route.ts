@@ -93,6 +93,7 @@ export async function PUT(
         issuingOrgan: body.issuingOrgan ?? existingClient.issuingOrgan,
         birthDate: body.birthDate ?? existingClient.birthDate,
         nationality: body.nationality ?? existingClient.nationality,
+        gender: ['MASCULINO', 'FEMININO'].includes(body.gender) ? body.gender : null,
         maritalStatus: body.maritalStatus ?? existingClient.maritalStatus,
         profession: body.profession ?? existingClient.profession,
         phone: cleanPhone,

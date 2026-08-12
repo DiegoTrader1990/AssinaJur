@@ -105,6 +105,7 @@ model Client {
   issuingOrgan        String?
   birthDate           String?
   nationality         String?  @default("Brasileira")
+  gender              String?
   maritalStatus       String?
   profession          String?
   phone               String
