@@ -175,6 +175,7 @@ export default function DispatchKitPage() {
         cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—', cliente_endereco: [client.address, client.number, client.neighborhood, [client.city, client.state].filter(Boolean).join('/')].filter(Boolean).join(', ') || '—', cidade: client.city || '—',
         advogado_nome: lawyer.name || 'Advogado responsável', advogado_oab: lawyer.oabNumber || '—', escritorio_nome: officePayload.office?.tradeName || officePayload.office?.name || '—',
         patronos_qualificacao_conjunta: patronos ? `${patronos}, com escritório profissional na ${officeAddress}` : 'Advogado responsável',
+        patronos_nomes: activeLawyers.map((member: any) => member.name).join('|'),
         cliente_genero: client.gender || '',
         data_atual: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date()),
       });
@@ -201,6 +202,28 @@ export default function DispatchKitPage() {
         return `<${tag}${attributes}><strong>${label}:</strong> ${reviewClientData.patronos_qualificacao_conjunta || '—'}.</${tag}>`;
       });
       if (!replaced) rendered = rendered.replace(/(OUTORGADOS?|CONTRATADOS?)\s*:[^\n<]*/i, (_match, label) => `${label}: ${reviewClientData.patronos_qualificacao_conjunta || '—'}.`);
+    }
+
+    // O PDF destaca automaticamente os nomes envolvidos; a edição deve mostrar o mesmo resultado.
+    const names = [reviewClientData.cliente_nome, ...String(reviewClientData.patronos_nomes || '').split('|')]
+      .filter((name, index, values) => name && values.indexOf(name) === index)
+      .sort((left, right) => right.length - left.length);
+    for (const name of names) {
+      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      rendered = rendered.replace(new RegExp(`(?![^<]*>)(?<!>)${escaped}`, 'g'), `<strong>${name}</strong>`);
+    }
+
+    // A linha e a identificação final são o bloco de assinatura, tal como o compilador do PDF.
+    const blocks = [...rendered.matchAll(/<(p|div)([^>]*)>[\s\S]*?<\/\1>/gi)];
+    const signatureLineIndex = blocks.map((block) => block[0].replace(/<[^>]+>/g, '').trim()).map((text, index) => /^_{5,}/.test(text) ? index : -1).filter(index => index >= 0).at(-1);
+    const firstSignatureBlock = signatureLineIndex ?? Math.max(0, blocks.length - 3);
+    if (blocks.length) {
+      rendered = rendered.replace(/<(p|div)([^>]*)>[\s\S]*?<\/\1>/gi, (block, tag, attributes, offset) => {
+        const blockIndex = blocks.findIndex((item) => item.index === offset);
+        if (blockIndex < firstSignatureBlock || blockIndex > firstSignatureBlock + 2) return block;
+        const cleanAttributes = attributes.replace(/\s*style=(['"]).*?\1/i, '');
+        return `<${tag}${cleanAttributes} style="text-align: center;">${block.slice(block.indexOf('>') + 1, block.lastIndexOf('</'))}</${tag}>`;
+      });
     }
     return rendered;
   };
