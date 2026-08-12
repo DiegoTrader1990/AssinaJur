@@ -17,11 +17,26 @@ function ensureJointAttorneyQualification(contentHtml: string, documentType: str
   // Modelos antigos trazem apenas o primeiro advogado. Ao gerar documentos de kit,
   // aproveitamos os patronos ativos configurados pelo escritório sem alterar o modelo salvo.
   const labels = isPowerOfAttorney ? 'OUTORGADOS?' : 'CONTRATADOS?';
-  const pattern = new RegExp(`<(p|div)([^>]*)>\\s*<strong>\\s*${labels}\\s*:\\s*<\\/strong>[\\s\\S]*?<\\/\\1>`, 'i');
   const replacementLabel = isPowerOfAttorney ? 'OUTORGADOS' : 'CONTRATADOS';
-  return contentHtml.replace(
-    pattern,
-    (_match, tag, attributes) => `<${tag}${attributes}><strong>${replacementLabel}:</strong> {{patronos_qualificacao_conjunta}}.</${tag}>`,
+  const labelAtStart = new RegExp(`^\\s*${labels}\\s*:`, 'i');
+  let replaced = false;
+
+  // O editor pode salvar o rótulo puro, em <strong>, <b> ou junto com outras tags.
+  // Por isso analisamos cada parágrafo isoladamente, sem depender de uma única estrutura HTML.
+  const withBlockQualification = contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
+    const visibleText = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
+    if (!labelAtStart.test(visibleText)) return block;
+    replaced = true;
+    return `<${tag}${attributes}><strong>${replacementLabel}:</strong> {{patronos_qualificacao_conjunta}}.</${tag}>`;
+  });
+
+  if (replaced) return withBlockQualification;
+
+  // Compatibilidade com modelos antigos em texto simples, sem tags de parágrafo.
+  const plainLinePattern = new RegExp(`(^|\\n)\\s*${labels}\\s*:[^\\n]*`, 'i');
+  return withBlockQualification.replace(
+    plainLinePattern,
+    (_match, prefix) => `${prefix}<p><strong>${replacementLabel}:</strong> {{patronos_qualificacao_conjunta}}.</p>`,
   );
 }
 
