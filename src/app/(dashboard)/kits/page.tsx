@@ -723,9 +723,7 @@ export default function KitsAndTemplatesPage() {
                 <FileText className="w-5 h-5 text-blue-600" />
                 <span>{editingTemplate ? 'Editar Minuta do Modelo' : 'Novo Modelo de Minuta'}</span>
               </div>
-              <button onClick={() => setShowTemplateModal(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg">
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2"><button type="button" onClick={openPdfPreview} disabled={previewing || !templateFormData.contentHtml} className="px-3 py-2 rounded-lg bg-[#071B3A] text-white text-[11px] font-bold flex items-center gap-1.5 disabled:opacity-50"><Eye className="w-3.5 h-3.5" /> Prévia PDF</button><button onClick={() => setShowTemplateModal(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><X className="w-5 h-5" /></button></div>
             </div>
 
             {error && (

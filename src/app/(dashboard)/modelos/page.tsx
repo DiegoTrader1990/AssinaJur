@@ -233,9 +233,7 @@ export default function TemplatesPage() {
                 <FileText className="w-5 h-5 text-gold-500" />
                 <h2 className="text-lg font-bold text-[#0B1D3D]">{editingTemplate ? 'Editar Modelo' : 'Novo Modelo Jurídico'}</h2>
               </div>
-              <button onClick={() => { setShowModal(false); setEditingTemplate(null); }} className="text-slate-400 hover:text-slate-600">
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2"><button type="button" onClick={openPdfPreview} disabled={previewing || !formData.contentHtml} className="px-3 py-2 rounded-lg bg-[#0B1D3D] text-white text-[11px] font-bold flex items-center gap-1.5 disabled:opacity-50"><Eye className="w-3.5 h-3.5" /> Prévia PDF</button><button onClick={() => { setShowModal(false); setEditingTemplate(null); }} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button></div>
             </div>
 
             {error && (
