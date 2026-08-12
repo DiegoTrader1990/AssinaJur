@@ -115,16 +115,22 @@ export async function POST(req: Request) {
 
     let fullOfficeQualification = '';
     let jointPatronosQualification = '';
+    const hasMultiplePatronos = orderedLawyers.length > 1;
+    const collectiveOfficeLink = hasMultiplePatronos
+      ? `integrantes do escritório ${office.name}, com escritório profissional na ${fullAddress}`
+      : `integrante do escritório ${office.name}, com escritório profissional na ${fullAddress}`;
 
     if (isCnpj) {
       // Pessoa Jurídica com CNPJ registrado na OAB
       fullOfficeQualification = `${office.name}, sociedade de advogados inscrita no CNPJ sob o nº ${office.cpfCnpj}, representada por seus patronos ${lawyerTextList}, com sede na ${fullAddress}, e-mail: ${office.email || 'contato@rodriguesesoares.adv.br'}, telefone/WhatsApp: ${office.phone || '(73) 98117-1111'}`;
-      jointPatronosQualification = `${lawyerTextList}, integrantes de ${office.name}, com escritório profissional na ${fullAddress}`;
+      jointPatronosQualification = `${lawyerTextList}, ${collectiveOfficeLink}`;
     } else {
       // Pessoa Física / Advocacia em Conjunto (SEM CNPJ - Conforme Código de Ética e Provimento OAB)
-      const cpfText = cleanDoc.length === 11 ? `inscrito(a) no CPF sob o nº ${office.cpfCnpj}, ` : '';
+      // CPF profissional somente faz sentido quando existe um único titular; nunca pode
+      // ser anexado ao último nome de uma qualificação conjunta.
+      const cpfText = cleanDoc.length === 11 && !hasMultiplePatronos ? `inscrito(a) no CPF sob o nº ${office.cpfCnpj}, ` : '';
       fullOfficeQualification = `${lawyerTextList}, ${cpfText}com escritório profissional localizado na ${fullAddress}, e-mail: ${office.email || 'contato@rodriguesesoares.adv.br'}, telefone/WhatsApp: ${office.phone || '(73) 98117-1111'}`;
-      jointPatronosQualification = `${lawyerTextList}, ${cpfText}com escritório profissional na ${fullAddress}`;
+      jointPatronosQualification = `${lawyerTextList}, ${cpfText}${collectiveOfficeLink}`;
     }
 
     const mainLawyer = activeLawyers.find(l => l.name.toLowerCase().includes('diego')) || activeLawyers[0] || { name: user.name, oabNumber: 'OAB/BA 51.881' };
