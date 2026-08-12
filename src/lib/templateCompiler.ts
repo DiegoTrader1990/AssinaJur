@@ -268,22 +268,31 @@ async function renderTemplatePdf({
         if (isExplicitSignatureLine) explicitSignatureLineFound = true;
       }
 
-      // ALINHAMENTO JUSTIFICADO COMPLETO (Margem esquerda à margem direita retas)
-      const shouldJustify = !heading && !isLastLine && line.length > 1 && paragraph.kind === 'BODY';
-      const extraWordSpacing = shouldJustify ? (maxWidth - lineWidth) / (line.length - 1) : 0;
+      // ALINHAMENTO JUSTIFICADO MATEMÁTICO PERFEITO (Margem direita retíssima)
+      const spaceCount = line.length - 1;
+      const shouldJustify = !heading && !isLastLine && spaceCount > 0 && paragraph.kind === 'BODY';
+      const extraWordSpacing = shouldJustify ? (maxWidth - lineWidth) / spaceCount : 0;
 
       const startX = heading ? marginX + Math.max(0, (maxWidth - lineWidth) / 2) : marginX;
       let cursorX = startX;
       line.forEach((token, index) => {
         const font = token.bold ? boldFont : regularFont;
-        // Clean space before punctuation
         let cleanText = token.text.replace(/\s+([,.;:!?])/g, '$1');
-        const value = `${index > 0 && !/^[,.;:!?)]/.test(cleanText) ? ' ' : ''}${cleanText}`;
-        page.drawText(value, { x: cursorX, y: currentY, size: fontSize, font, color: heading ? navyColor : textColor });
         
-        let wordWidth = font.widthOfTextAtSize(value, fontSize);
-        if (shouldJustify && index > 0) {
-          wordWidth += extraWordSpacing;
+        // Draw the word text cleanly at cursorX
+        page.drawText(cleanText, {
+          x: cursorX,
+          y: currentY,
+          size: fontSize,
+          font,
+          color: heading ? navyColor : textColor,
+        });
+
+        // Advance cursorX by word width + (space width + extraWordSpacing if not last word)
+        let wordWidth = font.widthOfTextAtSize(cleanText, fontSize);
+        if (index < line.length - 1) {
+          const spaceWidth = font.widthOfTextAtSize(' ', fontSize);
+          wordWidth += spaceWidth + (shouldJustify ? extraWordSpacing : 0);
         }
         cursorX += wordWidth;
       });
