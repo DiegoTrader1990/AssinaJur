@@ -166,9 +166,9 @@ function parseRichParagraphs(html: string): RichParagraph[] {
   if (containsHtmlBlocks) normalized = normalized.replace(/\n+/g, ' ');
 
   normalized = normalized
-    // Uma quebra manual (Shift+Enter) precisa sobreviver como uma linha real no PDF.
-    // Ela não é apenas uma quebra visual do navegador.
-    .replace(/<\s*br\s*\/?>/gi, '\n[[BREAK]]\n')
+    // <br> vindo de colagens e do contentEditable costuma representar quebra visual
+    // dentro do bloco; não pode criar áreas vazias repetidas no PDF.
+    .replace(/<\s*br\s*\/?>/gi, '\n')
     .replace(/<\s*h1([^>]*)>/gi, (_match, attributes) => blockMarker('H1', attributes, 'CENTER'))
     .replace(/<\s*h2([^>]*)>/gi, (_match, attributes) => blockMarker('H2', attributes, 'LEFT'))
     .replace(/<\s*(?:p|div)([^>]*)>/gi, (_match, attributes) => blockMarker('BODY', attributes, 'JUSTIFY'))
@@ -179,7 +179,6 @@ function parseRichParagraphs(html: string): RichParagraph[] {
     .split('\n')
     .map((raw): RichParagraph | null => {
       let line = raw.trim();
-      if (line === '[[BREAK]]') return { kind: 'BODY', alignment: 'JUSTIFY', runs: [] };
       if (!line) return null;
       let kind: ParagraphKind = 'BODY';
       let alignment: TextAlignment = 'JUSTIFY';
@@ -226,26 +225,18 @@ function parseRichParagraphs(html: string): RichParagraph[] {
     .filter((item): item is RichParagraph => Boolean(item));
 
   // Merge short label paragraphs (e.g., "PODERES ESPECIAIS:", "PODERES ESPECIAIS: nos") into the next paragraph
-  // Colagens do Word/WhatsApp frequentemente trazem vários <div><br></div>
-  // consecutivos. Um deles representa o afastamento normal entre parágrafos;
-  // os demais não podem virar buracos de meia página no PDF.
-  const normalizedParagraphs = parsed.filter((paragraph, index) => {
-    if (paragraph.runs.length > 0) return true;
-    return index === 0 || parsed[index - 1].runs.length > 0;
-  });
-
   const mergedParagraphs: RichParagraph[] = [];
-  for (let i = 0; i < normalizedParagraphs.length; i++) {
-    const current = normalizedParagraphs[i];
+  for (let i = 0; i < parsed.length; i++) {
+    const current = parsed[i];
     const currentText = current.runs.map((r) => r.text).join(' ').trim();
 
     if (
-      i < normalizedParagraphs.length - 1 &&
+      i < parsed.length - 1 &&
       isLabelParagraph(currentText) &&
       current.kind === 'BODY' &&
-      normalizedParagraphs[i + 1].kind === 'BODY'
+      parsed[i + 1].kind === 'BODY'
     ) {
-      const next = normalizedParagraphs[i + 1];
+      const next = parsed[i + 1];
       let labelRuns = current.runs;
       // If label runs end with a stray "nos", trim it if next starts with "termos"
       const lastRun = labelRuns[labelRuns.length - 1];
@@ -383,13 +374,7 @@ async function renderTemplatePdf({
     );
     if (paragraph.kind === 'LIST') tokens.unshift({ text: '\u2022', bold: true, fontFamily: 'HELVETICA' });
 
-    // Parágrafos vazios e quebras manuais são espaço deliberado do advogado. Antes
-    // eles eram descartados na compilação e o PDF compactava o documento.
-    if (tokens.length === 0) {
-      ensureLineSpace(lineHeight + 6);
-      currentY -= lineHeight + 6;
-      continue;
-    }
+    if (tokens.length === 0) continue;
 
     let line: Array<{ text: string; bold: boolean; fontFamily?: PdfFontFamily }> = [];
     let lineWidth = 0;
@@ -459,7 +444,7 @@ async function renderTemplatePdf({
     // Reserva real para o selo profissional e assinatura, mesmo quando o editor possui
     // linhas em branco que antes eram descartadas pelo compilador.
     // Títulos principais precisam de uma separação visual clara antes da qualificação inicial.
-    currentY -= isClientSignatureLabel ? 84 : isExplicitSignatureLine ? 8 : isSignatureCaption ? 3 : isFollowedByExplicitSignatureLine ? 42 : paragraph.kind === 'H1' ? 22 : heading ? 8 : 6;
+    currentY -= isClientSignatureLabel ? 84 : isExplicitSignatureLine ? 8 : isSignatureCaption ? 3 : isFollowedByExplicitSignatureLine ? 42 : paragraph.kind === 'H1' ? 12 : heading ? 6 : 5;
   }
 
   if (watermark) {
