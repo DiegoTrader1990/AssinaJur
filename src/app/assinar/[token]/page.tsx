@@ -819,7 +819,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         confirmCpf: cpf || signer?.cpf,
         signatureType: isRogadoConsent ? 'CONSENTIMENTO_A_ROGO' : signatureMode,
         signatureImage: isRogadoConsent ? null : signatureImage,
-        signedConsentText: kit ? 'Declaro que li e concordo com todos os documentos deste kit e reconheço esta manifestação como minha assinatura eletrônica.' : `Declaro que li e concordo com os termos do documento ${document?.title || 'documento'}.`,
+        signedConsentText: kit ? 'Declaro que li e concordo com todos os documentos apresentados e reconheço esta manifestação como minha assinatura eletrônica.' : `Declaro que li e concordo com os termos do documento ${document?.title || 'documento'}.`,
         selfieCenterImage: clientCenter,
         selfieLeftImage: clientLeft,
         selfieRightImage: clientRight,
@@ -971,11 +971,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             {kit && (
               <div className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 space-y-2">
                 <p className="text-[10px] font-semibold text-blue-800 flex items-center gap-1.5"><Eye className="w-3.5 h-3.5" /> Para ler uma minuta, escolha o documento abaixo e toque no ícone de olho.</p>
-                <p className="text-xs font-extrabold text-[#071B3A]">Assinatura única do kit • {kit.documents.length} documentos</p>
+                <p className="text-xs font-extrabold text-[#071B3A]">{kit.documents.length} documentos para sua assinatura</p>
                 <div className="space-y-1">
                   {kit.documents.map((item, index) => <button type="button" onClick={() => handleOpenDocPreview(item.id)} key={item.id} className="w-full flex items-center gap-3 rounded-xl bg-white border border-blue-100 px-3 py-3 text-left text-xs text-[#071B3A] hover:border-blue-300 hover:shadow-sm transition-all"><span className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 font-extrabold flex items-center justify-center">{index + 1}</span><span className="flex-1 font-bold">{clientDocumentTitle(item.title)}</span><span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700"><Eye className="w-3.5 h-3.5" /> Ler</span></button>)}
                 </div>
-                <p className="text-[10px] text-slate-500">Ao concluir, sua assinatura será registrada individualmente em cada documento deste kit.</p>
+                <p className="text-[10px] text-slate-500">Ao concluir, sua assinatura será registrada com segurança em todos os documentos apresentados.</p>
               </div>
             )}
 
@@ -1391,7 +1391,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   </>
                 ) : (
                   <>
-                    {kit ? <>Declaro que li e concordo com todos os documentos deste kit, autorizando a captura de presença e a emissão dos selos e certificados individuais.</> : <>Declaro que li e concordo com os termos do documento <strong>{document?.title}</strong>, autorizando a captura de presença e emissão do Selo Digital.</>}
+                    {kit ? <>Declaro que li e concordo com todos os documentos apresentados, autorizando a captura de presença e a emissão dos selos e certificados individuais.</> : <>Declaro que li e concordo com os termos do documento <strong>{document?.title}</strong>, autorizando a captura de presença e emissão do Selo Digital.</>}
                   </>
                 )}
               </span>
