@@ -59,6 +59,7 @@ const AVAILABLE_TAGS = [
 ];
 
 const FONT_OPTIONS = [
+  { value: 'Helvetica', label: 'Helvetica (padrão PDF)' },
   { value: 'Arial', label: 'Arial' },
   { value: 'Times New Roman', label: 'Times New Roman' },
   { value: 'Georgia', label: 'Georgia' },
@@ -206,7 +207,7 @@ export function DocumentRichEditor({
         <label className="flex items-center gap-1.5 px-2 text-[11px] font-semibold text-slate-600" title="Selecione o texto antes de trocar a fonte">
           Fonte
           <select
-            defaultValue="Arial"
+            defaultValue="Helvetica"
             onChange={(event) => executeCommand('fontName', event.target.value)}
             className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-700 outline-none focus:border-blue-500"
           >
@@ -327,7 +328,7 @@ export function DocumentRichEditor({
         onInput={handleInput}
         onBlur={handleInput}
         className={`min-h-[320px] max-h-[600px] overflow-y-auto p-4 text-sm text-slate-800 focus:outline-none ${plainDocumentMode ? '' : 'prose max-w-none'} empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none ${contentClassName}`}
-        style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+        style={{ fontFamily: 'Helvetica, Arial, sans-serif' }}
         data-placeholder={placeholder}
         suppressContentEditableWarning
       />
