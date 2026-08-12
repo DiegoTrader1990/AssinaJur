@@ -949,7 +949,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             <button
               type="button"
               onClick={() => void handleOpenDocPreview()}
-              className="w-full py-3.5 px-4 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-2xl text-xs font-extrabold text-[#071B3A] flex items-center justify-between transition-all font-heading shadow-xs mb-3"
+              className={`w-full py-3.5 px-4 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-2xl text-xs font-extrabold text-[#071B3A] flex items-center justify-between transition-all font-heading shadow-xs mb-3 ${kit ? 'hidden' : ''}`}
             >
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-blue-600" />
@@ -960,6 +960,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
             {kit && (
               <div className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 space-y-2">
+                <p className="text-[10px] font-semibold text-blue-800 flex items-center gap-1.5"><Eye className="w-3.5 h-3.5" /> Para ler uma minuta, escolha o documento abaixo e toque no ícone de olho.</p>
                 <p className="text-xs font-extrabold text-[#071B3A]">Assinatura única do kit • {kit.documents.length} documentos</p>
                 <div className="space-y-1">
                   {kit.documents.map((item, index) => <button type="button" onClick={() => handleOpenDocPreview(item.id)} key={item.id} className="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] text-slate-700 font-medium hover:bg-white hover:text-blue-800 transition-colors"><span className="text-blue-600 font-bold">{index + 1}.</span><span className="flex-1">{item.title}</span><Eye className="w-3.5 h-3.5 text-blue-600" /></button>)}
