@@ -1426,8 +1426,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               <span className="px-3.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-extrabold text-xs border border-emerald-200 uppercase tracking-wider font-heading">
                 Assinatura Registrada com Sucesso!
               </span>
-              <h2 className="font-heading text-xl font-extrabold text-[#071B3A] mt-2">{document?.title}</h2>
-              <p className="text-xs text-slate-500 font-medium leading-relaxed">
+              <h2 className="font-heading text-xl font-extrabold text-[#071B3A] mt-2">{kit ? 'Documentos assinados com sucesso' : 'Documento assinado com sucesso'}</h2>
+              <p className="text-sm text-slate-600 font-medium leading-relaxed">Obrigado, <strong>{signer?.name}</strong>. Sua assinatura foi concluída e registrada com segurança. O escritório dará continuidade ao seu atendimento.</p>
+              <p className={`text-xs text-slate-500 font-medium leading-relaxed ${isRogadoConsent ? '' : 'hidden'}`}>
                 A presença do cliente e a assinatura a rogo foram vinculadas ao Certificado de Evidências Jurídicas.
               </p>
             </div>
