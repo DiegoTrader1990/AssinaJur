@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { FolderArchive, Send, CheckCircle2, Copy, Check, FileText, ArrowLeft, Loader2, AlertCircle, Sparkles, ChevronDown, Eye } from 'lucide-react';
+import { FolderArchive, Send, CheckCircle2, Copy, Check, FileText, ArrowLeft, Loader2, AlertCircle, Sparkles, ChevronDown, Eye, X } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
 const DocumentRichEditor = dynamic(() => import('@/components/DocumentRichEditor').then(mod => mod.DocumentRichEditor), { ssr: false });
@@ -60,6 +60,7 @@ export default function DispatchKitPage() {
   const [error, setError] = useState('');
   const [result, setResult] = useState<KitGenerationResult | null>(null);
   const [copiedDocumentId, setCopiedDocumentId] = useState<string | null>(null);
+  const [previewDocument, setPreviewDocument] = useState<GeneratedKitDocument | null>(null);
 
   const [showReviewStep, setShowReviewStep] = useState(false);
   const [customContents, setCustomContents] = useState<Record<string, string>>({});
@@ -193,7 +194,7 @@ export default function DispatchKitPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => window.open(`/api/documents/${document.id}/download`, '_blank', 'noopener,noreferrer')}
+                    onClick={() => setPreviewDocument(document)}
                     className="py-2.5 border border-slate-300 text-slate-700 hover:bg-slate-50 font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors"
                   >
                     <Eye className="w-3.5 h-3.5" /> Ver minuta
@@ -228,6 +229,35 @@ export default function DispatchKitPage() {
             Enviar Outro Kit
           </button>
         </div>
+
+        {previewDocument && (
+          <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+            <div className="w-full max-w-5xl h-[88vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+              <div className="bg-[#0B1D3D] text-white px-5 py-4 flex items-center justify-between gap-4 shrink-0">
+                <div className="min-w-0 flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-gold-400 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] uppercase tracking-widest text-gold-300 font-bold">Prévia da minuta</p>
+                    <h2 className="text-sm font-bold truncate">{previewDocument.title}</h2>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setPreviewDocument(null)} className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors" aria-label="Fechar prévia">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="flex-1 bg-slate-100 p-2 sm:p-4">
+                <iframe
+                  src={`/api/documents/${previewDocument.id}/download?inline=1`}
+                  title={`Prévia de ${previewDocument.title}`}
+                  className="w-full h-full bg-white rounded-lg border border-slate-300"
+                />
+              </div>
+              <div className="px-5 py-3 border-t border-slate-200 flex justify-end shrink-0">
+                <button type="button" onClick={() => setPreviewDocument(null)} className="px-5 py-2.5 bg-[#0B1D3D] hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition-colors">Fechar prévia</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

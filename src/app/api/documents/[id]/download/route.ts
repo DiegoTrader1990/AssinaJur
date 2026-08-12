@@ -57,12 +57,14 @@ export async function GET(
       return NextResponse.json({ error: 'Arquivo não encontrado no armazenamento.' }, { status: 404 });
     }
 
+    const inlinePreview = new URL(req.url).searchParams.get('inline') === '1';
+
     // Convertido para Uint8Array puro: o tipo Buffer<ArrayBufferLike> do Node
     // não é aceito pelo tipo BodyInit do TypeScript ao rodar o build da Vercel.
     return new NextResponse(new Uint8Array(fileBuffer), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(fileToServe.originalName)}"`,
+        'Content-Disposition': `${inlinePreview ? 'inline' : 'attachment'}; filename="${encodeURIComponent(fileToServe.originalName)}"`,
       },
     });
   } catch (error: any) {
