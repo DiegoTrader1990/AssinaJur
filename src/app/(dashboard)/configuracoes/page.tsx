@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Settings, Building2, Palette, FileText, CheckCircle, AlertCircle, Loader2, Upload, UserCheck, UserPlus, Plus, Trash2, X } from 'lucide-react';
+import { Settings, Building2, Palette, FileText, CheckCircle, AlertCircle, Loader2, Upload, UserCheck, UserPlus, Plus, Trash2, Pencil, X } from 'lucide-react';
 
 interface LawyerMember {
   id: string;
@@ -49,6 +49,8 @@ export default function SettingsPage() {
   });
   const [addingLawyer, setAddingLawyer] = useState(false);
   const [removingLawyerId, setRemovingLawyerId] = useState<string | null>(null);
+  const [editingLawyer, setEditingLawyer] = useState<LawyerMember | null>(null);
+  const [savingLawyer, setSavingLawyer] = useState(false);
 
   useEffect(() => {
     fetch('/api/office')
@@ -149,6 +151,27 @@ export default function SettingsPage() {
       alert(err.message);
     } finally {
       setRemovingLawyerId(null);
+    }
+  };
+
+  const handleEditLawyer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingLawyer) return;
+    setSavingLawyer(true);
+    try {
+      const res = await fetch('/api/office/team', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingLawyer),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Não foi possível atualizar o advogado.');
+      setLawyers((current) => current.map((item) => item.id === data.member.id ? data.member : item));
+      setEditingLawyer(null);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSavingLawyer(false);
     }
   };
 
@@ -424,16 +447,27 @@ export default function SettingsPage() {
                     {lawyer.oabNumber ? `Inscrição: ${lawyer.oabNumber}` : 'OAB não informada'}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleRemoveLawyer(lawyer)}
-                  disabled={removingLawyerId === lawyer.id}
-                  aria-label={`Excluir ${lawyer.name}`}
-                  title="Excluir advogado"
-                  className="shrink-0 p-2 rounded-xl text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {removingLawyerId === lawyer.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setEditingLawyer({ ...lawyer })}
+                    aria-label={`Editar ${lawyer.name}`}
+                    title="Editar advogado"
+                    className="p-2 rounded-xl text-blue-700 hover:bg-blue-50 transition-colors"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveLawyer(lawyer)}
+                    disabled={removingLawyerId === lawyer.id}
+                    aria-label={`Excluir ${lawyer.name}`}
+                    title="Excluir advogado"
+                    className="p-2 rounded-xl text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {removingLawyerId === lawyer.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
             ))}
 
@@ -684,6 +718,26 @@ export default function SettingsPage() {
                   Salvar Advogado
                 </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editingLawyer && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 font-sans">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2 text-[#071B3A] font-extrabold font-heading">
+                <Pencil className="w-5 h-5 text-blue-600" /> <span>Editar Advogado Patrono</span>
+              </div>
+              <button type="button" onClick={() => setEditingLawyer(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleEditLawyer} className="space-y-3 text-xs">
+              <div><label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Nome Completo *</label><input required value={editingLawyer.name} onChange={(e) => setEditingLawyer({ ...editingLawyer, name: e.target.value })} className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none" /></div>
+              <div><label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Inscrição OAB</label><input value={editingLawyer.oabNumber || ''} onChange={(e) => setEditingLawyer({ ...editingLawyer, oabNumber: e.target.value })} className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none" /></div>
+              <div><label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">E-mail Profissional *</label><input type="email" required value={editingLawyer.email} onChange={(e) => setEditingLawyer({ ...editingLawyer, email: e.target.value })} className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none" /></div>
+              <div><label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Telefone / WhatsApp</label><input value={editingLawyer.phone || ''} onChange={(e) => setEditingLawyer({ ...editingLawyer, phone: e.target.value })} className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none" /></div>
+              <div className="flex justify-end gap-2 pt-2"><button type="button" onClick={() => setEditingLawyer(null)} className="px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200">Cancelar</button><button type="submit" disabled={savingLawyer} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center gap-2">{savingLawyer ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />} Salvar alterações</button></div>
             </form>
           </div>
         </div>

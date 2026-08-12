@@ -186,3 +186,53 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: 'Erro ao excluir membro da equipe.' }, { status: 500 });
   }
 }
+
+export async function PATCH(req: Request) {
+  try {
+    const user = await getSessionUser();
+    if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
+    if (user.role !== 'OFFICE_ADMIN') {
+      return NextResponse.json({ error: 'Apenas administradores podem editar membros.' }, { status: 403 });
+    }
+
+    const body = await req.json();
+    const { id, name, email, oabNumber, phone } = body;
+    if (!id || !name || !email) {
+      return NextResponse.json({ error: 'Nome e e-mail são obrigatórios.' }, { status: 400 });
+    }
+
+    const member = await prisma.user.findFirst({
+      where: { id, officeId: user.officeId },
+      select: { id: true, email: true, name: true },
+    });
+    if (!member) return NextResponse.json({ error: 'Membro não encontrado neste escritório.' }, { status: 404 });
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    if (normalizedEmail !== member.email) {
+      const emailInUse = await prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } });
+      if (emailInUse) return NextResponse.json({ error: 'Este e-mail já pertence a outra conta.' }, { status: 400 });
+    }
+
+    const updatedMember = await prisma.user.update({
+      where: { id: member.id },
+      data: {
+        name: String(name).trim(),
+        email: normalizedEmail,
+        oabNumber: String(oabNumber || '').trim() || null,
+        phone: String(phone || '').trim() || null,
+      },
+      select: { id: true, name: true, email: true, role: true, oabNumber: true, phone: true, active: true },
+    });
+
+    await logAuditEvent({
+      officeId: user.officeId,
+      userId: user.id,
+      eventType: 'TEAM_MEMBER_UPDATED',
+      description: `Dados de ${updatedMember.name} atualizados na equipe.`,
+    });
+    return NextResponse.json({ success: true, member: updatedMember });
+  } catch (error) {
+    console.error('Erro ao editar membro:', error);
+    return NextResponse.json({ error: 'Erro ao editar membro da equipe.' }, { status: 500 });
+  }
+}
