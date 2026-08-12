@@ -384,10 +384,6 @@ export async function POST(
         await prisma.document.update({ where: { id: companion.id }, data: { status: 'CONCLUIDO', completedAt: new Date() } });
         await prisma.documentEvent.createMany({ data: [
           {
-            documentId: companion.id, signerId: companionSigner.id, eventType: 'IDENTITY_CONFIRMED',
-            description: `CPF de ${signer.name} confirmado na sessão única de assinatura deste documento.`, ipAddress: clientIp, userAgent,
-          },
-          {
             documentId: companion.id, signerId: companionSigner.id, eventType: 'LIVENESS_CAPTURED',
             description: `Prova de presença ao vivo de ${signer.name} vinculada a este documento (selfies frontal, perfil esquerdo e perfil direito).`, ipAddress: clientIp, userAgent,
           },

@@ -278,8 +278,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [loadingDocBlob, setLoadingDocBlob] = useState(false);
   const [previewDocumentId, setPreviewDocumentId] = useState<string | null>(null);
 
-  const recordEvidence = (eventType: string) => {
-    fetch(`/api/sign/${params.token}/event`, {
+  const recordEvidence = async (eventType: string) => {
+    await fetch(`/api/sign/${params.token}/event`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ eventType }),
     }).catch(() => {});
   };
@@ -699,8 +699,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         await selfieVideoRef.current.play();
       }
       setCameraActive(true);
-      recordEvidence('CAMERA_PERMITTED');
-      recordEvidence('LIVENESS_STARTED');
+      await recordEvidence('CAMERA_PERMITTED');
+      await recordEvidence('LIVENESS_STARTED');
       setFrameState('GRAY');
       playGoogleAudio('intro', audioEnabledRef.current);
       const fm = await initFaceMesh();

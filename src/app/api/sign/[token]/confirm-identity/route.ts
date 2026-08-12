@@ -62,6 +62,33 @@ export async function POST(
       },
     });
 
+    // Em pacotes, a confirmação de CPF ocorre uma única vez, mas é uma evidência
+    // válida para cada documento apresentado na mesma sessão. Registramos no momento
+    // correto, antes da câmera e da prova de presença.
+    if (signer.role === 'CLIENTE' && signer.document.kitBatchId) {
+      const companions = await prisma.document.findMany({
+        where: {
+          kitBatchId: signer.document.kitBatchId,
+          clientId: signer.document.clientId,
+          id: { not: signer.document.id },
+          status: { notIn: ['CANCELADO', 'EXPIRADO'] },
+        },
+        include: { signers: { where: { role: 'CLIENTE' }, select: { id: true } } },
+      });
+      const events = companions.flatMap((document) => {
+        const companionSigner = document.signers[0];
+        return companionSigner ? [{
+          documentId: document.id,
+          signerId: companionSigner.id,
+          eventType: 'IDENTITY_CONFIRMED',
+          description: `CPF de ${signer.name} confirmado na sessão única de assinatura deste documento.`,
+          ipAddress: clientIp,
+          userAgent,
+        }] : [];
+      });
+      if (events.length) await prisma.documentEvent.createMany({ data: events });
+    }
+
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Erro ao confirmar identidade:', error);
