@@ -354,10 +354,10 @@ export async function POST(
     // presença e consentimento desta sessão são vinculados a cada documento pendente
     // do mesmo kit, mantendo PDFs e certificados individuais por documento.
     let kitDocumentsSigned = 1;
-    if (allCompleted && signer.role === 'CLIENTE' && signer.document.kitId) {
+    if (allCompleted && signer.role === 'CLIENTE' && signer.document.kitBatchId) {
       const companionDocuments = await prisma.document.findMany({
         where: {
-          kitId: signer.document.kitId,
+          kitBatchId: signer.document.kitBatchId,
           clientId: signer.document.clientId,
           id: { not: signer.document.id },
           status: { notIn: ['CONCLUIDO', 'CANCELADO', 'EXPIRADO'] },

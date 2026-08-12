@@ -50,9 +50,9 @@ export async function GET(
     }
 
     const { document } = signer;
-    const kitDocuments = document.kitId && signer.role === 'CLIENTE'
+    const kitDocuments = document.kitBatchId && signer.role === 'CLIENTE'
       ? await prisma.document.findMany({
-          where: { kitId: document.kitId, clientId: document.clientId },
+          where: { kitBatchId: document.kitBatchId, clientId: document.clientId },
           select: { id: true, title: true, status: true },
           orderBy: { createdAt: 'asc' },
         })

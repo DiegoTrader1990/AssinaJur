@@ -4,6 +4,7 @@ import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 import { compileTemplateToPdf } from '@/lib/templateCompiler';
 import { getFileBuffer } from '@/lib/storage';
+import { randomUUID } from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
@@ -190,6 +191,7 @@ export async function POST(req: Request) {
       signatureLink: string;
     }> = [];
     let mainSignerToken = '';
+    const kitBatchId = randomUUID();
 
     // Gerar todos os documentos do kit em transação
     for (const item of kit.items) {
@@ -218,6 +220,7 @@ export async function POST(req: Request) {
           clientId: client.id,
           templateId: template.id,
           kitId: kit.id,
+          kitBatchId,
           title: `${template.title} (${kit.name})`,
           documentType: template.documentType,
           signaturePosition: compiledResult.signaturePosition,

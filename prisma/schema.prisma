@@ -214,6 +214,7 @@ model Document {
 
   kitId            String?
   kit              LegalKit? @relation(fields: [kitId], references: [id], onDelete: SetNull)
+  kitBatchId       String?
 
   title            String
   documentType     String   @default("DOCUMENTO")
