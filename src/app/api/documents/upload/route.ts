@@ -76,6 +76,18 @@ export async function GET(req: Request) {
     const storageRecord = await prisma.storageFile.findFirst({
       where: { id: fileId, officeId: user.officeId },
     });
+    if (searchParams.get('info') === 'true' && storageRecord) {
+      const infoBuffer = await getFileBuffer(user.officeId, storageRecord.storageKey);
+      if (!infoBuffer) return NextResponse.json({ error: 'Conteúdo não encontrado' }, { status: 404 });
+      return NextResponse.json({
+        file: {
+          id: storageRecord.id,
+          name: storageRecord.originalName,
+          sizeBytes: storageRecord.sizeBytes,
+          hash: calculateHash(infoBuffer),
+        },
+      });
+    }
     if (!storageRecord) {
       return new Response('Arquivo não encontrado', { status: 404 });
     }

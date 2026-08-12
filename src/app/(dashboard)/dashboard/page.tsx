@@ -80,23 +80,22 @@ export default function DashboardPage() {
     }
   };
 
-  const processDashboardFile = async (file: File) => {
+  const processDashboardFiles = async (files: File[]) => {
     setUploadingPdf(true);
     try {
-      const data = new FormData();
-      data.append('file', file);
-      const res = await fetch('/api/documents/upload', {
-        method: 'POST',
-        body: data,
-      });
-      const result = await res.json();
-      if (res.ok && result.file?.id) {
-        router.push(`/documentos/novo?docId=${result.file.id}`);
-      } else {
-        router.push('/documentos/novo');
+      const uploadedIds: string[] = [];
+      for (const file of files) {
+        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) throw new Error('Selecione apenas arquivos PDF.');
+        const data = new FormData();
+        data.append('file', file);
+        const res = await fetch('/api/documents/upload', { method: 'POST', body: data });
+        const result = await res.json();
+        if (!res.ok || !result.file?.id) throw new Error(result.error || `Não foi possível enviar ${file.name}.`);
+        uploadedIds.push(result.file.id);
       }
+      router.push(`/documentos/novo?files=${encodeURIComponent(uploadedIds.join(','))}`);
     } catch {
-      router.push('/documentos/novo');
+      router.push('/documentos/novo?erro=upload');
     } finally {
       setUploadingPdf(false);
     }
@@ -106,14 +105,15 @@ export default function DashboardPage() {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      await processDashboardFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files?.length) {
+      await processDashboardFiles(Array.from(e.dataTransfer.files));
     }
   };
 
   const handleDashboardFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) await processDashboardFile(file);
+    const files = Array.from(e.target.files || []);
+    if (files.length) await processDashboardFiles(files);
+    e.target.value = '';
   };
 
   return (
@@ -158,6 +158,22 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      <div className="rounded-3xl border border-blue-200 bg-gradient-to-r from-[#071B3A] via-[#0B2A59] to-blue-700 p-6 text-white shadow-lg">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+          <div>
+            <p className="text-[11px] font-extrabold tracking-[0.18em] text-blue-200 uppercase">Comece por aqui</p>
+            <h2 className="font-heading text-xl font-extrabold mt-1">Envie os documentos já prontos para assinatura</h2>
+            <p className="text-sm text-blue-100 mt-2 max-w-2xl">Adicione um ou vários PDFs, escolha o cliente e os signatários. Ao final, o sistema gera um único link seguro para o cliente.</p>
+          </div>
+          <Link href="/documentos/novo" className="shrink-0 inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-xs font-extrabold text-[#071B3A] shadow-md hover:bg-blue-50"><Upload className="w-4 h-4" /> Abrir envio de PDFs</Link>
+        </div>
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div className="rounded-xl bg-white/10 p-3 border border-white/15"><b>1. Adicione os PDFs</b><span className="block text-blue-100 mt-1">Contrato, procuração e declarações.</span></div>
+          <div className="rounded-xl bg-white/10 p-3 border border-white/15"><b>2. Escolha o cliente</b><span className="block text-blue-100 mt-1">Dados e CPF são preenchidos.</span></div>
+          <div className="rounded-xl bg-white/10 p-3 border border-white/15"><b>3. Envie um único link</b><span className="block text-blue-100 mt-1">Assinatura de todos em uma sessão.</span></div>
+        </div>
+      </div>
+
       {/* Grid Principal — Upload Rápido + Resumo de Envio */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Card 1: Zona de Drag & Drop Inteligente */}
@@ -177,16 +193,16 @@ export default function DashboardPage() {
           </div>
 
           <h3 className="font-heading text-base font-extrabold text-[#071B3A]">
-            {uploadingPdf ? 'Enviando PDF...' : dragActive ? 'Solte o PDF para enviar!' : 'Adicionar documentos'}
+            {uploadingPdf ? 'Enviando documentos...' : dragActive ? 'Solte os PDFs para enviar!' : 'Adicionar documentos para assinatura'}
           </h3>
           <p className="text-xs text-slate-500 mt-1 mb-4 font-medium">
-            Clique aqui ou arraste os arquivos PDF do contrato, procuração ou petição
+            Arraste um ou vários PDFs e siga para escolher cliente, signatários e gerar o link único.
           </p>
 
           <label className="px-5 py-2.5 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-bold rounded-xl text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer font-heading">
             <Plus className="w-4 h-4 text-blue-400 stroke-[3]" />
-            <span>Selecionar Arquivo PDF</span>
-            <input type="file" accept=".pdf,application/pdf" onChange={handleDashboardFileInput} className="hidden" />
+            <span>Selecionar PDFs do computador</span>
+            <input type="file" accept=".pdf,application/pdf" multiple onChange={handleDashboardFileInput} className="hidden" />
           </label>
         </div>
 

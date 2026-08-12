@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Upload,
   UserPlus,
@@ -57,6 +57,7 @@ interface SignerInput {
 
 export default function NewDocumentPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
   // Dados do Passo 1: Upload
@@ -105,6 +106,27 @@ export default function NewDocumentPage() {
   const [letterhead, setLetterhead] = useState<{id: string; originalName: string; sizeBytes: number} | null>(null);
   const [uploadingLetterhead, setUploadingLetterhead] = useState(false);
   const [pdfObjectUrl, setPdfObjectUrl] = useState<string | null>(null);
+  const loadedDashboardFilesRef = useRef(false);
+
+  useEffect(() => {
+    const fileIds = (searchParams.get('files') || '').split(',').filter(Boolean);
+    if (loadedDashboardFilesRef.current || fileIds.length === 0) return;
+    loadedDashboardFilesRef.current = true;
+    setUploading(true);
+    Promise.all(fileIds.map(async (fileId) => {
+      const res = await fetch(`/api/documents/upload?fileId=${encodeURIComponent(fileId)}&info=true`);
+      const data = await res.json();
+      if (!res.ok || !data.file) throw new Error(data.error || 'Não foi possível preparar um dos PDFs enviados.');
+      return data.file as UploadedFile;
+    }))
+      .then((files) => {
+        setUploadedFiles(files);
+        setUploadedFile(files[0] || null);
+        if (files[0]) setTitle(files[0].name.replace(/\.[^/.]+$/, ''));
+      })
+      .catch((err) => setError(err.message || 'Não foi possível carregar os PDFs enviados.'))
+      .finally(() => setUploading(false));
+  }, [searchParams]);
 
   useEffect(() => {
     if (uploadedFile?.id) {
