@@ -52,6 +52,10 @@ interface Client {
   cpfCnpj: string;
   email?: string;
   phone?: string;
+  legalRepresentative?: string | null;
+  representativeCpf?: string | null;
+  representativePhone?: string | null;
+  representativeRole?: string | null;
 }
 
 interface SignerInput {
@@ -301,6 +305,13 @@ export default function NewDocumentPage() {
   const handleSelectClient = (clientId: string) => {
     setSelectedClientId(clientId);
     const client = clients.find((c) => c.id === clientId);
+    if (!client) {
+      setSigners((current) => [{ name: '', cpf: '', email: '', phone: '', role: 'CLIENTE', signatureOrder: 1 }, ...current.slice(1)]);
+      setIsIlliterate(false);
+      setRogoName(''); setRogoCpf(''); setRogoPhone(''); setRogoEmail('');
+      setRogoRelationship('Acompanhante / Familiar');
+      return;
+    }
     if (client) {
       if (!title) setTitle(`Contrato - ${client.name}`);
       const updatedSigners = [...signers];
@@ -313,6 +324,21 @@ export default function NewDocumentPage() {
         signatureOrder: 1,
       };
       setSigners(updatedSigners);
+
+      // Um representante já cadastrado é a indicação natural para assinatura a rogo.
+      // O usuário continua podendo desmarcar o fluxo ou editar os dados antes do envio.
+      if (client.legalRepresentative) {
+        setIsIlliterate(true);
+        setEnforceSignatureOrder(true);
+        setRogoName(client.legalRepresentative);
+        setRogoCpf(maskCpfCnpj(client.representativeCpf || ''));
+        setRogoPhone(maskPhone(client.representativePhone || ''));
+        setRogoRelationship(client.representativeRole || 'Representante cadastrado');
+      } else {
+        setIsIlliterate(false);
+        setRogoName(''); setRogoCpf(''); setRogoPhone(''); setRogoEmail('');
+        setRogoRelationship('Acompanhante / Familiar');
+      }
     }
   };
 
@@ -886,14 +912,14 @@ export default function NewDocumentPage() {
                 className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
               />
               <span className="font-heading font-extrabold text-xs text-[#071B3A]">
-                Cliente Analfabeto ou com Dificuldade de Leitura/Assinatura? (Exigir Assinante a Rogo - Art. 595 CC)
+                Usar assinatura a rogo para esta cliente
               </span>
             </label>
 
             {isIlliterate && (
               <div className="pt-3 border-t border-blue-100 space-y-3 animate-in fade-in duration-300">
                 <p className="text-[11px] text-slate-600 font-medium">
-                  O sistema colherá a prova de presença e biometria do cliente titular e do acompanhante a rogo. Você pode optar por adicionar 0, 1 ou 2 testemunhas instrumentárias abaixo.
+                  {rogoName ? `O representante cadastrado, ${rogoName}, foi incluído como assinante a rogo. Confira os dados abaixo antes de gerar.` : 'Informe quem assinará a rogo pela cliente.'} Você pode adicionar testemunhas instrumentárias, se necessário.
                 </p>
 
                 {/* Seletor Rápido de Testemunhas */}
