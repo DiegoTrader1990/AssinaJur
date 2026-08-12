@@ -214,6 +214,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [signatureMode, setSignatureMode] = useState<'SELO_DIGITAL' | 'DESENHADA' | 'DIGITADA'>('DESENHADA');
   const [typedName, setTypedName] = useState('');
   const [agreedConsent, setAgreedConsent] = useState(false);
+  const [showManualSignature, setShowManualSignature] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Canvas de assinatura
@@ -1298,7 +1299,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             <button
               type="button"
               onClick={() => void handleOpenDocPreview()}
-              className="w-full py-3.5 px-4 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-2xl text-xs font-extrabold text-[#071B3A] flex items-center justify-between transition-all font-heading shadow-xs"
+              className="hidden"
             >
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-blue-600" />
@@ -1335,6 +1336,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
             {/* Rubrica Desenhada Opcional por Cima do Selo */}
             <div className="space-y-2 pt-1">
+              {!showManualSignature && <button type="button" onClick={() => setShowManualSignature(true)} className="w-full py-3 rounded-xl border border-slate-300 bg-slate-50 text-[#071B3A] text-xs font-bold flex items-center justify-center gap-2"><Edit3 className="w-4 h-4 text-blue-600" /> Adicionar rubrica manual (opcional)</button>}
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-[#071B3A] flex items-center gap-1.5 font-heading">
                   <Edit3 className="w-3.5 h-3.5 text-blue-600" />
@@ -1350,10 +1352,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   </button>
                 )}
               </div>
-              <p className="text-[11px] text-slate-500 font-medium">
+              {showManualSignature && <p className="text-[11px] text-slate-500 font-medium">
                 Seu Selo Digital já está 100% gravado. Caso deseje desenhar sua rubrica por cima do selo, faça o traço no quadro abaixo:
-              </p>
-              <div className="bg-white rounded-2xl overflow-hidden border-2 border-slate-300 focus-within:border-[#071B3A] relative touch-none shadow-inner">
+              </p>}
+              {showManualSignature && <div className="bg-white rounded-2xl overflow-hidden border-2 border-slate-300 focus-within:border-[#071B3A] relative touch-none shadow-inner">
                 <canvas
                   ref={canvasRef}
                   width={340}
@@ -1371,17 +1373,17 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                     Desenhe sua rubrica aqui (ou deixe em branco para assinar com o Selo Digital)
                   </div>
                 )}
-              </div>
+              </div>}
             </div>
 
-            <label className="flex items-start gap-3 text-xs text-slate-600 cursor-pointer pt-2 font-medium">
+            <label className={`flex items-start gap-4 p-4 rounded-2xl border-2 cursor-pointer transition-colors ${agreedConsent ? 'border-emerald-500 bg-emerald-50' : 'border-[#071B3A] bg-blue-50'}`}>
               <input
                 type="checkbox"
                 checked={agreedConsent}
                 onChange={(e) => setAgreedConsent(e.target.checked)}
-                className="w-4 h-4 text-[#071B3A] rounded border-slate-300 mt-0.5 focus:ring-[#071B3A]"
+                className="w-6 h-6 shrink-0 text-[#071B3A] rounded border-slate-400 mt-0.5 focus:ring-[#071B3A]"
               />
-              <span className="leading-relaxed">
+              <span className="leading-relaxed text-sm font-semibold text-[#071B3A]">
                 {isRogadoConsent ? (
                   <>
                     Declaro que assino a rogo pelo cliente <strong>{signer?.name}</strong> no documento <strong>{document?.title}</strong>, autorizando expressamente a vinculação do Selo Digital com fotos de presença de ambos.
