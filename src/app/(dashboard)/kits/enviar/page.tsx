@@ -72,6 +72,7 @@ export default function DispatchKitPage() {
   const [reviewClientData, setReviewClientData] = useState<Record<string, string>>({});
   const [reviewPdfUrl, setReviewPdfUrl] = useState<string | null>(null);
   const [loadingReviewPdf, setLoadingReviewPdf] = useState(false);
+  const [editingReview, setEditingReview] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -165,6 +166,7 @@ export default function DispatchKitPage() {
         cliente_nome: client.name || '', cliente_cpf: client.cpfCnpj || '', cliente_rg: client.rg || '—', cliente_nacionalidade: client.nationality || 'Brasileira',
         cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—', cliente_endereco: [client.address, client.number, client.neighborhood, [client.city, client.state].filter(Boolean).join('/')].filter(Boolean).join(', ') || '—', cidade: client.city || '—',
         advogado_nome: lawyer.name || 'Advogado responsável', advogado_oab: lawyer.oabNumber || '—', escritorio_nome: officePayload.office?.tradeName || officePayload.office?.name || '—',
+        data_atual: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date()),
       });
     } catch { setReviewClientData({}); }
     setCustomContents(contents);
@@ -177,16 +179,23 @@ export default function DispatchKitPage() {
     html,
   ).replace(/{{\s*[a-zA-Z0-9_]+\s*}}/g, '—');
 
-  const handlePreviewFinalPdf = async () => {
-    if (!reviewItem) return;
+  const generateReviewPdf = async (item: LegalKit['items'][number]) => {
     setLoadingReviewPdf(true);
+    setReviewPdfUrl(null);
     try {
-      const response = await fetch('/api/kits/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: selectedClientId, title: reviewItem.template.title, contentHtml: customContents[reviewItem.template.id] || reviewItem.template.contentHtml, customVariables: variables }) });
+      const response = await fetch('/api/kits/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: selectedClientId, title: item.template.title, contentHtml: customContents[item.template.id] || item.template.contentHtml, customVariables: variables }) });
       if (!response.ok) throw new Error();
       const url = URL.createObjectURL(await response.blob());
       if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl);
       setReviewPdfUrl(url);
+      setEditingReview(false);
     } catch { alert('Não foi possível gerar a prévia final.'); } finally { setLoadingReviewPdf(false); }
+  };
+
+  const openReviewItem = (item: LegalKit['items'][number]) => {
+    setReviewItem(item);
+    setEditingReview(false);
+    void generateReviewPdf(item);
   };
 
   const handleGeneratePackage = async (e: React.FormEvent) => {
@@ -491,7 +500,7 @@ export default function DispatchKitPage() {
                     <div key={item.id} className="border border-slate-200 rounded-xl overflow-hidden">
                       <button
                         type="button"
-                        onClick={() => setReviewItem(item)}
+                        onClick={() => openReviewItem(item)}
                         className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 text-left"
                       >
                         <div className="flex items-center gap-2">
@@ -540,8 +549,13 @@ export default function DispatchKitPage() {
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
           <div className="w-full max-w-6xl h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col">
             <div className="bg-[#071B3A] text-white px-6 py-4 flex items-center justify-between shrink-0"><div><p className="text-[10px] uppercase tracking-widest text-gold-300 font-bold">Revisão da minuta</p><h2 className="text-sm font-extrabold">{reviewItem.template.title}</h2></div><button type="button" onClick={() => setReviewItem(null)} className="p-2 rounded-lg bg-white/10 hover:bg-white/20"><X className="w-5 h-5" /></button></div>
-            <div className="flex-1 overflow-auto bg-slate-100 p-4 sm:p-6">{reviewPdfUrl ? <iframe src={reviewPdfUrl} className="w-full h-full bg-white rounded-xl border border-slate-200" title="Prévia final" /> : <div className="max-w-4xl mx-auto bg-white rounded-xl border border-slate-200 p-4"><DocumentRichEditor value={renderForReview(customContents[reviewItem.template.id] || reviewItem.template.contentHtml)} onChange={(html) => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: html }))} showAiCopilot={false} showTags={false} /></div>}</div>
-            <div className="px-6 py-3 border-t border-slate-200 flex justify-between"><button type="button" onClick={() => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: reviewItem.template.contentHtml }))} className="text-xs font-bold text-slate-600">Restaurar modelo</button><div className="flex gap-2"><button type="button" onClick={handlePreviewFinalPdf} className="px-4 py-2.5 border border-[#071B3A] text-[#071B3A] rounded-lg text-xs font-bold">{loadingReviewPdf ? 'Gerando PDF...' : 'Ver prévia final'}</button><button type="button" onClick={() => { setReviewPdfUrl(null); setReviewItem(null); }} className="px-5 py-2.5 bg-[#071B3A] text-white rounded-lg text-xs font-bold">Concluir revisão</button></div></div>
+            <div className="flex-1 overflow-auto bg-slate-100 p-4 sm:p-6">
+              {loadingReviewPdf ? <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-600"><Loader2 className="w-8 h-8 animate-spin text-gold-500" /><p className="text-sm font-semibold">Montando a prévia final…</p></div> : editingReview ? <div className="max-w-4xl mx-auto bg-white rounded-xl border border-slate-200 p-4"><DocumentRichEditor value={renderForReview(customContents[reviewItem.template.id] || reviewItem.template.contentHtml)} onChange={(html) => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: html }))} showAiCopilot={false} showTags={false} /></div> : reviewPdfUrl ? <iframe src={reviewPdfUrl} className="w-full h-full bg-white rounded-xl border border-slate-200" title="Prévia final do documento" /> : <div className="h-full flex items-center justify-center text-sm text-slate-500">Não foi possível carregar a prévia.</div>}
+            </div>
+            <div className="px-6 py-3 border-t border-slate-200 flex justify-between gap-3">
+              {editingReview ? <button type="button" onClick={() => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: reviewItem.template.contentHtml }))} className="text-xs font-bold text-slate-600">Restaurar modelo</button> : <span className="text-xs text-slate-500 self-center">Prévia com a diagramação final do documento</span>}
+              <div className="flex gap-2"><button type="button" onClick={() => editingReview ? void generateReviewPdf(reviewItem) : setEditingReview(true)} className="px-4 py-2.5 border border-[#071B3A] text-[#071B3A] rounded-lg text-xs font-bold">{editingReview ? 'Atualizar prévia final' : 'Editar conteúdo'}</button><button type="button" onClick={() => { if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl); setReviewPdfUrl(null); setReviewItem(null); }} className="px-5 py-2.5 bg-[#071B3A] text-white rounded-lg text-xs font-bold">Concluir revisão</button></div>
+            </div>
           </div>
         </div>
       )}
