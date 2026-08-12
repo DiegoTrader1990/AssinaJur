@@ -383,8 +383,22 @@ export async function POST(
         });
         await prisma.document.update({ where: { id: companion.id }, data: { status: 'CONCLUIDO', completedAt: new Date() } });
         await prisma.documentEvent.createMany({ data: [
-          { documentId: companion.id, signerId: companionSigner.id, eventType: 'KIT_SIGNATURE_APPLIED', description: `Assinatura aplicada na sessão única do kit por ${signer.name}.`, ipAddress: clientIp, userAgent },
-          { documentId: companion.id, signerId: companionSigner.id, eventType: 'DOCUMENT_COMPLETED', description: 'Documento concluído pela sessão única do kit; certificado individual emitido.', ipAddress: clientIp, userAgent },
+          {
+            documentId: companion.id, signerId: companionSigner.id, eventType: 'IDENTITY_CONFIRMED',
+            description: `CPF de ${signer.name} confirmado na sessão única de assinatura deste documento.`, ipAddress: clientIp, userAgent,
+          },
+          {
+            documentId: companion.id, signerId: companionSigner.id, eventType: 'LIVENESS_CAPTURED',
+            description: `Prova de presença ao vivo de ${signer.name} vinculada a este documento (selfies frontal, perfil esquerdo e perfil direito).`, ipAddress: clientIp, userAgent,
+          },
+          {
+            documentId: companion.id, signerId: companionSigner.id, eventType: 'SIGNATURE_SUBMITTED',
+            description: `Assinatura eletrônica de ${signer.name} registrada nesta sessão única de assinatura.`, ipAddress: clientIp, userAgent,
+          },
+          {
+            documentId: companion.id, signerId: companionSigner.id, eventType: 'DOCUMENT_COMPLETED',
+            description: 'Documento concluído, com evidências de identidade, presença e consentimento preservadas no certificado individual.', ipAddress: clientIp, userAgent,
+          },
         ] });
         try {
           await generateFinalPdfCertificate(companion.id);

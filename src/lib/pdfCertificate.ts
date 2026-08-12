@@ -256,11 +256,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
   }
 
   // O certificado é a trilha de evidências da assinatura, não o histórico interno
-  // do escritório. Eventos como "documento criado por" ficam no dossiê administrativo
-  // e não devem aparecer como se fossem atos praticados pelo cliente.
-  const publicEvents = dedupePublicAuditEvents(doc.events.filter((event) =>
-    Boolean(event.signerId) || event.eventType === 'DOCUMENT_COMPLETED'
-  ));
+  // do escritório. Exibimos apenas os atos que comprovam a manifestação do signatário.
+  const certificateEventTypes = new Set([
+    'LINK_OPENED', 'IDENTITY_CONFIRMED', 'CAMERA_PERMITTED', 'LIVENESS_STARTED',
+    'SELFIE_CENTER_VALIDATED', 'SELFIE_LEFT_VALIDATED', 'SELFIE_RIGHT_VALIDATED',
+    'LIVENESS_CAPTURED', 'SIGNATURE_SUBMITTED', 'ROGO_CONSENT_RECORDED', 'DOCUMENT_COMPLETED',
+  ]);
+  const publicEvents = dedupePublicAuditEvents(doc.events.filter((event) => certificateEventTypes.has(event.eventType)));
 
   const originalBytes = await getFileBuffer(doc.officeId, doc.originalFile.storageKey);
   if (!originalBytes) {
@@ -694,7 +696,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     // ── PÁGINA 2 DO CERTIFICADO: TRILHA PÚBLICA DE EVENTOS (DETALHAMENTO CRONOLÓGICO) ──
     if (publicEvents.length > 0) {
       const timelinePage = pdfDoc.addPage([PAGE_W, PAGE_H]);
-      drawFrame(timelinePage, '6. TRILHA PÚBLICA DE EVENTOS - DETALHAMENTO CRONOLÓGICO');
+      drawFrame(timelinePage, '6. TRILHA DE EVIDÊNCIAS DA ASSINATURA');
 
       const timelineTitleLines = wrapTextToWidth(doc.title, bold, 11, CW);
       timelineTitleLines.forEach((line, index) => {
@@ -1213,7 +1215,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       }
       if (timelinePageCount === 1 && !reuseIntegrityPage) {
         const introLines = wrapText(
-          'Registro cronológico dos eventos relevantes desta contratação. Todos os horários estão exibidos no Horário de Brasília (UTC−3).',
+          'Registro cronológico das evidências vinculadas ao signatário. Todos os horários estão exibidos no Horário de Brasília (UTC−3).',
           118
         );
         for (const line of introLines) {
