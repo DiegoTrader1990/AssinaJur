@@ -911,10 +911,12 @@ async function generateKitDocuments(officeId: string, action: PendingKitAction):
       kitId: kit.id,
     }));
   }
-  const first = created[0];
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.assinajur.com.br';
+  const documentsList = created
+    .map((item, index) => `${index + 1}. ${item.document.title}\n   ${appUrl}/assinar/${item.signer.token}`)
+    .join('\n');
   return {
-    replyText: `✅ *Kit gerado no AssinaJur*\n\n📦 ${kit.name}\n👤 ${first.client.name}\n📄 ${created.length} documento(s)\n🔗 ${appUrl}/assinar/${first.signer.token}\n\nDiga *cobrar ${first.client.name}* para enviar o link.`,
+    replyText: `✅ *Kit gerado no AssinaJur*\n\n📦 ${kit.name}\n👤 ${created[0].client.name}\n📄 ${created.length} documento(s):\n${documentsList}\n\nConfira as minutas no site antes do envio. Depois, diga *cobrar ${created[0].client.name}* para encaminhar os links ao cliente.`,
     actionTaken: `${EXECUTED_PREFIX}${action.id}`,
   };
 }

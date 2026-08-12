@@ -122,7 +122,12 @@ export async function POST(req: Request) {
       }
     }
 
-    const createdDocuments = [];
+    const createdDocuments: Array<{
+      id: string;
+      title: string;
+      signerToken: string;
+      signatureLink: string;
+    }> = [];
     let mainSignerToken = '';
 
     // Gerar todos os documentos do kit em transação
@@ -184,7 +189,12 @@ export async function POST(req: Request) {
         },
       });
 
-      createdDocuments.push(doc);
+      createdDocuments.push({
+        id: doc.id,
+        title: doc.title,
+        signerToken: signer.token,
+        signatureLink: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/assinar/${signer.token}`,
+      });
     }
 
     await logAuditEvent({
@@ -201,6 +211,7 @@ export async function POST(req: Request) {
       kitName: kit.name,
       clientName: client.name,
       documentsCount: createdDocuments.length,
+      documents: createdDocuments,
       mainSignerToken,
       signatureLink,
     });

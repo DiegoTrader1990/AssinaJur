@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { FolderArchive, Send, CheckCircle2, Copy, Check, FileText, ArrowLeft, Loader2, AlertCircle, Sparkles, ChevronDown } from 'lucide-react';
+import { FolderArchive, Send, CheckCircle2, Copy, Check, FileText, ArrowLeft, Loader2, AlertCircle, Sparkles, ChevronDown, Eye } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
 const DocumentRichEditor = dynamic(() => import('@/components/DocumentRichEditor').then(mod => mod.DocumentRichEditor), { ssr: false });
@@ -26,6 +26,20 @@ interface LegalKit {
   }>;
 }
 
+interface GeneratedKitDocument {
+  id: string;
+  title: string;
+  signerToken: string;
+  signatureLink: string;
+}
+
+interface KitGenerationResult {
+  kitName: string;
+  clientName: string;
+  documentsCount: number;
+  documents: GeneratedKitDocument[];
+}
+
 export default function DispatchKitPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -44,8 +58,8 @@ export default function DispatchKitPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [result, setResult] = useState<any | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [result, setResult] = useState<KitGenerationResult | null>(null);
+  const [copiedDocumentId, setCopiedDocumentId] = useState<string | null>(null);
 
   const [showReviewStep, setShowReviewStep] = useState(false);
   const [customContents, setCustomContents] = useState<Record<string, string>>({});
@@ -135,11 +149,10 @@ export default function DispatchKitPage() {
     }
   };
 
-  const handleCopyLink = () => {
-    if (!result?.signatureLink) return;
-    navigator.clipboard.writeText(result.signatureLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 3000);
+  const handleCopyLink = (document: GeneratedKitDocument) => {
+    navigator.clipboard.writeText(document.signatureLink);
+    setCopiedDocumentId(document.id);
+    setTimeout(() => setCopiedDocumentId(null), 3000);
   };
 
   if (loading) {
@@ -158,32 +171,44 @@ export default function DispatchKitPage() {
           <div className="w-14 h-14 bg-gold-100 text-gold-600 rounded-full flex items-center justify-center mx-auto mb-2">
             <Sparkles className="w-8 h-8 text-gold-500" />
           </div>
-          <h1 className="text-2xl font-extrabold text-[#0B1D3D]">Kit Gerado com 1 Único Link!</h1>
+          <h1 className="text-2xl font-extrabold text-[#0B1D3D]">Kit Gerado com Sucesso!</h1>
           <p className="text-sm text-slate-600">
             Foram gerados <strong className="text-[#0B1D3D]">{result.documentsCount} documentos</strong> do <strong>{result.kitName}</strong> para o cliente <strong>{result.clientName}</strong>.
           </p>
         </div>
 
         <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-          <span className="text-xs font-bold text-[#0B1D3D] uppercase tracking-wider block">Link Único de Assinatura pelo Celular</span>
-          <div className="p-3 bg-white border border-slate-300 rounded-xl font-mono text-xs text-slate-800 break-all">
-            {result.signatureLink}
+          <span className="text-xs font-bold text-[#0B1D3D] uppercase tracking-wider block">Documentos do kit</span>
+          <p className="text-xs text-slate-600 leading-relaxed">Cada documento possui sua própria minuta e link seguro. Confira todos abaixo antes de encaminhar ao cliente.</p>
+          <div className="space-y-3">
+            {result.documents.map((document, index) => (
+              <div key={document.id} className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-3">
+                <div className="flex items-start gap-2">
+                  <FileText className="w-4 h-4 text-gold-500 shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-[#0B1D3D]">{index + 1}. {document.title}</p>
+                    <p className="font-mono text-[10px] text-slate-500 break-all mt-1">{document.signatureLink}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => window.open(`/api/documents/${document.id}/download`, '_blank', 'noopener,noreferrer')}
+                    className="py-2.5 border border-slate-300 text-slate-700 hover:bg-slate-50 font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <Eye className="w-3.5 h-3.5" /> Ver minuta
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyLink(document)}
+                    className="py-2.5 bg-gold-500 hover:bg-gold-400 text-[#0B1D3D] font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    {copiedDocumentId === document.id ? <><Check className="w-3.5 h-3.5" /> Copiado</> : <><Copy className="w-3.5 h-3.5" /> Copiar link</>}
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
-
-          <button
-            onClick={handleCopyLink}
-            className="w-full py-3 bg-gold-500 hover:bg-gold-400 text-[#0B1D3D] font-bold rounded-xl text-sm shadow-md transition-all flex items-center justify-center gap-2"
-          >
-            {copied ? (
-              <>
-                <Check className="w-5 h-5" /> Link Copiado com Sucesso!
-              </>
-            ) : (
-              <>
-                <Copy className="w-5 h-5" /> Copiar Link para WhatsApp
-              </>
-            )}
-          </button>
         </div>
 
         <div className="pt-4 flex justify-between items-center border-t border-slate-100">
@@ -211,8 +236,8 @@ export default function DispatchKitPage() {
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#0B1D3D] tracking-tight">Disparar Kit Jurídico em 1 Link</h1>
-          <p className="text-sm text-slate-500 mt-1">Preencha as variáveis e envie múltiplos documentos de uma só vez no celular do cliente.</p>
+          <h1 className="text-2xl font-bold text-[#0B1D3D] tracking-tight">Preparar Kit Jurídico</h1>
+          <p className="text-sm text-slate-500 mt-1">Preencha as variáveis, revise todas as minutas e encaminhe cada documento com seu link seguro.</p>
         </div>
         <button onClick={() => router.push('/kits')} className="text-xs text-slate-500 font-semibold">
           Cancelar
@@ -396,7 +421,7 @@ export default function DispatchKitPage() {
               </>
             ) : (
               <>
-                Gerar Pacote e Enviar em 1 Link
+                Gerar Kit para Revisão
                 <Send className="w-4 h-4" />
               </>
             )}
