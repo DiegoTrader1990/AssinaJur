@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     }
     const variables = {
       cliente_nome: client.name, cliente_cpf: client.cpfCnpj, cliente_rg: client.rg || '—', cliente_nacionalidade: client.nationality || 'Brasileira',
-      cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—', cidade: client.city || '—',
+      cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—',
       cliente_endereco: [client.address, client.number, client.neighborhood, [client.city, client.state].filter(Boolean).join('/')].filter(Boolean).join(', ') || '—',
       advogado_nome: lawyer?.name || 'Advogado responsável', advogado_oab: lawyer?.oabNumber || '—', escritorio_nome: office.tradeName || office.name,
       ...(customVariables || {}),
