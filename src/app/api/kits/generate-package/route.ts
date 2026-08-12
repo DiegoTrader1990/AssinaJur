@@ -41,6 +41,20 @@ function ensureJointAttorneyQualification(contentHtml: string, documentType: str
   );
 }
 
+function ensureClientRepresentativeQualification(contentHtml: string, documentType: string, title: string, hasRepresentative: boolean) {
+  const isPowerOfAttorney = /PROCUR/i.test(documentType) || /procura[cç][aã]o/i.test(title);
+  const isContract = /CONTRAT/i.test(documentType) || /contrato/i.test(title);
+  if (!hasRepresentative || (!isPowerOfAttorney && !isContract) || /{{\s*cliente_representacao\s*}}/i.test(contentHtml)) return contentHtml;
+  const label = isPowerOfAttorney ? 'OUTORGANTE' : 'CONTRATANTE';
+  let included = false;
+  return contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
+    const visibleText = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
+    if (included || !new RegExp(`^${label}\\s*:`, 'i').test(visibleText)) return block;
+    included = true;
+    return `<${tag}${attributes}>${String(innerHtml).replace(/\s*\.?\s*$/, '')}, {{cliente_representacao}}.</${tag}>`;
+  });
+}
+
 export async function POST(req: Request) {
   try {
     const user = await getSessionUser();
@@ -155,6 +169,12 @@ export async function POST(req: Request) {
       ].filter(Boolean).join(', ') || '—',
       cliente_estado_civil: client.maritalStatus || '—',
       cliente_profissao: client.profession || '—',
+      representante_legal: client.legalRepresentative || '',
+      representante_cpf: client.representativeCpf || '',
+      representante_rg: client.representativeRg || '',
+      representante_telefone: client.representativePhone || '',
+      representante_qualificacao: [client.representativeRole, client.representativeCpf ? `CPF nº ${client.representativeCpf}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${client.representativePhone}` : ''].filter(Boolean).join(', '),
+      cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${[client.representativeRole, client.representativeCpf ? `CPF nº ${client.representativeCpf}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${client.representativePhone}` : ''].filter(Boolean).join(', ')}` : '',
       advogado_nome: mainLawyer.name,
       advogado_oab: mainLawyer.oabNumber || 'OAB/BA 51.881',
       advogada_nome: secondLawyer.name,
@@ -198,8 +218,14 @@ export async function POST(req: Request) {
       const template = item.template;
 
       // Usar conteúdo customizado (editado pelo advogado) se disponível
-      const finalContentHtml = ensureJointAttorneyQualification(
+      const clientContentHtml = ensureClientRepresentativeQualification(
         customContents?.[template.id] || template.contentHtml,
+        template.documentType,
+        template.title,
+        Boolean(client.legalRepresentative),
+      );
+      const finalContentHtml = ensureJointAttorneyQualification(
+        clientContentHtml,
         template.documentType,
         template.title,
       );

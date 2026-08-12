@@ -20,6 +20,18 @@ function ensureJointAttorneyQualification(contentHtml: string, title: string) {
   return replaced ? prepared : contentHtml;
 }
 
+function ensureClientRepresentativeQualification(contentHtml: string, title: string, hasRepresentative: boolean) {
+  if (!hasRepresentative || !/(procura[cç][aã]o|contrato)/i.test(title) || /{{\s*cliente_representacao\s*}}/i.test(contentHtml)) return contentHtml;
+  const label = /contrato/i.test(title) ? 'CONTRATANTE' : 'OUTORGANTE';
+  let included = false;
+  return contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
+    const visibleText = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
+    if (included || !new RegExp(`^${label}\\s*:`, 'i').test(visibleText)) return block;
+    included = true;
+    return `<${tag}${attributes}>${String(innerHtml).replace(/\s*\.?\s*$/, '')}, {{cliente_representacao}}.</${tag}>`;
+  });
+}
+
 export async function POST(req: Request) {
   try {
     const user = await getSessionUser();
@@ -47,6 +59,9 @@ export async function POST(req: Request) {
     }).join(' e ') || 'Advogado responsável';
     const lawyer = orderedLawyers[0];
     const variables = {
+      representante_legal: client.legalRepresentative || '', representante_cpf: client.representativeCpf || '', representante_rg: client.representativeRg || '', representante_telefone: client.representativePhone || '',
+      representante_qualificacao: [client.representativeRole, client.representativeCpf ? `CPF nº ${client.representativeCpf}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${client.representativePhone}` : ''].filter(Boolean).join(', '),
+      cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${[client.representativeRole, client.representativeCpf ? `CPF nº ${client.representativeCpf}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${client.representativePhone}` : ''].filter(Boolean).join(', ')}` : '',
       cliente_nome: client.name, cliente_cpf: client.cpfCnpj, cliente_rg: client.rg || '—', cliente_nacionalidade: client.nationality || 'Brasileira',
       cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—',
       cliente_endereco: [client.address, client.number, client.neighborhood, [client.city, client.state].filter(Boolean).join('/')].filter(Boolean).join(', ') || '—',
@@ -56,7 +71,8 @@ export async function POST(req: Request) {
       ...(customVariables || {}),
       cidade: client.city || '—',
     };
-    const finalContentHtml = ensureJointAttorneyQualification(contentHtml, title || '');
+    const clientContentHtml = ensureClientRepresentativeQualification(contentHtml, title || '', Boolean(client.legalRepresentative));
+    const finalContentHtml = ensureJointAttorneyQualification(clientContentHtml, title || '');
     const rendered = await compileTemplatePreviewToPdf({ title: title || 'Documento', contentHtml: finalContentHtml, variables, officeName: office.tradeName || office.name, version: 1, letterheadBuffer });
     return new NextResponse(rendered.pdfBuffer, { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="minuta.pdf"' } });
   } catch (error) { console.error(error); return NextResponse.json({ error: 'Não foi possível gerar a prévia.' }, { status: 500 }); }

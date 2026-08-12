@@ -74,7 +74,7 @@ function mapPdfFontSize(value: string): number {
 
 function emphasizeDocumentNames(html: string, variables: VariableValues): string {
   const patronos = String(variables.patronos_nomes || '').split('|');
-  const names = [variables.cliente_nome, variables.advogado_nome, variables.escritorio_nome, ...patronos]
+  const names = [variables.cliente_nome, variables.representante_legal, variables.advogado_nome, variables.escritorio_nome, ...patronos]
     .map((item) => String(item || '').trim())
     .filter((item) => item.length >= 3)
     .sort((left, right) => right.length - left.length);
