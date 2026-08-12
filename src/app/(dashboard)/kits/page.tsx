@@ -700,6 +700,7 @@ export default function KitsAndTemplatesPage() {
                 >
                   Cancelar
                 </button>
+                <button type="button" onClick={openPdfPreview} disabled={previewing || !templateFormData.contentHtml} className="px-5 py-2.5 border border-[#071B3A] text-[#071B3A] font-bold rounded-xl flex items-center gap-2 disabled:opacity-50"><Eye className="w-4 h-4" /> {previewing ? 'Gerando...' : 'Prévia PDF'}</button>
                 <button
                   type="submit"
                   disabled={saving}

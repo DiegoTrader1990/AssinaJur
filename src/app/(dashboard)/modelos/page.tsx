@@ -311,6 +311,7 @@ export default function TemplatesPage() {
                 >
                   Cancelar
                 </button>
+                <button type="button" onClick={openPdfPreview} disabled={previewing || !formData.contentHtml} className="px-5 py-2.5 border border-[#0B1D3D] text-[#0B1D3D] font-bold rounded-xl text-xs flex items-center gap-2 disabled:opacity-50"><Eye className="w-4 h-4" /> {previewing ? 'Gerando...' : 'Prévia PDF'}</button>
                 <button
                   type="submit"
                   disabled={saving}
