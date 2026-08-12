@@ -61,6 +61,9 @@ export default function DispatchKitPage() {
   const [result, setResult] = useState<KitGenerationResult | null>(null);
   const [copiedDocumentId, setCopiedDocumentId] = useState<string | null>(null);
   const [previewDocument, setPreviewDocument] = useState<GeneratedKitDocument | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
 
   const [showReviewStep, setShowReviewStep] = useState(false);
   const [customContents, setCustomContents] = useState<Record<string, string>>({});
@@ -69,6 +72,40 @@ export default function DispatchKitPage() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (!previewDocument) {
+      setPreviewUrl(null);
+      setPreviewLoading(false);
+      setPreviewError('');
+      return;
+    }
+
+    let active = true;
+    let objectUrl: string | null = null;
+    setPreviewLoading(true);
+    setPreviewError('');
+    setPreviewUrl(null);
+
+    fetch(`/api/documents/${previewDocument.id}/download`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Não foi possível carregar esta minuta.');
+        const blob = await response.blob();
+        objectUrl = URL.createObjectURL(blob);
+        if (active) setPreviewUrl(objectUrl);
+      })
+      .catch((previewFailure) => {
+        if (active) setPreviewError(previewFailure instanceof Error ? previewFailure.message : 'Não foi possível carregar esta minuta.');
+      })
+      .finally(() => {
+        if (active) setPreviewLoading(false);
+      });
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [previewDocument]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -245,12 +282,24 @@ export default function DispatchKitPage() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="flex-1 bg-slate-100 p-2 sm:p-4">
-                <iframe
-                  src={`/api/documents/${previewDocument.id}/download?inline=1`}
-                  title={`Prévia de ${previewDocument.title}`}
-                  className="w-full h-full bg-white rounded-lg border border-slate-300"
-                />
+              <div className="flex-1 bg-slate-100 p-2 sm:p-4 flex items-center justify-center">
+                {previewLoading ? (
+                  <div className="text-center text-slate-600 space-y-3">
+                    <Loader2 className="w-8 h-8 animate-spin text-gold-500 mx-auto" />
+                    <p className="text-sm font-semibold">Carregando minuta…</p>
+                  </div>
+                ) : previewError ? (
+                  <div className="text-center text-slate-600 space-y-3 max-w-sm">
+                    <AlertCircle className="w-9 h-9 text-amber-500 mx-auto" />
+                    <p className="text-sm font-semibold">{previewError}</p>
+                  </div>
+                ) : previewUrl ? (
+                  <iframe
+                    src={previewUrl}
+                    title={`Prévia de ${previewDocument.title}`}
+                    className="w-full h-full bg-white rounded-lg border border-slate-300"
+                  />
+                ) : null}
               </div>
               <div className="px-5 py-3 border-t border-slate-200 flex justify-end shrink-0">
                 <button type="button" onClick={() => setPreviewDocument(null)} className="px-5 py-2.5 bg-[#0B1D3D] hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition-colors">Fechar prévia</button>
