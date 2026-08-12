@@ -1338,7 +1338,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             <div className="space-y-2 pt-1">
               {!showManualSignature && <button type="button" onClick={() => setShowManualSignature(true)} className="w-full py-3 rounded-xl border border-slate-300 bg-slate-50 text-[#071B3A] text-xs font-bold flex items-center justify-center gap-2"><Edit3 className="w-4 h-4 text-blue-600" /> Adicionar rubrica manual (opcional)</button>}
               {showManualSignature && <button type="button" onClick={() => { clearCanvas(); setShowManualSignature(false); }} className="w-full py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-700 text-xs font-bold">Cancelar rubrica manual</button>}
-              <div className="flex items-center justify-between">
+              {showManualSignature && <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-[#071B3A] flex items-center gap-1.5 font-heading">
                   <Edit3 className="w-3.5 h-3.5 text-blue-600" />
                   Rubrica Manual na Tela (Opcional)
@@ -1352,7 +1352,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                     Limpar Rubrica
                   </button>
                 )}
-              </div>
+              </div>}
               {showManualSignature && <p className="text-[11px] text-slate-500 font-medium">
                 Seu Selo Digital já está 100% gravado. Caso deseje desenhar sua rubrica por cima do selo, faça o traço no quadro abaixo:
               </p>}
