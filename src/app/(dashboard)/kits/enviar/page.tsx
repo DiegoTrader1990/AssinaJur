@@ -177,6 +177,9 @@ export default function DispatchKitPage() {
         patronos_qualificacao_conjunta: patronos ? `${patronos}, com escritório profissional na ${officeAddress}` : 'Advogado responsável',
         patronos_nomes: activeLawyers.map((member: any) => member.name).join('|'),
         cliente_genero: client.gender || '',
+        representante_legal: client.legalRepresentative || '', representante_cpf: client.representativeCpf || '', representante_rg: client.representativeRg || '', representante_telefone: client.representativePhone || '',
+        representante_qualificacao: [client.representativeRole, client.representativeCpf ? `CPF nº ${client.representativeCpf}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${client.representativePhone}` : ''].filter(Boolean).join(', '),
+        cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${[client.representativeRole, client.representativeCpf ? `CPF nº ${client.representativeCpf}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${client.representativePhone}` : ''].filter(Boolean).join(', ')}` : '',
         data_atual: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date()),
       });
     } catch { setReviewClientData({}); }
@@ -204,14 +207,26 @@ export default function DispatchKitPage() {
       if (!replaced) rendered = rendered.replace(/(OUTORGADOS?|CONTRATADOS?)\s*:[^\n<]*/i, (_match, label) => `${label}: ${reviewClientData.patronos_qualificacao_conjunta || '—'}.`);
     }
 
+    if (reviewClientData.cliente_representacao && /(procura[cç][aã]o|contrato|declara[cç][aã]o)/i.test(reviewItem?.template.title || '')) {
+      const label = /contrato/i.test(reviewItem?.template.title || '') ? 'CONTRATANTE' : /procura/i.test(reviewItem?.template.title || '') ? 'OUTORGANTE' : '';
+      let included = false;
+      rendered = rendered.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
+        const text = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
+        const matchesClient = label ? new RegExp(`^${label}\\s*:`, 'i').test(text) : text.includes(reviewClientData.cliente_nome || '');
+        if (included || !matchesClient) return block;
+        included = true;
+        return `<${tag}${attributes}>${String(innerHtml).replace(/\s*\.?\s*$/, '')}, ${reviewClientData.cliente_representacao}.</${tag}>`;
+      });
+    }
+
     // O PDF destaca automaticamente os nomes envolvidos; a edição deve mostrar o mesmo resultado.
-    const names = [reviewClientData.cliente_nome, ...String(reviewClientData.patronos_nomes || '').split('|')]
+    const names = [reviewClientData.cliente_nome, reviewClientData.representante_legal, ...String(reviewClientData.patronos_nomes || '').split('|')]
       .filter((name, index, values) => name && values.indexOf(name) === index)
       .sort((left, right) => right.length - left.length);
-    for (const name of names) {
-      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      rendered = rendered.replace(new RegExp(`(?![^<]*>)(?<!>)${escaped}`, 'g'), `<strong>${name}</strong>`);
-    }
+    rendered = rendered.replace(/(<[^>]+>)|([^<]+)/g, (_part, tag, text) => {
+      if (tag) return tag;
+      return names.reduce((segment, name) => segment.replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), (match: string) => `<strong>${match}</strong>`), text);
+    });
 
     // A linha e a identificação final são o bloco de assinatura, tal como o compilador do PDF.
     const blocks = [...rendered.matchAll(/<(p|div)([^>]*)>[\s\S]*?<\/\1>/gi)];

@@ -44,12 +44,14 @@ function ensureJointAttorneyQualification(contentHtml: string, documentType: str
 function ensureClientRepresentativeQualification(contentHtml: string, documentType: string, title: string, hasRepresentative: boolean) {
   const isPowerOfAttorney = /PROCUR/i.test(documentType) || /procura[cç][aã]o/i.test(title);
   const isContract = /CONTRAT/i.test(documentType) || /contrato/i.test(title);
-  if (!hasRepresentative || (!isPowerOfAttorney && !isContract) || /{{\s*cliente_representacao\s*}}/i.test(contentHtml)) return contentHtml;
-  const label = isPowerOfAttorney ? 'OUTORGANTE' : 'CONTRATANTE';
+  const isDeclaration = /DECLAR/i.test(documentType) || /declara[cç][aã]o/i.test(title);
+  if (!hasRepresentative || (!isPowerOfAttorney && !isContract && !isDeclaration) || /{{\s*cliente_representacao\s*}}/i.test(contentHtml)) return contentHtml;
+  const label = isPowerOfAttorney ? 'OUTORGANTE' : isContract ? 'CONTRATANTE' : '';
   let included = false;
   return contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
     const visibleText = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
-    if (included || !new RegExp(`^${label}\\s*:`, 'i').test(visibleText)) return block;
+    const matchesClientQualification = label ? new RegExp(`^${label}\\s*:`, 'i').test(visibleText) : /{{\s*cliente_nome\s*}}/i.test(innerHtml);
+    if (included || !matchesClientQualification) return block;
     included = true;
     return `<${tag}${attributes}>${String(innerHtml).replace(/\s*\.?\s*$/, '')}, {{cliente_representacao}}.</${tag}>`;
   });
