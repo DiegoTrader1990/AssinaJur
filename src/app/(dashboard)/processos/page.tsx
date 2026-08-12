@@ -1,4 +1,5 @@
 'use client';
+// Área interna de gestão de processos.
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
