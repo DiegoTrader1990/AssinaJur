@@ -117,8 +117,8 @@ export async function POST(req: Request) {
     let jointPatronosQualification = '';
     const hasMultiplePatronos = orderedLawyers.length > 1;
     const collectiveOfficeLink = hasMultiplePatronos
-      ? `integrantes do escritório ${office.name}, com escritório profissional na ${fullAddress}`
-      : `integrante do escritório ${office.name}, com escritório profissional na ${fullAddress}`;
+      ? `com escritório profissional na ${fullAddress}`
+      : `com escritório profissional na ${fullAddress}`;
 
     if (isCnpj) {
       // Pessoa Jurídica com CNPJ registrado na OAB
