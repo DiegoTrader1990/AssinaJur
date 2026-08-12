@@ -21,6 +21,7 @@ export async function GET() {
         role: true,
         oabNumber: true,
         phone: true,
+        gender: true,
         active: true,
         createdAt: true,
       },
@@ -54,7 +55,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { name, email, password, role, oabNumber, phone } = body;
+    const { name, email, password, role, oabNumber, phone, gender } = body;
 
     if (!name || !email || !password || !role) {
       return NextResponse.json(
@@ -92,6 +93,7 @@ export async function POST(req: Request) {
         role,
         oabNumber: oabNumber || null,
         phone: phone || null,
+        gender: ['MASCULINO', 'FEMININO'].includes(gender) ? gender : null,
       },
       select: {
         id: true,
@@ -100,6 +102,7 @@ export async function POST(req: Request) {
         role: true,
         oabNumber: true,
         phone: true,
+        gender: true,
         active: true,
       },
     });
@@ -196,7 +199,7 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, name, email, oabNumber, phone } = body;
+    const { id, name, email, oabNumber, phone, gender } = body;
     if (!id || !name || !email) {
       return NextResponse.json({ error: 'Nome e e-mail são obrigatórios.' }, { status: 400 });
     }
@@ -220,8 +223,9 @@ export async function PATCH(req: Request) {
         email: normalizedEmail,
         oabNumber: String(oabNumber || '').trim() || null,
         phone: String(phone || '').trim() || null,
+        gender: ['MASCULINO', 'FEMININO'].includes(gender) ? gender : null,
       },
-      select: { id: true, name: true, email: true, role: true, oabNumber: true, phone: true, active: true },
+      select: { id: true, name: true, email: true, role: true, oabNumber: true, phone: true, gender: true, active: true },
     });
 
     await logAuditEvent({

@@ -72,6 +72,7 @@ model User {
   passwordHash     String
   oabNumber        String?
   phone            String?
+  gender           String?
   role             String   @default("LAWYER")
   active           Boolean  @default(true)
   twoFactorEnabled Boolean  @default(false)

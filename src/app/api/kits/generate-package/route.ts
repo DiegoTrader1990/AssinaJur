@@ -86,7 +86,7 @@ export async function POST(req: Request) {
 
     const activeLawyers = await prisma.user.findMany({
       where: { officeId: user.officeId, active: true },
-      select: { name: true, oabNumber: true },
+      select: { name: true, oabNumber: true, gender: true },
       orderBy: { name: 'asc' },
     });
 
@@ -110,7 +110,7 @@ export async function POST(req: Request) {
       return left.name.localeCompare(right.name, 'pt-BR');
     });
     const lawyerTextList = orderedLawyers.length > 0
-      ? orderedLawyers.map(l => `${l.name}, advogado(a), ${formatOab(l.oabNumber)}`).join(' e ')
+      ? orderedLawyers.map(l => `${l.name}, ${l.gender === 'FEMININO' ? 'advogada, inscrita' : l.gender === 'MASCULINO' ? 'advogado, inscrito' : 'advogado(a), inscrito(a)'} ${formatOab(l.oabNumber).replace(/^inscrito\(a\)\s*/i, '')}`).join(' e ')
       : 'DR. DIEGO DOS SANTOS RODRIGUES, inscrito na OAB/BA nº 51.881, e DRA. DOMINICK QUINTO SOARES, inscrita na OAB/BA nº 62.443';
 
     let fullOfficeQualification = '';

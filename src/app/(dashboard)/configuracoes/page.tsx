@@ -10,6 +10,7 @@ interface LawyerMember {
   role: string;
   oabNumber?: string;
   phone?: string;
+  gender?: string;
   active: boolean;
 }
 
@@ -46,6 +47,7 @@ export default function SettingsPage() {
     oabNumber: '',
     email: '',
     phone: '',
+    gender: '',
   });
   const [addingLawyer, setAddingLawyer] = useState(false);
   const [removingLawyerId, setRemovingLawyerId] = useState<string | null>(null);
@@ -119,12 +121,13 @@ export default function SettingsPage() {
           password: 'AdvogadoPassword123!',
           role: 'LAWYER',
           phone: newLawyer.phone,
+          gender: newLawyer.gender,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao adicionar advogado');
       setShowAddLawyerModal(false);
-      setNewLawyer({ name: '', oabNumber: '', email: '', phone: '' });
+      setNewLawyer({ name: '', oabNumber: '', email: '', phone: '', gender: '' });
       fetchLawyers();
     } catch (err: any) {
       alert(err.message);
@@ -691,6 +694,12 @@ export default function SettingsPage() {
               </div>
 
               <div>
+                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Sexo para qualificação documental</label>
+                <select value={newLawyer.gender} onChange={(e) => setNewLawyer({ ...newLawyer, gender: e.target.value })} className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none">
+                  <option value="">Não informado</option><option value="MASCULINO">Masculino</option><option value="FEMININO">Feminino</option>
+                </select>
+              </div>
+              <div>
                 <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Telefone / WhatsApp (Opcional)</label>
                 <input
                   type="text"
@@ -736,6 +745,7 @@ export default function SettingsPage() {
               <div><label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Nome Completo *</label><input required value={editingLawyer.name} onChange={(e) => setEditingLawyer({ ...editingLawyer, name: e.target.value })} className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none" /></div>
               <div><label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Inscrição OAB</label><input value={editingLawyer.oabNumber || ''} onChange={(e) => setEditingLawyer({ ...editingLawyer, oabNumber: e.target.value })} className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none" /></div>
               <div><label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">E-mail Profissional *</label><input type="email" required value={editingLawyer.email} onChange={(e) => setEditingLawyer({ ...editingLawyer, email: e.target.value })} className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none" /></div>
+              <div><label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Sexo para qualificação documental</label><select value={editingLawyer.gender || ''} onChange={(e) => setEditingLawyer({ ...editingLawyer, gender: e.target.value })} className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none"><option value="">Não informado</option><option value="MASCULINO">Masculino</option><option value="FEMININO">Feminino</option></select></div>
               <div><label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">Telefone / WhatsApp</label><input value={editingLawyer.phone || ''} onChange={(e) => setEditingLawyer({ ...editingLawyer, phone: e.target.value })} className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:border-blue-600 focus:outline-none" /></div>
               <div className="flex justify-end gap-2 pt-2"><button type="button" onClick={() => setEditingLawyer(null)} className="px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200">Cancelar</button><button type="submit" disabled={savingLawyer} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center gap-2">{savingLawyer ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />} Salvar alterações</button></div>
             </form>
