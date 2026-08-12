@@ -28,6 +28,7 @@ export async function POST(req: Request) {
       cliente_endereco: [client.address, client.number, client.neighborhood, [client.city, client.state].filter(Boolean).join('/')].filter(Boolean).join(', ') || '—',
       advogado_nome: lawyer?.name || 'Advogado responsável', advogado_oab: lawyer?.oabNumber || '—', escritorio_nome: office.tradeName || office.name,
       ...(customVariables || {}),
+      cidade: client.city || '—',
     };
     const rendered = await compileTemplatePreviewToPdf({ title: title || 'Documento', contentHtml, variables, officeName: office.tradeName || office.name, version: 1, letterheadBuffer });
     return new NextResponse(rendered.pdfBuffer, { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="minuta.pdf"' } });
