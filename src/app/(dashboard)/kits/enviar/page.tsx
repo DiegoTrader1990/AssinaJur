@@ -38,6 +38,7 @@ interface KitGenerationResult {
   clientName: string;
   documentsCount: number;
   documents: GeneratedKitDocument[];
+  signatureLink: string;
 }
 
 export default function DispatchKitPage() {
@@ -193,6 +194,13 @@ export default function DispatchKitPage() {
     setTimeout(() => setCopiedDocumentId(null), 3000);
   };
 
+  const handleCopyKitLink = () => {
+    if (!result?.signatureLink) return;
+    navigator.clipboard.writeText(result.signatureLink);
+    setCopiedDocumentId('KIT_LINK');
+    setTimeout(() => setCopiedDocumentId(null), 3000);
+  };
+
   if (loading) {
     return (
       <div className="p-12 text-center text-slate-400 text-sm flex items-center justify-center gap-2">
@@ -215,9 +223,20 @@ export default function DispatchKitPage() {
           </p>
         </div>
 
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
+          <span className="text-xs font-bold text-[#0B1D3D] uppercase tracking-wider block">Link único de assinatura do kit</span>
+          <p className="text-xs text-slate-600 leading-relaxed">Envie somente este link ao cliente. Ele revisará e assinará todos os documentos em uma única sessão.</p>
+          <div className="bg-white border border-blue-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <p className="font-mono text-[10px] text-slate-600 break-all flex-1">{result.signatureLink}</p>
+            <button type="button" onClick={handleCopyKitLink} className="shrink-0 py-2.5 px-4 bg-gold-500 hover:bg-gold-400 text-[#0B1D3D] font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors">
+              {copiedDocumentId === 'KIT_LINK' ? <><Check className="w-3.5 h-3.5" /> Copiado</> : <><Copy className="w-3.5 h-3.5" /> Copiar link do kit</>}
+            </button>
+          </div>
+        </div>
+
         <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-          <span className="text-xs font-bold text-[#0B1D3D] uppercase tracking-wider block">Documentos do kit</span>
-          <p className="text-xs text-slate-600 leading-relaxed">Cada documento possui sua própria minuta e link seguro. Confira todos abaixo antes de encaminhar ao cliente.</p>
+          <span className="text-xs font-bold text-[#0B1D3D] uppercase tracking-wider block">Documentos incluídos</span>
+          <p className="text-xs text-slate-600 leading-relaxed">Confira as minutas abaixo. Os links individuais permanecem internos ao sistema.</p>
           <div className="space-y-3">
             {result.documents.map((document, index) => (
               <div key={document.id} className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-3">
@@ -225,23 +244,15 @@ export default function DispatchKitPage() {
                   <FileText className="w-4 h-4 text-gold-500 shrink-0 mt-0.5" />
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-[#0B1D3D]">{index + 1}. {document.title}</p>
-                    <p className="font-mono text-[10px] text-slate-500 break-all mt-1">{document.signatureLink}</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div>
                   <button
                     type="button"
                     onClick={() => setPreviewDocument(document)}
                     className="py-2.5 border border-slate-300 text-slate-700 hover:bg-slate-50 font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors"
                   >
                     <Eye className="w-3.5 h-3.5" /> Ver minuta
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleCopyLink(document)}
-                    className="py-2.5 bg-gold-500 hover:bg-gold-400 text-[#0B1D3D] font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    {copiedDocumentId === document.id ? <><Check className="w-3.5 h-3.5" /> Copiado</> : <><Copy className="w-3.5 h-3.5" /> Copiar link</>}
                   </button>
                 </div>
               </div>
