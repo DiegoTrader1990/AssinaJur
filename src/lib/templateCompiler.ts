@@ -321,6 +321,9 @@ async function renderTemplatePdf({
     const paragraphText = paragraph.runs.map((run) => run.text).join(' ').trim();
     const isExplicitSignatureLine = /^_{5,}/.test(paragraphText);
     const isSignatureCaption = explicitSignatureLineIndexes.some((lineIndex) => paragraphIndex > lineIndex && paragraphIndex <= lineIndex + 2);
+    const isFollowedByExplicitSignatureLine = /^_{5,}/.test(
+      paragraphs[paragraphIndex + 1]?.runs.map((run) => run.text).join(' ').trim() || ''
+    );
     // A qualificação inicial do cliente também costuma iniciar com OUTORGANTE/CONTRATANTE.
     // Apenas a última ocorrência é a área real de assinatura.
     const isClientSignatureLabel = paragraphIndex === lastSignatureLabelIndex;
@@ -402,7 +405,7 @@ async function renderTemplatePdf({
     // Reserva real para o selo profissional e assinatura, mesmo quando o editor possui
     // linhas em branco que antes eram descartadas pelo compilador.
     // Títulos principais precisam de uma separação visual clara antes da qualificação inicial.
-    currentY -= isClientSignatureLabel ? 84 : isExplicitSignatureLine ? 8 : isSignatureCaption ? 3 : paragraph.kind === 'H1' ? 22 : heading ? 8 : 6;
+    currentY -= isClientSignatureLabel ? 84 : isExplicitSignatureLine ? 8 : isSignatureCaption ? 3 : isFollowedByExplicitSignatureLine ? 42 : paragraph.kind === 'H1' ? 22 : heading ? 8 : 6;
   }
 
   if (watermark) {
