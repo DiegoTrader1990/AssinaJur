@@ -1429,7 +1429,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </span>
               <h2 className="font-heading text-xl font-extrabold text-[#071B3A] mt-2">Assinatura confirmada</h2>
               <p className="text-sm text-slate-600 font-medium leading-relaxed">Obrigado, <strong>{signer?.name}</strong>. Sua assinatura eletrônica foi registrada com segurança pelo Selo Digital AssinaJur. O escritório dará continuidade ao seu atendimento.</p>
-              <p className={`text-xs text-slate-500 font-medium leading-relaxed ${isRogadoConsent ? '' : 'hidden'}`}>
+              <p className="hidden">
                 A presença do cliente e a assinatura a rogo foram vinculadas ao Certificado de Evidências Jurídicas.
               </p>
             </div>
