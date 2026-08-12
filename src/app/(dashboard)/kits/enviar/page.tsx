@@ -161,11 +161,21 @@ export default function DispatchKitPage() {
       ]);
       const [clientPayload, officePayload, teamPayload] = await Promise.all([clientResponse.json(), officeResponse.json(), teamResponse.json()]);
       const client = clientPayload.client || {};
-      const lawyer = (teamPayload.members || []).find((member: any) => member.active) || {};
+      const activeLawyers = (teamPayload.members || []).filter((member: any) => member.active);
+      const lawyer = activeLawyers[0] || {};
+      const officeAddress = officePayload.office?.address || 'endereço profissional informado na configuração';
+      const officeState = String(officeAddress).match(/(?:\/|,|\s)(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b/i)?.[1]?.toUpperCase() || 'BA';
+      const patronos = activeLawyers.map((member: any) => {
+        const role = member.gender === 'FEMININO' ? 'advogada, inscrita' : member.gender === 'MASCULINO' ? 'advogado, inscrito' : 'advogado(a), inscrito(a)';
+        const oab = String(member.oabNumber || '').trim();
+        return `${member.name}, ${role} ${/\bOAB\b/i.test(oab) ? `na ${oab}` : oab ? `na OAB/${officeState} sob o nº ${oab}` : 'na Ordem dos Advogados do Brasil'}`;
+      }).join(' e ');
       setReviewClientData({
         cliente_nome: client.name || '', cliente_cpf: client.cpfCnpj || '', cliente_rg: client.rg || '—', cliente_nacionalidade: client.nationality || 'Brasileira',
         cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—', cliente_endereco: [client.address, client.number, client.neighborhood, [client.city, client.state].filter(Boolean).join('/')].filter(Boolean).join(', ') || '—', cidade: client.city || '—',
         advogado_nome: lawyer.name || 'Advogado responsável', advogado_oab: lawyer.oabNumber || '—', escritorio_nome: officePayload.office?.tradeName || officePayload.office?.name || '—',
+        patronos_qualificacao_conjunta: patronos ? `${patronos}, com escritório profissional na ${officeAddress}` : 'Advogado responsável',
+        cliente_genero: client.gender || '',
         data_atual: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date()),
       });
     } catch { setReviewClientData({}); }
@@ -178,6 +188,22 @@ export default function DispatchKitPage() {
     (result, [key, value]) => result.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), String(value || '—')),
     html,
   ).replace(/{{\s*[a-zA-Z0-9_]+\s*}}/g, '—');
+
+  const renderEditableReview = (html: string) => {
+    let rendered = renderForReview(html);
+    if (/(procura[cç][aã]o|contrato)/i.test(reviewItem?.template.title || '')) {
+      let replaced = false;
+      rendered = rendered.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
+        const text = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
+        if (!/^(OUTORGADOS?|CONTRATADOS?)\s*:/i.test(text)) return block;
+        replaced = true;
+        const label = /^CONTRATADOS?/i.test(text) ? 'CONTRATADOS' : 'OUTORGADOS';
+        return `<${tag}${attributes}><strong>${label}:</strong> ${reviewClientData.patronos_qualificacao_conjunta || '—'}.</${tag}>`;
+      });
+      if (!replaced) rendered = rendered.replace(/(OUTORGADOS?|CONTRATADOS?)\s*:[^\n<]*/i, (_match, label) => `${label}: ${reviewClientData.patronos_qualificacao_conjunta || '—'}.`);
+    }
+    return rendered;
+  };
 
   const generateReviewPdf = async (item: LegalKit['items'][number]) => {
     setLoadingReviewPdf(true);
@@ -550,7 +576,7 @@ export default function DispatchKitPage() {
           <div className="w-full max-w-6xl h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col">
             <div className="bg-[#071B3A] text-white px-6 py-4 flex items-center justify-between shrink-0"><div><p className="text-[10px] uppercase tracking-widest text-gold-300 font-bold">Revisão da minuta</p><h2 className="text-sm font-extrabold">{reviewItem.template.title}</h2></div><button type="button" onClick={() => setReviewItem(null)} className="p-2 rounded-lg bg-white/10 hover:bg-white/20"><X className="w-5 h-5" /></button></div>
             <div className="flex-1 overflow-auto bg-slate-100 p-4 sm:p-6">
-              {loadingReviewPdf ? <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-600"><Loader2 className="w-8 h-8 animate-spin text-gold-500" /><p className="text-sm font-semibold">Montando a prévia final…</p></div> : editingReview ? <div className="max-w-4xl mx-auto bg-white rounded-xl border border-slate-200 p-4"><DocumentRichEditor value={renderForReview(customContents[reviewItem.template.id] || reviewItem.template.contentHtml)} onChange={(html) => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: html }))} showAiCopilot={false} showTags={false} /></div> : reviewPdfUrl ? <iframe src={reviewPdfUrl} className="w-full h-full bg-white rounded-xl border border-slate-200" title="Prévia final do documento" /> : <div className="h-full flex items-center justify-center text-sm text-slate-500">Não foi possível carregar a prévia.</div>}
+              {loadingReviewPdf ? <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-600"><Loader2 className="w-8 h-8 animate-spin text-gold-500" /><p className="text-sm font-semibold">Montando a prévia final…</p></div> : editingReview ? <div className="max-w-[680px] mx-auto bg-white rounded-xl border border-slate-200 p-4"><DocumentRichEditor value={renderEditableReview(customContents[reviewItem.template.id] || reviewItem.template.contentHtml)} onChange={(html) => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: html }))} showAiCopilot={false} showTags={false} contentClassName="font-sans text-[10px] leading-[15px] p-10 text-slate-800 [&_p]:my-0 [&_p]:mb-2 [&_p]:text-justify [&_p:nth-last-child(-n+2)]:text-center [&_p:nth-last-child(3)]:mt-12 [&_h1]:text-center [&_h1]:text-[12px] [&_h1]:leading-[17px] [&_h1]:font-bold [&_h1]:mb-6 [&_h2]:text-[11px] [&_h2]:font-bold" /></div> : reviewPdfUrl ? <iframe src={reviewPdfUrl} className="w-full h-full bg-white rounded-xl border border-slate-200" title="Prévia final do documento" /> : <div className="h-full flex items-center justify-center text-sm text-slate-500">Não foi possível carregar a prévia.</div>}
             </div>
             <div className="px-6 py-3 border-t border-slate-200 flex justify-between gap-3">
               {editingReview ? <button type="button" onClick={() => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: reviewItem.template.contentHtml }))} className="text-xs font-bold text-slate-600">Restaurar modelo</button> : <span className="text-xs text-slate-500 self-center">Prévia com a diagramação final do documento</span>}

@@ -28,6 +28,7 @@ interface DocumentRichEditorProps {
   showTags?: boolean;
   placeholder?: string;
   className?: string;
+  contentClassName?: string;
 }
 
 const AVAILABLE_TAGS = [
@@ -62,7 +63,8 @@ export function DocumentRichEditor({
   showAiCopilot = true,
   showTags = true,
   placeholder = 'Digite o conteúdo do documento aqui...',
-  className = ''
+  className = '',
+  contentClassName = ''
 }: DocumentRichEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   
@@ -304,7 +306,7 @@ export function DocumentRichEditor({
         contentEditable
         onInput={handleInput}
         onBlur={handleInput}
-        className="min-h-[320px] max-h-[600px] overflow-y-auto p-4 font-serif text-sm text-slate-800 focus:outline-none prose max-w-none empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none"
+        className={`min-h-[320px] max-h-[600px] overflow-y-auto p-4 font-serif text-sm text-slate-800 focus:outline-none prose max-w-none empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none ${contentClassName}`}
         data-placeholder={placeholder}
         suppressContentEditableWarning
       />
