@@ -53,7 +53,10 @@ export async function GET(
     const kitDocuments = document.kitBatchId && signer.role === 'CLIENTE'
       ? await prisma.document.findMany({
           where: { kitBatchId: document.kitBatchId, clientId: document.clientId },
-          select: { id: true, title: true, status: true },
+          select: {
+            id: true, title: true, status: true,
+            signers: { select: { id: true, role: true } },
+          },
           orderBy: { createdAt: 'asc' },
         })
       : [];
@@ -102,6 +105,27 @@ export async function GET(
           userAgent,
         },
       });
+
+      // A mesma abertura dá início à sessão única do pacote. Registramos a abertura
+      // também em cada documento complementar, usando o respectivo signatário,
+      // para que os certificados individuais tenham uma trilha completa e verdadeira.
+      if (kitDocuments.length > 1) {
+        const companionEvents = kitDocuments
+          .filter((item) => item.id !== document.id)
+          .map((item) => {
+            const companionSigner = item.signers.find((candidate) => candidate.role === 'CLIENTE');
+            return companionSigner ? {
+              documentId: item.id,
+              signerId: companionSigner.id,
+              eventType: 'LINK_OPENED',
+              description: `Link seguro da sessão única acessado por ${signer.name}; documento disponibilizado para leitura e assinatura.`,
+              ipAddress: clientIp,
+              userAgent,
+            } : null;
+          })
+          .filter(Boolean) as Array<any>;
+        if (companionEvents.length) await prisma.documentEvent.createMany({ data: companionEvents });
+      }
     }
 
     // Retorna payload público seguro (sem segredos de autenticação)
