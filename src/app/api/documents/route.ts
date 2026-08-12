@@ -2,9 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
-import { getFileBuffer, saveFile } from '@/lib/storage';
+import { getFileBuffer } from '@/lib/storage';
 import { calculateHash } from '@/lib/pdfHash';
-import { applyLetterheadToPdfBuffer } from '@/lib/templateCompiler';
 import { PDFDocument } from 'pdf-lib';
 
 export const dynamic = 'force-dynamic';
@@ -146,29 +145,9 @@ export async function POST(req: Request) {
     let finalBuffer = originalBuffer;
     let finalFileId = originalFileId;
 
-    if (office.letterheadFileId) {
-      const letterheadRecord = await prisma.storageFile.findUnique({
-        where: { id: office.letterheadFileId },
-      });
-      if (letterheadRecord) {
-        const letterheadBytes = await getFileBuffer(user.officeId, letterheadRecord.storageKey);
-        if (letterheadBytes) {
-          try {
-            finalBuffer = await applyLetterheadToPdfBuffer(originalBuffer, letterheadBytes);
-            const mergedRecord = await saveFile({
-              officeId: user.officeId,
-              uploadedBy: user.id,
-              fileBuffer: finalBuffer,
-              originalName: originalFile.originalName,
-              mimeType: 'application/pdf',
-            });
-            finalFileId = mergedRecord.id;
-          } catch (lhErr) {
-            console.error('Erro ao mesclar papel timbrado no PDF enviado:', lhErr);
-          }
-        }
-      }
-    }
+    // PDFs enviados pelo computador são documentos finalizados pelo advogado.
+    // Preservamos o arquivo exatamente como foi recebido. Papel timbrado é aplicado
+    // somente pelos fluxos de modelos e kits, antes da criação do documento.
 
     const verifiedOriginalHash = calculateHash(finalBuffer);
     const originalPdf = await PDFDocument.load(finalBuffer, { ignoreEncryption: true });
