@@ -35,6 +35,40 @@ function ensureJointAttorneyQualification(contentHtml: string, documentType: str
   return prepared.replace(plainLinePattern, (_match, prefix) => `${prefix}<p><strong>${replacementLabel}:</strong> {{patronos_qualificacao_conjunta}}.</p>`);
 }
 
+export async function GET() {
+  try {
+    const user = await getSessionUser();
+    if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
+    const [office, activeLawyers] = await Promise.all([
+      prisma.office.findUnique({ where: { id: user.officeId } }),
+      prisma.user.findMany({ where: { officeId: user.officeId, active: true }, select: { name: true, oabNumber: true, gender: true }, orderBy: { name: 'asc' } }),
+    ]);
+    if (!office) return NextResponse.json({ error: 'Escritório não encontrado.' }, { status: 404 });
+    const officeState = String((office as any).address || '').match(/(?:\/|,|\s)(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b/i)?.[1]?.toUpperCase() || 'BA';
+    const fullAddress = String((office as any).address || '').trim() || 'endereço profissional informado na configuração';
+    const orderedLawyers = [...activeLawyers].sort((left, right) => left.name === user.name ? -1 : right.name === user.name ? 1 : left.name.localeCompare(right.name, 'pt-BR'));
+    const lawyerTextList = orderedLawyers.map((lawyer) => {
+      const role = lawyer.gender === 'FEMININO' ? 'advogada, inscrita' : lawyer.gender === 'MASCULINO' ? 'advogado, inscrito' : 'advogado(a), inscrito(a)';
+      const oab = String(lawyer.oabNumber || '').trim();
+      const registration = /\bOAB\b/i.test(oab) ? `na ${oab}` : oab ? `na OAB/${officeState} sob o nº ${oab}` : 'na Ordem dos Advogados do Brasil';
+      return `${lawyer.name}, ${role} ${registration}`;
+    }).join(' e ') || 'Advogado responsável';
+    const mainLawyer = orderedLawyers[0];
+    return NextResponse.json({ variables: {
+      ...EXAMPLES,
+      advogado_nome: mainLawyer?.name || EXAMPLES.advogado_nome,
+      advogado_oab: mainLawyer?.oabNumber || EXAMPLES.advogado_oab,
+      escritorio_nome: office.tradeName || office.name,
+      escritorio_endereco: fullAddress,
+      patronos_qualificacao_conjunta: `${lawyerTextList}, com escritório profissional na ${fullAddress}`,
+      patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),
+    } });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: 'Não foi possível carregar os dados de prévia.' }, { status: 500 });
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const user = await getSessionUser();

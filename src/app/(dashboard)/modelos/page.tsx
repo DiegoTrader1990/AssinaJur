@@ -10,6 +10,21 @@ const SAMPLE_VALUES: Record<string, string> = { cliente_nome: 'MARIA APARECIDA D
 const showSamples = (html: string) => Object.entries(SAMPLE_VALUES).reduce((text, [key, value]) => text.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), value), html);
 const restoreVariables = (html: string) => Object.entries(SAMPLE_VALUES).reduce((text, [key, value]) => text.replace(new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), `{{${key}}}`), html);
 
+const showEditorPreview = (html: string, documentType: string, values: Record<string, string>) => {
+  const samples = { ...SAMPLE_VALUES, ...values };
+  const label = /PROCUR/i.test(documentType) ? 'OUTORGADOS' : 'CONTRATADOS';
+  const withPatronos = /PROCUR|CONTRAT/i.test(documentType) && samples.patronos_qualificacao_conjunta
+    ? html.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
+        const text = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
+        return new RegExp(`^${label}?S?\\s*:`, 'i').test(text) ? `<${tag}${attributes}><strong>${label}:</strong> ${samples.patronos_qualificacao_conjunta}.</${tag}>` : block;
+      })
+    : html;
+  return Object.entries(samples).reduce((text, [key, value]) => text.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), value), withPatronos);
+};
+const restoreEditorPreview = (html: string, values: Record<string, string>) => Object.entries({ ...SAMPLE_VALUES, ...values })
+  .sort(([, left], [, right]) => right.length - left.length)
+  .reduce((text, [key, value]) => value ? text.replace(new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), `{{${key}}}`) : text, html);
+
 interface Template {
   id: string;
   title: string;
@@ -40,9 +55,11 @@ export default function TemplatesPage() {
   const [error, setError] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [sampleValues, setSampleValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetchTemplates();
+    fetch('/api/templates/preview').then((response) => response.ok ? response.json() : null).then((data) => { if (data?.variables) setSampleValues(data.variables); }).catch(() => undefined);
   }, []);
 
   const fetchTemplates = async () => {
@@ -292,9 +309,9 @@ export default function TemplatesPage() {
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Texto do Modelo *</label>
                 <DocumentRichEditor
-                  key={`${editingTemplate?.id || 'novo'}-${showModal}`}
-                  value={showSamples(formData.contentHtml)}
-                  onChange={(html) => setFormData({ ...formData, contentHtml: restoreVariables(html) })}
+                  key={`${editingTemplate?.id || 'novo'}-${showModal}-${sampleValues.patronos_nomes || 'carregando'}`}
+                  value={showEditorPreview(formData.contentHtml, formData.documentType, sampleValues)}
+                  onChange={(html) => setFormData({ ...formData, contentHtml: restoreEditorPreview(html, sampleValues) })}
                   showAiCopilot={true}
                   showTags={false}
                   placeholder="Escreva a minuta do modelo jurídico..."
