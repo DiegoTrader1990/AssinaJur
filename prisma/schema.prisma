@@ -54,6 +54,7 @@ model Office {
   storageFiles    StorageFile[]
   auditLogs       AuditLog[]
   documents       Document[]
+  processes       LegalProcess[]
   templates       Template[]
   legalKits       LegalKit[]
   tags            Tag[]
@@ -138,6 +139,7 @@ model Client {
   updatedAt           DateTime @updatedAt
 
   documents           Document[]
+  processes           LegalProcess[]
 
   @@unique([officeId, cpfCnpj])
 }
@@ -219,6 +221,8 @@ model Document {
   kitId            String?
   kit              LegalKit? @relation(fields: [kitId], references: [id], onDelete: SetNull)
   kitBatchId       String?
+  processId        String?
+  process          LegalProcess? @relation(fields: [processId], references: [id], onDelete: SetNull)
 
   title            String
   documentType     String   @default("DOCUMENTO")
@@ -253,6 +257,29 @@ model Document {
   signers          Signer[]
   events           DocumentEvent[]
   tags             Tag[]
+}
+
+// Dossiê operacional do escritório. Documentos assinados são vinculados ao processo,
+// mas continuam preservados na Central de Documentos.
+model LegalProcess {
+  id               String   @id @default(uuid())
+  officeId         String
+  office           Office   @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  clientId         String
+  client           Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  title            String
+  legalArea        String?
+  status           String   @default("EM_TRIAGEM")
+  processNumber    String?
+  protocolNumber   String?
+  responsibleId    String?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  documents        Document[]
+
+  @@index([officeId, status])
+  @@index([officeId, clientId])
 }
 
 // Etiquetas coloridas para organizar documentos

@@ -99,6 +99,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       group: 'GESTÃO DO ESCRITÓRIO',
       items: [
         { label: 'Clientes', href: '/clientes', icon: Users },
+        { label: 'Processos', href: '/processos', icon: FolderArchive },
         { label: 'Equipe', href: '/equipe', icon: UserCheck },
         { label: 'Relatórios', href: '/relatorios', icon: BarChart3 },
         { label: 'Plano e Cobrança', href: '/plano', icon: CreditCard },
