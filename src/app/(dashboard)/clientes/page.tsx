@@ -61,6 +61,10 @@ interface Client {
   city?: string;
   state?: string;
   legalRepresentative?: string;
+  representativeCpf?: string;
+  representativeRg?: string;
+  representativePhone?: string;
+  representativeRole?: string;
   financialResponsible?: string;
   notes?: string;
   legalArea?: string;
@@ -90,6 +94,10 @@ const EMPTY_CLIENT_FORM = {
   city: '',
   state: '',
   legalRepresentative: '',
+  representativeCpf: '',
+  representativeRg: '',
+  representativePhone: '',
+  representativeRole: '',
   financialResponsible: '',
   notes: '',
   legalArea: 'Previdenciário',
@@ -117,6 +125,7 @@ export default function ClientsPage() {
   const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [showRepresentative, setShowRepresentative] = useState(false);
 
   // OCR Document Parser State & Transform (Zoom + Pan Mãozinha)
   const [ocrLoading, setOcrLoading] = useState(false);
@@ -186,7 +195,8 @@ export default function ClientsPage() {
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     let { name, value } = e.target;
     if (name === 'cpfCnpj') value = maskCpfCnpj(value);
-    if (name === 'phone' || name === 'whatsapp') value = maskPhone(value);
+    if (name === 'phone' || name === 'whatsapp' || name === 'representativePhone') value = maskPhone(value);
+    if (name === 'representativeCpf') value = maskCpfCnpj(value);
     setFormData({ ...formData, [name]: value });
   };
 
@@ -198,11 +208,13 @@ export default function ClientsPage() {
     setOcrSuccess(false);
     currentFileRef.current = null;
     setFormData(EMPTY_CLIENT_FORM);
+    setShowRepresentative(false);
   };
 
   const openCreateClient = () => {
     setEditingClient(null);
     setFormData(EMPTY_CLIENT_FORM);
+    setShowRepresentative(false);
     setFormError('');
     setShowModal(true);
   };
@@ -230,11 +242,16 @@ export default function ClientsPage() {
       city: client.city || '',
       state: client.state || '',
       legalRepresentative: client.legalRepresentative || '',
+      representativeCpf: maskCpfCnpj(client.representativeCpf || ''),
+      representativeRg: client.representativeRg || '',
+      representativePhone: maskPhone(client.representativePhone || ''),
+      representativeRole: client.representativeRole || '',
       financialResponsible: client.financialResponsible || '',
       notes: client.notes || '',
       legalArea: client.legalArea || '',
       processNumber: client.processNumber || '',
     });
+    setShowRepresentative(Boolean(client.legalRepresentative));
     setFormError('');
     setOcrDocPreview(null);
     setOcrSuccess(false);
@@ -982,6 +999,53 @@ export default function ClientsPage() {
                         className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium uppercase focus:border-blue-600 focus:outline-none"
                       />
                     </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-4 space-y-4">
+                    <div className="flex items-start gap-3">
+                      <input
+                        id="has-legal-representative"
+                        type="checkbox"
+                        checked={showRepresentative}
+                        onChange={(event) => {
+                          setShowRepresentative(event.target.checked);
+                          if (!event.target.checked) setFormData((current) => ({ ...current, legalRepresentative: '', representativeCpf: '', representativeRg: '', representativePhone: '', representativeRole: '' }));
+                        }}
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <div>
+                        <label htmlFor="has-legal-representative" className="block text-sm font-bold text-[#071B3A] cursor-pointer">Possui representante legal</label>
+                        <p className="mt-0.5 text-[11px] text-slate-500">Use para incapaz, menor de idade ou cliente que será representado na assinatura e nos documentos.</p>
+                      </div>
+                    </div>
+
+                    {showRepresentative && (
+                      <div className="grid md:grid-cols-2 gap-4 border-t border-blue-100 pt-4">
+                        <div className="md:col-span-2">
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Nome completo do representante *</label>
+                          <input type="text" name="legalRepresentative" required value={formData.legalRepresentative} onChange={handleFormChange} placeholder="Nome completo do pai, mãe, tutor ou curador" className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">CPF do representante *</label>
+                          <input type="text" name="representativeCpf" required value={formData.representativeCpf} onChange={handleFormChange} placeholder="000.000.000-00" className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Qualidade da representação *</label>
+                          <select name="representativeRole" required value={formData.representativeRole} onChange={handleFormChange} className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none bg-white">
+                            <option value="">Selecione...</option>
+                            <option value="Mãe">Mãe</option><option value="Pai">Pai</option><option value="Tutor(a)">Tutor(a)</option><option value="Curador(a)">Curador(a)</option><option value="Representante legal">Representante legal</option><option value="Outro">Outro</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">RG</label>
+                          <input type="text" name="representativeRg" value={formData.representativeRg} onChange={handleFormChange} placeholder="Documento de identidade" className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Telefone / WhatsApp</label>
+                          <input type="text" name="representativePhone" value={formData.representativePhone} onChange={handleFormChange} placeholder="(00) 00000-0000" className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none" />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div>

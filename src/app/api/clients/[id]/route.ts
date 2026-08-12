@@ -71,6 +71,15 @@ export async function PUT(
     if (body.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) {
       return NextResponse.json({ error: 'Informe um endereço de e-mail válido.' }, { status: 400 });
     }
+    const cleanRepresentativeCpf = String(body.representativeCpf ?? existingClient.representativeCpf ?? '').replace(/\D/g, '');
+    const cleanRepresentativePhone = String(body.representativePhone ?? existingClient.representativePhone ?? '').replace(/\D/g, '');
+    const representativeName = String(body.legalRepresentative ?? existingClient.legalRepresentative ?? '').trim();
+    if (representativeName && cleanRepresentativeCpf.length !== 11) {
+      return NextResponse.json({ error: 'Informe o CPF válido do representante legal.' }, { status: 400 });
+    }
+    if (representativeName && cleanRepresentativePhone && (cleanRepresentativePhone.length < 10 || cleanRepresentativePhone.length > 13)) {
+      return NextResponse.json({ error: 'Informe um telefone válido do representante legal.' }, { status: 400 });
+    }
 
     const duplicateClient = await prisma.client.findFirst({
       where: {
@@ -107,6 +116,10 @@ export async function PUT(
         city: body.city ?? existingClient.city,
         state: body.state ?? existingClient.state,
         legalRepresentative: body.legalRepresentative ?? existingClient.legalRepresentative,
+        representativeCpf: cleanRepresentativeCpf || null,
+        representativeRg: body.representativeRg ?? existingClient.representativeRg,
+        representativePhone: cleanRepresentativePhone || null,
+        representativeRole: body.representativeRole ?? existingClient.representativeRole,
         financialResponsible: body.financialResponsible ?? existingClient.financialResponsible,
         notes: body.notes ?? existingClient.notes,
         legalArea: body.legalArea ?? existingClient.legalArea,

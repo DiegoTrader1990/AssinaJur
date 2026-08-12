@@ -122,6 +122,10 @@ model Client {
   state               String?
   
   legalRepresentative String?
+  representativeCpf   String?
+  representativeRg    String?
+  representativePhone String?
+  representativeRole  String?
   financialResponsible String?
   notes               String?
   legalArea           String?

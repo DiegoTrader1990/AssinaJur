@@ -78,6 +78,10 @@ export async function POST(req: Request) {
       city,
       state,
       legalRepresentative,
+      representativeCpf,
+      representativeRg,
+      representativePhone,
+      representativeRole,
       financialResponsible,
       notes,
       legalArea,
@@ -102,6 +106,14 @@ export async function POST(req: Request) {
     }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: 'Informe um endereço de e-mail válido.' }, { status: 400 });
+    }
+    const cleanRepresentativeCpf = String(representativeCpf || '').replace(/\D/g, '');
+    const cleanRepresentativePhone = String(representativePhone || '').replace(/\D/g, '');
+    if (legalRepresentative && cleanRepresentativeCpf.length !== 11) {
+      return NextResponse.json({ error: 'Informe o CPF válido do representante legal.' }, { status: 400 });
+    }
+    if (legalRepresentative && cleanRepresentativePhone && (cleanRepresentativePhone.length < 10 || cleanRepresentativePhone.length > 13)) {
+      return NextResponse.json({ error: 'Informe um telefone válido do representante legal.' }, { status: 400 });
     }
     if (lawyerInChargeId) {
       const lawyer = await prisma.user.findFirst({ where: { id: lawyerInChargeId, officeId: user.officeId, active: true } });
@@ -148,6 +160,10 @@ export async function POST(req: Request) {
         city: city || null,
         state: state || null,
         legalRepresentative: legalRepresentative || null,
+        representativeCpf: cleanRepresentativeCpf || null,
+        representativeRg: representativeRg || null,
+        representativePhone: cleanRepresentativePhone || null,
+        representativeRole: representativeRole || null,
         financialResponsible: financialResponsible || null,
         notes: notes || null,
         legalArea: legalArea || null,
