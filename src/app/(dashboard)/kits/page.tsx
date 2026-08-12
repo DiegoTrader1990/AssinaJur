@@ -17,7 +17,8 @@ import {
   ArrowRight,
   Search,
   Sparkles,
-  Layers
+  Layers,
+  Eye
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
@@ -25,6 +26,10 @@ const DocumentRichEditor = dynamic(
   () => import('@/components/DocumentRichEditor').then((mod) => mod.DocumentRichEditor),
   { ssr: false }
 );
+
+const SAMPLE_VALUES: Record<string, string> = { cliente_nome: 'MARIA APARECIDA DA SILVA', cliente_cpf: '123.456.789-09', cliente_rg: '12.345.678-9', cliente_nacionalidade: 'brasileira', cliente_estado_civil: 'solteira', cliente_profissao: 'aposentada', cliente_endereco: 'Rua das Acácias, nº 120, Centro, Porto Seguro/BA, CEP 45810-000', advogado_nome: 'DR. DIEGO DOS SANTOS RODRIGUES', advogado_oab: 'OAB/BA nº 51.881', escritorio_nome: 'Rodrigues & Soares - Advogados', valor_honorarios: 'R$ 3.000,00', percentual_exito: '30%', cidade: 'Porto Seguro', data_atual: '12 de agosto de 2026' };
+const showSamples = (html: string) => Object.entries(SAMPLE_VALUES).reduce((text, [key, value]) => text.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), value), html);
+const restoreVariables = (html: string) => Object.entries(SAMPLE_VALUES).reduce((text, [key, value]) => text.replace(new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), `{{${key}}}`), html);
 
 interface KitItem {
   id: string;
@@ -84,6 +89,18 @@ export default function KitsAndTemplatesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+
+  const openPdfPreview = async () => {
+    setPreviewing(true);
+    try {
+      const response = await fetch('/api/templates/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: templateFormData.title, contentHtml: templateFormData.contentHtml }) });
+      if (!response.ok) throw new Error();
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(URL.createObjectURL(await response.blob()));
+    } catch { setError('Não foi possível gerar a prévia em PDF.'); } finally { setPreviewing(false); }
+  };
 
   useEffect(() => {
     fetchData();
@@ -778,12 +795,14 @@ export default function KitsAndTemplatesPage() {
                   Conteúdo da Minuta (Com Tags Dinâmicas e Copilot de IA): *
                 </label>
                 <DocumentRichEditor
-                  value={templateFormData.contentHtml}
-                  onChange={(html) => setTemplateFormData({ ...templateFormData, contentHtml: html })}
+                  value={showSamples(templateFormData.contentHtml)}
+                  onChange={(html) => setTemplateFormData({ ...templateFormData, contentHtml: restoreVariables(html) })}
                   showAiCopilot={true}
                   placeholder="Escreva a minuta jurídica..."
                 />
               </div>
+
+              <button type="button" onClick={openPdfPreview} disabled={previewing || !templateFormData.contentHtml} className="w-full py-3 border border-[#071B3A] text-[#071B3A] rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50"><Eye className="w-4 h-4" /> {previewing ? 'Gerando prévia...' : 'Ver prévia em PDF com dados de exemplo'}</button>
 
               <div className="flex justify-end gap-2 pt-2">
                 <button
@@ -806,6 +825,7 @@ export default function KitsAndTemplatesPage() {
           </div>
         </div>
       )}
+      {previewUrl && <div className="fixed inset-0 z-[60] bg-slate-950/70 flex items-center justify-center p-4"><div className="w-full max-w-5xl h-[88vh] bg-white rounded-2xl overflow-hidden flex flex-col"><div className="px-5 py-3 bg-[#071B3A] text-white flex justify-between"><strong>Prévia do modelo</strong><button type="button" onClick={() => { URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }}>Fechar</button></div><iframe src={previewUrl} title="Prévia PDF" className="w-full flex-1" /></div></div>}
     </div>
   );
 }
