@@ -59,7 +59,8 @@ function decodeHtmlText(value: string): string {
 }
 
 function emphasizeDocumentNames(html: string, variables: VariableValues): string {
-  const names = [variables.cliente_nome, variables.advogado_nome, variables.escritorio_nome]
+  const patronos = String(variables.patronos_nomes || '').split('|');
+  const names = [variables.cliente_nome, variables.advogado_nome, variables.escritorio_nome, ...patronos]
     .map((item) => String(item || '').trim())
     .filter((item) => item.length >= 3)
     .sort((left, right) => right.length - left.length);
@@ -158,6 +159,19 @@ function parseRichParagraphs(html: string): RichParagraph[] {
         if (/^<[^>]+>$/.test(token)) continue;
         const text = decodeHtmlText(token);
         if (text.trim()) runs.push({ text, bold: boldDepth > 0 });
+      }
+      // Em qualificações, o texto posterior a “OBJETO:” é uma oração completa e
+      // deve iniciar como frase, mesmo quando o modelo antigo a tiver salvo em minúscula.
+      const objectLabelRun = runs.findIndex((run) => /OBJETO\s*:/i.test(run.text));
+      if (objectLabelRun >= 0) {
+        const capitalizeAfterLabel = (value: string) => value.replace(/^(\s*)([a-záàâãéêíóôõúç])/u, (_match, spacing, letter) => `${spacing}${letter.toLocaleUpperCase('pt-BR')}`);
+        const labelRun = runs[objectLabelRun];
+        const afterLabel = labelRun.text.replace(/^(.*?OBJETO\s*:\s*)([a-záàâãéêíóôõúç])/iu, (_match, prefix, letter) => `${prefix}${letter.toLocaleUpperCase('pt-BR')}`);
+        if (afterLabel !== labelRun.text) {
+          labelRun.text = afterLabel;
+        } else if (runs[objectLabelRun + 1]) {
+          runs[objectLabelRun + 1].text = capitalizeAfterLabel(runs[objectLabelRun + 1].text);
+        }
       }
       return runs.length ? { kind, alignment, runs } : null;
     })
@@ -360,7 +374,8 @@ async function renderTemplatePdf({
     drawLine(true);
     // Reserva real para o selo profissional e assinatura, mesmo quando o editor possui
     // linhas em branco que antes eram descartadas pelo compilador.
-    currentY -= isSignatureArea ? 84 : heading ? 8 : 6;
+    // Títulos principais precisam de uma separação visual clara antes da qualificação inicial.
+    currentY -= isSignatureArea ? 84 : paragraph.kind === 'H1' ? 22 : heading ? 8 : 6;
   }
 
   if (watermark) {

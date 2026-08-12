@@ -158,6 +158,7 @@ export async function POST(req: Request) {
       escritorio_email: office.email || 'contato@rodriguesesoares.adv.br',
       escritorio_qualificacao: fullOfficeQualification,
       patronos_qualificacao_conjunta: jointPatronosQualification,
+      patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),
       cidade: client.city || 'Porto Seguro',
       ...(customVariables || {}),
     };
