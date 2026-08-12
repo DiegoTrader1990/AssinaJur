@@ -45,7 +45,7 @@ export function replaceTemplateVariables(contentHtml: string, variables: Variabl
 type ParagraphKind = 'BODY' | 'H1' | 'H2' | 'LIST';
 type TextAlignment = 'LEFT' | 'CENTER' | 'RIGHT' | 'JUSTIFY';
 type PdfFontFamily = 'HELVETICA' | 'TIMES' | 'COURIER';
-type TextRun = { text: string; bold: boolean; fontFamily?: PdfFontFamily };
+type TextRun = { text: string; bold: boolean; fontFamily?: PdfFontFamily; fontSize?: number };
 type RichParagraph = { kind: ParagraphKind; alignment: TextAlignment; runs: TextRun[] };
 
 function decodeHtmlText(value: string): string {
@@ -64,6 +64,12 @@ function mapPdfFontFamily(value: string): PdfFontFamily {
   if (/(times|georgia|garamond)/.test(family)) return 'TIMES';
   if (/(courier|mono)/.test(family)) return 'COURIER';
   return 'HELVETICA';
+}
+
+function mapPdfFontSize(value: string): number {
+  const size = Number.parseInt(value, 10);
+  // document.execCommand('fontSize') produz a escala 1–7 do HTML legado.
+  return ({ 1: 8, 2: 10, 3: 12, 4: 14, 5: 18, 6: 24, 7: 32 } as Record<number, number>)[size] || 10;
 }
 
 function emphasizeDocumentNames(html: string, variables: VariableValues): string {
@@ -192,18 +198,21 @@ function parseRichParagraphs(html: string): RichParagraph[] {
       const runs: TextRun[] = [];
       let boldDepth = 0;
       const fontStack: PdfFontFamily[] = ['HELVETICA'];
+      const sizeStack: number[] = [10];
       for (const token of line.match(/<[^>]+>|[^<]+/g) || []) {
         if (/^<\s*(?:strong|b)\b/i.test(token)) { boldDepth += 1; continue; }
         if (/^<\s*\/(?:strong|b)\s*>/i.test(token)) { boldDepth = Math.max(0, boldDepth - 1); continue; }
         if (/^<\s*font\b/i.test(token)) {
           const face = token.match(/\bface\s*=\s*["']?([^"'>\s]+)/i)?.[1] || '';
+          const size = token.match(/\bsize\s*=\s*["']?([^"'>\s]+)/i)?.[1] || '';
           fontStack.push(mapPdfFontFamily(face));
+          sizeStack.push(size ? mapPdfFontSize(size) : sizeStack.at(-1) || 10);
           continue;
         }
-        if (/^<\s*\/font\s*>/i.test(token)) { if (fontStack.length > 1) fontStack.pop(); continue; }
+        if (/^<\s*\/font\s*>/i.test(token)) { if (fontStack.length > 1) fontStack.pop(); if (sizeStack.length > 1) sizeStack.pop(); continue; }
         if (/^<[^>]+>$/.test(token)) continue;
         const text = decodeHtmlText(token);
-        if (text.trim()) runs.push({ text, bold: boldDepth > 0, fontFamily: fontStack.at(-1) });
+        if (text.trim()) runs.push({ text, bold: boldDepth > 0, fontFamily: fontStack.at(-1), fontSize: sizeStack.at(-1) });
       }
       // Em qualificações, o texto posterior a “OBJETO:” é uma oração completa e
       // deve iniciar como frase, mesmo quando o modelo antigo a tiver salvo em minúscula.
@@ -370,17 +379,18 @@ async function renderTemplatePdf({
     const fontSize = paragraph.kind === 'H1' ? 12 : paragraph.kind === 'H2' ? 10.8 : 10;
     const lineHeight = paragraph.kind === 'H1' ? 17 : paragraph.kind === 'H2' ? 16 : 15;
     const tokens = paragraph.runs.flatMap((run) =>
-      run.text.trim().split(/\s+/).filter(Boolean).map((word) => ({ text: word, bold: heading || run.bold, fontFamily: run.fontFamily }))
+      run.text.trim().split(/\s+/).filter(Boolean).map((word) => ({ text: word, bold: heading || run.bold, fontFamily: run.fontFamily, fontSize: heading ? fontSize : run.fontSize || fontSize }))
     );
-    if (paragraph.kind === 'LIST') tokens.unshift({ text: '\u2022', bold: true, fontFamily: 'HELVETICA' });
+    if (paragraph.kind === 'LIST') tokens.unshift({ text: '\u2022', bold: true, fontFamily: 'HELVETICA', fontSize });
 
     if (tokens.length === 0) continue;
 
-    let line: Array<{ text: string; bold: boolean; fontFamily?: PdfFontFamily }> = [];
+    let line: Array<{ text: string; bold: boolean; fontFamily?: PdfFontFamily; fontSize: number }> = [];
     let lineWidth = 0;
     const drawLine = (isLastLine: boolean) => {
       if (!line.length) return;
-      ensureLineSpace(isClientSignatureLabel ? lineHeight + 92 : lineHeight);
+      const effectiveLineHeight = Math.max(lineHeight, ...line.map((token) => token.fontSize * 1.35));
+      ensureLineSpace(isClientSignatureLabel ? effectiveLineHeight + 92 : effectiveLineHeight);
       if (isExplicitSignatureLine || (isClientSignatureLabel && !explicitSignatureLineFound)) {
         const labelY = (height - currentY - 5) / height;
         // Quando há somente o rótulo (ex.: OUTORGANTE: Nome), o selo fica logo abaixo
@@ -412,20 +422,20 @@ async function renderTemplatePdf({
         page.drawText(cleanText, {
           x: cursorX,
           y: currentY,
-          size: fontSize,
+          size: token.fontSize,
           font,
           color: heading ? navyColor : textColor,
         });
 
         // Advance cursorX by word width + (space width + extraWordSpacing if not last word)
-        let wordWidth = font.widthOfTextAtSize(cleanText, fontSize);
+        let wordWidth = font.widthOfTextAtSize(cleanText, token.fontSize);
         if (index < line.length - 1) {
-          const spaceWidth = font.widthOfTextAtSize(' ', fontSize);
+          const spaceWidth = font.widthOfTextAtSize(' ', token.fontSize);
           wordWidth += spaceWidth + (shouldJustify ? extraWordSpacing : 0);
         }
         cursorX += wordWidth;
       });
-      currentY -= lineHeight;
+      currentY -= effectiveLineHeight;
       line = [];
       lineWidth = 0;
     };
@@ -434,11 +444,11 @@ async function renderTemplatePdf({
       const token = tokens[i];
       const font = documentFont(token.fontFamily, token.bold);
       const value = `${line.length && !/^[,.;:!?)]/.test(token.text) ? ' ' : ''}${token.text}`;
-      const width = font.widthOfTextAtSize(value, fontSize);
+      const width = font.widthOfTextAtSize(value, token.fontSize);
       if (line.length && lineWidth + width > maxWidth) drawLine(false);
       const nextValue = `${line.length && !/^[,.;:!?)]/.test(token.text) ? ' ' : ''}${token.text}`;
       line.push(token);
-      lineWidth += font.widthOfTextAtSize(nextValue, fontSize);
+      lineWidth += font.widthOfTextAtSize(nextValue, token.fontSize);
     }
     drawLine(true);
     // Reserva real para o selo profissional e assinatura, mesmo quando o editor possui

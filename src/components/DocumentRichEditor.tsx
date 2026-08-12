@@ -66,6 +66,14 @@ const FONT_OPTIONS = [
   { value: 'Courier New', label: 'Courier New' },
 ];
 
+const FONT_SIZE_OPTIONS = [
+  { value: '2', label: '10 pt' },
+  { value: '3', label: '12 pt (padrão)' },
+  { value: '4', label: '14 pt' },
+  { value: '5', label: '18 pt' },
+  { value: '6', label: '24 pt' },
+];
+
 export function DocumentRichEditor({
   value,
   onChange,
@@ -212,6 +220,16 @@ export function DocumentRichEditor({
             className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-700 outline-none focus:border-blue-500"
           >
             {FONT_OPTIONS.map((font) => <option key={font.value} value={font.value}>{font.label}</option>)}
+          </select>
+        </label>
+        <label className="flex items-center gap-1.5 px-2 text-[11px] font-semibold text-slate-600" title="Selecione o texto antes de alterar o tamanho">
+          Tamanho
+          <select
+            defaultValue="3"
+            onChange={(event) => executeCommand('fontSize', event.target.value)}
+            className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-700 outline-none focus:border-blue-500"
+          >
+            {FONT_SIZE_OPTIONS.map((size) => <option key={size.value} value={size.value}>{size.label}</option>)}
           </select>
         </label>
         <div className="w-px h-6 bg-slate-300 mx-1"></div>
