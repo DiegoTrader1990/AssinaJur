@@ -213,28 +213,30 @@ export default function DispatchKitPage() {
   if (result) {
     return (
       <div className="max-w-3xl mx-auto bg-white p-8 sm:p-10 rounded-[28px] border border-slate-200 shadow-xl space-y-7">
-        <div className="text-center space-y-2.5 pb-2">
-          <div className="w-14 h-14 bg-[#071B3A] text-gold-400 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-blue-950/15">
+        <div className="-mx-8 sm:-mx-10 -mt-8 sm:-mt-10 px-8 sm:px-10 pt-10 pb-9 bg-[#071B3A] text-center space-y-2.5 rounded-t-[28px] relative overflow-hidden">
+          <div className="absolute -right-10 -top-16 w-48 h-48 rounded-full bg-[#d4af37]/10" />
+          <div className="w-14 h-14 bg-white/10 border border-[#d4af37]/40 text-gold-400 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-blue-950/15 relative">
             <Sparkles className="w-7 h-7" />
           </div>
-          <h1 className="text-2xl font-extrabold text-[#0B1D3D]">Kit Gerado com Sucesso!</h1>
-          <p className="text-sm text-slate-600">
-            Foram gerados <strong className="text-[#0B1D3D]">{result.documentsCount} documentos</strong> do <strong>{result.kitName}</strong> para o cliente <strong>{result.clientName}</strong>.
+          <p className="text-[10px] uppercase tracking-[0.22em] text-gold-300 font-bold">Assinatura eletrônica</p>
+          <h1 className="text-2xl font-extrabold text-white">Kit preparado com sucesso</h1>
+          <p className="text-sm text-slate-300">
+            <strong className="text-white">{result.documentsCount} documentos</strong> do <strong className="text-white">{result.kitName}</strong> para <strong className="text-white">{result.clientName}</strong>.
           </p>
         </div>
 
-        <div className="p-5 bg-gradient-to-br from-[#f8f4e8] to-white border border-[#d4af37]/40 rounded-2xl space-y-4 shadow-sm">
+        <div className="p-5 bg-[#f9f6ed] border-l-4 border-[#d4af37] rounded-r-2xl space-y-4 shadow-sm">
           <span className="text-xs font-bold text-[#0B1D3D] uppercase tracking-wider block">Link único de assinatura do kit</span>
           <p className="text-xs text-slate-600 leading-relaxed">Envie somente este link ao cliente. Ele revisará e assinará todos os documentos em uma única sessão.</p>
-          <div className="bg-white border border-[#d4af37]/30 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
-            <p className="text-xs font-semibold text-slate-600 flex-1">Link seguro pronto para envio ao cliente</p>
-            <button type="button" onClick={handleCopyKitLink} className="shrink-0 py-3 px-5 bg-[#071B3A] hover:bg-blue-900 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-colors">
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <p className="text-xs font-semibold text-[#071B3A] flex-1">Link seguro do kit disponível</p>
+            <button type="button" onClick={handleCopyKitLink} className="w-full sm:w-auto shrink-0 py-3 px-6 bg-[#071B3A] hover:bg-blue-900 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-colors shadow-lg shadow-blue-950/10">
               {copiedDocumentId === 'KIT_LINK' ? <><Check className="w-4 h-4" /> Link copiado</> : <><Copy className="w-4 h-4" /> Copiar link do kit</>}
             </button>
           </div>
         </div>
 
-        <div className="border border-slate-200 rounded-2xl overflow-hidden">
+        <div className="border border-slate-200 rounded-2xl overflow-hidden pt-5">
           <span className="text-xs font-bold text-[#0B1D3D] uppercase tracking-wider block">Documentos incluídos</span>
           <p className="text-xs text-slate-600 leading-relaxed">Confira as minutas abaixo. Os links individuais permanecem internos ao sistema.</p>
           <div className="divide-y divide-slate-100">
@@ -257,7 +259,7 @@ export default function DispatchKitPage() {
           </div>
         </div>
 
-        <div className="pt-4 flex justify-between items-center border-t border-slate-100">
+        <div className="pt-2 flex justify-between items-center border-t border-slate-100">
           <button
             onClick={() => router.push('/documentos')}
             className="px-6 py-2.5 bg-[#0B1D3D] text-white font-bold rounded-xl text-xs hover:bg-slate-800"
