@@ -22,7 +22,10 @@ export async function POST(req: Request) {
     const { title, contentHtml } = await req.json();
     const office = await prisma.office.findUnique({ where: { id: user.officeId } });
     if (!office) return NextResponse.json({ error: 'Escritório não encontrado.' }, { status: 404 });
-    const result = await compileTemplatePreviewToPdf({ title: title || 'Modelo jurídico', contentHtml: contentHtml || '', variables: EXAMPLES, officeName: office.tradeName || office.name, version: 1 });
+    // A prévia do editor representa somente a minuta original: sem capa/cabeçalho
+    // automático e sem o nome do kit ao qual o modelo eventualmente pertença.
+    const previewTitle = String(title || 'Modelo jurídico').replace(/\s*\(Kit[^)]*\)/i, '').trim();
+    const result = await compileTemplatePreviewToPdf({ title: previewTitle, contentHtml: contentHtml || '', variables: EXAMPLES, officeName: office.tradeName || office.name, version: 1, showSystemHeader: false });
     return new NextResponse(result.pdfBuffer, { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="previa-modelo.pdf"' } });
   } catch (error) {
     console.error(error);

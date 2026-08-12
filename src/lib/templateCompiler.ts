@@ -242,6 +242,7 @@ async function renderTemplatePdf({
   officeName,
   watermark,
   letterheadBuffer,
+  showSystemHeader,
 }: {
   title: string;
   contentHtml: string;
@@ -249,6 +250,7 @@ async function renderTemplatePdf({
   officeName: string;
   watermark?: string;
   letterheadBuffer?: Buffer;
+  showSystemHeader?: boolean;
 }) {
   const compiledText = applyClientGenderToQualification(replaceTemplateVariables(contentHtml, variables), variables);
   const presentationHtml = emphasizeDocumentNames(compiledText, variables);
@@ -279,7 +281,7 @@ async function renderTemplatePdf({
       });
     }
 
-    if (withHeader && !embeddedLetterhead) {
+    if (withHeader && !embeddedLetterhead && showSystemHeader !== false) {
       page.drawRectangle({ x: 40, y: height - 60, width: width - 80, height: 3, color: goldColor });
       page.drawText(officeName.toUpperCase(), { x: 40, y: height - 45, size: 11, font: boldFont, color: navyColor });
       page.drawText(title.toUpperCase(), { x: 40, y: height - 85, size: 14, font: boldFont, color: navyColor });
@@ -290,8 +292,8 @@ async function renderTemplatePdf({
   let page = addPage(true);
   const { width, height } = page.getSize();
   // Margem superior ampliada para não colidir com papel timbrado/cabeçalho
-  const startTopMargin = embeddedLetterhead ? 135 : 115;
-  const subsequentTopMargin = embeddedLetterhead ? 125 : 100;
+  const startTopMargin = embeddedLetterhead ? 135 : showSystemHeader === false ? 70 : 115;
+  const subsequentTopMargin = embeddedLetterhead ? 125 : showSystemHeader === false ? 60 : 100;
   const bottomMarginLimit = embeddedLetterhead ? 85 : 65;
 
   let currentY = height - startTopMargin;
@@ -446,6 +448,7 @@ export async function compileTemplatePreviewToPdf({
   officeName,
   version,
   letterheadBuffer,
+  showSystemHeader,
 }: {
   title: string;
   contentHtml: string;
@@ -453,14 +456,16 @@ export async function compileTemplatePreviewToPdf({
   officeName: string;
   version: number;
   letterheadBuffer?: Buffer;
+  showSystemHeader?: boolean;
 }) {
   return renderTemplatePdf({
-    title: `${title} - MINUTA V${version}`,
+    title: showSystemHeader === false ? title : `${title} - MINUTA V${version}`,
     contentHtml,
     variables,
     officeName,
     watermark: 'MINUTA - NAO ASSINADA',
     letterheadBuffer,
+    showSystemHeader,
   });
 }
 

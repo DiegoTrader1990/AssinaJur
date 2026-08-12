@@ -233,7 +233,7 @@ export default function TemplatesPage() {
                 <FileText className="w-5 h-5 text-gold-500" />
                 <h2 className="text-lg font-bold text-[#0B1D3D]">{editingTemplate ? 'Editar Modelo' : 'Novo Modelo Jurídico'}</h2>
               </div>
-              <div className="flex items-center gap-2"><button type="button" onClick={openPdfPreview} disabled={previewing || !formData.contentHtml} className="px-3 py-2 rounded-lg bg-[#0B1D3D] text-white text-[11px] font-bold flex items-center gap-1.5 disabled:opacity-50"><Eye className="w-3.5 h-3.5" /> Prévia PDF</button><button onClick={() => { setShowModal(false); setEditingTemplate(null); }} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button></div>
+              <button onClick={() => { setShowModal(false); setEditingTemplate(null); }} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
             </div>
 
             {error && (
@@ -300,8 +300,6 @@ export default function TemplatesPage() {
                   placeholder="Escreva a minuta do modelo jurídico..."
                 />
               </div>
-
-              <button type="button" onClick={openPdfPreview} disabled={previewing || !formData.contentHtml} className="w-full py-3 border border-[#0B1D3D] text-[#0B1D3D] rounded-xl text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50"><Eye className="w-4 h-4" /> {previewing ? 'Gerando prévia...' : 'Ver prévia em PDF com dados de exemplo'}</button>
 
               <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
                 <button

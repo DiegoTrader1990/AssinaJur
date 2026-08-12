@@ -700,7 +700,6 @@ export default function KitsAndTemplatesPage() {
                 >
                   Cancelar
                 </button>
-                <button type="button" onClick={openPdfPreview} disabled={previewing || !templateFormData.contentHtml} className="px-5 py-2.5 border border-[#071B3A] text-[#071B3A] font-bold rounded-xl flex items-center gap-2 disabled:opacity-50"><Eye className="w-4 h-4" /> {previewing ? 'Gerando...' : 'Prévia PDF'}</button>
                 <button
                   type="submit"
                   disabled={saving}
@@ -724,7 +723,7 @@ export default function KitsAndTemplatesPage() {
                 <FileText className="w-5 h-5 text-blue-600" />
                 <span>{editingTemplate ? 'Editar Minuta do Modelo' : 'Novo Modelo de Minuta'}</span>
               </div>
-              <div className="flex items-center gap-2"><button type="button" onClick={openPdfPreview} disabled={previewing || !templateFormData.contentHtml} className="px-3 py-2 rounded-lg bg-[#071B3A] text-white text-[11px] font-bold flex items-center gap-1.5 disabled:opacity-50"><Eye className="w-3.5 h-3.5" /> Prévia PDF</button><button onClick={() => setShowTemplateModal(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><X className="w-5 h-5" /></button></div>
+              <button onClick={() => setShowTemplateModal(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><X className="w-5 h-5" /></button>
             </div>
 
             {error && (
@@ -803,8 +802,6 @@ export default function KitsAndTemplatesPage() {
                 />
               </div>
 
-              <button type="button" onClick={openPdfPreview} disabled={previewing || !templateFormData.contentHtml} className="w-full py-3 border border-[#071B3A] text-[#071B3A] rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50"><Eye className="w-4 h-4" /> {previewing ? 'Gerando prévia...' : 'Ver prévia em PDF com dados de exemplo'}</button>
-
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
@@ -813,6 +810,7 @@ export default function KitsAndTemplatesPage() {
                 >
                   Cancelar
                 </button>
+                <button type="button" onClick={openPdfPreview} disabled={previewing || !templateFormData.contentHtml} className="px-5 py-2.5 border border-[#071B3A] text-[#071B3A] font-bold rounded-xl flex items-center gap-2 disabled:opacity-50"><Eye className="w-4 h-4" /> {previewing ? 'Gerando...' : 'Prévia PDF'}</button>
                 <button
                   type="submit"
                   disabled={saving}
