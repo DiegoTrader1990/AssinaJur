@@ -102,6 +102,7 @@ export default function DocumentsPage() {
 
   // Seleção múltipla em lote
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
+  const [deletingSelected, setDeletingSelected] = useState(false);
 
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [selectedDoc, setSelectedDoc] = useState<DocumentItem | null>(null);
@@ -188,6 +189,33 @@ export default function DocumentsPage() {
       else next.add(id);
       return next;
     });
+  };
+
+  const toggleSelectAllVisible = () => {
+    const visibleIds = filteredDocuments.map((doc) => doc.id);
+    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedDocIds.has(id));
+    setSelectedDocIds((current) => {
+      const next = new Set(current);
+      visibleIds.forEach((id) => allVisibleSelected ? next.delete(id) : next.add(id));
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    const selected = documents.filter((doc) => selectedDocIds.has(doc.id));
+    const deletable = selected.filter((doc) => doc.status !== 'CONCLUIDO');
+    const protectedCount = selected.length - deletable.length;
+    if (!deletable.length) { alert('Documentos concluídos devem ser preservados e não podem ser excluídos em lote.'); return; }
+    const extraWarning = protectedCount ? ` ${protectedCount} documento(s) concluído(s) serão preservados.` : '';
+    if (!window.confirm(`Excluir permanentemente ${deletable.length} documento(s) selecionado(s)?${extraWarning} Esta ação não pode ser desfeita.`)) return;
+    setDeletingSelected(true);
+    try {
+      const res = await fetch('/api/documents/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: deletable.map((doc) => doc.id) }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Não foi possível excluir os documentos.');
+      setDocuments((current) => current.filter((doc) => !data.deletedIds.includes(doc.id)));
+      setSelectedDocIds(new Set());
+    } catch (err: any) { alert(err.message); } finally { setDeletingSelected(false); }
   };
 
   // Estatísticas globais do acervo
@@ -437,6 +465,7 @@ export default function DocumentsPage() {
           </button>
         </div>
       </div>
+
     );
   };
 
@@ -583,6 +612,14 @@ export default function DocumentsPage() {
       </div>
 
       {/* ÁREA KANBAN DE ALTA DENSIDADE (ORGANIZADO E SEM EMBOLAR) */}
+      <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-3">
+        <button type="button" onClick={toggleSelectAllVisible} className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-extrabold text-[#071B3A] bg-slate-50 border border-slate-200 hover:bg-slate-100">
+          {filteredDocuments.length > 0 && filteredDocuments.every((doc) => selectedDocIds.has(doc.id)) ? <CheckSquare className="w-4 h-4 text-blue-600" /> : <Square className="w-4 h-4" />}
+          Selecionar todos os resultados ({filteredDocuments.length})
+        </button>
+        {selectedDocIds.size > 0 && <div className="flex items-center gap-2"><span className="text-xs font-bold text-slate-600">{selectedDocIds.size} selecionado(s)</span><button type="button" onClick={() => setSelectedDocIds(new Set())} className="px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Limpar</button><button type="button" onClick={handleBulkDelete} disabled={deletingSelected} className="inline-flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl text-xs font-extrabold">{deletingSelected ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Excluir selecionados</button></div>}
+      </div>
+
       {loading ? (
         <div className="bg-white p-12 rounded-3xl border border-slate-200/80 text-center space-y-2">
           <Loader2 className="w-7 h-7 animate-spin text-blue-600 mx-auto" />
@@ -663,6 +700,7 @@ export default function DocumentsPage() {
             <table className="w-full text-left text-xs text-slate-700">
               <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-extrabold uppercase text-slate-500 font-heading">
                 <tr>
+                  <th className="px-5 py-3"><button type="button" onClick={toggleSelectAllVisible} title="Selecionar todos"><CheckSquare className="w-4 h-4" /></button></th>
                   <th className="px-5 py-3">Data</th>
                   <th className="px-5 py-3">Título do Documento</th>
                   <th className="px-5 py-3">Cliente / CPF</th>
@@ -673,6 +711,7 @@ export default function DocumentsPage() {
               <tbody className="divide-y divide-slate-100">
                 {filteredDocuments.map((doc) => (
                   <tr key={doc.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="px-5 py-3"><button type="button" onClick={() => toggleSelectDoc(doc.id)}>{selectedDocIds.has(doc.id) ? <CheckSquare className="w-4 h-4 text-blue-600" /> : <Square className="w-4 h-4 text-slate-400" />}</button></td>
                     <td className="px-5 py-3 font-mono text-[11px] text-slate-500">
                       {new Date(doc.createdAt).toLocaleDateString('pt-BR')}
                     </td>
