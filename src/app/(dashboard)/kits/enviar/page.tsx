@@ -169,7 +169,7 @@ export default function DispatchKitPage() {
     } catch { setReviewClientData({}); }
     setCustomContents(contents);
     setShowReviewStep(true);
-    setReviewItem(selectedKit.items[0] || null);
+    setReviewItem(null);
   };
 
   const renderForReview = (html: string) => Object.entries({ ...variables, ...reviewClientData }).reduce(
@@ -438,7 +438,7 @@ export default function DispatchKitPage() {
 
           <div className="grid sm:grid-cols-2 gap-4 text-sm">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Valor dos Honorários ({"{{valor_honorarios}}"})</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Valor dos Honorários</label>
               <input
                 type="text"
                 value={variables.valor_honorarios}
@@ -449,7 +449,7 @@ export default function DispatchKitPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Percentual de Êxito ({"{{percentual_exito}}"})</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Percentual de Êxito</label>
               <input
                 type="text"
                 value={variables.percentual_exito}
