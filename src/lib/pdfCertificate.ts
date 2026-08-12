@@ -398,6 +398,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
       p.drawText(doc.signers.length > 1 ? `${doc.signers.length} CPFs + SELFIES + GEOLOCALIZAÇÃO` : 'CPF + 3 SELFIES + GEOLOCALIZAÇÃO', { x: contentX, y: stampY + 20, size: 5.1, font: regular, color: text });
       p.drawText(formatBrasiliaDateTime(signedAt, false).replace(/\s*\(.+$/, ''), { x: contentX, y: stampY + 12, size: 5.1, font: regular, color: muted });
       p.drawText(`CÓD: ${verificationCode}`, { x: contentX, y: stampY + 4, size: 6.8, font: bold, color: navy });
+    } else if (idx + 1 !== totalOrigPages) {
+      // Em posições automáticas, a marca de assinatura fica somente na última página.
+      // As demais páginas permanecem limpas, pois a integridade é comprovada pelo certificado.
+      return;
     } else if (sigPos === 'TOP') {
       const stripH = 22;
       const stripY = pH - stripH;

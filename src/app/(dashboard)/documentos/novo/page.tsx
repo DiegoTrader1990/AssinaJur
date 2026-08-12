@@ -38,6 +38,14 @@ interface UploadedFile {
   hash: string;
 }
 
+interface DocumentSettings {
+  title: string;
+  documentType: string;
+  signaturePosition: 'CUSTOM' | 'BOTTOM' | 'TOP' | 'RIGHT_MARGIN' | 'LEFT_MARGIN';
+  placementPage: number;
+  stampPlacement: { x: number; y: number; width: number; height: number };
+}
+
 interface Client {
   id: string;
   name: string;
@@ -64,6 +72,8 @@ export default function NewDocumentPage() {
   const [file, setFile] = useState<File | null>(null);
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string>('');
+  const [documentSettings, setDocumentSettings] = useState<Record<string, DocumentSettings>>({});
   const [uploading, setUploading] = useState(false);
 
   // Dados do Passo 2: Cliente & Signatários
@@ -122,6 +132,11 @@ export default function NewDocumentPage() {
       .then((files) => {
         setUploadedFiles(files);
         setUploadedFile(files[0] || null);
+        setSelectedDocumentId(files[0]?.id || '');
+        setDocumentSettings(Object.fromEntries(files.map((item) => [item.id, {
+          title: item.name.replace(/\.[^/.]+$/, ''), documentType: 'Contrato', signaturePosition: 'CUSTOM' as const,
+          placementPage: 1, stampPlacement: { x: 0.33, y: 0.79, width: 0.34, height: 0.095 },
+        }])));
         if (files[0]) setTitle(files[0].name.replace(/\.[^/.]+$/, ''));
       })
       .catch((err) => setError(err.message || 'Não foi possível carregar os PDFs enviados.'))
@@ -301,6 +316,30 @@ export default function NewDocumentPage() {
     }
   };
 
+  const currentSettings = (): DocumentSettings => ({ title, documentType, signaturePosition, placementPage, stampPlacement });
+
+  const saveCurrentSettings = () => {
+    if (!uploadedFile?.id) return;
+    setDocumentSettings((current) => ({ ...current, [uploadedFile.id]: currentSettings() }));
+  };
+
+  const selectDocumentForPlacement = (fileId: string) => {
+    if (fileId === uploadedFile?.id) return;
+    const target = uploadedFiles.find((item) => item.id === fileId);
+    if (!target) return;
+    const existing = documentSettings[fileId];
+    if (uploadedFile?.id) {
+      setDocumentSettings((current) => ({ ...current, [uploadedFile.id]: currentSettings() }));
+    }
+    const settings = existing || {
+      title: target.name.replace(/\.[^/.]+$/, ''), documentType: 'Contrato', signaturePosition: 'CUSTOM' as const,
+      placementPage: 1, stampPlacement: { x: 0.33, y: 0.79, width: 0.34, height: 0.095 },
+    };
+    setUploadedFile(target); setFile(null); setSelectedDocumentId(fileId);
+    setTitle(settings.title); setDocumentType(settings.documentType); setSignaturePosition(settings.signaturePosition);
+    setPlacementPage(settings.placementPage); setStampPlacement(settings.stampPlacement);
+  };
+
   const processFiles = async (files: File[]) => {
     setUploading(true);
     setError('');
@@ -320,10 +359,16 @@ export default function NewDocumentPage() {
         if (uploadedFiles.length === 0 && newUploads.length === 1) {
           setUploadedFile(data.file);
           setFile(selectedFile);
+          setSelectedDocumentId(data.file.id);
           if (!title) setTitle(selectedFile.name.replace(/\.[^/.]+$/, ''));
         }
       }
       setUploadedFiles((current) => [...current, ...newUploads]);
+      setDocumentSettings((current) => ({ ...current, ...Object.fromEntries(newUploads.map((item) => [item.id, {
+        title: item.name.replace(/\.[^/.]+$/, ''), documentType: 'Contrato', signaturePosition: 'CUSTOM' as const,
+        placementPage: 1, stampPlacement: { x: 0.33, y: 0.79, width: 0.34, height: 0.095 },
+      }])) }));
+      if (!selectedDocumentId && newUploads[0]) setSelectedDocumentId(newUploads[0].id);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -405,21 +450,23 @@ export default function NewDocumentPage() {
         ? (globalThis.crypto?.randomUUID?.() || `pacote-${Date.now()}-${Math.random().toString(36).slice(2)}`)
         : null;
       const responses: any[] = [];
+      const savedSettings = uploadedFile?.id ? { ...documentSettings, [uploadedFile.id]: currentSettings() } : documentSettings;
       for (let index = 0; index < uploadedFiles.length; index++) {
         const currentFile = uploadedFiles[index];
+        const settings = savedSettings[currentFile.id] || currentSettings();
         const res = await fetch('/api/documents', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-          title: uploadedFiles.length === 1 ? title : currentFile.name.replace(/\.[^/.]+$/, ''),
-          documentType,
+          title: settings.title || currentFile.name.replace(/\.[^/.]+$/, ''),
+          documentType: settings.documentType,
           originalFileId: currentFile.id,
           originalHash: currentFile.hash,
           kitBatchId: batchId,
           clientId: selectedClientId || null,
-          signaturePosition: signaturePosition === 'CUSTOM'
-            ? `CUSTOM:${placementPage}:${stampPlacement.x.toFixed(4)}:${stampPlacement.y.toFixed(4)}:${stampPlacement.width.toFixed(4)}:${stampPlacement.height.toFixed(4)}`
-            : signaturePosition,
+          signaturePosition: settings.signaturePosition === 'CUSTOM'
+            ? `CUSTOM:${settings.placementPage}:${settings.stampPlacement.x.toFixed(4)}:${settings.stampPlacement.y.toFixed(4)}:${settings.stampPlacement.width.toFixed(4)}:${settings.stampPlacement.height.toFixed(4)}`
+            : settings.signaturePosition,
           customMessage,
           signers,
           isIlliterate,
@@ -997,10 +1044,27 @@ export default function NewDocumentPage() {
       {/* Passo 3: Detalhes & Disparo */}
       {step === 3 && (
         <form onSubmit={handleSubmitDocument} className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
-          <h2 className="font-heading text-base font-extrabold text-[#071B3A]">Passo 3: Título e Mensagem Personalizada</h2>
+          <div>
+            <h2 className="font-heading text-base font-extrabold text-[#071B3A]">Passo 3: Revisão, selo e envio</h2>
+            <p className="text-xs text-slate-500 mt-1">Defina o título e o local do selo individualmente para cada PDF. O selo principal será inserido apenas na página escolhida.</p>
+          </div>
+
+          {uploadedFiles.length > 1 && (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3"><span className="text-xs font-extrabold uppercase tracking-wider text-[#071B3A]">Documento em edição</span><span className="text-[11px] font-bold text-blue-700">{uploadedFiles.length} PDFs no mesmo link</span></div>
+              <div className="flex flex-wrap gap-2">
+                {uploadedFiles.map((item, index) => (
+                  <button key={item.id} type="button" onClick={() => selectDocumentForPlacement(item.id)} className={`max-w-full rounded-xl px-3 py-2 text-xs font-bold border transition-colors ${selectedDocumentId === item.id ? 'bg-[#071B3A] border-[#071B3A] text-white shadow-sm' : 'bg-white border-blue-200 text-slate-700 hover:border-blue-500'}`}>
+                    {index + 1}. {item.name.replace(/\.[^/.]+$/, '')}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-600">Clique em cada documento para posicionar o selo na página correspondente.</p>
+            </div>
+          )}
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Título do Documento *</label>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Título do documento selecionado *</label>
             <input
               type="text"
               required
