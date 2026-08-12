@@ -43,8 +43,9 @@ export function replaceTemplateVariables(contentHtml: string, variables: Variabl
 }
 
 type ParagraphKind = 'BODY' | 'H1' | 'H2' | 'LIST';
+type TextAlignment = 'LEFT' | 'CENTER' | 'RIGHT' | 'JUSTIFY';
 type TextRun = { text: string; bold: boolean };
-type RichParagraph = { kind: ParagraphKind; runs: TextRun[] };
+type RichParagraph = { kind: ParagraphKind; alignment: TextAlignment; runs: TextRun[] };
 
 function decodeHtmlText(value: string): string {
   return value
@@ -87,9 +88,7 @@ function cleanHtmlForPdf(html: string): string {
     .replace(/line-height:[^;>]*;?/gi, '')
     .replace(/font-family:[^;>]*;?/gi, '')
     .replace(/font-size:[^;>]*;?/gi, '')
-    .replace(/\bsans-serif\b;?/gi, '')
-    .replace(/\bstyle="[^"]*"/gi, '')
-    .replace(/\bstyle='[^']*'/gi, '');
+    .replace(/\bsans-serif\b;?/gi, '');
 
   // 3. Line-by-line cleanup
   return cleaned
@@ -113,13 +112,28 @@ function isLabelParagraph(text: string): boolean {
 function parseRichParagraphs(html: string): RichParagraph[] {
   // Clean HTML attributes and style fragments before parsing
   const cleanedHtml = cleanHtmlForPdf(html);
+  const containsHtmlBlocks = /<\s*\/?(?:p|div|h1|h2|h3|li|ol|ul)\b/i.test(cleanedHtml);
+  const alignmentFromAttributes = (attributes: string, fallback: TextAlignment): TextAlignment => {
+    const match = attributes.match(/text-align\s*:\s*(left|center|right|justify)/i);
+    if (!match) return fallback;
+    return match[1].toUpperCase() as TextAlignment;
+  };
+  const blockMarker = (kind: ParagraphKind, attributes: string, fallback: TextAlignment) =>
+    `\n[[${kind}:${alignmentFromAttributes(attributes, fallback)}]]`;
 
-  const normalized = cleanedHtml
-    .replace(/\r/g, '')
+  let normalized = cleanedHtml.replace(/\r/g, '');
+
+  // O editor pode inserir quebras físicas no HTML apenas para legibilidade do código.
+  // Quando há tags de bloco, essas quebras não são parágrafos reais e não podem virar
+  // linhas finais no PDF (isso era a origem das linhas curtas e sem justificação).
+  if (containsHtmlBlocks) normalized = normalized.replace(/\n+/g, ' ');
+
+  normalized = normalized
     .replace(/<\s*br\s*\/?>/gi, '\n')
-    .replace(/<\s*h1[^>]*>/gi, '\n[[H1]]')
-    .replace(/<\s*h2[^>]*>/gi, '\n[[H2]]')
-    .replace(/<\s*li[^>]*>/gi, '\n[[LIST]]')
+    .replace(/<\s*h1([^>]*)>/gi, (_match, attributes) => blockMarker('H1', attributes, 'CENTER'))
+    .replace(/<\s*h2([^>]*)>/gi, (_match, attributes) => blockMarker('H2', attributes, 'LEFT'))
+    .replace(/<\s*(?:p|div)([^>]*)>/gi, (_match, attributes) => blockMarker('BODY', attributes, 'JUSTIFY'))
+    .replace(/<\s*li([^>]*)>/gi, (_match, attributes) => blockMarker('LIST', attributes, 'LEFT'))
     .replace(/<\/(?:p|div|h1|h2|h3|li|ol|ul)>/gi, '\n');
 
   const parsed = normalized
@@ -128,9 +142,13 @@ function parseRichParagraphs(html: string): RichParagraph[] {
       let line = raw.trim();
       if (!line) return null;
       let kind: ParagraphKind = 'BODY';
-      if (line.startsWith('[[H1]]')) { kind = 'H1'; line = line.slice(6); }
-      if (line.startsWith('[[H2]]')) { kind = 'H2'; line = line.slice(6); }
-      if (line.startsWith('[[LIST]]')) { kind = 'LIST'; line = line.slice(8); }
+      let alignment: TextAlignment = 'JUSTIFY';
+      const marker = line.match(/^\[\[(BODY|H1|H2|LIST):(LEFT|CENTER|RIGHT|JUSTIFY)\]\]/);
+      if (marker) {
+        kind = marker[1] as ParagraphKind;
+        alignment = marker[2] as TextAlignment;
+        line = line.slice(marker[0].length);
+      }
 
       const runs: TextRun[] = [];
       let boldDepth = 0;
@@ -141,7 +159,7 @@ function parseRichParagraphs(html: string): RichParagraph[] {
         const text = decodeHtmlText(token);
         if (text.trim()) runs.push({ text, bold: boldDepth > 0 });
       }
-      return runs.length ? { kind, runs } : null;
+      return runs.length ? { kind, alignment, runs } : null;
     })
     .filter((item): item is RichParagraph => Boolean(item));
 
@@ -270,10 +288,14 @@ async function renderTemplatePdf({
 
       // ALINHAMENTO JUSTIFICADO MATEMÁTICO PERFEITO (Margem direita retíssima)
       const spaceCount = line.length - 1;
-      const shouldJustify = !heading && !isLastLine && spaceCount > 0 && paragraph.kind === 'BODY';
+      const shouldJustify = paragraph.alignment === 'JUSTIFY' && !isLastLine && spaceCount > 0 && paragraph.kind === 'BODY';
       const extraWordSpacing = shouldJustify ? (maxWidth - lineWidth) / spaceCount : 0;
 
-      const startX = heading ? marginX + Math.max(0, (maxWidth - lineWidth) / 2) : marginX;
+      const startX = paragraph.alignment === 'CENTER'
+        ? marginX + Math.max(0, (maxWidth - lineWidth) / 2)
+        : paragraph.alignment === 'RIGHT'
+          ? marginX + Math.max(0, maxWidth - lineWidth)
+          : marginX;
       let cursorX = startX;
       line.forEach((token, index) => {
         const font = token.bold ? boldFont : regularFont;
