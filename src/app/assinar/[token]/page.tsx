@@ -382,7 +382,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       if (data.document?.rogoCpf) setRogoCpf(maskCpfCnpj(data.document.rogoCpf));
       if (data.document?.rogoRelationship) setRogoRelationship(data.document.rogoRelationship);
 
-      if (data.signer.status === 'ASSINADO') {
+      if (data.signer.status === 'ASSINADO' || sessionStorage.getItem(`assinajur-signed-${params.token}`) === '1') {
         setStep('SUCCESS');
       }
     } catch (err: any) {
@@ -875,6 +875,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao processar assinatura.');
+      sessionStorage.setItem(`assinajur-signed-${params.token}`, '1');
       setStep('SUCCESS');
     } catch (err: any) {
       setError(err.message);
