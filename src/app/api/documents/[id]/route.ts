@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 import { deleteFile } from '@/lib/storage';
+import { generateFinalPdfCertificate } from '@/lib/pdfCertificate';
+import { queueSignatureCompletionMessages } from '@/lib/whatsapp/signatureCompletion';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,6 +78,33 @@ export async function POST(
 
     if (!document) {
       return NextResponse.json({ error: 'Documento não encontrado.' }, { status: 404 });
+    }
+
+    if (action === 'sync-package-signature') {
+      if (document.status !== 'CONCLUIDO' || !document.kitBatchId) {
+        return NextResponse.json({ error: 'Este documento não possui uma assinatura de pacote concluída para sincronizar.' }, { status: 400 });
+      }
+      const sourceSigners = document.signers.filter((item) => item.name && item.status === 'ASSINADO');
+      const companions = await prisma.document.findMany({
+        where: { officeId: user.officeId, kitBatchId: document.kitBatchId, clientId: document.clientId, id: { not: document.id }, status: { notIn: ['CONCLUIDO', 'CANCELADO', 'EXPIRADO'] } },
+        include: { signers: true },
+      });
+      let synchronized = 0;
+      for (const companion of companions) {
+        const sameParticipants = companion.signers.length === sourceSigners.length && sourceSigners.every((source) => companion.signers.some((target) => target.signatureOrder === source.signatureOrder && target.role === source.role && target.cpf.replace(/\D/g, '') === source.cpf.replace(/\D/g, '')));
+        if (!sameParticipants) continue;
+        for (const source of sourceSigners) {
+          const target = companion.signers.find((item) => item.signatureOrder === source.signatureOrder && item.role === source.role && item.cpf.replace(/\D/g, '') === source.cpf.replace(/\D/g, ''));
+          if (!target) continue;
+          await prisma.signer.update({ where: { id: target.id }, data: { status: 'ASSINADO', signatureType: source.signatureType, signatureImage: source.signatureImage, signedConsentText: source.signedConsentText, selfieCenterImage: source.selfieCenterImage, selfieLeftImage: source.selfieLeftImage, selfieRightImage: source.selfieRightImage, geoLat: source.geoLat, geoLng: source.geoLng, geoAccuracy: source.geoAccuracy, geoCity: source.geoCity, geoState: source.geoState, signedAt: source.signedAt || new Date(), ipAddress: source.ipAddress, userAgent: source.userAgent } });
+        }
+        await prisma.document.update({ where: { id: companion.id }, data: { status: 'CONCLUIDO', completedAt: new Date() } });
+        await prisma.documentEvent.create({ data: { documentId: companion.id, userId: user.id, eventType: 'PACKAGE_SIGNATURE_SYNCHRONIZED', description: `Assinatura do pacote sincronizada a partir de "${document.title}"; evidências dos participantes preservadas.` } });
+        try { await generateFinalPdfCertificate(companion.id); await queueSignatureCompletionMessages(companion.id); } catch (error) { console.error('Erro ao emitir PDF do pacote sincronizado:', error); }
+        synchronized += 1;
+      }
+      await logAuditEvent({ officeId: user.officeId, userId: user.id, eventType: 'PACKAGE_SIGNATURE_SYNCHRONIZED', description: `${synchronized} documento(s) do pacote "${document.title}" foram sincronizados.` });
+      return NextResponse.json({ success: true, synchronized });
     }
 
     if (action === 'send') {

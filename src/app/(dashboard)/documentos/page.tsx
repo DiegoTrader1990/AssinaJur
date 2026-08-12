@@ -162,6 +162,19 @@ export default function DocumentsPage() {
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };
 
+  const handleSyncPackageSignature = async (doc: DocumentItem) => {
+    try {
+      const res = await fetch(`/api/documents/${doc.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'sync-package-signature' }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Não foi possível concluir os documentos restantes.');
+      alert(`${data.synchronized} documento(s) restante(s) foram concluídos e certificados.`);
+      await fetchDocuments();
+      setSelectedDoc(null);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
   const handleDelete = async (doc: DocumentItem) => {
     const isConcluded = doc.status === 'CONCLUIDO';
     const warning = isConcluded
@@ -819,6 +832,12 @@ export default function DocumentsPage() {
                   <p className="text-xs font-extrabold text-emerald-900">Documentos do pacote</p>
                   {selectedPackageDocuments.map((item) => <div key={item.id} className="flex items-center justify-between gap-2 bg-white rounded-xl border border-emerald-100 px-3 py-2"><span className="text-xs font-bold text-slate-700 truncate">{item.title}</span>{(item.status === 'CONCLUIDO' || item.status === 'PARCIALMENTE_ASSINADO') && <a href={`/api/documents/${item.id}/download`} download className="shrink-0 inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700"><Download className="w-3.5 h-3.5" /> Baixar PDF</a>}</div>)}
                 </div>
+              )}
+
+              {selectedPackageDocuments.length > 1 && selectedDoc.status === 'CONCLUIDO' && selectedPackageDocuments.some((item) => item.status !== 'CONCLUIDO') && (
+                <button onClick={() => handleSyncPackageSignature(selectedDoc)} className="w-full py-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-xs font-extrabold">
+                  Concluir os documentos restantes deste pacote
+                </button>
               )}
 
               <div>

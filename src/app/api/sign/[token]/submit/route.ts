@@ -368,7 +368,14 @@ export async function POST(
       for (const companion of companionDocuments) {
         const companionSigner = companion.signers.find((item) => item.role === 'CLIENTE');
         // Não automatizamos documentos que já tenham outros participantes definidos.
-        if (!companionSigner || companion.signers.some((item) => item.id !== companionSigner.id && item.status !== 'ASSINADO')) continue;
+        const sourceParticipants = rawSigners.filter((item) => item.name && item.status === 'ASSINADO');
+        const sameParticipants = sourceParticipants.length === companion.signers.length
+          && sourceParticipants.every((source) => companion.signers.some((target) =>
+            target.signatureOrder === source.signatureOrder
+            && target.role === source.role
+            && target.cpf.replace(/\D/g, '') === source.cpf.replace(/\D/g, '')
+          ));
+        if (!companionSigner || !sameParticipants) continue;
 
         await prisma.signer.update({
           where: { id: companionSigner.id },
@@ -381,6 +388,24 @@ export async function POST(
             ipAddress: clientIp, userAgent,
           },
         });
+        for (const source of sourceParticipants.filter((item) => item.id !== signer.id)) {
+          const target = companion.signers.find((item) =>
+            item.signatureOrder === source.signatureOrder
+            && item.role === source.role
+            && item.cpf.replace(/\D/g, '') === source.cpf.replace(/\D/g, '')
+          );
+          if (!target) continue;
+          await prisma.signer.update({
+            where: { id: target.id },
+            data: {
+              status: 'ASSINADO', signatureType: source.signatureType || 'SELO_DIGITAL', signatureImage: source.signatureImage || null,
+              signedConsentText: source.signedConsentText || `Participação registrada na mesma sessão deste envio, incluindo "${companion.title}".`,
+              selfieCenterImage: source.selfieCenterImage, selfieLeftImage: source.selfieLeftImage, selfieRightImage: source.selfieRightImage,
+              signedAt: new Date(), geoLat: source.geoLat, geoLng: source.geoLng, geoAccuracy: source.geoAccuracy,
+              geoCity: source.geoCity, geoState: source.geoState, ipAddress: source.ipAddress || clientIp, userAgent: source.userAgent || userAgent,
+            },
+          });
+        }
         await prisma.document.update({ where: { id: companion.id }, data: { status: 'CONCLUIDO', completedAt: new Date() } });
         await prisma.documentEvent.createMany({ data: [
           {
