@@ -327,8 +327,8 @@ export function DocumentRichEditor({
         contentEditable
         onInput={handleInput}
         onBlur={handleInput}
-        className={`min-h-[320px] max-h-[600px] overflow-y-auto p-4 text-sm text-slate-800 focus:outline-none ${plainDocumentMode ? '' : 'prose max-w-none'} empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none ${contentClassName}`}
-        style={{ fontFamily: 'Helvetica, Arial, sans-serif' }}
+        className={`min-h-[320px] max-h-[600px] w-full max-w-[794px] mx-auto overflow-y-auto p-[54px] text-[13.33px] leading-[20px] text-slate-800 focus:outline-none [&_p]:m-0 [&_p]:mb-[8px] [&_div]:mb-[8px] [&_h1]:m-0 [&_h1]:mb-[22px] [&_h1]:text-center [&_h1]:text-[16px] [&_h1]:leading-[22px] [&_h1]:font-bold [&_h2]:m-0 [&_h2]:mb-[8px] [&_h2]:text-[14.4px] [&_h2]:leading-[21px] [&_h2]:font-bold ${plainDocumentMode ? '' : ''} empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none ${contentClassName}`}
+        style={{ fontFamily: 'Helvetica, Arial, sans-serif', boxSizing: 'border-box' }}
         data-placeholder={placeholder}
         suppressContentEditableWarning
       />

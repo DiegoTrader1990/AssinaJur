@@ -166,7 +166,9 @@ function parseRichParagraphs(html: string): RichParagraph[] {
   if (containsHtmlBlocks) normalized = normalized.replace(/\n+/g, ' ');
 
   normalized = normalized
-    .replace(/<\s*br\s*\/?>/gi, '\n')
+    // Uma quebra manual (Shift+Enter) precisa sobreviver como uma linha real no PDF.
+    // Ela não é apenas uma quebra visual do navegador.
+    .replace(/<\s*br\s*\/?>/gi, '\n[[BREAK]]\n')
     .replace(/<\s*h1([^>]*)>/gi, (_match, attributes) => blockMarker('H1', attributes, 'CENTER'))
     .replace(/<\s*h2([^>]*)>/gi, (_match, attributes) => blockMarker('H2', attributes, 'LEFT'))
     .replace(/<\s*(?:p|div)([^>]*)>/gi, (_match, attributes) => blockMarker('BODY', attributes, 'JUSTIFY'))
@@ -177,6 +179,7 @@ function parseRichParagraphs(html: string): RichParagraph[] {
     .split('\n')
     .map((raw): RichParagraph | null => {
       let line = raw.trim();
+      if (line === '[[BREAK]]') return { kind: 'BODY', alignment: 'JUSTIFY', runs: [] };
       if (!line) return null;
       let kind: ParagraphKind = 'BODY';
       let alignment: TextAlignment = 'JUSTIFY';
@@ -371,6 +374,14 @@ async function renderTemplatePdf({
       run.text.trim().split(/\s+/).filter(Boolean).map((word) => ({ text: word, bold: heading || run.bold, fontFamily: run.fontFamily }))
     );
     if (paragraph.kind === 'LIST') tokens.unshift({ text: '\u2022', bold: true, fontFamily: 'HELVETICA' });
+
+    // Parágrafos vazios e quebras manuais são espaço deliberado do advogado. Antes
+    // eles eram descartados na compilação e o PDF compactava o documento.
+    if (tokens.length === 0) {
+      ensureLineSpace(lineHeight + 6);
+      currentY -= lineHeight + 6;
+      continue;
+    }
 
     let line: Array<{ text: string; bold: boolean; fontFamily?: PdfFontFamily }> = [];
     let lineWidth = 0;
