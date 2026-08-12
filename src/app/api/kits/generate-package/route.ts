@@ -166,8 +166,9 @@ export async function POST(req: Request) {
       escritorio_qualificacao: fullOfficeQualification,
       patronos_qualificacao_conjunta: jointPatronosQualification,
       patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),
-      cidade: client.city || 'Porto Seguro',
       ...(customVariables || {}),
+      // A cidade é um dado do cliente selecionado; um valor antigo salvo no kit não pode sobrescrevê-la.
+      cidade: client.city || 'Porto Seguro',
     };
 
     // Carregar papel timbrado do escritório (se configurado)

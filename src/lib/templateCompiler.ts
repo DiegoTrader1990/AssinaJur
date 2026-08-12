@@ -311,15 +311,21 @@ async function renderTemplatePdf({
   const lastSignatureLabelIndex = signatureCandidate !== undefined && signatureCandidate >= Math.max(0, paragraphs.length - 3)
     ? signatureCandidate
     : undefined;
+  const explicitSignatureLineIndexes = paragraphs
+    .map((paragraph, index) => ({ index, text: paragraph.runs.map((run) => run.text).join(' ').trim() }))
+    .filter((item) => /^_{5,}/.test(item.text))
+    .map((item) => item.index);
 
   for (let paragraphIndex = 0; paragraphIndex < paragraphs.length; paragraphIndex++) {
     const paragraph = paragraphs[paragraphIndex];
     const paragraphText = paragraph.runs.map((run) => run.text).join(' ').trim();
     const isExplicitSignatureLine = /^_{5,}/.test(paragraphText);
+    const isSignatureCaption = explicitSignatureLineIndexes.some((lineIndex) => paragraphIndex > lineIndex && paragraphIndex <= lineIndex + 2);
     // A qualificação inicial do cliente também costuma iniciar com OUTORGANTE/CONTRATANTE.
     // Apenas a última ocorrência é a área real de assinatura.
     const isClientSignatureLabel = paragraphIndex === lastSignatureLabelIndex;
     const isSignatureArea = isExplicitSignatureLine || isClientSignatureLabel;
+    const alignment = isExplicitSignatureLine || isSignatureCaption ? 'CENTER' : paragraph.alignment;
     const heading = paragraph.kind === 'H1' || paragraph.kind === 'H2';
     const fontSize = paragraph.kind === 'H1' ? 12 : paragraph.kind === 'H2' ? 10.8 : 10;
     const lineHeight = paragraph.kind === 'H1' ? 17 : paragraph.kind === 'H2' ? 16 : 15;
@@ -332,7 +338,7 @@ async function renderTemplatePdf({
     let lineWidth = 0;
     const drawLine = (isLastLine: boolean) => {
       if (!line.length) return;
-      ensureLineSpace(isSignatureArea ? lineHeight + 92 : lineHeight);
+      ensureLineSpace(isClientSignatureLabel ? lineHeight + 92 : lineHeight);
       if (isExplicitSignatureLine || (isClientSignatureLabel && !explicitSignatureLineFound)) {
         const labelY = (height - currentY - 5) / height;
         // Quando há somente o rótulo (ex.: OUTORGANTE: Nome), o selo fica logo abaixo
@@ -347,12 +353,12 @@ async function renderTemplatePdf({
 
       // ALINHAMENTO JUSTIFICADO MATEMÁTICO PERFEITO (Margem direita retíssima)
       const spaceCount = line.length - 1;
-      const shouldJustify = paragraph.alignment === 'JUSTIFY' && !isLastLine && spaceCount > 0 && paragraph.kind === 'BODY';
+      const shouldJustify = alignment === 'JUSTIFY' && !isLastLine && spaceCount > 0 && paragraph.kind === 'BODY';
       const extraWordSpacing = shouldJustify ? (maxWidth - lineWidth) / spaceCount : 0;
 
-      const startX = paragraph.alignment === 'CENTER'
+      const startX = alignment === 'CENTER'
         ? marginX + Math.max(0, (maxWidth - lineWidth) / 2)
-        : paragraph.alignment === 'RIGHT'
+        : alignment === 'RIGHT'
           ? marginX + Math.max(0, maxWidth - lineWidth)
           : marginX;
       let cursorX = startX;
@@ -396,7 +402,7 @@ async function renderTemplatePdf({
     // Reserva real para o selo profissional e assinatura, mesmo quando o editor possui
     // linhas em branco que antes eram descartadas pelo compilador.
     // Títulos principais precisam de uma separação visual clara antes da qualificação inicial.
-    currentY -= isSignatureArea ? 84 : paragraph.kind === 'H1' ? 22 : heading ? 8 : 6;
+    currentY -= isClientSignatureLabel ? 84 : isExplicitSignatureLine ? 8 : isSignatureCaption ? 3 : paragraph.kind === 'H1' ? 22 : heading ? 8 : 6;
   }
 
   if (watermark) {
