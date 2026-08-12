@@ -797,6 +797,7 @@ export default function KitsAndTemplatesPage() {
                   value={showSamples(templateFormData.contentHtml)}
                   onChange={(html) => setTemplateFormData({ ...templateFormData, contentHtml: restoreVariables(html) })}
                   showAiCopilot={true}
+                  showTags={false}
                   placeholder="Escreva a minuta jurídica..."
                 />
               </div>
