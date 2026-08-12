@@ -115,7 +115,7 @@ export default function TemplatesPage() {
   const openPdfPreview = async () => {
     setPreviewing(true);
     try {
-      const response = await fetch('/api/templates/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: formData.title, contentHtml: formData.contentHtml }) });
+      const response = await fetch('/api/templates/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: formData.title, documentType: formData.documentType, contentHtml: formData.contentHtml }) });
       if (!response.ok) throw new Error();
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       setPreviewUrl(URL.createObjectURL(await response.blob()));
