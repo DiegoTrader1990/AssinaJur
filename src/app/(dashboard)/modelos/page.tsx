@@ -1,10 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { FileText, Plus, Search, Edit3, Copy, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { FileText, Plus, Search, Edit3, Copy, X, CheckCircle, AlertCircle, Loader2, Eye } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
 const DocumentRichEditor = dynamic(() => import('@/components/DocumentRichEditor').then(mod => mod.DocumentRichEditor), { ssr: false });
+
+const SAMPLE_VALUES: Record<string, string> = { cliente_nome: 'MARIA APARECIDA DA SILVA', cliente_cpf: '123.456.789-09', cliente_rg: '12.345.678-9', cliente_nacionalidade: 'brasileira', cliente_estado_civil: 'solteira', cliente_profissao: 'aposentada', cliente_endereco: 'Rua das Acácias, nº 120, Centro, Porto Seguro/BA, CEP 45810-000', advogado_nome: 'DR. DIEGO DOS SANTOS RODRIGUES', advogado_oab: 'OAB/BA nº 51.881', advogada_nome: 'DRA. DOMINICK QUINTO SOARES', advogada_oab: 'OAB/BA nº 62.443', escritorio_nome: 'Rodrigues & Soares - Advogados', valor_honorarios: 'R$ 3.000,00', percentual_exito: '30%', cidade: 'Porto Seguro', data_atual: '12 de agosto de 2026' };
+const showSamples = (html: string) => Object.entries(SAMPLE_VALUES).reduce((text, [key, value]) => text.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), value), html);
+const restoreVariables = (html: string) => Object.entries(SAMPLE_VALUES).reduce((text, [key, value]) => text.replace(new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), `{{${key}}}`), html);
 
 interface Template {
   id: string;
@@ -34,6 +38,8 @@ export default function TemplatesPage() {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
 
   useEffect(() => {
     fetchTemplates();
@@ -104,6 +110,16 @@ export default function TemplatesPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const openPdfPreview = async () => {
+    setPreviewing(true);
+    try {
+      const response = await fetch('/api/templates/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: formData.title, contentHtml: formData.contentHtml }) });
+      if (!response.ok) throw new Error();
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(URL.createObjectURL(await response.blob()));
+    } catch { setError('Não foi possível gerar a prévia em PDF.'); } finally { setPreviewing(false); }
   };
 
 
@@ -278,13 +294,15 @@ export default function TemplatesPage() {
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Texto do Modelo *</label>
                 <DocumentRichEditor
-                  value={formData.contentHtml}
-                  onChange={(html) => setFormData({ ...formData, contentHtml: html })}
+                  value={showSamples(formData.contentHtml)}
+                  onChange={(html) => setFormData({ ...formData, contentHtml: restoreVariables(html) })}
                   showAiCopilot={true}
                   showTags={false}
                   placeholder="Escreva a minuta do modelo jurídico..."
                 />
               </div>
+
+              <button type="button" onClick={openPdfPreview} disabled={previewing || !formData.contentHtml} className="w-full py-3 border border-[#0B1D3D] text-[#0B1D3D] rounded-xl text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50"><Eye className="w-4 h-4" /> {previewing ? 'Gerando prévia...' : 'Ver prévia em PDF com dados de exemplo'}</button>
 
               <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
                 <button
@@ -307,6 +325,7 @@ export default function TemplatesPage() {
           </div>
         </div>
       )}
+      {previewUrl && <div className="fixed inset-0 z-[60] bg-slate-950/70 flex items-center justify-center p-4"><div className="w-full max-w-5xl h-[88vh] bg-white rounded-2xl overflow-hidden flex flex-col"><div className="px-5 py-3 bg-[#0B1D3D] text-white flex justify-between"><strong>Prévia do modelo</strong><button type="button" onClick={() => { URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }}>Fechar</button></div><iframe src={previewUrl} title="Prévia PDF" className="w-full flex-1" /></div></div>}
     </div>
   );
 }

@@ -201,7 +201,9 @@ function parseRichParagraphs(html: string): RichParagraph[] {
           runs[objectLabelRun + 1].text = capitalizeAfterLabel(runs[objectLabelRun + 1].text);
         }
       }
-      return runs.length ? { kind, alignment, runs } : null;
+      // Linhas vazias criadas no editor (Enter em um parágrafo vazio) também são
+      // parte da minuta: preservamos a altura para que a emissão respeite o espaçamento.
+      return { kind, alignment, runs };
     })
     .filter((item): item is RichParagraph => Boolean(item));
 
