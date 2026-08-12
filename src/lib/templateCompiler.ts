@@ -263,10 +263,23 @@ async function renderTemplatePdf({
     }
   };
 
-  for (const paragraph of paragraphs) {
+  const signatureLabelIndexes = paragraphs
+    .map((paragraph, index) => ({
+      index,
+      text: paragraph.runs.map((run) => run.text).join(' ').trim(),
+    }))
+    .filter((item) => /^(?:CONTRATANTE|OUTORGANTE|DECLARANTE|ASSINATURA\s+DO\s+CLIENTE)\s*:/i.test(item.text))
+    .map((item) => item.index);
+  const lastSignatureLabelIndex = signatureLabelIndexes.at(-1);
+
+  for (let paragraphIndex = 0; paragraphIndex < paragraphs.length; paragraphIndex++) {
+    const paragraph = paragraphs[paragraphIndex];
     const paragraphText = paragraph.runs.map((run) => run.text).join(' ').trim();
     const isExplicitSignatureLine = /^_{5,}/.test(paragraphText);
-    const isClientSignatureLabel = /^(?:CONTRATANTE|OUTORGANTE|DECLARANTE|ASSINATURA\s+DO\s+CLIENTE)\s*:/i.test(paragraphText);
+    // A qualificação inicial do cliente também costuma iniciar com OUTORGANTE/CONTRATANTE.
+    // Apenas a última ocorrência é a área real de assinatura.
+    const isClientSignatureLabel = paragraphIndex === lastSignatureLabelIndex;
+    const isSignatureArea = isExplicitSignatureLine || isClientSignatureLabel;
     const heading = paragraph.kind === 'H1' || paragraph.kind === 'H2';
     const fontSize = paragraph.kind === 'H1' ? 12 : paragraph.kind === 'H2' ? 10.8 : 10;
     const lineHeight = paragraph.kind === 'H1' ? 17 : paragraph.kind === 'H2' ? 16 : 15;
@@ -279,9 +292,15 @@ async function renderTemplatePdf({
     let lineWidth = 0;
     const drawLine = (isLastLine: boolean) => {
       if (!line.length) return;
-      ensureLineSpace(lineHeight);
+      ensureLineSpace(isSignatureArea ? lineHeight + 92 : lineHeight);
       if (isExplicitSignatureLine || (isClientSignatureLabel && !explicitSignatureLineFound)) {
-        const topY = Math.min(0.82, Math.max(0.08, (height - currentY - 5) / height));
+        const labelY = (height - currentY - 5) / height;
+        // Quando há somente o rótulo (ex.: OUTORGANTE: Nome), o selo fica logo abaixo
+        // dele, e não por cima do texto. Linhas explícitas de sublinhado recebem o selo
+        // diretamente sobre a linha escolhida no modelo.
+        const topY = isClientSignatureLabel && !isExplicitSignatureLine
+          ? Math.min(0.82, Math.max(0.08, labelY + 0.085))
+          : Math.min(0.82, Math.max(0.08, labelY));
         signaturePlacement = { page: pdfDoc.getPageCount(), x: 0.31, y: topY, width: 0.38, height: 0.085 };
         if (isExplicitSignatureLine) explicitSignatureLineFound = true;
       }
@@ -334,7 +353,9 @@ async function renderTemplatePdf({
       lineWidth += font.widthOfTextAtSize(nextValue, fontSize);
     }
     drawLine(true);
-    currentY -= heading ? 8 : 6;
+    // Reserva real para o selo profissional e assinatura, mesmo quando o editor possui
+    // linhas em branco que antes eram descartadas pelo compilador.
+    currentY -= isSignatureArea ? 84 : heading ? 8 : 6;
   }
 
   if (watermark) {

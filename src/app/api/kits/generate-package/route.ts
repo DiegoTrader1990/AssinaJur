@@ -7,6 +7,22 @@ import { getFileBuffer } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 
+function ensureJointAttorneyQualification(contentHtml: string, documentType: string) {
+  if (!['PROCURACAO', 'CONTRATO'].includes(documentType) || /{{\s*patronos_qualificacao_conjunta\s*}}/i.test(contentHtml)) {
+    return contentHtml;
+  }
+
+  // Modelos antigos trazem apenas o primeiro advogado. Ao gerar documentos de kit,
+  // aproveitamos os patronos ativos configurados pelo escritório sem alterar o modelo salvo.
+  const labels = documentType === 'PROCURACAO' ? 'OUTORGADOS?' : 'CONTRATADOS?';
+  const pattern = new RegExp(`<(p|div)([^>]*)>\\s*<strong>\\s*${labels}\\s*:\\s*<\\/strong>[\\s\\S]*?<\\/\\1>`, 'i');
+  const replacementLabel = documentType === 'PROCURACAO' ? 'OUTORGADOS' : 'CONTRATADOS';
+  return contentHtml.replace(
+    pattern,
+    (_match, tag, attributes) => `<${tag}${attributes}><strong>${replacementLabel}:</strong> {{patronos_qualificacao_conjunta}}.</${tag}>`,
+  );
+}
+
 export async function POST(req: Request) {
   try {
     const user = await getSessionUser();
@@ -64,8 +80,15 @@ export async function POST(req: Request) {
     const cleanDoc = (office.cpfCnpj || '').replace(/\D/g, '');
     const isCnpj = cleanDoc.length > 11;
 
+    const officeState = String((office as any).address || '').match(/(?:\/|,|\s)(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b/i)?.[1]?.toUpperCase() || 'BA';
+    const formatOab = (oabNumber: string | null) => {
+      const value = String(oabNumber || '').trim();
+      if (!value) return 'inscrito(a) na Ordem dos Advogados do Brasil';
+      if (/\bOAB\b/i.test(value)) return `inscrito(a) na ${value}`;
+      return `inscrito(a) na OAB/${officeState} sob o nº ${value}`;
+    };
     const lawyerTextList = activeLawyers.length > 0
-      ? activeLawyers.map(l => `${l.name.toUpperCase()}${l.oabNumber ? `, inscrito(a) na ${l.oabNumber}` : ''}`).join(' e ')
+      ? activeLawyers.map(l => `${l.name}, advogado(a), ${formatOab(l.oabNumber)}`).join(' e ')
       : 'DR. DIEGO DOS SANTOS RODRIGUES, inscrito na OAB/BA nº 51.881, e DRA. DOMINICK QUINTO SOARES, inscrita na OAB/BA nº 62.443';
 
     let fullOfficeQualification = '';
@@ -135,7 +158,10 @@ export async function POST(req: Request) {
       const template = item.template;
 
       // Usar conteúdo customizado (editado pelo advogado) se disponível
-      const finalContentHtml = customContents?.[template.id] || template.contentHtml;
+      const finalContentHtml = ensureJointAttorneyQualification(
+        customContents?.[template.id] || template.contentHtml,
+        template.documentType,
+      );
 
       const compiledResult = await compileTemplateToPdf({
         officeId: user.officeId,
