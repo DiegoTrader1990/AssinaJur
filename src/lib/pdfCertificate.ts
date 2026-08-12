@@ -193,6 +193,7 @@ const PUBLIC_EVENT_LABELS: Record<string, string> = {
   DOCUMENT_GENERATED_BY_WHATSAPP: 'Documento gerado pelo WhatsApp',
   LINK_SENT: 'Link de assinatura enviado',
   LINK_OPENED: 'Link de assinatura acessado',
+  DOCUMENT_VIEWED: 'Documento aberto para leitura',
   IDENTITY_CONFIRMED: 'CPF confirmado pelo signatário',
   CAMERA_PERMITTED: 'Permissão de câmera concedida',
   LIVENESS_STARTED: 'Prova de presença iniciada',
@@ -200,6 +201,7 @@ const PUBLIC_EVENT_LABELS: Record<string, string> = {
   SELFIE_LEFT_VALIDATED: 'Perfil esquerdo validado',
   SELFIE_RIGHT_VALIDATED: 'Perfil direito validado',
   LIVENESS_CAPTURED: 'Prova de presença concluída (3 registros faciais)',
+  CONSENT_ACCEPTED: 'Declaração de ciência e concordância aceita',
   SIGNATURE_SUBMITTED: 'Assinatura eletrônica registrada',
   DOCUMENT_COMPLETED: 'Documento finalizado e certificado emitido',
   DOCUMENT_CANCELLED: 'Documento cancelado',
@@ -258,9 +260,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
   // O certificado é a trilha de evidências da assinatura, não o histórico interno
   // do escritório. Exibimos apenas os atos que comprovam a manifestação do signatário.
   const certificateEventTypes = new Set([
-    'LINK_OPENED', 'IDENTITY_CONFIRMED', 'CAMERA_PERMITTED', 'LIVENESS_STARTED',
+    'LINK_OPENED', 'DOCUMENT_VIEWED', 'IDENTITY_CONFIRMED', 'CAMERA_PERMITTED', 'LIVENESS_STARTED',
     'SELFIE_CENTER_VALIDATED', 'SELFIE_LEFT_VALIDATED', 'SELFIE_RIGHT_VALIDATED',
-    'LIVENESS_CAPTURED', 'SIGNATURE_SUBMITTED', 'ROGO_CONSENT_RECORDED', 'DOCUMENT_COMPLETED',
+    'LIVENESS_CAPTURED', 'CONSENT_ACCEPTED', 'SIGNATURE_SUBMITTED', 'ROGO_CONSENT_RECORDED', 'DOCUMENT_COMPLETED',
   ]);
   const publicEvents = dedupePublicAuditEvents(doc.events.filter((event) => certificateEventTypes.has(event.eventType)));
 

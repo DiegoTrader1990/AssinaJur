@@ -278,9 +278,16 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [loadingDocBlob, setLoadingDocBlob] = useState(false);
   const [previewDocumentId, setPreviewDocumentId] = useState<string | null>(null);
 
+  const recordEvidence = (eventType: string) => {
+    fetch(`/api/sign/${params.token}/event`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ eventType }),
+    }).catch(() => {});
+  };
+
   const handleOpenDocPreview = async (documentId?: string) => {
     const targetDocumentId = documentId || document?.id;
     if (!targetDocumentId) return;
+    recordEvidence('DOCUMENT_VIEWED');
     setShowDocPreview(true);
     if (previewDocumentId !== targetDocumentId) {
       if (docBlobUrl) URL.revokeObjectURL(docBlobUrl);
@@ -609,6 +616,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
       const updatedSelfies = { ...currentTargetSelfies, [key]: dataUrl };
       updateCurrentSelfieImages(updatedSelfies, currentPerson);
+      if (currentPerson === 'CLIENT') {
+        recordEvidence(key === 'center' ? 'SELFIE_CENTER_VALIDATED' : key === 'left' ? 'SELFIE_LEFT_VALIDATED' : 'SELFIE_RIGHT_VALIDATED');
+      }
 
       if (singleRetakeKey) {
         setSelfieInstruction(`✓ Foto de ${LIVENESS_STEPS.find(s => s.key === key)?.label} atualizada!`);
@@ -689,6 +699,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         await selfieVideoRef.current.play();
       }
       setCameraActive(true);
+      recordEvidence('CAMERA_PERMITTED');
+      recordEvidence('LIVENESS_STARTED');
       setFrameState('GRAY');
       playGoogleAudio('intro', audioEnabledRef.current);
       const fm = await initFaceMesh();
@@ -1381,7 +1393,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               <input
                 type="checkbox"
                 checked={agreedConsent}
-                onChange={(e) => setAgreedConsent(e.target.checked)}
+                onChange={(e) => {
+                  setAgreedConsent(e.target.checked);
+                  if (e.target.checked) recordEvidence('CONSENT_ACCEPTED');
+                }}
                 className="w-6 h-6 shrink-0 text-[#071B3A] rounded border-slate-400 mt-0.5 focus:ring-[#071B3A]"
               />
               <span className="leading-relaxed text-sm font-semibold text-[#071B3A]">
