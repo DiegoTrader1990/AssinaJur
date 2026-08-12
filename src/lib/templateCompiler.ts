@@ -226,18 +226,26 @@ function parseRichParagraphs(html: string): RichParagraph[] {
     .filter((item): item is RichParagraph => Boolean(item));
 
   // Merge short label paragraphs (e.g., "PODERES ESPECIAIS:", "PODERES ESPECIAIS: nos") into the next paragraph
+  // Colagens do Word/WhatsApp frequentemente trazem vários <div><br></div>
+  // consecutivos. Um deles representa o afastamento normal entre parágrafos;
+  // os demais não podem virar buracos de meia página no PDF.
+  const normalizedParagraphs = parsed.filter((paragraph, index) => {
+    if (paragraph.runs.length > 0) return true;
+    return index === 0 || parsed[index - 1].runs.length > 0;
+  });
+
   const mergedParagraphs: RichParagraph[] = [];
-  for (let i = 0; i < parsed.length; i++) {
-    const current = parsed[i];
+  for (let i = 0; i < normalizedParagraphs.length; i++) {
+    const current = normalizedParagraphs[i];
     const currentText = current.runs.map((r) => r.text).join(' ').trim();
 
     if (
-      i < parsed.length - 1 &&
+      i < normalizedParagraphs.length - 1 &&
       isLabelParagraph(currentText) &&
       current.kind === 'BODY' &&
-      parsed[i + 1].kind === 'BODY'
+      normalizedParagraphs[i + 1].kind === 'BODY'
     ) {
-      const next = parsed[i + 1];
+      const next = normalizedParagraphs[i + 1];
       let labelRuns = current.runs;
       // If label runs end with a stray "nos", trim it if next starts with "termos"
       const lastRun = labelRuns[labelRuns.length - 1];
