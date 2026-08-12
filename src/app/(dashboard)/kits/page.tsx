@@ -40,7 +40,10 @@ const showEditorPreview = (html: string, documentType: string, values: Record<st
         return new RegExp(`^${label}?S?\\s*:`, 'i').test(text) ? `<${tag}${attributes}><strong>${label}:</strong> ${samples.patronos_qualificacao_conjunta}.</${tag}>` : block;
       })
     : html;
-  return Object.entries(samples).reduce((text, [key, value]) => text.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), value), withPatronos);
+  const withValues = Object.entries(samples).reduce((text, [key, value]) => text.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), value), withPatronos);
+  const names = [samples.cliente_nome, samples.advogado_nome, samples.escritorio_nome, ...(samples.patronos_nomes || '').split('|')]
+    .map((name) => name.trim()).filter((name) => name.length >= 3).sort((left, right) => right.length - left.length);
+  return names.reduce((text, name) => text.replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), (match) => `<strong>${match}</strong>`), withValues);
 };
 const restoreEditorPreview = (html: string, values: Record<string, string>) => Object.entries({ ...SAMPLE_VALUES, ...values })
   .sort(([, left], [, right]) => right.length - left.length)

@@ -19,7 +19,10 @@ const showEditorPreview = (html: string, documentType: string, values: Record<st
         return new RegExp(`^${label}?S?\\s*:`, 'i').test(text) ? `<${tag}${attributes}><strong>${label}:</strong> ${samples.patronos_qualificacao_conjunta}.</${tag}>` : block;
       })
     : html;
-  return Object.entries(samples).reduce((text, [key, value]) => text.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), value), withPatronos);
+  const withValues = Object.entries(samples).reduce((text, [key, value]) => text.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), value), withPatronos);
+  const names = [samples.cliente_nome, samples.advogado_nome, samples.escritorio_nome, ...(samples.patronos_nomes || '').split('|')]
+    .map((name) => name.trim()).filter((name) => name.length >= 3).sort((left, right) => right.length - left.length);
+  return names.reduce((text, name) => text.replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), (match) => `<strong>${match}</strong>`), withValues);
 };
 const restoreEditorPreview = (html: string, values: Record<string, string>) => Object.entries({ ...SAMPLE_VALUES, ...values })
   .sort(([, left], [, right]) => right.length - left.length)
@@ -244,7 +247,7 @@ export default function TemplatesPage() {
       {/* Modal: Cadastro de Modelo */}
       {showModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-slate-200 relative my-8 overflow-y-auto max-h-[90vh]">
+          <div className="bg-white rounded-2xl max-w-5xl w-full p-6 shadow-2xl border border-slate-200 relative my-8 overflow-y-auto max-h-[90vh]">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <FileText className="w-5 h-5 text-gold-500" />
