@@ -212,10 +212,10 @@ export default function DispatchKitPage() {
 
   if (result) {
     return (
-      <div className="max-w-2xl mx-auto bg-white p-8 rounded-2xl border border-slate-200 shadow-lg space-y-6">
-        <div className="text-center space-y-2">
-          <div className="w-14 h-14 bg-gold-100 text-gold-600 rounded-full flex items-center justify-center mx-auto mb-2">
-            <Sparkles className="w-8 h-8 text-gold-500" />
+      <div className="max-w-3xl mx-auto bg-white p-8 sm:p-10 rounded-[28px] border border-slate-200 shadow-xl space-y-7">
+        <div className="text-center space-y-2.5 pb-2">
+          <div className="w-14 h-14 bg-[#071B3A] text-gold-400 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-blue-950/15">
+            <Sparkles className="w-7 h-7" />
           </div>
           <h1 className="text-2xl font-extrabold text-[#0B1D3D]">Kit Gerado com Sucesso!</h1>
           <p className="text-sm text-slate-600">
@@ -223,38 +223,35 @@ export default function DispatchKitPage() {
           </p>
         </div>
 
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
+        <div className="p-5 bg-gradient-to-br from-[#f8f4e8] to-white border border-[#d4af37]/40 rounded-2xl space-y-4 shadow-sm">
           <span className="text-xs font-bold text-[#0B1D3D] uppercase tracking-wider block">Link único de assinatura do kit</span>
           <p className="text-xs text-slate-600 leading-relaxed">Envie somente este link ao cliente. Ele revisará e assinará todos os documentos em uma única sessão.</p>
-          <div className="bg-white border border-blue-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
-            <p className="font-mono text-[10px] text-slate-600 break-all flex-1">{result.signatureLink}</p>
-            <button type="button" onClick={handleCopyKitLink} className="shrink-0 py-2.5 px-4 bg-gold-500 hover:bg-gold-400 text-[#0B1D3D] font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors">
-              {copiedDocumentId === 'KIT_LINK' ? <><Check className="w-3.5 h-3.5" /> Copiado</> : <><Copy className="w-3.5 h-3.5" /> Copiar link do kit</>}
+          <div className="bg-white border border-[#d4af37]/30 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <p className="text-xs font-semibold text-slate-600 flex-1">Link seguro pronto para envio ao cliente</p>
+            <button type="button" onClick={handleCopyKitLink} className="shrink-0 py-3 px-5 bg-[#071B3A] hover:bg-blue-900 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-colors">
+              {copiedDocumentId === 'KIT_LINK' ? <><Check className="w-4 h-4" /> Link copiado</> : <><Copy className="w-4 h-4" /> Copiar link do kit</>}
             </button>
           </div>
         </div>
 
-        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+        <div className="border border-slate-200 rounded-2xl overflow-hidden">
           <span className="text-xs font-bold text-[#0B1D3D] uppercase tracking-wider block">Documentos incluídos</span>
           <p className="text-xs text-slate-600 leading-relaxed">Confira as minutas abaixo. Os links individuais permanecem internos ao sistema.</p>
-          <div className="space-y-3">
+          <div className="divide-y divide-slate-100">
             {result.documents.map((document, index) => (
-              <div key={document.id} className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-3">
-                <div className="flex items-start gap-2">
-                  <FileText className="w-4 h-4 text-gold-500 shrink-0 mt-0.5" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-[#0B1D3D]">{index + 1}. {document.title}</p>
-                  </div>
+              <div key={document.id} className="bg-white px-4 py-4 flex items-center gap-3">
+                <div className="w-8 h-8 shrink-0 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center text-xs font-extrabold">{index + 1}</div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-[#0B1D3D] truncate">{document.title}</p>
+                  <p className="text-[10px] text-emerald-700 font-semibold mt-0.5">Minuta pronta para conferência</p>
                 </div>
-                <div>
                   <button
                     type="button"
                     onClick={() => setPreviewDocument(document)}
-                    className="py-2.5 border border-slate-300 text-slate-700 hover:bg-slate-50 font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors"
+                    className="shrink-0 py-2 px-3 border border-slate-300 text-slate-700 hover:bg-slate-50 font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors"
                   >
                     <Eye className="w-3.5 h-3.5" /> Ver minuta
                   </button>
-                </div>
               </div>
             ))}
           </div>
