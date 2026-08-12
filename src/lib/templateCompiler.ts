@@ -44,7 +44,8 @@ export function replaceTemplateVariables(contentHtml: string, variables: Variabl
 
 type ParagraphKind = 'BODY' | 'H1' | 'H2' | 'LIST';
 type TextAlignment = 'LEFT' | 'CENTER' | 'RIGHT' | 'JUSTIFY';
-type TextRun = { text: string; bold: boolean };
+type PdfFontFamily = 'HELVETICA' | 'TIMES' | 'COURIER';
+type TextRun = { text: string; bold: boolean; fontFamily?: PdfFontFamily };
 type RichParagraph = { kind: ParagraphKind; alignment: TextAlignment; runs: TextRun[] };
 
 function decodeHtmlText(value: string): string {
@@ -56,6 +57,13 @@ function decodeHtmlText(value: string): string {
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
     .replace(/\s+/g, ' ');
+}
+
+function mapPdfFontFamily(value: string): PdfFontFamily {
+  const family = value.toLowerCase();
+  if (/(times|georgia|garamond)/.test(family)) return 'TIMES';
+  if (/(courier|mono)/.test(family)) return 'COURIER';
+  return 'HELVETICA';
 }
 
 function emphasizeDocumentNames(html: string, variables: VariableValues): string {
@@ -181,12 +189,19 @@ function parseRichParagraphs(html: string): RichParagraph[] {
 
       const runs: TextRun[] = [];
       let boldDepth = 0;
+      const fontStack: PdfFontFamily[] = ['HELVETICA'];
       for (const token of line.match(/<[^>]+>|[^<]+/g) || []) {
         if (/^<\s*(?:strong|b)\b/i.test(token)) { boldDepth += 1; continue; }
         if (/^<\s*\/(?:strong|b)\s*>/i.test(token)) { boldDepth = Math.max(0, boldDepth - 1); continue; }
+        if (/^<\s*font\b/i.test(token)) {
+          const face = token.match(/\bface\s*=\s*["']?([^"'>\s]+)/i)?.[1] || '';
+          fontStack.push(mapPdfFontFamily(face));
+          continue;
+        }
+        if (/^<\s*\/font\s*>/i.test(token)) { if (fontStack.length > 1) fontStack.pop(); continue; }
         if (/^<[^>]+>$/.test(token)) continue;
         const text = decodeHtmlText(token);
-        if (text.trim()) runs.push({ text, bold: boldDepth > 0 });
+        if (text.trim()) runs.push({ text, bold: boldDepth > 0, fontFamily: fontStack.at(-1) });
       }
       // Em qualificações, o texto posterior a “OBJETO:” é uma oração completa e
       // deve iniciar como frase, mesmo quando o modelo antigo a tiver salvo em minúscula.
@@ -263,6 +278,15 @@ async function renderTemplatePdf({
   }
   const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const timesFont = await pdfDoc.embedFont(StandardFonts.TimesRoman);
+  const timesBoldFont = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
+  const courierFont = await pdfDoc.embedFont(StandardFonts.Courier);
+  const courierBoldFont = await pdfDoc.embedFont(StandardFonts.CourierBold);
+  const documentFont = (family: PdfFontFamily | undefined, bold: boolean) => {
+    if (family === 'TIMES') return bold ? timesBoldFont : timesFont;
+    if (family === 'COURIER') return bold ? courierBoldFont : courierFont;
+    return bold ? boldFont : regularFont;
+  };
   const pageSize: [number, number] = [595.28, 841.89];
   const navyColor = rgb(11 / 255, 29 / 255, 61 / 255);
   const goldColor = rgb(212 / 255, 175 / 255, 55 / 255);
@@ -344,11 +368,11 @@ async function renderTemplatePdf({
     const fontSize = paragraph.kind === 'H1' ? 12 : paragraph.kind === 'H2' ? 10.8 : 10;
     const lineHeight = paragraph.kind === 'H1' ? 17 : paragraph.kind === 'H2' ? 16 : 15;
     const tokens = paragraph.runs.flatMap((run) =>
-      run.text.trim().split(/\s+/).filter(Boolean).map((word) => ({ text: word, bold: heading || run.bold }))
+      run.text.trim().split(/\s+/).filter(Boolean).map((word) => ({ text: word, bold: heading || run.bold, fontFamily: run.fontFamily }))
     );
-    if (paragraph.kind === 'LIST') tokens.unshift({ text: '\u2022', bold: true });
+    if (paragraph.kind === 'LIST') tokens.unshift({ text: '\u2022', bold: true, fontFamily: 'HELVETICA' });
 
-    let line: Array<{ text: string; bold: boolean }> = [];
+    let line: Array<{ text: string; bold: boolean; fontFamily?: PdfFontFamily }> = [];
     let lineWidth = 0;
     const drawLine = (isLastLine: boolean) => {
       if (!line.length) return;
@@ -377,7 +401,7 @@ async function renderTemplatePdf({
           : marginX;
       let cursorX = startX;
       line.forEach((token, index) => {
-        const font = token.bold ? boldFont : regularFont;
+        const font = documentFont(token.fontFamily, token.bold);
         let cleanText = token.text.replace(/\s+([,.;:!?])/g, '$1');
         
         // Draw the word text cleanly at cursorX
@@ -404,7 +428,7 @@ async function renderTemplatePdf({
 
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i];
-      const font = token.bold ? boldFont : regularFont;
+      const font = documentFont(token.fontFamily, token.bold);
       const value = `${line.length && !/^[,.;:!?)]/.test(token.text) ? ' ' : ''}${token.text}`;
       const width = font.widthOfTextAtSize(value, fontSize);
       if (line.length && lineWidth + width > maxWidth) drawLine(false);

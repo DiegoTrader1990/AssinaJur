@@ -58,6 +58,13 @@ const AVAILABLE_TAGS = [
   'data_atual'
 ];
 
+const FONT_OPTIONS = [
+  { value: 'Arial', label: 'Arial' },
+  { value: 'Times New Roman', label: 'Times New Roman' },
+  { value: 'Georgia', label: 'Georgia' },
+  { value: 'Courier New', label: 'Courier New' },
+];
+
 export function DocumentRichEditor({
   value,
   onChange,
@@ -196,6 +203,17 @@ export function DocumentRichEditor({
     <div className={`bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs ${className}`}>
       {/* Toolbar */}
       <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-wrap gap-1 items-center">
+        <label className="flex items-center gap-1.5 px-2 text-[11px] font-semibold text-slate-600" title="Selecione o texto antes de trocar a fonte">
+          Fonte
+          <select
+            defaultValue="Arial"
+            onChange={(event) => executeCommand('fontName', event.target.value)}
+            className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-700 outline-none focus:border-blue-500"
+          >
+            {FONT_OPTIONS.map((font) => <option key={font.value} value={font.value}>{font.label}</option>)}
+          </select>
+        </label>
+        <div className="w-px h-6 bg-slate-300 mx-1"></div>
         <button 
           onClick={() => executeCommand('bold')}
           className="p-2 rounded-lg hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
@@ -308,7 +326,8 @@ export function DocumentRichEditor({
         contentEditable
         onInput={handleInput}
         onBlur={handleInput}
-        className={`min-h-[320px] max-h-[600px] overflow-y-auto p-4 font-serif text-sm text-slate-800 focus:outline-none ${plainDocumentMode ? '' : 'prose max-w-none'} empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none ${contentClassName}`}
+        className={`min-h-[320px] max-h-[600px] overflow-y-auto p-4 text-sm text-slate-800 focus:outline-none ${plainDocumentMode ? '' : 'prose max-w-none'} empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none ${contentClassName}`}
+        style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
         data-placeholder={placeholder}
         suppressContentEditableWarning
       />
