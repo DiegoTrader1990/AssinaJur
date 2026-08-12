@@ -117,6 +117,7 @@ export async function POST(req: Request) {
       rogoPhone,
       rogoEmail,
       enforceSignatureOrder,
+      kitBatchId,
     } = body;
 
     if (!title || !originalFileId || !signers || !Array.isArray(signers) || signers.length === 0) {
@@ -225,6 +226,7 @@ export async function POST(req: Request) {
           signaturePosition: safeSignaturePosition,
           originalFileId: finalFileId,
           originalHash: verifiedOriginalHash,
+          kitBatchId: typeof kitBatchId === 'string' && kitBatchId.trim() ? kitBatchId.trim() : null,
           status: 'PRONTO_PARA_ENVIO',
           expirationDate: expirationDate ? new Date(expirationDate) : null,
           customMessage: customMessage || null,

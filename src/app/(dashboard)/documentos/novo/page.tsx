@@ -62,6 +62,7 @@ export default function NewDocumentPage() {
   // Dados do Passo 1: Upload
   const [file, setFile] = useState<File | null>(null);
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [uploading, setUploading] = useState(false);
 
   // Dados do Passo 2: Cliente & Signatários
@@ -278,26 +279,29 @@ export default function NewDocumentPage() {
     }
   };
 
-  const processFile = async (file: File) => {
+  const processFiles = async (files: File[]) => {
     setUploading(true);
     setError('');
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const res = await fetch('/api/documents/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao enviar arquivo PDF.');
-
-      setUploadedFile(data.file);
-      if (!title) {
-        setTitle(file.name.replace(/\.[^/.]+$/, ''));
+      const newUploads: UploadedFile[] = [];
+      for (const selectedFile of files) {
+        if (selectedFile.type !== 'application/pdf' && !selectedFile.name.toLowerCase().endsWith('.pdf')) {
+          throw new Error('Todos os arquivos enviados devem ser PDFs.');
+        }
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        const res = await fetch('/api/documents/upload', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `Erro ao enviar ${selectedFile.name}.`);
+        newUploads.push(data.file);
+        if (uploadedFiles.length === 0 && newUploads.length === 1) {
+          setUploadedFile(data.file);
+          setFile(selectedFile);
+          if (!title) setTitle(selectedFile.name.replace(/\.[^/.]+$/, ''));
+        }
       }
+      setUploadedFiles((current) => [...current, ...newUploads]);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -306,8 +310,9 @@ export default function NewDocumentPage() {
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile) await processFile(selectedFile);
+    const selectedFiles = Array.from(e.target.files || []);
+    if (selectedFiles.length) await processFiles(selectedFiles);
+    e.target.value = '';
   };
 
   const handleDrag = (e: React.DragEvent) => {
@@ -324,8 +329,8 @@ export default function NewDocumentPage() {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      await processFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files?.length) {
+      await processFiles(Array.from(e.dataTransfer.files));
     }
   };
 
@@ -365,7 +370,7 @@ export default function NewDocumentPage() {
 
   const handleSubmitDocument = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!uploadedFile) {
+    if (uploadedFiles.length === 0) {
       setError('Por favor, faça upload do PDF antes de prosseguir.');
       return;
     }
@@ -374,14 +379,21 @@ export default function NewDocumentPage() {
     setError('');
 
     try {
-      const res = await fetch('/api/documents', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title,
+      const batchId = uploadedFiles.length > 1
+        ? (globalThis.crypto?.randomUUID?.() || `pacote-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+        : null;
+      const responses: any[] = [];
+      for (let index = 0; index < uploadedFiles.length; index++) {
+        const currentFile = uploadedFiles[index];
+        const res = await fetch('/api/documents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+          title: uploadedFiles.length === 1 ? title : currentFile.name.replace(/\.[^/.]+$/, ''),
           documentType,
-          originalFileId: uploadedFile.id,
-          originalHash: uploadedFile.hash,
+          originalFileId: currentFile.id,
+          originalHash: currentFile.hash,
+          kitBatchId: batchId,
           clientId: selectedClientId || null,
           signaturePosition: signaturePosition === 'CUSTOM'
             ? `CUSTOM:${placementPage}:${stampPlacement.x.toFixed(4)}:${stampPlacement.y.toFixed(4)}:${stampPlacement.width.toFixed(4)}:${stampPlacement.height.toFixed(4)}`
@@ -395,13 +407,13 @@ export default function NewDocumentPage() {
           rogoPhone: isIlliterate ? rogoPhone : null,
           rogoEmail: isIlliterate ? rogoEmail : null,
           enforceSignatureOrder,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao criar documento.');
-
-      setCreatedDocument(data);
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erro ao criar documento.');
+        responses.push(data);
+      }
+      setCreatedDocument({ ...responses[0], documentCount: responses.length, documents: responses.map((item) => item.document) });
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -423,7 +435,7 @@ export default function NewDocumentPage() {
           <div className="w-16 h-16 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xs">
             <CheckCircle className="w-9 h-9" />
           </div>
-          <h1 className="font-heading text-2xl font-extrabold text-[#071B3A]">Documento Criado e Links Prontos!</h1>
+          <h1 className="font-heading text-2xl font-extrabold text-[#071B3A]">{createdDocument.documentCount > 1 ? 'Pacote criado e link pronto!' : 'Documento criado e link pronto!'}</h1>
           <p className="text-xs text-slate-500 mt-1.5 font-medium">
             Envie os links abaixo diretamente pelo WhatsApp ou E-mail dos signatários.
           </p>
@@ -434,7 +446,15 @@ export default function NewDocumentPage() {
             {createdDocument.isIlliterate || createdDocument.signers.some((s: any) => s.role === 'ASSINANTE_A_ROGO') ? 'Link Único de Assinatura a Rogo (Mesmo Celular)' : 'Links de Assinatura Direta'}
           </h2>
           
-          {createdDocument.isIlliterate || createdDocument.signers.some((s: any) => s.role === 'ASSINANTE_A_ROGO') ? (
+          {createdDocument.documentCount > 1 ? (
+            <div className="p-5 bg-gradient-to-r from-blue-50/90 to-indigo-50/70 rounded-2xl border border-blue-200 space-y-3 shadow-xs">
+              <div className="font-extrabold text-[#071B3A] text-sm font-heading">Assinatura de {createdDocument.documentCount} documentos em um só link</div>
+              <p className="text-xs text-slate-600 font-medium">O cliente revisará os documentos e concluirá a assinatura uma única vez.</p>
+              <button onClick={() => handleCopyLink(createdDocument.signers.find((s: any) => s.role === 'CLIENTE')?.token || createdDocument.signers[0]?.token)} className="px-5 py-3 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-xl text-xs shadow-md transition-all flex items-center justify-center gap-2 font-heading">
+                {copiedToken === (createdDocument.signers.find((s: any) => s.role === 'CLIENTE')?.token || createdDocument.signers[0]?.token) ? <><Check className="w-4 h-4 stroke-[3]" /> Copiado!</> : <><Copy className="w-4 h-4" /> Copiar link único</>}
+              </button>
+            </div>
+          ) : createdDocument.isIlliterate || createdDocument.signers.some((s: any) => s.role === 'ASSINANTE_A_ROGO') ? (
             <div className="p-5 bg-gradient-to-r from-blue-50/90 to-indigo-50/70 rounded-2xl border border-blue-200 space-y-3 shadow-xs">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="space-y-1">
@@ -559,7 +579,7 @@ export default function NewDocumentPage() {
           >
             <Upload className="w-12 h-12 text-blue-600 mx-auto mb-3" />
             <p className="text-sm font-bold text-slate-800 font-heading">
-              {dragActive ? 'Solte o arquivo PDF para enviar!' : 'Arraste o arquivo PDF aqui ou clique para selecionar'}
+              {dragActive ? 'Solte os PDFs para enviar!' : 'Arraste um ou mais PDFs aqui, ou clique para selecionar'}
             </p>
             <p className="text-xs text-slate-500 mt-1 mb-4 font-medium">Formatos suportados: PDF (máximo 25MB)</p>
 
@@ -569,22 +589,27 @@ export default function NewDocumentPage() {
                   <Loader2 className="w-4 h-4 animate-spin text-blue-400" /> Processando Hash...
                 </>
               ) : (
-                'Selecionar Arquivo PDF'
+                'Selecionar PDFs'
               )}
-              <input type="file" accept=".pdf,application/pdf" onChange={handleFileUpload} className="hidden" />
+              <input type="file" accept=".pdf,application/pdf" multiple onChange={handleFileUpload} className="hidden" />
             </label>
           </div>
 
-          {uploadedFile && (
-            <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between text-xs text-emerald-800">
-              <div className="flex items-center gap-3">
-                <FileText className="w-5 h-5 text-emerald-600" />
-                <div>
-                  <div className="font-bold">{uploadedFile.name}</div>
-                  <div className="text-[10px] font-mono text-emerald-700">Hash SHA-256: {uploadedFile.hash.substring(0, 24)}...</div>
-                </div>
+          {uploadedFiles.length > 0 && (
+            <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-3 text-xs text-emerald-800">
+              <div className="flex items-center justify-between">
+                <div className="font-extrabold">{uploadedFiles.length} {uploadedFiles.length === 1 ? 'documento pronto' : 'documentos prontos para o pacote'}</div>
+                <span className="font-bold bg-emerald-200 text-emerald-900 px-3 py-1 rounded-full text-[11px]">Pronto</span>
               </div>
-              <span className="font-bold bg-emerald-200 text-emerald-900 px-3 py-1 rounded-full text-[11px]">Pronto</span>
+              <div className="space-y-2">
+                {uploadedFiles.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between gap-3 bg-white/70 border border-emerald-100 rounded-xl px-3 py-2">
+                    <div className="flex items-center gap-2 min-w-0"><FileText className="w-4 h-4 text-emerald-600 shrink-0" /><span className="font-bold truncate">{item.name}</span></div>
+                    <button type="button" onClick={() => setUploadedFiles((items) => items.filter((current) => current.id !== item.id))} className="text-red-600 hover:text-red-700 font-bold shrink-0">Remover</button>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-emerald-700">Um único link será criado para a assinatura de todos estes documentos.</p>
             </div>
           )}
 
@@ -648,7 +673,7 @@ export default function NewDocumentPage() {
           <div className="flex justify-end pt-4">
             <button
               onClick={() => setStep(2)}
-              disabled={!uploadedFile}
+              disabled={uploadedFiles.length === 0}
               className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md text-xs transition-all flex items-center gap-2 disabled:opacity-50 font-heading"
             >
               Avançar para Signatários
