@@ -350,6 +350,52 @@ export async function POST(
       }
     }
 
+    // Um kit é apresentado ao cliente por um único link. A identidade, prova de
+    // presença e consentimento desta sessão são vinculados a cada documento pendente
+    // do mesmo kit, mantendo PDFs e certificados individuais por documento.
+    let kitDocumentsSigned = 1;
+    if (allCompleted && signer.role === 'CLIENTE' && signer.document.kitId) {
+      const companionDocuments = await prisma.document.findMany({
+        where: {
+          kitId: signer.document.kitId,
+          clientId: signer.document.clientId,
+          id: { not: signer.document.id },
+          status: { notIn: ['CONCLUIDO', 'CANCELADO', 'EXPIRADO'] },
+        },
+        include: { signers: true },
+      });
+
+      for (const companion of companionDocuments) {
+        const companionSigner = companion.signers.find((item) => item.role === 'CLIENTE');
+        // Não automatizamos documentos que já tenham outros participantes definidos.
+        if (!companionSigner || companion.signers.some((item) => item.id !== companionSigner.id && item.status !== 'ASSINADO')) continue;
+
+        await prisma.signer.update({
+          where: { id: companionSigner.id },
+          data: {
+            status: 'ASSINADO', signatureType: signatureType || 'DESENHADA', signatureImage: signatureImage || null,
+            signedConsentText: signedConsentText || `Declaro que li e concordo com todos os documentos do kit, incluindo "${companion.title}", e reconheço esta manifestação como minha assinatura eletrônica.`,
+            selfieCenterImage, selfieLeftImage, selfieRightImage, signedAt: new Date(),
+            geoLat: typeof geoLat === 'number' ? geoLat : null, geoLng: typeof geoLng === 'number' ? geoLng : null,
+            geoAccuracy: typeof geoAccuracy === 'number' ? geoAccuracy : null, geoCity: geoCity || null, geoState: geoState || null,
+            ipAddress: clientIp, userAgent,
+          },
+        });
+        await prisma.document.update({ where: { id: companion.id }, data: { status: 'CONCLUIDO', completedAt: new Date() } });
+        await prisma.documentEvent.createMany({ data: [
+          { documentId: companion.id, signerId: companionSigner.id, eventType: 'KIT_SIGNATURE_APPLIED', description: `Assinatura aplicada na sessão única do kit por ${signer.name}.`, ipAddress: clientIp, userAgent },
+          { documentId: companion.id, signerId: companionSigner.id, eventType: 'DOCUMENT_COMPLETED', description: 'Documento concluído pela sessão única do kit; certificado individual emitido.', ipAddress: clientIp, userAgent },
+        ] });
+        try {
+          await generateFinalPdfCertificate(companion.id);
+          await queueSignatureCompletionMessages(companion.id);
+          kitDocumentsSigned += 1;
+        } catch (pdfErr) {
+          console.error('Erro ao concluir documento complementar do kit:', pdfErr);
+        }
+      }
+    }
+
     await logAuditEvent({
       officeId: signer.document.officeId,
       eventType: 'DOCUMENT_SIGNED',
@@ -361,6 +407,7 @@ export async function POST(
       message: 'Assinatura realizada com sucesso!',
       signer: updatedSigner,
       documentStatus: newDocStatus,
+      kitDocumentsSigned,
     });
   } catch (error: any) {
     console.error('Erro na submissão de assinatura:', error);

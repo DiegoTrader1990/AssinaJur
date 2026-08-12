@@ -66,6 +66,8 @@ interface DocumentInfo {
   signers: Array<{ name: string; role: string; status: string }>;
 }
 
+interface KitInfo { documents: Array<{ id: string; title: string; status: string }> }
+
 type SelfieKey = 'center' | 'left' | 'right';
 
 interface SelfieStepConfig {
@@ -185,6 +187,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [step, setStep] = useState<'IDENTIFY' | 'SELFIE' | 'ROGO_TRANSITION' | 'ROGO_SELFIE' | 'SIGN' | 'SUCCESS'>('IDENTIFY');
   const [signer, setSigner] = useState<SignerInfo | null>(null);
   const [document, setDocument] = useState<DocumentInfo | null>(null);
+  const [kit, setKit] = useState<KitInfo | null>(null);
   const isRogadoConsent = Boolean(document?.isIlliterate && signer?.role === 'CLIENTE');
   const isRogoSigner = signer?.role === 'ASSINANTE_A_ROGO';
   const [loading, setLoading] = useState(true);
@@ -354,6 +357,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
       setSigner(data.signer);
       setDocument(data.document);
+      setKit(data.kit || null);
       setCpf(maskCpfCnpj(data.signer.cpf));
       setTypedName(data.signer.name);
 
@@ -797,7 +801,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         confirmCpf: cpf || signer?.cpf,
         signatureType: isRogadoConsent ? 'CONSENTIMENTO_A_ROGO' : signatureMode,
         signatureImage: isRogadoConsent ? null : signatureImage,
-        signedConsentText: `Declaro que li e concordo com os termos do documento ${document?.title || 'documento'}.`,
+        signedConsentText: kit ? 'Declaro que li e concordo com todos os documentos deste kit e reconheço esta manifestação como minha assinatura eletrônica.' : `Declaro que li e concordo com os termos do documento ${document?.title || 'documento'}.`,
         selfieCenterImage: clientCenter,
         selfieLeftImage: clientLeft,
         selfieRightImage: clientRight,
@@ -944,6 +948,16 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </div>
               <Eye className="w-4 h-4 text-blue-600" />
             </button>
+
+            {kit && (
+              <div className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 space-y-2">
+                <p className="text-xs font-extrabold text-[#071B3A]">Assinatura única do kit • {kit.documents.length} documentos</p>
+                <div className="space-y-1">
+                  {kit.documents.map((item, index) => <p key={item.id} className="text-[11px] text-slate-700 font-medium">{index + 1}. {item.title}</p>)}
+                </div>
+                <p className="text-[10px] text-slate-500">Ao concluir, sua assinatura será registrada individualmente em cada documento deste kit.</p>
+              </div>
+            )}
 
             <form onSubmit={handleConfirmCpf} className="space-y-4">
               <div>
@@ -1355,7 +1369,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   </>
                 ) : (
                   <>
-                    Declaro que li e concordo com os termos do documento <strong>{document?.title}</strong>, autorizando a captura de presença e emissão do Selo Digital.
+                    {kit ? <>Declaro que li e concordo com todos os documentos deste kit, autorizando a captura de presença e a emissão dos selos e certificados individuais.</> : <>Declaro que li e concordo com os termos do documento <strong>{document?.title}</strong>, autorizando a captura de presença e emissão do Selo Digital.</>}
                   </>
                 )}
               </span>

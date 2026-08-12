@@ -50,6 +50,13 @@ export async function GET(
     }
 
     const { document } = signer;
+    const kitDocuments = document.kitId && signer.role === 'CLIENTE'
+      ? await prisma.document.findMany({
+          where: { kitId: document.kitId, clientId: document.clientId },
+          select: { id: true, title: true, status: true },
+          orderBy: { createdAt: 'asc' },
+        })
+      : [];
 
     if (document.status === 'CANCELADO') {
       return NextResponse.json({ error: 'Este documento foi cancelado pelo escritório responsável.' }, { status: 400 });
@@ -125,6 +132,7 @@ export async function GET(
         pdfUrl: `/api/sign/${params.token}/document`,
         mimeType: document.originalFile?.mimeType || 'application/pdf',
       },
+      kit: kitDocuments.length > 1 ? { documents: kitDocuments } : null,
     });
   } catch (error: any) {
     console.error('Erro na rota pública de assinatura:', error);
