@@ -937,10 +937,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               <div className="w-12 h-12 bg-blue-50 border border-blue-200 text-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
                 <FileText className="w-6 h-6" />
               </div>
-              <span className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full bg-blue-50 text-blue-700 font-extrabold text-[10px] uppercase border border-blue-200 font-heading tracking-wider">
+              <span className={`inline-flex items-center gap-1 px-3 py-0.5 rounded-full bg-blue-50 text-blue-700 font-extrabold text-[10px] uppercase border border-blue-200 font-heading tracking-wider ${kit ? 'hidden' : ''}`}>
                 <Scale className="w-3 h-3" /> {document?.documentType || 'DOCUMENTO JURÍDICO'}
               </span>
-              <h2 className="font-heading text-xl font-extrabold text-[#071B3A]">{document?.title}</h2>
+              <h2 className="font-heading text-xl font-extrabold text-[#071B3A]">{kit ? 'Documentos para assinatura' : document?.title}</h2>
               <p className="text-xs text-slate-500 font-medium leading-relaxed">
                 Olá, <strong className="text-[#071B3A]">{signer?.name}</strong>! Confirme seu CPF abaixo para acessar o documento e iniciar a prova de presença ao vivo.
               </p>
@@ -963,7 +963,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 <p className="text-[10px] font-semibold text-blue-800 flex items-center gap-1.5"><Eye className="w-3.5 h-3.5" /> Para ler uma minuta, escolha o documento abaixo e toque no ícone de olho.</p>
                 <p className="text-xs font-extrabold text-[#071B3A]">Assinatura única do kit • {kit.documents.length} documentos</p>
                 <div className="space-y-1">
-                  {kit.documents.map((item, index) => <button type="button" onClick={() => handleOpenDocPreview(item.id)} key={item.id} className="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] text-slate-700 font-medium hover:bg-white hover:text-blue-800 transition-colors"><span className="text-blue-600 font-bold">{index + 1}.</span><span className="flex-1">{item.title}</span><Eye className="w-3.5 h-3.5 text-blue-600" /></button>)}
+                  {kit.documents.map((item, index) => <button type="button" onClick={() => handleOpenDocPreview(item.id)} key={item.id} className="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] text-slate-700 font-medium hover:bg-white hover:text-blue-800 transition-colors"><span className="text-blue-600 font-bold">{index + 1}.</span><span className="flex-1">{item.title.replace(/\s*\(Kit[^)]*\)/i, '')}</span><Eye className="w-3.5 h-3.5 text-blue-600" /></button>)}
                 </div>
                 <p className="text-[10px] text-slate-500">Ao concluir, sua assinatura será registrada individualmente em cada documento deste kit.</p>
               </div>
