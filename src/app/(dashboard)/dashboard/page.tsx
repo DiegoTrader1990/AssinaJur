@@ -48,7 +48,6 @@ import {
   HardDrive,
   FileCheck2,
   Landmark,
-  FileSpreadsheet,
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -60,40 +59,38 @@ export default function DashboardPage() {
   const [kits, setKits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Central Dinâmica (Lado Direito da Central): 'KIT' | 'CLIENT' | 'PROCESS'
-  const [rightPanelTab, setRightPanelTab] = useState<'KIT' | 'CLIENT' | 'PROCESS'>('KIT');
-
-  // Filtros do Cockpit de Casos (Por Área & Situação)
-  const [selectedArea, setSelectedArea] = useState<string>('ALL');
-  const [selectedSituation, setSelectedSituation] = useState<string>('ALL');
-
-  // Seleções do Advogado (Padrão Vazio)
+  // SELEÇÃO ÚNICA DE CLIENTE (PADRÃO VAZIO PARA O ADVOGADO ESCOLHER)
   const [selectedClientId, setSelectedClientId] = useState<string>('');
+  const [showInlineNewClient, setShowInlineNewClient] = useState(false);
+
+  // MODO DE ORIGEM DO DOCUMENTO NO PASSO 2: 'PDF_UPLOAD' OU 'AUTOMATED_KIT'
+  const [docSourceMode, setDocSourceMode] = useState<'PDF_UPLOAD' | 'AUTOMATED_KIT'>('PDF_UPLOAD');
+
+  // SELEÇÕES ESPECÍFICAS
   const [selectedKitId, setSelectedKitId] = useState<string>('');
   const [docCustomTitle, setDocCustomTitle] = useState<string>('');
 
-  // Drag & Drop State (Lado Esquerdo Fixo Fixo e Elegante)
+  // Drag & Drop State para Modo PDF_UPLOAD
   const [dragActive, setDragActive] = useState(false);
   const [uploadedPdf, setUploadedPdf] = useState<any>(null);
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Form de Cadastro Qualificado Express de Cliente
+  // Form de Cadastro Qualificado de Cliente
   const [newClientName, setNewClientName] = useState('');
   const [newClientCpf, setNewClientCpf] = useState('');
   const [newClientPhone, setNewClientPhone] = useState('');
   const [newClientRg, setNewClientRg] = useState('');
-  const [newClientCivilStatus, setNewClientCivilStatus] = useState('Solteiro(a)');
-  const [newClientProfession, setNewClientProfession] = useState('Autônomo(a)');
 
-  // Execution Feedback State
+  // Execution Feedback State & QR Code Modal
   const [submitting, setSubmitting] = useState(false);
   const [executionResult, setExecutionResult] = useState<any>(null);
   const [executionError, setExecutionError] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
 
-  // Explorer State
+  // Filtros do Cockpit de Casos
+  const [selectedSituation, setSelectedSituation] = useState<string>('ALL');
   const [expandedFolderId, setExpandedFolderId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -138,7 +135,7 @@ export default function DashboardPage() {
     return processes.reduce((acc, p) => acc + (p.documents?.length || 0) + (p.attachments?.length || 0), 0);
   }, [processes]);
 
-  // DRAG & DROP HANDLERS (DROP FIXO NA ESQUERDA)
+  // DRAG & DROP HANDLERS
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -197,58 +194,85 @@ export default function DashboardPage() {
     }
   };
 
-  // HANDLER PARA DISPARO DO PDF ARRASTADO NO LADO ESQUERDO
-  const handleDispatchPdf = async (e: React.FormEvent) => {
+  // HANDLER PARA SALVAR CLIENTE INLINE
+  const handleSaveInlineClient = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newClientName.trim()) return;
+
     setSubmitting(true);
-    setExecutionError('');
-    setExecutionResult(null);
-
     try {
-      if (!uploadedPdf) throw new Error('Arraste ou selecione um arquivo PDF primeiro.');
-      if (!selectedClientId) throw new Error('Selecione a cliente destinatária.');
-
-      const res = await fetch('/api/documents', {
+      const res = await fetch('/api/clients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: docCustomTitle || uploadedPdf.name,
-          clientId: selectedClientId,
-          fileId: uploadedPdf.id,
+          name: newClientName,
+          cpfCnpj: newClientCpf,
+          phone: newClientPhone,
+          whatsapp: newClientPhone,
+          rg: newClientRg,
         }),
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao criar documento.');
+      if (!res.ok) throw new Error(data.error || 'Erro ao cadastrar cliente.');
 
-      const clientObj = clients.find((c) => c.id === selectedClientId);
-      setExecutionResult({
-        type: 'SINGLE_DOC',
-        clientName: clientObj?.name || 'Cliente',
-        clientPhone: clientObj?.phone || clientObj?.whatsapp || '',
-        docTitle: data.document.title,
-        signatureLink: `https://www.assinajur.com.br/assinar/${data.document.token}`,
-      });
+      const updatedClientsRes = await fetch('/api/clients').then((r) => r.json());
+      if (updatedClientsRes?.clients) {
+        setClients(updatedClientsRes.clients);
+        setSelectedClientId(data.client.id);
+      }
 
-      fetch('/api/documents').then((r) => r.json()).then((d) => setDocuments(d.documents || []));
+      setShowInlineNewClient(false);
+      setNewClientName('');
+      setNewClientCpf('');
+      setNewClientPhone('');
+      setNewClientRg('');
     } catch (err: any) {
-      setExecutionError(err.message || 'Erro ao processar disparo.');
+      setExecutionError(err.message || 'Erro ao cadastrar cliente.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  // HANDLER PARA PAINEL DA DIREITA (KIT, CLIENTE OU DOSSIÊ)
-  const handleExecuteRightPanel = async (e: React.FormEvent) => {
+  // HANDLER ÚNICO DE DISPARO DA CENTRAL UNIFICADA
+  const handleExecuteUnifiedDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedClientId) {
+      setExecutionError('Por favor, selecione a cliente no Passo 1.');
+      return;
+    }
+
     setSubmitting(true);
     setExecutionError('');
     setExecutionResult(null);
 
     try {
-      if (rightPanelTab === 'KIT') {
-        if (!selectedClientId) throw new Error('Selecione uma cliente para receber o Kit.');
-        if (!selectedKitId) throw new Error('Selecione o Kit Jurídico.');
+      if (docSourceMode === 'PDF_UPLOAD') {
+        if (!uploadedPdf) throw new Error('Arraste ou selecione um arquivo PDF no Passo 2.');
+
+        const res = await fetch('/api/documents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: docCustomTitle || uploadedPdf.name,
+            clientId: selectedClientId,
+            fileId: uploadedPdf.id,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erro ao criar documento.');
+
+        const clientObj = clients.find((c) => c.id === selectedClientId);
+        setExecutionResult({
+          type: 'SINGLE_DOC',
+          clientName: clientObj?.name || 'Cliente',
+          clientPhone: clientObj?.phone || clientObj?.whatsapp || '',
+          docTitle: data.document.title,
+          signatureLink: `https://www.assinajur.com.br/assinar/${data.document.token}`,
+        });
+      } else {
+        if (!selectedKitId) throw new Error('Selecione o Kit Jurídico no Passo 2.');
 
         const res = await fetch('/api/kits/generate-package', {
           method: 'POST',
@@ -272,76 +296,20 @@ export default function DashboardPage() {
           documentsCount: data.result.documentsCount,
           signatureLink: data.result.signatureLink,
         });
-      } else if (rightPanelTab === 'CLIENT') {
-        if (!newClientName.trim()) throw new Error('Informe o nome completo da cliente.');
-        const res = await fetch('/api/clients', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: newClientName,
-            cpfCnpj: newClientCpf,
-            phone: newClientPhone,
-            whatsapp: newClientPhone,
-            rg: newClientRg,
-            civilStatus: newClientCivilStatus,
-            profession: newClientProfession,
-          }),
-        });
-
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Erro ao cadastrar cliente.');
-
-        const updatedClientsRes = await fetch('/api/clients').then((r) => r.json());
-        if (updatedClientsRes?.clients) {
-          setClients(updatedClientsRes.clients);
-          setSelectedClientId(data.client.id);
-        }
-
-        setExecutionResult({
-          type: 'CLIENT',
-          clientName: data.client.name,
-        });
-        setNewClientName('');
-        setNewClientCpf('');
-        setNewClientPhone('');
-        setNewClientRg('');
-      } else if (rightPanelTab === 'PROCESS') {
-        if (!selectedClientId) throw new Error('Selecione a cliente para criar o dossiê.');
-        window.location.href = `/processos?novo=true&clientId=${selectedClientId}`;
-        return;
       }
 
       fetch('/api/documents').then((r) => r.json()).then((d) => setDocuments(d.documents || []));
     } catch (err: any) {
-      setExecutionError(err.message || 'Erro ao processar.');
+      setExecutionError(err.message || 'Erro ao disparar documento.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  // FILTRAGEM DE CLIENTES POR ÁREA E SITUAÇÃO
-  const filteredClientsList = useMemo(() => {
-    return clients.filter((client) => {
-      const clientDocs = documents.filter((d) => d.clientId === client.id);
-      const clientProc = processes.find((p) => p.clientId === client.id);
-
-      // Filtro por Situação
-      if (selectedSituation === 'PRE' && clientDocs.every((d) => d.status !== 'CONCLUIDO')) {
-        return true;
-      }
-      if (selectedSituation === 'PROTOCOLADO' && !clientProc) {
-        return false;
-      }
-      if (selectedSituation === 'DONE' && clientDocs.length > 0 && clientDocs.every((d) => d.status === 'CONCLUIDO')) {
-        return true;
-      }
-      if (selectedSituation !== 'ALL' && selectedSituation === 'PRE' && clientDocs.some((d) => d.status === 'CONCLUIDO')) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [clients, documents, processes, selectedSituation]);
+  const selectedClient = useMemo(
+    () => clients.find((c) => c.id === selectedClientId),
+    [clients, selectedClientId],
+  );
 
   const selectedKit = useMemo(
     () => kits.find((k) => k.id === selectedKitId),
@@ -370,7 +338,7 @@ export default function DashboardPage() {
             Olá, {doctorName}! ⚖️
           </h1>
           <p className="text-xs lg:text-sm text-slate-500 max-w-3xl leading-relaxed">
-            Painel Notarial do Escritório. Solte um documento em PDF na caixa fixa à esquerda ou dispare Kits Jurídicos completos no WhatsApp das clientes à direita.
+            Painel Operacional Notarial. Selecione a cliente no Passo 1, defina a origem do arquivo no Passo 2 e dispare no WhatsApp no Passo 3.
           </p>
         </div>
 
@@ -395,341 +363,335 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* 🚀 2. CENTRAL DE OPERAÇÕES EM 2 COLUNAS: DROP FIXO NA ESQUERDA & PAINEL DINÂMICO NA DIREITA */}
-      <section className="grid lg:grid-cols-12 gap-6">
-        {/* COLUNA ESQUERDA (5 COLUNAS): DROP ZONE FIXO E COMPACTO DE PDF DO COMPUTADOR */}
-        <div className="lg:col-span-5 bg-white border border-slate-200/90 rounded-[32px] p-6 shadow-xs flex flex-col justify-between space-y-4">
-          <div className="space-y-4">
-            <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3.5">
-              <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-black shrink-0">
-                <FileUp className="w-4 h-4 text-amber-600" />
-              </div>
-              <div>
-                <h3 className="font-heading font-black text-[#071B3A] text-sm">1. Arrastar PDF do Computador (Fixo)</h3>
-                <p className="text-[11px] text-slate-500">Envio direto de qualquer petição/contrato avulso</p>
-              </div>
+      {/* 🚀 2. CENTRAL UNIFICADA DE DISPARO RÁPIDO EM 3 PASSOS INTEGRADOS (ZERO DUPLICAÇÃO) */}
+      <section className="bg-white border border-slate-200/90 rounded-[32px] p-6 lg:p-8 shadow-xs space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700 shrink-0">
+              <Zap className="w-5 h-5 fill-amber-500/20" />
             </div>
+            <div>
+              <h2 className="font-heading font-black text-[#071B3A] text-lg">Central Unificada de Formalização Rápida</h2>
+              <p className="text-xs text-slate-500">Fluxo contínuo sem repetições para disparar qualquer documento no WhatsApp</p>
+            </div>
+          </div>
 
-            {/* CAIXA COMPACTA DE DROP FIXA */}
-            <form onSubmit={handleDispatchPdf} className="space-y-3">
-              <div
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition-all ${
-                  dragActive
-                    ? 'border-amber-500 bg-amber-50/90 scale-[1.005]'
-                    : uploadedPdf
-                    ? 'border-emerald-500 bg-emerald-50/70'
-                    : 'border-slate-300 bg-slate-50/70 hover:border-amber-500 hover:bg-amber-50/40'
-                }`}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-
-                {uploadingPdf ? (
-                  <div className="py-2 space-y-1">
-                    <Loader2 className="w-6 h-6 text-amber-600 animate-spin mx-auto" />
-                    <p className="text-[11px] font-bold text-amber-900">Processando PDF...</p>
-                  </div>
-                ) : uploadedPdf ? (
-                  <div className="flex items-center justify-between text-left gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <File className="w-5 h-5 text-emerald-600 shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-xs font-black text-slate-800 truncate">{uploadedPdf.name}</p>
-                        <p className="text-[10px] text-emerald-600 font-bold">
-                          ✓ Ready ({(uploadedPdf.sizeBytes / 1024 / 1024).toFixed(2)} MB)
-                        </p>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-bold text-slate-600 bg-white border border-slate-200 px-2 py-0.5 rounded-md shrink-0">
-                      Trocar
-                    </span>
-                  </div>
-                ) : (
-                  <div className="py-3 space-y-1">
-                    <FileUp className="w-8 h-8 text-[#B68B1C] mx-auto" />
-                    <p className="text-xs font-black text-slate-800">
-                      Solte o contrato PDF do seu Windows aqui
-                    </p>
-                    <p className="text-[11px] text-slate-500">
-                      ou <span className="text-amber-700 font-bold underline">procure nas suas pastas</span>
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* DADOS DE ENVIO COMPACTOS */}
-              <div className="space-y-2">
-                <label className="text-[11px] font-bold uppercase text-slate-700">Cliente Destinatária</label>
-                <select
-                  value={selectedClientId}
-                  onChange={(e) => setSelectedClientId(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
-                >
-                  <option value="" className="text-slate-400">
-                    -- Selecione a cliente na lista --
-                  </option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.id} className="text-slate-900">
-                      {c.name} {c.cpfCnpj ? `(CPF: ${c.cpfCnpj})` : ''}
-                    </option>
-                  ))}
-                </select>
-
-                <input
-                  type="text"
-                  value={docCustomTitle}
-                  onChange={(e) => setDocCustomTitle(e.target.value)}
-                  placeholder="Título da peça (Ex: Procuração Ad Judicia)"
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
-                />
-
-                <button
-                  type="submit"
-                  disabled={submitting || !uploadedPdf || !selectedClientId}
-                  className="w-full py-3 bg-[#071B3A] hover:bg-[#0A254F] text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 text-[#D4AF37]" />} DISPARAR PDF NO WHATSAPP
-                </button>
-              </div>
-            </form>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/processos"
+              className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 rounded-xl text-xs font-bold flex items-center gap-1.5"
+            >
+              <Folder className="w-3.5 h-3.5 text-amber-600 fill-amber-500/20" /> Novo Dossiê 📁
+            </Link>
           </div>
         </div>
 
-        {/* COLUNA DIREITA (7 COLUNAS): PAINEL DINÂMICO QUE MUDA (KIT JURÍDICO | CADASTRO QUALIFICADO | DOSSIÊ) */}
-        <div className="lg:col-span-7 bg-white border border-slate-200/90 rounded-[32px] p-6 shadow-xs space-y-4 flex flex-col justify-between">
-          <div className="space-y-4">
-            {/* TABS DE ALTERNAÇÃO DO LADO DIREITO */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="font-heading font-black text-[#071B3A] text-sm">2. Fluxo Notarial Avançado</h3>
-                <p className="text-[11px] text-slate-500">Alterne entre disparo de Kits, cadastro e dossiês</p>
+        {/* FEEDBACK DE EXECUÇÃO */}
+        {executionResult ? (
+          <div className="bg-emerald-50 border-2 border-emerald-400/80 rounded-2xl p-6 space-y-4 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center font-bold shrink-0 shadow-md">
+                  <CheckCircle2 className="w-7 h-7" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-black text-emerald-950 text-lg">
+                    {executionResult.type === 'SINGLE_DOC'
+                      ? `Documento Pronto para ${executionResult.clientName}!`
+                      : executionResult.type === 'KIT'
+                      ? `Kit Jurídico Gerado para ${executionResult.clientName}!`
+                      : `Cliente ${executionResult.clientName} Cadastrada!`}
+                  </h3>
+                  <p className="text-xs text-emerald-800 font-medium">
+                    Link seguro de assinatura digital notarial gerado e pronto para envio no WhatsApp.
+                  </p>
+                </div>
               </div>
 
-              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-extrabold shrink-0">
-                <button
-                  onClick={() => {
-                    setRightPanelTab('KIT');
-                    setExecutionResult(null);
-                  }}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
-                    rightPanelTab === 'KIT' ? 'bg-[#071B3A] text-white shadow-2xs' : 'text-slate-600'
-                  }`}
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400 inline mr-1" /> Kit 10s
-                </button>
-
-                <button
-                  onClick={() => {
-                    setRightPanelTab('CLIENT');
-                    setExecutionResult(null);
-                  }}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
-                    rightPanelTab === 'CLIENT' ? 'bg-emerald-600 text-white shadow-2xs' : 'text-slate-600'
-                  }`}
-                >
-                  <UserPlus className="w-3.5 h-3.5 inline mr-1" /> Cadastro Express
-                </button>
-
-                <button
-                  onClick={() => {
-                    setRightPanelTab('PROCESS');
-                    setExecutionResult(null);
-                  }}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
-                    rightPanelTab === 'PROCESS' ? 'bg-amber-500 text-[#071B3A] font-black shadow-2xs' : 'text-slate-600'
-                  }`}
-                >
-                  <Folder className="w-3.5 h-3.5 inline mr-1 fill-[#071B3A]/20" /> Novo Dossiê
-                </button>
-              </div>
+              <button
+                onClick={() => {
+                  setExecutionResult(null);
+                  setUploadedPdf(null);
+                }}
+                className="p-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            {/* CONTEÚDO DINÂMICO QUE MUDA NO LADO DIREITO */}
-            <form onSubmit={handleExecuteRightPanel} className="space-y-3">
-              {/* MODO 1: KIT JURÍDICO COMPLETO */}
-              {rightPanelTab === 'KIT' && (
-                <div className="space-y-3">
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-bold uppercase text-slate-700">1. Selecionar Cliente</label>
-                      <select
-                        value={selectedClientId}
-                        onChange={(e) => setSelectedClientId(e.target.value)}
-                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
-                      >
-                        <option value="" className="text-slate-400">
-                          -- Selecione a cliente na lista --
-                        </option>
-                        {clients.map((c) => (
-                          <option key={c.id} value={c.id} className="text-slate-900">
-                            {c.name} {c.cpfCnpj ? `(CPF: ${c.cpfCnpj})` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-bold uppercase text-slate-700">2. Kit Jurídico Completo</label>
-                      <select
-                        value={selectedKitId}
-                        onChange={(e) => setSelectedKitId(e.target.value)}
-                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
-                      >
-                        {kits.map((k) => (
-                          <option key={k.id} value={k.id} className="text-slate-900">
-                            {k.name} ({k.items?.length || 3} papéis inclusos)
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {selectedKit && (
-                    <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 space-y-1">
-                      <p className="text-[10px] font-extrabold uppercase text-slate-500">Documentos inclusos no Kit:</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {selectedKit.items?.map((item: any, i: number) => (
-                          <span key={i} className="text-[10px] font-bold bg-white border border-slate-200 text-slate-700 px-2.5 py-0.5 rounded-md">
-                            ✓ {item.template?.title || `Doc ${i + 1}`}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={submitting || !selectedClientId || !selectedKitId}
-                    className="w-full py-3.5 bg-gradient-to-r from-[#071B3A] to-[#0A254F] hover:brightness-110 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            {executionResult.signatureLink && (
+              <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-emerald-200">
+                {executionResult.clientPhone ? (
+                  <a
+                    href={`https://wa.me/55${executionResult.clientPhone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                      `Olá ${executionResult.clientName}! Seus documentos jurídicos do escritório Rodrigues & Soares estão prontos para assinatura digital. Acesse o link seguro no celular: ${executionResult.signatureLink}`,
+                    )}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md flex items-center gap-2 transition-all hover:scale-[1.01]"
                   >
-                    {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 text-[#D4AF37]" />} DISPARAR KIT COMPLETO NO WHATSAPP
-                  </button>
-                </div>
-              )}
-
-              {/* MODO 2: CADASTRO QUALIFICADO APRIMORADO DA CLIENTE */}
-              {rightPanelTab === 'CLIENT' && (
-                <div className="space-y-3">
-                  <div className="grid sm:grid-cols-2 gap-2.5">
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-bold uppercase text-slate-700">Nome Completo da Cliente</label>
-                      <input
-                        type="text"
-                        value={newClientName}
-                        onChange={(e) => setNewClientName(e.target.value)}
-                        placeholder="Ex: Maria das Graças Silva"
-                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 focus:border-emerald-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-bold uppercase text-slate-700">CPF</label>
-                      <input
-                        type="text"
-                        value={newClientCpf}
-                        onChange={(e) => setNewClientCpf(e.target.value)}
-                        placeholder="000.000.000-00"
-                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 focus:border-emerald-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-bold uppercase text-slate-700">WhatsApp / Celular</label>
-                      <input
-                        type="text"
-                        value={newClientPhone}
-                        onChange={(e) => setNewClientPhone(e.target.value)}
-                        placeholder="(71) 99999-9999"
-                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 focus:border-emerald-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-bold uppercase text-slate-700">RG / Documento</label>
-                      <input
-                        type="text"
-                        value={newClientRg}
-                        onChange={(e) => setNewClientRg(e.target.value)}
-                        placeholder="00.000.000-00 SSP/BA"
-                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 focus:border-emerald-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 shrink-0"
-                  >
-                    {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />} SALVAR CLIENTE QUALIFICADA &amp; HABILITAR ENVIO
-                  </button>
-                </div>
-              )}
-
-              {/* MODO 3: NOVO DOSSIÊ NO WINDOWS EXPLORER */}
-              {rightPanelTab === 'PROCESS' && (
-                <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
-                  <div>
-                    <h4 className="font-heading font-black text-[#071B3A] text-xs">Criar Dossiê Padronizado no Windows Explorer</h4>
-                    <p className="text-[11px] text-slate-500">Cria a pasta oficial da cliente com 4 subpastas automáticas de documentos.</p>
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-[#071B3A] font-black text-xs rounded-xl shadow-xs flex items-center justify-center gap-2"
-                  >
-                    <Folder className="w-4 h-4 fill-[#071B3A]/20" /> CRIAR PASTA DOSSIÊ 📁
-                  </button>
-                </div>
-              )}
-            </form>
-
-            {/* FEEDBACK DIREITO */}
-            {executionResult && (
-              <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3.5 text-xs text-emerald-950 space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="font-black">✓ {executionResult.clientName} selecionada/qualificada com sucesso!</p>
-                  <button onClick={() => setExecutionResult(null)} className="text-emerald-700 font-bold">X</button>
-                </div>
-
-                {executionResult.signatureLink && (
-                  <div className="flex items-center gap-2 pt-1">
-                    {executionResult.clientPhone && (
-                      <a
-                        href={`https://wa.me/55${executionResult.clientPhone.replace(/\D/g, '')}?text=${encodeURIComponent(
-                          `Olá ${executionResult.clientName}! Seus documentos jurídicos estão prontos: ${executionResult.signatureLink}`,
-                        )}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-3 py-1.5 bg-emerald-600 text-white font-extrabold rounded-lg text-[11px] flex items-center gap-1"
-                      >
-                        <MessageSquare className="w-3 h-3 fill-white" /> Disparar WhatsApp
-                      </a>
-                    )}
-                    <button
-                      onClick={() => setShowQrModal(true)}
-                      className="px-2.5 py-1.5 bg-amber-200 text-amber-900 font-bold rounded-lg text-[11px]"
-                    >
-                      QR Code
-                    </button>
+                    <MessageSquare className="w-4 h-4 fill-white" /> DISPARAR MENSAGEM NO WHATSAPP
+                  </a>
+                ) : (
+                  <div className="text-xs font-bold text-amber-800 bg-amber-100 px-4 py-2.5 rounded-xl">
+                    ⚠️ Cliente sem telefone cadastrado. Copie o link abaixo para enviar.
                   </div>
                 )}
+
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(executionResult.signatureLink);
+                    setCopiedLink(true);
+                    setTimeout(() => setCopiedLink(false), 2000);
+                  }}
+                  className="px-5 py-3.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 font-extrabold text-xs rounded-xl flex items-center gap-2 transition-all shadow-xs"
+                >
+                  {copiedLink ? (
+                    <>
+                      <Check className="w-4 h-4 text-emerald-600" /> Link Copiado!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4 text-[#B68B1C]" /> Copiar Link Seguro
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => setShowQrModal(true)}
+                  className="px-4 py-3.5 bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-900 font-black text-xs rounded-xl flex items-center gap-1.5 transition-all"
+                >
+                  <QrCode className="w-4 h-4 text-amber-700" /> QR Code Presencial
+                </button>
               </div>
             )}
           </div>
-        </div>
+        ) : (
+          <form onSubmit={handleExecuteUnifiedDispatch} className="grid lg:grid-cols-12 gap-6 items-start">
+            {/* PASSO 1 (4 COLUNAS): SELEÇÃO ÚNICA DA CLIENTE DA BASE OU NOVO CADASTRO */}
+            <div className="lg:col-span-4 bg-slate-50 border border-slate-200/90 rounded-2xl p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black uppercase tracking-wider text-[#B68B1C]">
+                  1º Passo: Cliente
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowInlineNewClient(!showInlineNewClient)}
+                  className="text-[11px] font-extrabold text-blue-700 hover:underline"
+                >
+                  {showInlineNewClient ? '← Selecionar da Lista' : '+ Nova Cliente'}
+                </button>
+              </div>
+
+              {showInlineNewClient ? (
+                <div className="space-y-2 pt-1 animate-in fade-in duration-150">
+                  <input
+                    type="text"
+                    value={newClientName}
+                    onChange={(e) => setNewClientName(e.target.value)}
+                    placeholder="Nome Completo da Cliente"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold focus:outline-none"
+                  />
+                  <input
+                    type="text"
+                    value={newClientCpf}
+                    onChange={(e) => setNewClientCpf(e.target.value)}
+                    placeholder="CPF (000.000.000-00)"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold focus:outline-none"
+                  />
+                  <input
+                    type="text"
+                    value={newClientPhone}
+                    onChange={(e) => setNewClientPhone(e.target.value)}
+                    placeholder="WhatsApp (71) 99999-9999"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveInlineClient}
+                    disabled={submitting || !newClientName.trim()}
+                    className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition-all"
+                  >
+                    Salvar e Selecionar Cliente
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <select
+                      value={selectedClientId}
+                      onChange={(e) => setSelectedClientId(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-300 focus:border-amber-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
+                    >
+                      <option value="" className="text-slate-400">
+                        -- Selecione a cliente --
+                      </option>
+                      {clients.map((c) => (
+                        <option key={c.id} value={c.id} className="text-slate-900">
+                          {c.name} {c.cpfCnpj ? `(CPF: ${c.cpfCnpj})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {selectedClient ? (
+                    <div className="bg-white border border-slate-200/90 rounded-xl p-3 space-y-1">
+                      <p className="text-xs font-black text-[#071B3A]">{selectedClient.name}</p>
+                      <p className="text-[11px] text-slate-500">
+                        CPF: {selectedClient.cpfCnpj || 'Não informado'} • {selectedClient.phone || selectedClient.whatsapp || 'Sem celular'}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 italic">
+                      Escolha quem receberá a documentação.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* PASSO 2 (5 COLUNAS): ORIGEM DO DOCUMENTO (SOLTAR PDF OU USAR KIT COMPLETO) */}
+            <div className="lg:col-span-5 bg-slate-50 border border-slate-200/90 rounded-2xl p-5 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-[#B68B1C]">
+                  2º Passo: Documentos
+                </span>
+
+                {/* TABS DE ALTERNAÇÃO DE ORIGEM DE CONTEÚDO */}
+                <div className="flex items-center gap-1 bg-slate-200/80 p-0.5 rounded-lg text-[10px] font-extrabold">
+                  <button
+                    type="button"
+                    onClick={() => setDocSourceMode('PDF_UPLOAD')}
+                    className={`px-2.5 py-1 rounded-md transition-all ${
+                      docSourceMode === 'PDF_UPLOAD' ? 'bg-white text-[#071B3A] shadow-2xs font-black' : 'text-slate-600'
+                    }`}
+                  >
+                    📂 Soltar PDF PC
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDocSourceMode('AUTOMATED_KIT')}
+                    className={`px-2.5 py-1 rounded-md transition-all ${
+                      docSourceMode === 'AUTOMATED_KIT' ? 'bg-white text-[#071B3A] shadow-2xs font-black' : 'text-slate-600'
+                    }`}
+                  >
+                    ✨ Kit Jurídico
+                  </button>
+                </div>
+              </div>
+
+              {docSourceMode === 'PDF_UPLOAD' ? (
+                <div className="space-y-2">
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-xl p-3.5 text-center cursor-pointer transition-all ${
+                      dragActive
+                        ? 'border-amber-500 bg-amber-50'
+                        : uploadedPdf
+                        ? 'border-emerald-500 bg-emerald-50'
+                        : 'border-slate-300 bg-white hover:border-amber-500'
+                    }`}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
+
+                    {uploadingPdf ? (
+                      <Loader2 className="w-5 h-5 text-amber-600 animate-spin mx-auto" />
+                    ) : uploadedPdf ? (
+                      <div className="flex items-center justify-between text-left">
+                        <span className="text-xs font-black text-slate-800 truncate">{uploadedPdf.name}</span>
+                        <span className="text-[10px] font-bold text-emerald-600">✓ Pronto</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-0.5">
+                        <FileUp className="w-6 h-6 text-[#B68B1C] mx-auto" />
+                        <p className="text-xs font-black text-slate-800">Arraste o PDF do seu Windows aqui</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <input
+                    type="text"
+                    value={docCustomTitle}
+                    onChange={(e) => setDocCustomTitle(e.target.value)}
+                    placeholder="Título da peça (Ex: Procuração Ad Judicia)"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold focus:outline-none"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <select
+                    value={selectedKitId}
+                    onChange={(e) => setSelectedKitId(e.target.value)}
+                    className="w-full px-3 py-2.5 bg-white border border-slate-300 focus:border-amber-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
+                  >
+                    {kits.map((k) => (
+                      <option key={k.id} value={k.id} className="text-slate-900">
+                        {k.name} ({k.items?.length || 3} papéis inclusos)
+                      </option>
+                    ))}
+                  </select>
+
+                  {selectedKit && (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {selectedKit.items?.map((item: any, i: number) => (
+                        <span key={i} className="text-[10px] font-bold bg-white border border-slate-200 text-slate-700 px-2 py-0.5 rounded-md">
+                          ✓ {item.template?.title || `Doc ${i + 1}`}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* PASSO 3 (3 COLUNAS): CANAL DE DISPARO E AÇÃO PRINCIPAL */}
+            <div className="lg:col-span-3 bg-slate-50 border border-slate-200/90 rounded-2xl p-5 space-y-3 flex flex-col justify-between">
+              <span className="text-[11px] font-black uppercase tracking-wider text-[#B68B1C]">
+                3º Passo: Envio
+              </span>
+
+              <div className="space-y-2">
+                <button
+                  type="submit"
+                  disabled={submitting || !selectedClientId}
+                  className="w-full py-3.5 bg-[#071B3A] hover:bg-[#0A254F] text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {submitting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4 text-[#D4AF37]" /> DISPARAR NO WHATSAPP
+                    </>
+                  )}
+                </button>
+
+                <p className="text-[10px] text-slate-400 text-center">
+                  Gera o link notarial criptografado ICP-Brasil na hora.
+                </p>
+              </div>
+            </div>
+          </form>
+        )}
+
+        {executionError && (
+          <p className="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-4 py-2.5 rounded-xl flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" /> {executionError}
+          </p>
+        )}
       </section>
 
-      {/* ⚖️ 3. COCKPIT COMPLETO DE CASOS DA CARTEIRA (FILTROS POR ÁREA JURÍDICA E SITUAÇÃO OPERACIONAL) */}
+      {/* ⚖️ 3. COCKPIT COMPLETO DE CASOS DA CARTEIRA DE CLIENTES (FILTROS OPERACIONAIS) */}
       <section className="grid gap-6 lg:grid-cols-2">
         {/* ESQUERDA: CARTEIRA DE CLIENTES COM FILTROS DE SITUAÇÃO OPERACIONAL */}
         <div className="bg-white border border-slate-200/90 rounded-[32px] p-6 lg:p-7 shadow-xs space-y-4 flex flex-col justify-between">
@@ -776,9 +738,9 @@ export default function DashboardPage() {
             </div>
 
             {/* CARDS RICOS DAS CLIENTES */}
-            {filteredClientsList.length > 0 ? (
+            {clients.length > 0 ? (
               <div className="space-y-3 mt-4">
-                {filteredClientsList.slice(0, 4).map((client) => {
+                {clients.slice(0, 4).map((client) => {
                   const clientDocs = documents.filter((d) => d.clientId === client.id);
                   const clientProc = processes.find((p) => p.clientId === client.id);
                   const allSigned = clientDocs.length > 0 && clientDocs.every((d) => d.status === 'CONCLUIDO');
