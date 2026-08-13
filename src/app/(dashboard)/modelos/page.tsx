@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { FileText, Plus, Search, Edit3, Copy, X, CheckCircle, AlertCircle, Loader2, Eye, Upload, FileType2, Download } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { ClauseEditor } from '@/components/ClauseEditor';
 
-const DocumentRichEditor = dynamic(() => import('@/components/DocumentRichEditor').then(mod => mod.DocumentRichEditor), { ssr: false });
 const WordTemplateEditor = dynamic(() => import('@/components/WordTemplateEditor').then(mod => mod.WordTemplateEditor), { ssr: false });
 
 const SAMPLE_VALUES: Record<string, string> = { cliente_nome: 'MARIA APARECIDA DA SILVA', cliente_cpf: '123.456.789-09', cliente_rg: '12.345.678-9', cliente_nacionalidade: 'brasileira', cliente_estado_civil: 'solteira', cliente_profissao: 'aposentada', cliente_endereco: 'Rua das Acácias, nº 120, Centro, Porto Seguro/BA, CEP 45810-000', advogado_nome: 'DR. DIEGO DOS SANTOS RODRIGUES', advogado_oab: 'OAB/BA nº 51.881', advogada_nome: 'DRA. DOMINICK QUINTO SOARES', advogada_oab: 'OAB/BA nº 62.443', escritorio_nome: 'Rodrigues & Soares - Advogados', valor_honorarios: 'R$ 3.000,00', percentual_exito: '30%', cidade: 'Porto Seguro', data_atual: '12 de agosto de 2026' };
@@ -330,13 +330,10 @@ export default function TemplatesPage() {
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Texto do Modelo *</label>
-                <DocumentRichEditor
+                <ClauseEditor
                   key={`${editingTemplate?.id || 'novo'}-${showModal}-${sampleValues.patronos_nomes || 'carregando'}`}
                   value={showEditorPreview(formData.contentHtml, formData.documentType, sampleValues)}
                   onChange={(html) => setFormData({ ...formData, contentHtml: restoreEditorPreview(html, sampleValues) })}
-                  showAiCopilot={true}
-                  showTags={false}
-                  placeholder="Escreva a minuta do modelo jurídico..."
                 />
               </div>
 
