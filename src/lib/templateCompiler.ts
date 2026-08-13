@@ -165,8 +165,9 @@ function parseRichParagraphs(html: string): RichParagraph[] {
       return numeric;
     };
     const rawLine = convertToPoints(lineValue, 15);
-    const lineHeight = lineValue && !/(px|pt)/i.test(lineValue) ? Math.max(12, rawLine * 10) : Math.max(12, rawLine);
-    const spaceAfter = Math.max(0, convertToPoints(marginValue, 5));
+    // Nunca deixar estilos copiados do Word criarem "buracos" no PDF.
+    const lineHeight = Math.min(22, lineValue && !/(px|pt)/i.test(lineValue) ? Math.max(12, rawLine * 10) : Math.max(12, rawLine));
+    const spaceAfter = Math.min(12, Math.max(0, convertToPoints(marginValue, 5)));
     return `\n[[${kind}:${alignmentFromAttributes(attributes, fallback)}:${lineHeight.toFixed(2)}:${spaceAfter.toFixed(2)}]]`;
   };
 
@@ -269,7 +270,9 @@ function parseRichParagraphs(html: string): RichParagraph[] {
     }
   }
 
-  return mergedParagraphs;
+  // O contentEditable pode salvar diversos <div><br></div> ao colar ou editar. No
+  // documento jurídico isso representa uma única linha em branco, não vários centímetros.
+  return mergedParagraphs.filter((paragraph, index, all) => !paragraph.isBlank || !all[index - 1]?.isBlank);
 }
 
 async function renderTemplatePdf({
@@ -397,8 +400,9 @@ async function renderTemplatePdf({
 
     if (tokens.length === 0) {
       if (paragraph.isBlank) {
-        ensureLineSpace(lineHeight + (paragraph.spaceAfter || 0));
-        currentY -= lineHeight + (paragraph.spaceAfter || 0);
+        // Uma única linha em branco, com altura previsível, independentemente da origem HTML.
+        ensureLineSpace(15);
+        currentY -= 15;
       }
       continue;
     }
