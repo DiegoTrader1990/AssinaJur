@@ -160,6 +160,28 @@ export function DocumentRichEditor({
     }
   };
 
+  const applyAlignment = (alignment: 'left' | 'center' | 'right' | 'justify') => {
+    restoreEditorSelection();
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    if (!editor || !range) return;
+
+    const blocks = Array.from(editor.querySelectorAll<HTMLElement>('p, div, h1, h2, h3, li'))
+      .filter((block) => range.intersectsNode(block));
+    if (blocks.length) {
+      blocks.forEach((block) => { block.style.textAlign = alignment; });
+    } else {
+      const parent = range.startContainer.nodeType === Node.ELEMENT_NODE
+        ? range.startContainer as HTMLElement
+        : range.startContainer.parentElement;
+      const block = parent?.closest<HTMLElement>('p, div, h1, h2, h3, li');
+      if (block && editor.contains(block)) block.style.textAlign = alignment;
+      else document.execCommand(({ left: 'justifyLeft', center: 'justifyCenter', right: 'justifyRight', justify: 'justifyFull' } as const)[alignment], false);
+    }
+    onChange(editor.innerHTML);
+  };
+
   const insertTag = (tag: string) => {
     const tagText = `{{${tag}}}`;
     
@@ -350,7 +372,7 @@ export function DocumentRichEditor({
         <div className="w-px h-6 bg-slate-300 mx-1"></div>
         
         <button 
-          onClick={() => executeCommand('justifyLeft')}
+          onClick={() => applyAlignment('left')}
           className="p-2 rounded-lg hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
           title="Alinhar à esquerda"
           type="button"
@@ -358,7 +380,7 @@ export function DocumentRichEditor({
           <AlignLeft size={16} />
         </button>
         <button 
-          onClick={() => executeCommand('justifyCenter')}
+          onClick={() => applyAlignment('center')}
           className="p-2 rounded-lg hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
           title="Centralizar"
           type="button"
@@ -366,7 +388,7 @@ export function DocumentRichEditor({
           <AlignCenter size={16} />
         </button>
         <button 
-          onClick={() => executeCommand('justifyRight')}
+          onClick={() => applyAlignment('right')}
           className="p-2 rounded-lg hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
           title="Alinhar à direita"
           type="button"
@@ -374,7 +396,7 @@ export function DocumentRichEditor({
           <AlignRight size={16} />
         </button>
         <button 
-          onClick={() => executeCommand('justifyFull')}
+          onClick={() => applyAlignment('justify')}
           className="p-2 rounded-lg hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
           title="Justificar"
           type="button"
