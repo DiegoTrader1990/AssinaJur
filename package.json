@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@prisma/client": "^5.21.0",
+    "@syncfusion/ej2-react-documenteditor": "^34.2.3",
     "@vercel/blob": "^2.3.0",
     "@whiskeysockets/baileys": "^7.0.0-rc14",
     "bcryptjs": "^2.4.3",

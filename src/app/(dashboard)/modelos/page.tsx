@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { FileText, Plus, Search, Edit3, Copy, X, CheckCircle, AlertCircle, Loader2, Eye } from 'lucide-react';
+import { FileText, Plus, Search, Edit3, Copy, X, CheckCircle, AlertCircle, Loader2, Eye, Upload, FileType2, Download } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
 const DocumentRichEditor = dynamic(() => import('@/components/DocumentRichEditor').then(mod => mod.DocumentRichEditor), { ssr: false });
@@ -36,6 +36,8 @@ interface Template {
   contentHtml: string;
   description?: string;
   version: number;
+  sourceFormat?: 'HTML' | 'DOCX';
+  sourceFileId?: string | null;
 }
 
 export default function TemplatesPage() {
@@ -43,6 +45,9 @@ export default function TemplatesPage() {
   const [loading, setLoading] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [showWordModal, setShowWordModal] = useState(false);
+  const [wordFile, setWordFile] = useState<File | null>(null);
+  const [wordForm, setWordForm] = useState({ title: '', category: 'Previdenciário', documentType: 'PROCURACAO' });
 
   const [formData, setFormData] = useState({
     title: '',
@@ -142,6 +147,20 @@ export default function TemplatesPage() {
     } catch { setError('Não foi possível gerar a prévia em PDF.'); } finally { setPreviewing(false); }
   };
 
+  const handleWordUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!wordFile) return setError('Selecione o arquivo Word original.');
+    setSaving(true); setError('');
+    try {
+      const payload = new FormData();
+      payload.set('file', wordFile); Object.entries(wordForm).forEach(([key, value]) => payload.set(key, value));
+      const response = await fetch('/api/templates/word', { method: 'POST', body: payload });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Não foi possível enviar o modelo Word.');
+      setShowWordModal(false); setWordFile(null); setWordForm({ title: '', category: 'Previdenciário', documentType: 'PROCURACAO' }); await fetchTemplates();
+    } catch (err: any) { setError(err.message); } finally { setSaving(false); }
+  };
+
 
 
   return (
@@ -153,13 +172,10 @@ export default function TemplatesPage() {
           <p className="text-sm text-slate-500 mt-1">Cadastre minutas com tags de preenchimento automático para reutilização em contratos e procurações.</p>
         </div>
 
-        <button
-          onClick={() => setShowModal(true)}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gold-500 hover:bg-gold-400 text-[#0B1D3D] font-bold rounded-xl shadow-sm text-sm transition-all"
-        >
-          <Plus className="w-4 h-4" />
-          Novo Modelo Jurídico
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowWordModal(true)} className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#0B1D3D] text-white font-bold rounded-xl shadow-sm text-sm"><Upload className="w-4 h-4" /> Enviar modelo Word</button>
+          <button onClick={() => setShowModal(true)} className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gold-500 hover:bg-gold-400 text-[#0B1D3D] font-bold rounded-xl shadow-sm text-sm transition-all"><Plus className="w-4 h-4" /> Modelo HTML</button>
+        </div>
       </div>
 
       {/* Tabela de Modelos */}
@@ -196,15 +212,13 @@ export default function TemplatesPage() {
                     <span className="text-[10px] text-slate-400">v{tpl.version}</span>
                   </div>
                   <h2 className="text-base font-bold text-[#0B1D3D] mt-2">{tpl.title}</h2>
-                  <p className="text-xs text-slate-600 line-clamp-3 mt-1 font-serif">
-                    {tpl.contentHtml.replace(/<[^>]*>/g, '')}
-                  </p>
+                  <p className="text-xs text-slate-600 line-clamp-3 mt-1 font-serif">{tpl.sourceFormat === 'DOCX' ? 'Arquivo Word original preservado. A edição e a prévia usarão o mesmo documento.' : tpl.contentHtml.replace(/<[^>]*>/g, '')}</p>
                 </div>
 
                 <div className="pt-3 border-t border-slate-200 flex items-center justify-between text-xs">
                   <span className="text-slate-400 font-medium">{tpl.documentType}</span>
                   <div className="flex items-center gap-2">
-                    <button
+                    {tpl.sourceFormat === 'DOCX' ? <a href={`/api/templates/word?templateId=${tpl.id}`} className="px-3 py-1.5 bg-[#0B1D3D] text-white font-bold rounded-lg flex items-center gap-1 text-xs"><Download className="w-3.5 h-3.5" /> Original Word</a> : <button
                       onClick={() => {
                         setFormData({
                           title: tpl.title,
@@ -219,7 +233,7 @@ export default function TemplatesPage() {
                       className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 font-bold rounded-lg hover:bg-slate-100 flex items-center gap-1 text-xs"
                     >
                       <Edit3 className="w-3.5 h-3.5 text-blue-600" /> Editar
-                    </button>
+                    </button>}
                     <button
                       onClick={() => {
                         setFormData({
@@ -243,6 +257,8 @@ export default function TemplatesPage() {
           </div>
         )}
       </div>
+
+      {showWordModal && <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"><form onSubmit={handleWordUpload} className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl"><div className="flex justify-between items-center border-b pb-4"><div className="flex gap-2 items-center"><FileType2 className="text-blue-600" /><div><h2 className="font-bold text-[#0B1D3D]">Novo modelo Word</h2><p className="text-xs text-slate-500">O arquivo original será preservado para a edição fiel.</p></div></div><button type="button" onClick={() => setShowWordModal(false)}><X className="text-slate-400" /></button></div><div className="space-y-4 pt-5"><input required value={wordForm.title} onChange={e=>setWordForm({...wordForm,title:e.target.value})} placeholder="Ex.: Procuração previdenciária" className="w-full p-3 border rounded-xl" /><input type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required onChange={e=>setWordFile(e.target.files?.[0] || null)} className="w-full text-sm" /><p className="rounded-xl bg-blue-50 p-3 text-xs text-blue-800">Piloto Word: nesta primeira etapa o AssinaJur armazena o DOCX original. O editor Syncfusion será conectado em seguida usando a chave temporária recebida.</p><div className="flex justify-end gap-2"><button type="button" onClick={()=>setShowWordModal(false)} className="px-4 py-2 text-sm">Cancelar</button><button disabled={saving} className="px-4 py-2 bg-[#0B1D3D] text-white rounded-xl font-bold text-sm">{saving ? 'Enviando...' : 'Salvar modelo Word'}</button></div></div></form></div>}
 
       {/* Modal: Cadastro de Modelo */}
       {showModal && (

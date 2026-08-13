@@ -160,6 +160,7 @@ model StorageFile {
   originalDocuments Document[] @relation("OriginalFile")
   signedDocuments   Document[] @relation("SignedFile")
   processAttachments ProcessAttachment[]
+  templateSources    Template[] @relation("TemplateSourceFile")
 }
 
 // Modelos Jurídicos Próprios (Fase 4)
@@ -171,6 +172,11 @@ model Template {
   category     String   @default("Previdenciário")
   documentType String   @default("CONTRATO")
   contentHtml  String
+  // HTML continua sendo mantido para os modelos antigos. Modelos Word preservam
+  // o arquivo DOCX original e passam a ser tratados por um editor próprio.
+  sourceFormat String   @default("HTML") // HTML | DOCX
+  sourceFileId String?
+  sourceFile   StorageFile? @relation("TemplateSourceFile", fields: [sourceFileId], references: [id], onDelete: SetNull)
   description  String?
   version      Int      @default(1)
   active       Boolean  @default(true)
