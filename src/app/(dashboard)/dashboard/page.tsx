@@ -22,7 +22,9 @@ import {
   TrendingUp,
   AlertCircle,
   Scale,
-  Loader2
+  Loader2,
+  BriefcaseBusiness,
+  CalendarDays
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -36,6 +38,7 @@ export default function DashboardPage() {
 
   const [recentClients, setRecentClients] = useState<any[]>([]);
   const [recentDocuments, setRecentDocuments] = useState<any[]>([]);
+  const [processes, setProcesses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dragActive, setDragActive] = useState(false);
   const [uploadingPdf, setUploadingPdf] = useState(false);
@@ -44,8 +47,9 @@ export default function DashboardPage() {
     Promise.all([
       fetch('/api/clients').then((res) => res.json()),
       fetch('/api/documents').then((res) => res.json()),
+      fetch('/api/processos').then((res) => res.json()),
     ])
-      .then(([clientsData, docsData]) => {
+      .then(([clientsData, docsData, processesData]) => {
         if (clientsData.clients) {
           setRecentClients(clientsData.clients.slice(0, 5));
           setStats((prev) => ({ ...prev, clientsCount: clientsData.clients.length }));
@@ -65,6 +69,7 @@ export default function DashboardPage() {
             totalDocs: docs.length,
           }));
         }
+        if (processesData.processes) setProcesses(processesData.processes);
       })
       .catch((err) => console.error('Erro ao carregar dados do dashboard:', err))
       .finally(() => setLoading(false));
@@ -172,6 +177,11 @@ export default function DashboardPage() {
           <div className="rounded-xl bg-white/10 p-3 border border-white/15"><b>2. Escolha o cliente</b><span className="block text-blue-100 mt-1">Dados e CPF são preenchidos.</span></div>
           <div className="rounded-xl bg-white/10 p-3 border border-white/15"><b>3. Envie um único link</b><span className="block text-blue-100 mt-1">Assinatura de todos em uma sessão.</span></div>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[1.25fr_.75fr] gap-6">
+        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm"><div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-extrabold tracking-widest text-blue-600 uppercase">Fluxo recomendado</p><h2 className="font-heading text-lg font-extrabold text-[#071B3A] mt-1">O que fazer agora</h2><p className="text-xs text-slate-500 mt-1">Siga esta sequência para não perder nenhuma etapa do atendimento.</p></div><Link href="/processos" className="text-xs font-extrabold text-blue-700">Ver processos</Link></div><div className="mt-5 grid sm:grid-cols-3 gap-3">{[{ n: '1', title: 'Cadastre o cliente', text: 'Dados e representante, quando houver.', href: '/clientes?novo=true' }, { n: '2', title: 'Envie para assinatura', text: 'PDFs próprios ou kit jurídico em um link.', href: '/documentos/novo' }, { n: '3', title: 'Organize o processo', text: 'Migre os assinados e acompanhe prazos.', href: '/processos' }].map((step) => <Link key={step.n} href={step.href} className="rounded-2xl border border-slate-200 p-4 hover:border-blue-300 hover:bg-blue-50/40 transition-colors"><span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#071B3A] text-xs font-bold text-white">{step.n}</span><p className="mt-3 text-xs font-extrabold text-[#071B3A]">{step.title}</p><p className="mt-1 text-[11px] leading-relaxed text-slate-500">{step.text}</p></Link>)}</div></div>
+        <div className="rounded-3xl border border-amber-200 bg-amber-50/50 p-6 shadow-sm"><div className="flex items-center gap-2"><CalendarDays className="w-5 h-5 text-amber-700" /><div><p className="text-xs font-extrabold text-[#071B3A]">Lembretes de processos</p><p className="text-[11px] text-amber-800">Acompanhe prioridades e prazos.</p></div></div><div className="mt-4 space-y-2">{processes.filter((process) => process.dueDate).sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()).slice(0, 3).map((process) => <Link key={process.id} href="/processos" className="block rounded-xl bg-white border border-amber-100 px-3 py-2"><p className="text-xs font-bold text-[#071B3A] truncate">{process.title}</p><p className="text-[10px] text-amber-800">Prazo: {new Date(process.dueDate).toLocaleDateString('pt-BR')} • {process.client?.name}</p></Link>)}{!processes.some((process) => process.dueDate) && <p className="rounded-xl bg-white border border-amber-100 p-3 text-xs text-slate-600">Nenhum prazo cadastrado. Ao criar ou editar um processo, informe o próximo prazo para ele aparecer aqui.</p>}</div></div>
       </div>
 
       {/* Grid Principal — Upload Rápido + Resumo de Envio */}
@@ -288,7 +298,7 @@ export default function DashboardPage() {
         <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider font-heading">Total de Processos</span>
-            <div className="font-heading text-2xl font-extrabold text-slate-700 mt-1">{stats.totalDocs}</div>
+            <div className="font-heading text-2xl font-extrabold text-slate-700 mt-1">{processes.length}</div>
           </div>
           <div className="w-11 h-11 rounded-2xl bg-slate-100 text-slate-600 border border-slate-200 flex items-center justify-center font-bold">
             <FileCheck2 className="w-5 h-5" />

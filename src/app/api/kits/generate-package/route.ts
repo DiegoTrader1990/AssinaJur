@@ -102,7 +102,7 @@ export async function POST(req: Request) {
     }
 
     const activeLawyers = await prisma.user.findMany({
-      where: { officeId: user.officeId, active: true },
+      where: { officeId: user.officeId, active: true, role: { in: ['LAWYER', 'OFFICE_ADMIN'] } },
       select: { name: true, oabNumber: true, gender: true },
       orderBy: { name: 'asc' },
     });

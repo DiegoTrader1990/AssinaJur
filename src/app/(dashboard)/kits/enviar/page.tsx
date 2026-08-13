@@ -159,7 +159,7 @@ export default function DispatchKitPage() {
       ]);
       const [clientPayload, officePayload, teamPayload] = await Promise.all([clientResponse.json(), officeResponse.json(), teamResponse.json()]);
       const client = clientPayload.client || {};
-      const activeLawyers = (teamPayload.members || []).filter((member: any) => member.active);
+      const activeLawyers = (teamPayload.members || []).filter((member: any) => member.active && ['LAWYER', 'OFFICE_ADMIN'].includes(member.role));
       const lawyer = activeLawyers[0] || {};
       const officeAddress = officePayload.office?.address || 'endereço profissional informado na configuração';
       const officeState = String(officeAddress).match(/(?:\/|,|\s)(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b/i)?.[1]?.toUpperCase() || 'BA';

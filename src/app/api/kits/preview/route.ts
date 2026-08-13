@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     const [client, office, activeLawyers] = await Promise.all([
       prisma.client.findFirst({ where: { id: clientId, officeId: user.officeId } }),
       prisma.office.findUnique({ where: { id: user.officeId } }),
-      prisma.user.findMany({ where: { officeId: user.officeId, active: true }, select: { name: true, oabNumber: true, gender: true }, orderBy: { createdAt: 'asc' } }),
+      prisma.user.findMany({ where: { officeId: user.officeId, active: true, role: { in: ['LAWYER', 'OFFICE_ADMIN'] } }, select: { name: true, oabNumber: true, gender: true }, orderBy: { createdAt: 'asc' } }),
     ]);
     if (!client || !office) return NextResponse.json({ error: 'Cliente ou escritório não encontrado.' }, { status: 404 });
     let letterheadBuffer: Buffer | undefined;
