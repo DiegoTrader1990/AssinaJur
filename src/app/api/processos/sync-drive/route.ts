@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { ensureProcessDriveFolders } from "@/lib/google-drive";
+import { ensureProcessDriveFolders, syncProcessFilesToDrive } from "@/lib/google-drive";
 
 export const dynamic = "force-dynamic";
 
@@ -12,18 +12,21 @@ export async function POST() {
   if (!user)
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   const processes = await prisma.legalProcess.findMany({
-    where: { officeId: user.officeId, driveFolderId: null },
+    where: { officeId: user.officeId },
     include: { client: { select: { name: true } } },
     orderBy: { createdAt: "asc" },
   });
   try {
-    const outcomes = await Promise.allSettled(processes.map((process) => ensureProcessDriveFolders({
+    const outcomes = await Promise.allSettled(processes.map(async (process) => {
+      await ensureProcessDriveFolders({
         id: process.id,
         officeId: process.officeId,
         title: process.title,
         client: process.client,
-      })));
-    const created = outcomes.filter((outcome) => outcome.status === 'fulfilled' && outcome.value).length;
+      });
+      return syncProcessFilesToDrive({ id: process.id, officeId: process.officeId, title: process.title, client: process.client });
+    }));
+    const created = outcomes.filter((outcome) => outcome.status === 'fulfilled').length;
     const failed = outcomes.filter((outcome) => outcome.status === 'rejected').length;
     outcomes.forEach((outcome) => {
       if (outcome.status === 'rejected') console.error('[Google Drive] Falha ao sincronizar processo:', outcome.reason);

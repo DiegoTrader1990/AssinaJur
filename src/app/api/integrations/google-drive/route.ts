@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import { getSessionUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { createGoogleDriveAuthorizeUrl, ensureDriveRoot, ensureProcessDriveFolders, googleDriveConfigured } from '@/lib/google-drive';
+import { createGoogleDriveAuthorizeUrl, ensureDriveRoot, ensureProcessDriveFolders, googleDriveConfigured, syncProcessFilesToDrive } from '@/lib/google-drive';
 
 export const dynamic = 'force-dynamic';
 const stateSecret = () => process.env.JWT_SECRET || 'assinajur_google_drive_state_2026';
@@ -28,13 +28,14 @@ export async function GET() {
   // erro eventual não impeça os demais de receberem sua pasta.
   if (connection?.rootFolderId) {
     const pendingProcesses = await prisma.legalProcess.findMany({
-      where: { officeId: user.officeId, driveFolderId: null },
+      where: { officeId: user.officeId },
       include: { client: { select: { name: true } } },
       take: 50,
     });
-    const outcomes = await Promise.allSettled(pendingProcesses.map((process) => ensureProcessDriveFolders({
-      id: process.id, officeId: process.officeId, title: process.title, client: process.client,
-    })));
+    const outcomes = await Promise.allSettled(pendingProcesses.map(async (process) => {
+      await ensureProcessDriveFolders({ id: process.id, officeId: process.officeId, title: process.title, client: process.client });
+      return syncProcessFilesToDrive({ id: process.id, officeId: process.officeId, title: process.title, client: process.client });
+    }));
     outcomes.forEach((outcome) => {
       if (outcome.status === 'rejected') console.error('[Google Drive] Falha ao criar pasta de processo:', outcome.reason);
     });

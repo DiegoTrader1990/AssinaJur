@@ -235,6 +235,8 @@ model Document {
   
   signedFileId     String?
   signedFile       StorageFile? @relation("SignedFile", fields: [signedFileId], references: [id])
+  driveFileId      String?
+  driveFileUrl     String?
   
   originalHash     String
   signedHash       String?

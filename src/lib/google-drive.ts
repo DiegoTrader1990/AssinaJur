@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
+import { getFileBuffer } from '@/lib/storage';
 
 const DRIVE_SCOPE = 'openid email https://www.googleapis.com/auth/drive.file';
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
@@ -122,4 +123,40 @@ export async function uploadProcessFileToDrive(process: { id: string; officeId: 
   const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', { method: 'POST', headers: { Authorization: `Bearer ${access.token}`, 'Content-Type': `multipart/related; boundary=${boundary}` }, body: payload });
   if (!res.ok) throw new Error('Não foi possível enviar este arquivo ao Google Drive.');
   return res.json() as Promise<{ id: string; webViewLink?: string }>;
+}
+
+// Recupera arquivos que já existiam no AssinaJur antes da conexão com o Drive.
+// Cada item recebe seu identificador no Drive, evitando novo envio em sincronizações futuras.
+export async function syncProcessFilesToDrive(process: { id: string; officeId: string; title: string; client: { name: string } }) {
+  const folder = await ensureProcessDriveFolders(process);
+  if (!folder) return { documents: 0, attachments: 0 };
+  let documents = 0;
+  let attachments = 0;
+  const [signedDocuments, pendingAttachments] = await Promise.all([
+    prisma.document.findMany({
+      where: { processId: process.id, officeId: process.officeId, signedFileId: { not: null }, driveFileId: null },
+      include: { signedFile: true },
+    }),
+    prisma.processAttachment.findMany({ where: { processId: process.id, driveFileId: null }, include: { file: true } }),
+  ]);
+  for (const document of signedDocuments) {
+    if (!document.signedFile) continue;
+    const buffer = await getFileBuffer(process.officeId, document.signedFile.storageKey);
+    if (!buffer) throw new Error(`Não foi possível localizar o PDF assinado de "${document.title}".`);
+    const uploaded = await uploadProcessFileToDrive(process, { name: document.signedFile.originalName, mimeType: document.signedFile.mimeType, buffer }, 'Documentos assinados');
+    if (uploaded) {
+      await prisma.document.update({ where: { id: document.id }, data: { driveFileId: uploaded.id, driveFileUrl: uploaded.webViewLink || null } });
+      documents += 1;
+    }
+  }
+  for (const attachment of pendingAttachments) {
+    const buffer = await getFileBuffer(process.officeId, attachment.file.storageKey);
+    if (!buffer) throw new Error(`Não foi possível localizar o arquivo "${attachment.title}".`);
+    const uploaded = await uploadProcessFileToDrive(process, { name: attachment.file.originalName, mimeType: attachment.file.mimeType, buffer });
+    if (uploaded) {
+      await prisma.processAttachment.update({ where: { id: attachment.id }, data: { driveFileId: uploaded.id, driveFileUrl: uploaded.webViewLink || null } });
+      attachments += 1;
+    }
+  }
+  return { documents, attachments };
 }
