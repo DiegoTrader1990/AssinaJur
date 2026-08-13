@@ -16,6 +16,15 @@ const processInclude = {
 export async function GET() {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
+  // Recuperação automática: processos criados antes da conexão do Drive não
+  // dependem de um botão manual. Ao abrir a central, criamos as pastas que
+  // ainda estiverem pendentes, sem interromper a consulta se o Drive oscilar.
+  try {
+    const pendingDriveFolders = await prisma.legalProcess.findMany({ where: { officeId: user.officeId, driveFolderId: null }, include: { client: { select: { name: true } } }, take: 30 });
+    for (const process of pendingDriveFolders) {
+      await ensureProcessDriveFolders({ id: process.id, officeId: process.officeId, title: process.title, client: process.client });
+    }
+  } catch (driveError) { console.error('Não foi possível sincronizar automaticamente os processos com o Drive:', driveError); }
   const processes = await prisma.legalProcess.findMany({ where: { officeId: user.officeId }, include: processInclude, orderBy: [{ priority: 'desc' }, { lastActivityAt: 'desc' }] });
   return NextResponse.json({ processes });
 }
