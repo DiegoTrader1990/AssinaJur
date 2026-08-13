@@ -193,7 +193,7 @@ function playShutterSound(enabled = true) {
 }
 
 export default function MobileSignaturePage({ params }: { params: { token: string } }) {
-  const [step, setStep] = useState<'IDENTIFY' | 'SELFIE' | 'ROGO_TRANSITION' | 'ROGO_SELFIE' | 'SIGN' | 'NEXT_PARTICIPANT' | 'SUCCESS'>('IDENTIFY');
+  const [step, setStep] = useState<'IDENTIFY' | 'SELFIE' | 'ROGO_TRANSITION' | 'ROGO_SELFIE' | 'SIGN' | 'NEXT_PARTICIPANT' | 'WAITING_ORDER' | 'SUCCESS'>('IDENTIFY');
   const [signer, setSigner] = useState<SignerInfo | null>(null);
   const [document, setDocument] = useState<DocumentInfo | null>(null);
   const [kit, setKit] = useState<KitInfo | null>(null);
@@ -219,6 +219,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [submitting, setSubmitting] = useState(false);
   const [pendingParticipants, setPendingParticipants] = useState<Array<{ name: string; role: string; signingMode: string }>>([]);
   const [nextParticipant, setNextParticipant] = useState<{ token: string; name: string; role: string } | null>(null);
+  const [waitingFor, setWaitingFor] = useState<{ name: string; role: string; signatureOrder: number } | null>(null);
 
   // Canvas de assinatura
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -386,6 +387,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setSigner(data.signer);
       setDocument(data.document);
       setKit(data.kit || null);
+      if (data.waitingFor) {
+        setWaitingFor(data.waitingFor);
+        setStep('WAITING_ORDER');
+        return;
+      }
       setCpf(maskCpfCnpj(data.signer.cpf));
       setTypedName(data.signer.name);
 
@@ -402,6 +408,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (step !== 'WAITING_ORDER') return;
+    const timer = window.setInterval(() => { fetchSignatureData(); }, 12000);
+    return () => window.clearInterval(timer);
+  }, [step]);
 
   const handleConfirmCpf = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1466,6 +1478,14 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             <div className="w-16 h-16 bg-blue-50 border border-blue-200 text-blue-600 rounded-full flex items-center justify-center mx-auto shadow-xs"><Users className="w-9 h-9" /></div>
             <div className="space-y-2"><span className="px-3.5 py-1 rounded-full bg-blue-50 text-blue-700 font-extrabold text-xs border border-blue-200 uppercase tracking-wider font-heading">Próxima etapa obrigatória</span><h2 className="font-heading text-xl font-extrabold text-[#071B3A]">Passe o celular para {nextParticipant.name}</h2><p className="text-sm text-slate-600 font-medium leading-relaxed">A etapa anterior foi registrada, mas o documento ainda não foi concluído. Agora a {nextParticipant.role.replace(/_/g, ' ').toLowerCase()} deverá confirmar o próprio CPF, fazer as três fotos e assinar.</p></div>
             <button type="button" onClick={() => window.location.assign(`/assinar/${nextParticipant.token}`)} className="w-full py-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg text-sm font-heading">Iniciar etapa de {nextParticipant.name}</button>
+          </div>
+        )}
+
+        {step === 'WAITING_ORDER' && waitingFor && (
+          <div className="bg-white p-8 rounded-3xl border border-amber-200 shadow-2xl text-center space-y-6">
+            <div className="w-16 h-16 bg-amber-50 border border-amber-200 text-amber-600 rounded-full flex items-center justify-center mx-auto shadow-xs"><Clock className="w-9 h-9" /></div>
+            <div className="space-y-2"><span className="px-3.5 py-1 rounded-full bg-amber-50 text-amber-800 font-extrabold text-xs border border-amber-200 uppercase tracking-wider font-heading">Aguarde sua vez</span><h2 className="font-heading text-xl font-extrabold text-[#071B3A]">Esta assinatura ainda está em andamento</h2><p className="text-sm text-slate-600 font-medium leading-relaxed">Antes de você, <strong>{waitingFor.name}</strong> precisa concluir a etapa de assinatura. Assim que ela for finalizada, esta página será liberada automaticamente.</p></div>
+            <button type="button" onClick={() => fetchSignatureData()} className="w-full py-3 border border-amber-300 bg-amber-50 text-amber-900 font-extrabold rounded-2xl text-sm font-heading">Verificar agora</button>
           </div>
         )}
 

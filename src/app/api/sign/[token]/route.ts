@@ -76,7 +76,15 @@ export async function GET(
 
     const blocker = await getSignatureOrderBlock(document.id, signer.id);
     if (blocker) {
-      return NextResponse.json({ error: signatureOrderError(blocker), orderEnforced: true, waitingFor: blocker.name }, { status: 409 });
+      // O link é válido; apenas ainda não chegou a vez deste participante.
+      // Retornamos uma tela pública de espera em vez de um erro 409 que a
+      // interface tratava como link inválido.
+      return NextResponse.json({
+        waitingFor: { name: blocker.name, role: blocker.role, signatureOrder: blocker.signatureOrder },
+        signer: { id: signer.id, name: signer.name, cpf: signer.cpf, email: signer.email, phone: signer.phone, role: signer.role, status: signer.status, signatureOrder: signer.signatureOrder },
+        office: document.office,
+        document: { id: document.id, title: document.title, documentType: document.documentType, isIlliterate: document.isIlliterate, status: document.status },
+      });
     }
 
     // Registrar evento de abertura do link (primeira visualização)
