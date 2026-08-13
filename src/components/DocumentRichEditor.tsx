@@ -123,6 +123,21 @@ export function DocumentRichEditor({
     }
   };
 
+  const applyParagraphSpacing = (mode: string) => {
+    const selection = window.getSelection();
+    let node = selection?.anchorNode as HTMLElement | null;
+    if (node?.nodeType === Node.TEXT_NODE) node = node.parentElement;
+    const paragraph = node?.closest('p, div, h1, h2, li') as HTMLElement | null;
+    if (!paragraph) return;
+    const styles: Record<string, { lineHeight: string; marginBottom: string }> = {
+      compacto: { lineHeight: '1.25', marginBottom: '3px' },
+      normal: { lineHeight: '1.5', marginBottom: '7px' },
+      amplo: { lineHeight: '1.8', marginBottom: '12px' },
+    };
+    Object.assign(paragraph.style, styles[mode] || styles.normal);
+    onChange(editorRef.current?.innerHTML || '');
+  };
+
   const insertTag = (tag: string) => {
     const tagText = `{{${tag}}}`;
     
@@ -230,6 +245,14 @@ export function DocumentRichEditor({
             className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-700 outline-none focus:border-blue-500"
           >
             {FONT_SIZE_OPTIONS.map((size) => <option key={size.value} value={size.value}>{size.label}</option>)}
+          </select>
+        </label>
+        <label className="flex items-center gap-1.5 px-2 text-[11px] font-semibold text-slate-600" title="Posicione o cursor no parágrafo para ajustar o espaçamento">
+          Espaço
+          <select onChange={(event) => applyParagraphSpacing(event.target.value)} defaultValue="normal" className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-700 outline-none focus:border-blue-500">
+            <option value="compacto">Compacto</option>
+            <option value="normal">Normal</option>
+            <option value="amplo">Amplo</option>
           </select>
         </label>
         <div className="w-px h-6 bg-slate-300 mx-1"></div>

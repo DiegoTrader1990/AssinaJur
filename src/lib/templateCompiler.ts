@@ -46,7 +46,7 @@ type ParagraphKind = 'BODY' | 'H1' | 'H2' | 'LIST';
 type TextAlignment = 'LEFT' | 'CENTER' | 'RIGHT' | 'JUSTIFY';
 type PdfFontFamily = 'HELVETICA' | 'TIMES' | 'COURIER';
 type TextRun = { text: string; bold: boolean; fontFamily?: PdfFontFamily; fontSize?: number };
-type RichParagraph = { kind: ParagraphKind; alignment: TextAlignment; runs: TextRun[] };
+type RichParagraph = { kind: ParagraphKind; alignment: TextAlignment; runs: TextRun[]; lineHeight?: number; spaceAfter?: number; isBlank?: boolean };
 
 function decodeHtmlText(value: string): string {
   return value
@@ -122,24 +122,16 @@ function cleanHtmlForPdf(html: string): string {
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
     .replace(/<!--[\s\S]*?-->/g, '');
 
-  // 2. Aggressively strip span tags, style attributes, and Word style artifacts
+  // 2. Preserve visual styles that are part of the minute. Only remove Word artifacts.
   cleaned = cleaned
-    .replace(/<\/?span[^>]*>/gi, '')
-    .replace(/<?\s*span\s+style\s*=\s*"[\s\S]*?"\s*>/gi, '')
-    .replace(/span\s+style\s*=\s*"[^>]*>/gi, '')
-    .replace(/span\s+style\s*=\s*'[^>]*>/gi, '')
-    .replace(/line-height:[^;>]*;?/gi, '')
-    .replace(/font-family:[^;>]*;?/gi, '')
-    .replace(/font-size:[^;>]*;?/gi, '')
-    .replace(/\bsans-serif\b;?/gi, '');
+    .replace(/\s(?:mso-[\w-]+|tab-stops|language):[^;"']*;?/gi, '');
 
   // 3. Line-by-line cleanup
   return cleaned
     .split('\n')
     .map((line) =>
       line
-        .replace(/^\s*span\s+style=[^>]*>?/gi, '')
-        .replace(/^\s*line-height:[^>]*>?/gi, '')
+        .replace(/^\s*o:p\s*>/gi, '')
     )
     .filter((line) => line.trim().length > 0)
     .join('\n');
@@ -161,8 +153,22 @@ function parseRichParagraphs(html: string): RichParagraph[] {
     if (!match) return fallback;
     return match[1].toUpperCase() as TextAlignment;
   };
-  const blockMarker = (kind: ParagraphKind, attributes: string, fallback: TextAlignment) =>
-    `\n[[${kind}:${alignmentFromAttributes(attributes, fallback)}]]`;
+  const blockMarker = (kind: ParagraphKind, attributes: string, fallback: TextAlignment) => {
+    const style = attributes.match(/style\s*=\s*["']([^"']*)["']/i)?.[1] || '';
+    const lineValue = style.match(/line-height\s*:\s*([^;]+)/i)?.[1] || '';
+    const marginValue = style.match(/margin-bottom\s*:\s*([^;]+)/i)?.[1] || '';
+    const convertToPoints = (value: string, fallback: number) => {
+      const numeric = Number.parseFloat(value);
+      if (!Number.isFinite(numeric)) return fallback;
+      if (/px/i.test(value)) return numeric * 0.75;
+      if (/pt/i.test(value)) return numeric;
+      return numeric;
+    };
+    const rawLine = convertToPoints(lineValue, 15);
+    const lineHeight = lineValue && !/(px|pt)/i.test(lineValue) ? Math.max(12, rawLine * 10) : Math.max(12, rawLine);
+    const spaceAfter = Math.max(0, convertToPoints(marginValue, 5));
+    return `\n[[${kind}:${alignmentFromAttributes(attributes, fallback)}:${lineHeight.toFixed(2)}:${spaceAfter.toFixed(2)}]]`;
+  };
 
   let normalized = cleanedHtml.replace(/\r/g, '');
 
@@ -174,7 +180,8 @@ function parseRichParagraphs(html: string): RichParagraph[] {
   normalized = normalized
     // <br> vindo de colagens e do contentEditable costuma representar quebra visual
     // dentro do bloco; não pode criar áreas vazias repetidas no PDF.
-    .replace(/<\s*br\s*\/?>/gi, '\n')
+    // Shift+Enter é quebra de linha; Enter cria um novo parágrafo.
+    .replace(/<\s*br\s*\/?>/gi, '[[BR]]')
     .replace(/<\s*h1([^>]*)>/gi, (_match, attributes) => blockMarker('H1', attributes, 'CENTER'))
     .replace(/<\s*h2([^>]*)>/gi, (_match, attributes) => blockMarker('H2', attributes, 'LEFT'))
     .replace(/<\s*(?:p|div)([^>]*)>/gi, (_match, attributes) => blockMarker('BODY', attributes, 'JUSTIFY'))
@@ -188,10 +195,14 @@ function parseRichParagraphs(html: string): RichParagraph[] {
       if (!line) return null;
       let kind: ParagraphKind = 'BODY';
       let alignment: TextAlignment = 'JUSTIFY';
-      const marker = line.match(/^\[\[(BODY|H1|H2|LIST):(LEFT|CENTER|RIGHT|JUSTIFY)\]\]/);
+      let lineHeight = 15;
+      let spaceAfter = 5;
+      const marker = line.match(/^\[\[(BODY|H1|H2|LIST):(LEFT|CENTER|RIGHT|JUSTIFY):(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)\]\]/);
       if (marker) {
         kind = marker[1] as ParagraphKind;
         alignment = marker[2] as TextAlignment;
+        lineHeight = Number(marker[3]);
+        spaceAfter = Number(marker[4]);
         line = line.slice(marker[0].length);
       }
 
@@ -229,7 +240,7 @@ function parseRichParagraphs(html: string): RichParagraph[] {
       }
       // Linhas vazias criadas no editor (Enter em um parágrafo vazio) também são
       // parte da minuta: preservamos a altura para que a emissão respeite o espaçamento.
-      return { kind, alignment, runs };
+      return { kind, alignment, runs, lineHeight, spaceAfter, isBlank: runs.length === 0 };
     })
     .filter((item): item is RichParagraph => Boolean(item));
 
@@ -377,15 +388,22 @@ async function renderTemplatePdf({
     const alignment = isExplicitSignatureLine || isSignatureCaption ? 'CENTER' : paragraph.alignment;
     const heading = paragraph.kind === 'H1' || paragraph.kind === 'H2';
     const fontSize = paragraph.kind === 'H1' ? 12 : paragraph.kind === 'H2' ? 10.8 : 10;
-    const lineHeight = paragraph.kind === 'H1' ? 17 : paragraph.kind === 'H2' ? 16 : 15;
-    const tokens = paragraph.runs.flatMap((run) =>
-      run.text.trim().split(/\s+/).filter(Boolean).map((word) => ({ text: word, bold: heading || run.bold, fontFamily: run.fontFamily, fontSize: heading ? fontSize : run.fontSize || fontSize }))
-    );
+    const lineHeight = paragraph.kind === 'H1' ? 17 : paragraph.kind === 'H2' ? 16 : paragraph.lineHeight || 15;
+    const tokens = paragraph.runs.flatMap((run) => run.text.split('[[BR]]').flatMap((segment, index, parts) => [
+      ...segment.trim().split(/\s+/).filter(Boolean).map((word) => ({ text: word, bold: heading || run.bold, fontFamily: run.fontFamily, fontSize: heading ? fontSize : run.fontSize || fontSize })),
+      ...(index < parts.length - 1 ? [{ text: '', bold: false, fontFamily: run.fontFamily, fontSize: heading ? fontSize : run.fontSize || fontSize, hardBreak: true }] : []),
+    ]));
     if (paragraph.kind === 'LIST') tokens.unshift({ text: '\u2022', bold: true, fontFamily: 'HELVETICA', fontSize });
 
-    if (tokens.length === 0) continue;
+    if (tokens.length === 0) {
+      if (paragraph.isBlank) {
+        ensureLineSpace(lineHeight + (paragraph.spaceAfter || 0));
+        currentY -= lineHeight + (paragraph.spaceAfter || 0);
+      }
+      continue;
+    }
 
-    let line: Array<{ text: string; bold: boolean; fontFamily?: PdfFontFamily; fontSize: number }> = [];
+    let line: Array<{ text: string; bold: boolean; fontFamily?: PdfFontFamily; fontSize: number; hardBreak?: boolean }> = [];
     let lineWidth = 0;
     const drawLine = (isLastLine: boolean) => {
       if (!line.length) return;
@@ -442,6 +460,7 @@ async function renderTemplatePdf({
 
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i];
+      if ('hardBreak' in token && token.hardBreak) { drawLine(true); continue; }
       const font = documentFont(token.fontFamily, token.bold);
       const value = `${line.length && !/^[,.;:!?)]/.test(token.text) ? ' ' : ''}${token.text}`;
       const width = font.widthOfTextAtSize(value, token.fontSize);
@@ -454,7 +473,7 @@ async function renderTemplatePdf({
     // Reserva real para o selo profissional e assinatura, mesmo quando o editor possui
     // linhas em branco que antes eram descartadas pelo compilador.
     // Títulos principais precisam de uma separação visual clara antes da qualificação inicial.
-    currentY -= isClientSignatureLabel ? 84 : isExplicitSignatureLine ? 8 : isSignatureCaption ? 3 : isFollowedByExplicitSignatureLine ? 42 : paragraph.kind === 'H1' ? 12 : heading ? 6 : 5;
+    currentY -= isClientSignatureLabel ? 84 : isExplicitSignatureLine ? 8 : isSignatureCaption ? 3 : isFollowedByExplicitSignatureLine ? 42 : paragraph.kind === 'H1' ? 12 : heading ? 6 : paragraph.spaceAfter || 5;
   }
 
   if (watermark) {
