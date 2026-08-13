@@ -211,6 +211,7 @@ const SIGNER_ROLE_LABELS: Record<string, string> = {
   CLIENTE: 'Cliente / Outorgante',
   ASSINANTE_A_ROGO: 'Assinante a Rogo (Acompanhante)',
   TESTEMUNHA: '1ª Testemunha Instrumentária',
+  TESTEMUNHA_1: '1ª Testemunha Instrumentária',
   TESTEMUNHA_2: '2ª Testemunha Instrumentária',
   ADVOGADO: 'Advogado',
   CONTRATANTE: 'Contratante',
@@ -227,7 +228,7 @@ function signerRoleLabel(role?: string | null, isIlliterate?: boolean) {
   if (r === 'ASSINANTE_A_ROGO') {
     return 'Assinante a Rogo (Acompanhante Indicado)';
   }
-  if (r === 'TESTEMUNHA') {
+  if (r === 'TESTEMUNHA' || r === 'TESTEMUNHA_1') {
     return '1ª Testemunha Instrumentária';
   }
   if (r === 'TESTEMUNHA_2') {
@@ -256,6 +257,16 @@ export async function generateFinalPdfCertificate(documentId: string) {
   if (!doc || !doc.originalFile) {
     throw new Error('Documento ou arquivo original não encontrado.');
   }
+  // A ordem visual do certificado segue a ordem jurídica, inclusive para
+  // documentos antigos que possam ter participantes criados fora de ordem.
+  const signerRank = (role: string) => {
+    if (role === 'CLIENTE') return 1;
+    if (role === 'ASSINANTE_A_ROGO') return 2;
+    if (role === 'TESTEMUNHA' || role === 'TESTEMUNHA_1') return 3;
+    if (role === 'TESTEMUNHA_2') return 4;
+    return 10;
+  };
+  doc.signers.sort((a, b) => signerRank(a.role) - signerRank(b.role) || a.signatureOrder - b.signatureOrder);
 
   // O certificado é a trilha de evidências da assinatura, não o histórico interno
   // do escritório. Exibimos apenas os atos que comprovam a manifestação do signatário.
@@ -365,11 +376,11 @@ export async function generateFinalPdfCertificate(documentId: string) {
       if (doc.isIlliterate) {
         const clientName = clientSigner?.name || 'Cliente Titular';
         const rogoName = rogoSigner?.name || doc.rogoName || 'Acompanhante a Rogo';
-        const witCountText = witnesses.length > 0 ? ` + ${witnesses.length} TESTEMUNHA(S)` : '';
-        signerSummary = `${safeText(clientName, 35)} (CLIENTE) • A ROGO: ${safeText(rogoName, 35)}${witCountText}`;
+        signerSummary = `${safeText(clientName, 35)} (CLIENTE) • A ROGO: ${safeText(rogoName, 35)}`;
         cpfLines = [
           `CPF CLIENTE: ${formatFullCpf(clientSigner?.cpf || '')}`,
           `CPF A ROGO: ${formatFullCpf(rogoSigner?.cpf || doc.rogoCpf || '')}`,
+          ...(witnesses.length ? [`+ ${witnesses.length} TESTEMUNHA${witnesses.length > 1 ? 'S' : ''} COM EVIDÊNCIAS INDIVIDUAIS`] : []),
         ];
       } else {
         signerSummary = doc.signers.length > 2
@@ -973,7 +984,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       (12 + authenticationLines.length * 9.8 + 5) +
       (signer.signatureImage ? 65 : 0);
     const photosHeight = hasPhotos ? 155 : 0;
-    const panelH = 24 + dataHeight + photosHeight + 8;
+    const panelH = 32 + dataHeight + photosHeight + 8;
     ensureSpace(panelH + 10);
 
     const pTop = y;
@@ -991,7 +1002,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
     });
 
     const col2X = padX + halfWidth + gapWidth;
-    let cursor = pTop - 28;
+    // Respiro entre o cabeçalho azul e o primeiro campo do signatário.
+    let cursor = pTop - 36;
 
     const drawTwoColumns = (
       left: { label: string; value: any; options?: any },
