@@ -48,6 +48,7 @@ import {
   HardDrive,
   FileCheck2,
   Landmark,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -59,24 +60,21 @@ export default function DashboardPage() {
   const [kits, setKits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // SELEÇÃO ÚNICA DE CLIENTE (PADRÃO VAZIO PARA O ADVOGADO ESCOLHER)
+  // BLOCO 1 (ESQUERDA): ALTERNADOR DE MODO DE DISPARO ('PDF_FILE' | 'KIT')
+  const [dispatchMode, setDispatchMode] = useState<'PDF_FILE' | 'KIT'>('PDF_FILE');
+
+  // Seleções do Advogado (Padrão Vazio para seleção consciente)
   const [selectedClientId, setSelectedClientId] = useState<string>('');
-  const [showInlineNewClient, setShowInlineNewClient] = useState(false);
-
-  // MODO DE ORIGEM DO DOCUMENTO NO PASSO 2: 'PDF_UPLOAD' OU 'AUTOMATED_KIT'
-  const [docSourceMode, setDocSourceMode] = useState<'PDF_UPLOAD' | 'AUTOMATED_KIT'>('PDF_UPLOAD');
-
-  // SELEÇÕES ESPECÍFICAS
   const [selectedKitId, setSelectedKitId] = useState<string>('');
   const [docCustomTitle, setDocCustomTitle] = useState<string>('');
 
-  // Drag & Drop State para Modo PDF_UPLOAD
+  // Drag & Drop State para Bloco 1 (Modo PDF_FILE)
   const [dragActive, setDragActive] = useState(false);
   const [uploadedPdf, setUploadedPdf] = useState<any>(null);
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Form de Cadastro Qualificado de Cliente
+  // BLOCO 2 (DIREITA): CADASTRO QUALIFICADO & CRIAÇÃO DE DOSSIÊ
   const [newClientName, setNewClientName] = useState('');
   const [newClientCpf, setNewClientCpf] = useState('');
   const [newClientPhone, setNewClientPhone] = useState('');
@@ -135,7 +133,7 @@ export default function DashboardPage() {
     return processes.reduce((acc, p) => acc + (p.documents?.length || 0) + (p.attachments?.length || 0), 0);
   }, [processes]);
 
-  // DRAG & DROP HANDLERS
+  // DRAG & DROP HANDLERS FOR BLOCO 1
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -194,51 +192,11 @@ export default function DashboardPage() {
     }
   };
 
-  // HANDLER PARA SALVAR CLIENTE INLINE
-  const handleSaveInlineClient = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newClientName.trim()) return;
-
-    setSubmitting(true);
-    try {
-      const res = await fetch('/api/clients', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: newClientName,
-          cpfCnpj: newClientCpf,
-          phone: newClientPhone,
-          whatsapp: newClientPhone,
-          rg: newClientRg,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao cadastrar cliente.');
-
-      const updatedClientsRes = await fetch('/api/clients').then((r) => r.json());
-      if (updatedClientsRes?.clients) {
-        setClients(updatedClientsRes.clients);
-        setSelectedClientId(data.client.id);
-      }
-
-      setShowInlineNewClient(false);
-      setNewClientName('');
-      setNewClientCpf('');
-      setNewClientPhone('');
-      setNewClientRg('');
-    } catch (err: any) {
-      setExecutionError(err.message || 'Erro ao cadastrar cliente.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // HANDLER ÚNICO DE DISPARO DA CENTRAL UNIFICADA
-  const handleExecuteUnifiedDispatch = async (e: React.FormEvent) => {
+  // HANDLER PARA DISPARO NO BLOCO 1 (PDF OU KIT DENTRO DA MESMA ÁREA DROP)
+  const handleDispatchBlock1 = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClientId) {
-      setExecutionError('Por favor, selecione a cliente no Passo 1.');
+      setExecutionError('Por favor, selecione a cliente destinatária.');
       return;
     }
 
@@ -247,8 +205,8 @@ export default function DashboardPage() {
     setExecutionResult(null);
 
     try {
-      if (docSourceMode === 'PDF_UPLOAD') {
-        if (!uploadedPdf) throw new Error('Arraste ou selecione um arquivo PDF no Passo 2.');
+      if (dispatchMode === 'PDF_FILE') {
+        if (!uploadedPdf) throw new Error('Arraste ou selecione um arquivo PDF do seu computador.');
 
         const res = await fetch('/api/documents', {
           method: 'POST',
@@ -272,7 +230,7 @@ export default function DashboardPage() {
           signatureLink: `https://www.assinajur.com.br/assinar/${data.document.token}`,
         });
       } else {
-        if (!selectedKitId) throw new Error('Selecione o Kit Jurídico no Passo 2.');
+        if (!selectedKitId) throw new Error('Selecione o Kit Jurídico.');
 
         const res = await fetch('/api/kits/generate-package', {
           method: 'POST',
@@ -301,6 +259,70 @@ export default function DashboardPage() {
       fetch('/api/documents').then((r) => r.json()).then((d) => setDocuments(d.documents || []));
     } catch (err: any) {
       setExecutionError(err.message || 'Erro ao disparar documento.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // HANDLER PARA CADASTRAR CLIENTE & CRIAR DOSSIÊ NO BLOCO 2
+  const handleRegisterClientBlock2 = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newClientName.trim()) {
+      setExecutionError('Informe o nome completo da cliente.');
+      return;
+    }
+
+    setSubmitting(true);
+    setExecutionError('');
+
+    try {
+      const res = await fetch('/api/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newClientName,
+          cpfCnpj: newClientCpf,
+          phone: newClientPhone,
+          whatsapp: newClientPhone,
+          rg: newClientRg,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao cadastrar cliente.');
+
+      // Criar Dossiê de Processo Automático no Windows Explorer para esta nova cliente
+      await fetch('/api/processos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: `Dossiê — ${data.client.name}`,
+          clientId: data.client.id,
+        }),
+      });
+
+      const updatedClientsRes = await fetch('/api/clients').then((r) => r.json());
+      if (updatedClientsRes?.clients) {
+        setClients(updatedClientsRes.clients);
+        setSelectedClientId(data.client.id);
+      }
+
+      const updatedProcsRes = await fetch('/api/processos').then((r) => r.json());
+      if (updatedProcsRes?.processes) {
+        setProcesses(updatedProcsRes.processes);
+      }
+
+      setExecutionResult({
+        type: 'CLIENT_PROCS',
+        clientName: data.client.name,
+      });
+
+      setNewClientName('');
+      setNewClientCpf('');
+      setNewClientPhone('');
+      setNewClientRg('');
+    } catch (err: any) {
+      setExecutionError(err.message || 'Erro ao cadastrar cliente.');
     } finally {
       setSubmitting(false);
     }
@@ -338,7 +360,7 @@ export default function DashboardPage() {
             Olá, {doctorName}! ⚖️
           </h1>
           <p className="text-xs lg:text-sm text-slate-500 max-w-3xl leading-relaxed">
-            Painel Operacional Notarial. Selecione a cliente no Passo 1, defina a origem do arquivo no Passo 2 e dispare no WhatsApp no Passo 3.
+            Painel Operacional do Escritório. Dispare PDFs avulsos ou Kits automatizados na caixa de envio à esquerda ou cadastre novas clientes no bloco à direita.
           </p>
         </div>
 
@@ -363,238 +385,70 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* 🚀 2. CENTRAL UNIFICADA DE DISPARO RÁPIDO EM 3 PASSOS INTEGRADOS (ZERO DUPLICAÇÃO) */}
-      <section className="bg-white border border-slate-200/90 rounded-[32px] p-6 lg:p-8 shadow-xs space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700 shrink-0">
-              <Zap className="w-5 h-5 fill-amber-500/20" />
-            </div>
-            <div>
-              <h2 className="font-heading font-black text-[#071B3A] text-lg">Central Unificada de Formalização Rápida</h2>
-              <p className="text-xs text-slate-500">Fluxo contínuo sem repetições para disparar qualquer documento no WhatsApp</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Link
-              href="/processos"
-              className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 rounded-xl text-xs font-bold flex items-center gap-1.5"
-            >
-              <Folder className="w-3.5 h-3.5 text-amber-600 fill-amber-500/20" /> Novo Dossiê 📁
-            </Link>
-          </div>
-        </div>
-
-        {/* FEEDBACK DE EXECUÇÃO */}
-        {executionResult ? (
-          <div className="bg-emerald-50 border-2 border-emerald-400/80 rounded-2xl p-6 space-y-4 animate-in fade-in zoom-in duration-200">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center font-bold shrink-0 shadow-md">
-                  <CheckCircle2 className="w-7 h-7" />
+      {/* 🚀 2. ESTRUTURA UNIFICADA EM 2 BLOCOS COMPLEMENTARES DA CENTRAL DE OPERAÇÕES */}
+      <section className="grid lg:grid-cols-12 gap-6">
+        {/* BLOCO 1 (ESQUERDA - 7 COLUNAS): ÁREA DE DISPARO RÁPIDO DENTRO DA MESMA DROP ZONE (PDF OU KIT) */}
+        <div className="lg:col-span-7 bg-white border border-slate-200/90 rounded-[32px] p-6 lg:p-7 shadow-xs space-y-4 flex flex-col justify-between">
+          <div className="space-y-4">
+            {/* CABEÇALHO DO BLOCO 1 COM ALTERNADOR DE MODO */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700 font-black shrink-0">
+                  <Zap className="w-5 h-5 fill-amber-500/20" />
                 </div>
                 <div>
-                  <h3 className="font-heading font-black text-emerald-950 text-lg">
-                    {executionResult.type === 'SINGLE_DOC'
-                      ? `Documento Pronto para ${executionResult.clientName}!`
-                      : executionResult.type === 'KIT'
-                      ? `Kit Jurídico Gerado para ${executionResult.clientName}!`
-                      : `Cliente ${executionResult.clientName} Cadastrada!`}
-                  </h3>
-                  <p className="text-xs text-emerald-800 font-medium">
-                    Link seguro de assinatura digital notarial gerado e pronto para envio no WhatsApp.
-                  </p>
+                  <h3 className="font-heading font-black text-[#071B3A] text-sm">Central de Disparo de Documentos</h3>
+                  <p className="text-[11px] text-slate-500">Selecione se enviará um PDF avulso ou um Kit Jurídico</p>
                 </div>
               </div>
 
-              <button
-                onClick={() => {
-                  setExecutionResult(null);
-                  setUploadedPdf(null);
-                }}
-                className="p-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {executionResult.signatureLink && (
-              <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-emerald-200">
-                {executionResult.clientPhone ? (
-                  <a
-                    href={`https://wa.me/55${executionResult.clientPhone.replace(/\D/g, '')}?text=${encodeURIComponent(
-                      `Olá ${executionResult.clientName}! Seus documentos jurídicos do escritório Rodrigues & Soares estão prontos para assinatura digital. Acesse o link seguro no celular: ${executionResult.signatureLink}`,
-                    )}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md flex items-center gap-2 transition-all hover:scale-[1.01]"
-                  >
-                    <MessageSquare className="w-4 h-4 fill-white" /> DISPARAR MENSAGEM NO WHATSAPP
-                  </a>
-                ) : (
-                  <div className="text-xs font-bold text-amber-800 bg-amber-100 px-4 py-2.5 rounded-xl">
-                    ⚠️ Cliente sem telefone cadastrado. Copie o link abaixo para enviar.
-                  </div>
-                )}
-
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(executionResult.signatureLink);
-                    setCopiedLink(true);
-                    setTimeout(() => setCopiedLink(false), 2000);
-                  }}
-                  className="px-5 py-3.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 font-extrabold text-xs rounded-xl flex items-center gap-2 transition-all shadow-xs"
-                >
-                  {copiedLink ? (
-                    <>
-                      <Check className="w-4 h-4 text-emerald-600" /> Link Copiado!
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-4 h-4 text-[#B68B1C]" /> Copiar Link Seguro
-                    </>
-                  )}
-                </button>
-
-                <button
-                  onClick={() => setShowQrModal(true)}
-                  className="px-4 py-3.5 bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-900 font-black text-xs rounded-xl flex items-center gap-1.5 transition-all"
-                >
-                  <QrCode className="w-4 h-4 text-amber-700" /> QR Code Presencial
-                </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <form onSubmit={handleExecuteUnifiedDispatch} className="grid lg:grid-cols-12 gap-6 items-start">
-            {/* PASSO 1 (4 COLUNAS): SELEÇÃO ÚNICA DA CLIENTE DA BASE OU NOVO CADASTRO */}
-            <div className="lg:col-span-4 bg-slate-50 border border-slate-200/90 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-black uppercase tracking-wider text-[#B68B1C]">
-                  1º Passo: Cliente
-                </span>
+              {/* SELETOR DE MODO DENTRO DA MESMA ÁREA */}
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-extrabold shrink-0">
                 <button
                   type="button"
-                  onClick={() => setShowInlineNewClient(!showInlineNewClient)}
-                  className="text-[11px] font-extrabold text-blue-700 hover:underline"
+                  onClick={() => {
+                    setDispatchMode('PDF_FILE');
+                    setExecutionResult(null);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                    dispatchMode === 'PDF_FILE' ? 'bg-[#071B3A] text-white shadow-2xs font-black' : 'text-slate-600'
+                  }`}
                 >
-                  {showInlineNewClient ? '← Selecionar da Lista' : '+ Nova Cliente'}
+                  <FileUp className="w-3.5 h-3.5 text-[#D4AF37] inline mr-1" /> PDF Avulso PC
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDispatchMode('KIT');
+                    setExecutionResult(null);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                    dispatchMode === 'KIT' ? 'bg-[#071B3A] text-white shadow-2xs font-black' : 'text-slate-600'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400 inline mr-1" /> Kit Jurídico (10s)
                 </button>
               </div>
-
-              {showInlineNewClient ? (
-                <div className="space-y-2 pt-1 animate-in fade-in duration-150">
-                  <input
-                    type="text"
-                    value={newClientName}
-                    onChange={(e) => setNewClientName(e.target.value)}
-                    placeholder="Nome Completo da Cliente"
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold focus:outline-none"
-                  />
-                  <input
-                    type="text"
-                    value={newClientCpf}
-                    onChange={(e) => setNewClientCpf(e.target.value)}
-                    placeholder="CPF (000.000.000-00)"
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold focus:outline-none"
-                  />
-                  <input
-                    type="text"
-                    value={newClientPhone}
-                    onChange={(e) => setNewClientPhone(e.target.value)}
-                    placeholder="WhatsApp (71) 99999-9999"
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSaveInlineClient}
-                    disabled={submitting || !newClientName.trim()}
-                    className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition-all"
-                  >
-                    Salvar e Selecionar Cliente
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <select
-                      value={selectedClientId}
-                      onChange={(e) => setSelectedClientId(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-300 focus:border-amber-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
-                    >
-                      <option value="" className="text-slate-400">
-                        -- Selecione a cliente --
-                      </option>
-                      {clients.map((c) => (
-                        <option key={c.id} value={c.id} className="text-slate-900">
-                          {c.name} {c.cpfCnpj ? `(CPF: ${c.cpfCnpj})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {selectedClient ? (
-                    <div className="bg-white border border-slate-200/90 rounded-xl p-3 space-y-1">
-                      <p className="text-xs font-black text-[#071B3A]">{selectedClient.name}</p>
-                      <p className="text-[11px] text-slate-500">
-                        CPF: {selectedClient.cpfCnpj || 'Não informado'} • {selectedClient.phone || selectedClient.whatsapp || 'Sem celular'}
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-slate-400 italic">
-                      Escolha quem receberá a documentação.
-                    </p>
-                  )}
-                </div>
-              )}
             </div>
 
-            {/* PASSO 2 (5 COLUNAS): ORIGEM DO DOCUMENTO (SOLTAR PDF OU USAR KIT COMPLETO) */}
-            <div className="lg:col-span-5 bg-slate-50 border border-slate-200/90 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                <span className="text-[11px] font-black uppercase tracking-wider text-[#B68B1C]">
-                  2º Passo: Documentos
-                </span>
-
-                {/* TABS DE ALTERNAÇÃO DE ORIGEM DE CONTEÚDO */}
-                <div className="flex items-center gap-1 bg-slate-200/80 p-0.5 rounded-lg text-[10px] font-extrabold">
-                  <button
-                    type="button"
-                    onClick={() => setDocSourceMode('PDF_UPLOAD')}
-                    className={`px-2.5 py-1 rounded-md transition-all ${
-                      docSourceMode === 'PDF_UPLOAD' ? 'bg-white text-[#071B3A] shadow-2xs font-black' : 'text-slate-600'
-                    }`}
-                  >
-                    📂 Soltar PDF PC
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setDocSourceMode('AUTOMATED_KIT')}
-                    className={`px-2.5 py-1 rounded-md transition-all ${
-                      docSourceMode === 'AUTOMATED_KIT' ? 'bg-white text-[#071B3A] shadow-2xs font-black' : 'text-slate-600'
-                    }`}
-                  >
-                    ✨ Kit Jurídico
-                  </button>
-                </div>
-              </div>
-
-              {docSourceMode === 'PDF_UPLOAD' ? (
-                <div className="space-y-2">
+            {/* FORMULÁRIO DO BLOCO 1 */}
+            <form onSubmit={handleDispatchBlock1} className="space-y-3.5">
+              {/* CONTEÚDO DINÂMICO DE ACORDO COM O MODO */}
+              {dispatchMode === 'PDF_FILE' ? (
+                <div className="space-y-3">
+                  {/* DROP ZONE COMPACTA DE PDF */}
                   <div
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
                     onClick={() => fileInputRef.current?.click()}
-                    className={`border-2 border-dashed rounded-xl p-3.5 text-center cursor-pointer transition-all ${
+                    className={`border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition-all ${
                       dragActive
-                        ? 'border-amber-500 bg-amber-50'
+                        ? 'border-amber-500 bg-amber-50/90 scale-[1.005]'
                         : uploadedPdf
-                        ? 'border-emerald-500 bg-emerald-50'
-                        : 'border-slate-300 bg-white hover:border-amber-500'
+                        ? 'border-emerald-500 bg-emerald-50/70'
+                        : 'border-slate-300 bg-slate-50/70 hover:border-amber-500 hover:bg-amber-50/40'
                     }`}
                   >
                     <input
@@ -606,16 +460,34 @@ export default function DashboardPage() {
                     />
 
                     {uploadingPdf ? (
-                      <Loader2 className="w-5 h-5 text-amber-600 animate-spin mx-auto" />
+                      <div className="py-2 space-y-1">
+                        <Loader2 className="w-6 h-6 text-amber-600 animate-spin mx-auto" />
+                        <p className="text-[11px] font-bold text-amber-900">Carregando PDF do Windows...</p>
+                      </div>
                     ) : uploadedPdf ? (
-                      <div className="flex items-center justify-between text-left">
-                        <span className="text-xs font-black text-slate-800 truncate">{uploadedPdf.name}</span>
-                        <span className="text-[10px] font-bold text-emerald-600">✓ Pronto</span>
+                      <div className="flex items-center justify-between text-left gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <File className="w-5 h-5 text-emerald-600 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-xs font-black text-slate-800 truncate">{uploadedPdf.name}</p>
+                            <p className="text-[10px] text-emerald-600 font-bold">
+                              ✓ PDF Pronto para Envio ({(uploadedPdf.sizeBytes / 1024 / 1024).toFixed(2)} MB)
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-600 bg-white border border-slate-200 px-2.5 py-1 rounded-md shrink-0">
+                          Trocar Arquivo
+                        </span>
                       </div>
                     ) : (
-                      <div className="space-y-0.5">
-                        <FileUp className="w-6 h-6 text-[#B68B1C] mx-auto" />
-                        <p className="text-xs font-black text-slate-800">Arraste o PDF do seu Windows aqui</p>
+                      <div className="py-3 space-y-1">
+                        <FileUp className="w-8 h-8 text-[#B68B1C] mx-auto" />
+                        <p className="text-xs font-black text-slate-800">
+                          Arraste e solte a petição ou contrato em PDF do seu computador aqui
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          ou <span className="text-amber-700 font-bold underline">clique para procurar no seu Windows</span>
+                        </p>
                       </div>
                     )}
                   </div>
@@ -624,72 +496,240 @@ export default function DashboardPage() {
                     type="text"
                     value={docCustomTitle}
                     onChange={(e) => setDocCustomTitle(e.target.value)}
-                    placeholder="Título da peça (Ex: Procuração Ad Judicia)"
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold focus:outline-none"
+                    placeholder="Título do Documento (Ex: Procuração Ad Judicia)"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
                   />
                 </div>
               ) : (
-                <div className="space-y-2">
-                  <select
-                    value={selectedKitId}
-                    onChange={(e) => setSelectedKitId(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-white border border-slate-300 focus:border-amber-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
-                  >
-                    {kits.map((k) => (
-                      <option key={k.id} value={k.id} className="text-slate-900">
-                        {k.name} ({k.items?.length || 3} papéis inclusos)
-                      </option>
-                    ))}
-                  </select>
+                <div className="space-y-3 bg-slate-50 border border-slate-200/80 p-4 rounded-2xl">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold uppercase text-slate-700">Selecione o Kit Jurídico Automatizado</label>
+                    <select
+                      value={selectedKitId}
+                      onChange={(e) => setSelectedKitId(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-300 focus:border-amber-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
+                    >
+                      {kits.map((k) => (
+                        <option key={k.id} value={k.id} className="text-slate-900">
+                          {k.name} ({k.items?.length || 3} papéis inclusos)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
                   {selectedKit && (
-                    <div className="flex flex-wrap gap-1 pt-1">
-                      {selectedKit.items?.map((item: any, i: number) => (
-                        <span key={i} className="text-[10px] font-bold bg-white border border-slate-200 text-slate-700 px-2 py-0.5 rounded-md">
-                          ✓ {item.template?.title || `Doc ${i + 1}`}
-                        </span>
-                      ))}
+                    <div className="space-y-1 pt-1">
+                      <p className="text-[10px] font-extrabold uppercase text-slate-500">Documentos gerados neste Kit:</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedKit.items?.map((item: any, i: number) => (
+                          <span key={i} className="text-[10px] font-bold bg-white border border-slate-200 text-slate-700 px-2.5 py-0.5 rounded-md">
+                            ✓ {item.template?.title || `Documento ${i + 1}`}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
               )}
-            </div>
 
-            {/* PASSO 3 (3 COLUNAS): CANAL DE DISPARO E AÇÃO PRINCIPAL */}
-            <div className="lg:col-span-3 bg-slate-50 border border-slate-200/90 rounded-2xl p-5 space-y-3 flex flex-col justify-between">
-              <span className="text-[11px] font-black uppercase tracking-wider text-[#B68B1C]">
-                3º Passo: Envio
-              </span>
+              {/* SELEÇÃO DA CLIENTE E BOTÃO DISPARAR */}
+              <div className="grid sm:grid-cols-[1.5fr_auto] gap-3 items-end pt-1">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold uppercase text-slate-700">Cliente Destinatária (Para quem enviar?)</label>
+                  <select
+                    value={selectedClientId}
+                    onChange={(e) => setSelectedClientId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
+                  >
+                    <option value="" className="text-slate-400">
+                      -- Selecione a cliente na lista --
+                    </option>
+                    {clients.map((c) => (
+                      <option key={c.id} value={c.id} className="text-slate-900">
+                        {c.name} {c.cpfCnpj ? `(CPF: ${c.cpfCnpj})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div className="space-y-2">
                 <button
                   type="submit"
-                  disabled={submitting || !selectedClientId}
-                  className="w-full py-3.5 bg-[#071B3A] hover:bg-[#0A254F] text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  disabled={submitting || !selectedClientId || (dispatchMode === 'PDF_FILE' && !uploadedPdf)}
+                  className="w-full sm:w-auto px-6 py-3 bg-[#071B3A] hover:bg-[#0A254F] text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 shrink-0"
                 >
-                  {submitting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4 text-[#D4AF37]" /> DISPARAR NO WHATSAPP
-                    </>
-                  )}
+                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 text-[#D4AF37]" />} DISPARAR NO WHATSAPP
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
 
-                <p className="text-[10px] text-slate-400 text-center">
-                  Gera o link notarial criptografado ICP-Brasil na hora.
+        {/* BLOCO 2 (DIREITA - 5 COLUNAS): CENTRAL DE NOVO ATENDIMENTO & DOSSIÊS NO WINDOWS (TOTALMENTE DIFERENTE) */}
+        <div className="lg:col-span-5 bg-white border border-slate-200/90 rounded-[32px] p-6 shadow-xs flex flex-col justify-between space-y-4">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-black shrink-0">
+                  <UserPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-black text-[#071B3A] text-sm">Novo Atendimento &amp; Dossiê</h3>
+                  <p className="text-[11px] text-slate-500">Qualifique a cliente e crie a pasta no Windows</p>
+                </div>
+              </div>
+            </div>
+
+            {/* FORMULÁRIO DE QUALIFICAÇÃO EXPRESS DA CLIENTE */}
+            <form onSubmit={handleRegisterClientBlock2} className="space-y-3">
+              <div className="space-y-2 bg-slate-50 border border-slate-200/80 p-4 rounded-2xl">
+                <input
+                  type="text"
+                  value={newClientName}
+                  onChange={(e) => setNewClientName(e.target.value)}
+                  placeholder="Nome Completo da Cliente"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
+                />
+
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    value={newClientCpf}
+                    onChange={(e) => setNewClientCpf(e.target.value)}
+                    placeholder="CPF (000.000.000-00)"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
+                  />
+                  <input
+                    type="text"
+                    value={newClientPhone}
+                    onChange={(e) => setNewClientPhone(e.target.value)}
+                    placeholder="WhatsApp (71) 99999-9999"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
+                  />
+                </div>
+
+                <input
+                  type="text"
+                  value={newClientRg}
+                  onChange={(e) => setNewClientRg(e.target.value)}
+                  placeholder="RG / Documento (Opcional)"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+              >
+                {submitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <FolderPlus className="w-4 h-4" /> CADASTRAR CLIENTE &amp; CRIAR PASTA NO WINDOWS 📁
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+
+          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+            <span className="text-[11px] text-slate-500">Cria subpastas automáticas 01, 02, 03 e 04</span>
+            <Link href="/processos" className="text-blue-700 font-extrabold hover:underline">
+              Abrir Explorer 📁
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* FEEDBACK DE EXECUÇÃO */}
+      {executionResult && (
+        <div className="bg-emerald-50 border-2 border-emerald-400/80 rounded-2xl p-6 space-y-4 animate-in fade-in zoom-in duration-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center font-bold shrink-0 shadow-md">
+                <CheckCircle2 className="w-7 h-7" />
+              </div>
+              <div>
+                <h3 className="font-heading font-black text-emerald-950 text-lg">
+                  {executionResult.type === 'SINGLE_DOC'
+                    ? `Documento Pronto para ${executionResult.clientName}!`
+                    : executionResult.type === 'KIT'
+                    ? `Kit Jurídico Gerado para ${executionResult.clientName}!`
+                    : `Cliente ${executionResult.clientName} Cadastrada e Pasta Dossiê Criada!`}
+                </h3>
+                <p className="text-xs text-emerald-800 font-medium">
+                  {executionResult.type === 'CLIENT_PROCS'
+                    ? `Qualificação armazenada e pasta do Windows Explorer gerada com as 4 subpastas.`
+                    : `Link seguro de assinatura digital notarial gerado e pronto para envio no WhatsApp.`}
                 </p>
               </div>
             </div>
-          </form>
-        )}
 
-        {executionError && (
-          <p className="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-4 py-2.5 rounded-xl flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" /> {executionError}
-          </p>
-        )}
-      </section>
+            <button
+              onClick={() => {
+                setExecutionResult(null);
+                setUploadedPdf(null);
+              }}
+              className="p-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {executionResult.signatureLink && (
+            <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-emerald-200">
+              {executionResult.clientPhone ? (
+                <a
+                  href={`https://wa.me/55${executionResult.clientPhone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                    `Olá ${executionResult.clientName}! Seus documentos jurídicos do escritório Rodrigues & Soares estão prontos para assinatura digital. Acesse o link seguro no celular: ${executionResult.signatureLink}`,
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md flex items-center gap-2 transition-all hover:scale-[1.01]"
+                >
+                  <MessageSquare className="w-4 h-4 fill-white" /> DISPARAR MENSAGEM NO WHATSAPP
+                </a>
+              ) : (
+                <div className="text-xs font-bold text-amber-800 bg-amber-100 px-4 py-2.5 rounded-xl">
+                  ⚠️ Cliente sem telefone cadastrado. Copie o link abaixo para enviar.
+                </div>
+              )}
+
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(executionResult.signatureLink);
+                  setCopiedLink(true);
+                  setTimeout(() => setCopiedLink(false), 2000);
+                }}
+                className="px-5 py-3.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 font-extrabold text-xs rounded-xl flex items-center gap-2 transition-all shadow-xs"
+              >
+                {copiedLink ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-600" /> Link Copiado!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 text-[#B68B1C]" /> Copiar Link Seguro
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => setShowQrModal(true)}
+                className="px-4 py-3.5 bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-900 font-black text-xs rounded-xl flex items-center gap-1.5 transition-all"
+              >
+                <QrCode className="w-4 h-4 text-amber-700" /> QR Code Presencial
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {executionError && (
+        <p className="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-4 py-2.5 rounded-xl flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" /> {executionError}
+        </p>
+      )}
 
       {/* ⚖️ 3. COCKPIT COMPLETO DE CASOS DA CARTEIRA DE CLIENTES (FILTROS OPERACIONAIS) */}
       <section className="grid gap-6 lg:grid-cols-2">
