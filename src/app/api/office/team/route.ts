@@ -199,7 +199,7 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, name, email, oabNumber, phone, gender } = body;
+    const { id, name, email, oabNumber, phone, gender, role, password } = body;
     if (!id || !name || !email) {
       return NextResponse.json({ error: 'Nome e e-mail são obrigatórios.' }, { status: 400 });
     }
@@ -209,6 +209,13 @@ export async function PATCH(req: Request) {
       select: { id: true, email: true, name: true },
     });
     if (!member) return NextResponse.json({ error: 'Membro não encontrado neste escritório.' }, { status: 404 });
+
+    if (role && !['OFFICE_ADMIN', 'LAWYER', 'STAFF', 'VIEWER'].includes(role)) {
+      return NextResponse.json({ error: 'Cargo de usuário inválido.' }, { status: 400 });
+    }
+    if (password && (String(password).length < 10 || !/[A-Za-z]/.test(password) || !/\d/.test(password))) {
+      return NextResponse.json({ error: 'A senha deve ter ao menos 10 caracteres, incluindo letras e números.' }, { status: 400 });
+    }
 
     const normalizedEmail = String(email).trim().toLowerCase();
     if (normalizedEmail !== member.email) {
@@ -224,6 +231,8 @@ export async function PATCH(req: Request) {
         oabNumber: String(oabNumber || '').trim() || null,
         phone: String(phone || '').trim() || null,
         gender: ['MASCULINO', 'FEMININO'].includes(gender) ? gender : null,
+        ...(role ? { role } : {}),
+        ...(password ? { passwordHash: await hashPassword(password) } : {}),
       },
       select: { id: true, name: true, email: true, role: true, oabNumber: true, phone: true, gender: true, active: true },
     });
