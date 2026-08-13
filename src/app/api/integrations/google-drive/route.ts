@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import { getSessionUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { createGoogleDriveAuthorizeUrl, ensureDriveRoot, googleDriveConfigured } from '@/lib/google-drive';
+import { createGoogleDriveAuthorizeUrl, ensureDriveRoot, ensureProcessDriveFolders, googleDriveConfigured } from '@/lib/google-drive';
 
 export const dynamic = 'force-dynamic';
 const stateSecret = () => process.env.JWT_SECRET || 'assinajur_google_drive_state_2026';
@@ -22,6 +22,22 @@ export async function GET() {
       console.error('[Google Drive] Falha ao concluir a pasta principal:', error);
       setupError = 'Não foi possível concluir a pasta principal no Google Drive. Reconecte a integração para autorizar o acesso novamente.';
     }
+  }
+  // Assim que a pasta principal estiver disponível, recupera também os dossiês
+  // criados antes da conexão. Cada processo é tratado isoladamente para que um
+  // erro eventual não impeça os demais de receberem sua pasta.
+  if (connection?.rootFolderId) {
+    const pendingProcesses = await prisma.legalProcess.findMany({
+      where: { officeId: user.officeId, driveFolderId: null },
+      include: { client: { select: { name: true } } },
+      take: 50,
+    });
+    const outcomes = await Promise.allSettled(pendingProcesses.map((process) => ensureProcessDriveFolders({
+      id: process.id, officeId: process.officeId, title: process.title, client: process.client,
+    })));
+    outcomes.forEach((outcome) => {
+      if (outcome.status === 'rejected') console.error('[Google Drive] Falha ao criar pasta de processo:', outcome.reason);
+    });
   }
   const ready = Boolean(connection?.rootFolderId);
   return NextResponse.json({ configured: googleDriveConfigured(), connected: ready, needsRepair: Boolean(connection && !ready), setupError, connection: connection ? { ...connection, folderUrl: connection.rootFolderId ? `https://drive.google.com/drive/folders/${connection.rootFolderId}` : null } : null });

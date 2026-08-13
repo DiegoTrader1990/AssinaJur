@@ -17,20 +17,22 @@ export async function POST() {
     orderBy: { createdAt: "asc" },
   });
   try {
-    let created = 0;
-    for (const process of processes) {
-      const folder = await ensureProcessDriveFolders({
+    const outcomes = await Promise.allSettled(processes.map((process) => ensureProcessDriveFolders({
         id: process.id,
         officeId: process.officeId,
         title: process.title,
         client: process.client,
-      });
-      if (folder) created += 1;
-    }
+      })));
+    const created = outcomes.filter((outcome) => outcome.status === 'fulfilled' && outcome.value).length;
+    const failed = outcomes.filter((outcome) => outcome.status === 'rejected').length;
+    outcomes.forEach((outcome) => {
+      if (outcome.status === 'rejected') console.error('[Google Drive] Falha ao sincronizar processo:', outcome.reason);
+    });
     return NextResponse.json({
       success: true,
       created,
       total: processes.length,
+      failed,
     });
   } catch (error: any) {
     return NextResponse.json(
