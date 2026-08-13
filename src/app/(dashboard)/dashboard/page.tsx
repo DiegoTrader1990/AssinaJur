@@ -121,6 +121,12 @@ export default function DashboardPage() {
     e.target.value = '';
   };
 
+  const actionCenter = [
+    ...recentDocuments.filter((doc) => !['CONCLUIDO', 'CANCELADO', 'EXPIRADO'].includes(doc.status)).slice(0, 3).map((doc) => ({ id: `signature-${doc.id}`, priority: 'URGENTE', title: `Fale com ${doc.client?.name || 'o signatário'}`, detail: `${doc.title} ainda aguarda assinatura.`, href: '/documentos', cta: 'Acompanhar assinatura' })),
+    ...processes.filter((process) => process.dueDate && new Date(process.dueDate).getTime() - Date.now() <= 3 * 86400000).sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()).slice(0, 3).map((process) => ({ id: `deadline-${process.id}`, priority: 'ATENÇÃO', title: `Revise o processo de ${process.client?.name || 'cliente'}`, detail: `${process.title} • prazo em ${new Date(process.dueDate).toLocaleDateString('pt-BR')}.`, href: '/processos', cta: 'Abrir processo' })),
+    ...processes.filter((process) => process.status === 'EM_TRIAGEM').slice(0, 2).map((process) => ({ id: `triage-${process.id}`, priority: 'PRÓXIMA ETAPA', title: `Avance o atendimento de ${process.client?.name || 'cliente'}`, detail: `${process.title} está em triagem.`, href: '/processos', cta: 'Organizar processo' })),
+  ].slice(0, 5);
+
   return (
     <div className="space-y-8 font-sans">
       {/* Top Welcome Header & Quick Action Pills */}
@@ -185,6 +191,11 @@ export default function DashboardPage() {
       </div>
 
       {/* Grid Principal — Upload Rápido + Resumo de Envio */}
+      <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-100 px-6 py-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-[10px] font-extrabold tracking-[0.18em] text-blue-600 uppercase">Inteligência operacional</p><h2 className="font-heading text-lg font-extrabold text-[#071B3A]">O que merece sua atenção hoje</h2><p className="mt-1 text-xs text-slate-500">Prioridades geradas a partir das assinaturas e processos do escritório.</p></div><Link href="/processos" className="rounded-xl bg-[#071B3A] px-4 py-2.5 text-center text-xs font-extrabold text-white">Abrir gestão do escritório</Link></div>
+        <div className="divide-y divide-slate-100">{actionCenter.length ? actionCenter.map((action) => <Link key={action.id} href={action.href} className="group flex flex-col gap-3 px-6 py-4 transition-colors hover:bg-slate-50 sm:flex-row sm:items-center"><span className={`h-2.5 w-2.5 shrink-0 rounded-full ${action.priority === 'URGENTE' ? 'bg-rose-500 shadow-[0_0_0_5px_rgba(244,63,94,.12)]' : action.priority === 'ATENÇÃO' ? 'bg-amber-500 shadow-[0_0_0_5px_rgba(245,158,11,.12)]' : 'bg-blue-500 shadow-[0_0_0_5px_rgba(59,130,246,.12)]'}`} /><div className="min-w-0 flex-1"><p className={`text-[10px] font-extrabold tracking-widest ${action.priority === 'URGENTE' ? 'text-rose-600' : action.priority === 'ATENÇÃO' ? 'text-amber-700' : 'text-blue-600'}`}>{action.priority}</p><p className="mt-0.5 text-sm font-extrabold text-[#071B3A]">{action.title}</p><p className="mt-0.5 text-xs text-slate-500">{action.detail}</p></div><span className="shrink-0 text-xs font-extrabold text-blue-700 group-hover:underline">{action.cta} →</span></Link>) : <div className="p-8 text-center"><CheckCircle2 className="mx-auto h-9 w-9 text-emerald-500" /><p className="mt-3 font-bold text-[#071B3A]">Tudo sob controle.</p><p className="mt-1 text-xs text-slate-500">Quando houver uma assinatura pendente, triagem ou prazo próximo, a próxima ação aparecerá aqui.</p></div>}</div>
+      </section>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Card 1: Zona de Drag & Drop Inteligente */}
         <div
