@@ -567,90 +567,199 @@ export default function ProcessosPage() {
           </p>
         </div>
       </div>
-      <div className="bg-white border rounded-2xl p-3 flex flex-col md:flex-row gap-2">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar por cliente, título ou número"
-            className="w-full pl-9 p-2.5 border rounded-xl text-sm"
-          />
+      {/* WINDOWS EXPLORER BARRA SUPERIOR DE CONTROLES DO ESCRITÓRIO */}
+      <div className="bg-[#071B3A] text-white border border-slate-700 rounded-2xl p-3.5 flex flex-col md:flex-row gap-3 items-center justify-between shadow-md">
+        {/* Caminho tipo Windows Breadcrumbs */}
+        <div className="flex items-center gap-2 text-xs font-mono text-slate-300">
+          <div className="w-7 h-7 bg-amber-400/20 rounded-lg flex items-center justify-center">
+            <Folder className="w-4 h-4 text-amber-400" />
+          </div>
+          <span className="text-slate-400">Este Computador</span>
+          <span>/</span>
+          <span className="text-white font-bold">Processos e Dossiês</span>
+          <span className="text-slate-400">({visible.length})</span>
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="border rounded-xl p-2.5 text-sm"
-        >
-          <option value="ALL">Todas as etapas</option>
-          {statuses.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.label}
-            </option>
-          ))}
-        </select>
+
+        {/* Busca + Filtros + Alternador de Exibição */}
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+          <div className="relative flex-1 md:w-64">
+            <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar por cliente, processo ou número"
+              className="w-full pl-8 pr-3 py-1.5 bg-blue-950/70 border border-blue-900 text-white placeholder-slate-400 rounded-xl text-xs focus:outline-none focus:border-blue-400"
+            />
+          </div>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="bg-blue-950/70 border border-blue-900 text-white rounded-xl py-1.5 px-3 text-xs focus:outline-none focus:border-blue-400"
+          >
+            <option value="ALL">Todas as Etapas</option>
+            {statuses.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Alternador de Modo estilo Windows: Ícones Grandes vs Detalhes */}
+          <div className="flex bg-blue-950 p-0.5 rounded-xl border border-blue-900">
+            <button
+              onClick={() => setExplorerViewMode("GRID")}
+              className={`p-1.5 rounded-lg transition-all ${
+                explorerViewMode === "GRID"
+                  ? "bg-blue-600 text-white shadow-xs"
+                  : "text-slate-400 hover:text-white"
+              }`}
+              title="Modo Ícones Grandes (Pastas Amarelas)"
+            >
+              <Grid className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setExplorerViewMode("LIST")}
+              className={`p-1.5 rounded-lg transition-all ${
+                explorerViewMode === "LIST"
+                  ? "bg-blue-600 text-white shadow-xs"
+                  : "text-slate-400 hover:text-white"
+              }`}
+              title="Modo Tabela de Detalhes"
+            >
+              <List className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       </div>
+
       {loading ? (
         <div className="p-12 text-center">
           <Loader2 className="animate-spin w-6 h-6 text-blue-600 mx-auto" />
         </div>
       ) : visible.length === 0 ? (
-        <div className="bg-white border rounded-3xl p-12 text-center">
+        <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center">
           <BriefcaseBusiness className="w-10 h-10 text-slate-300 mx-auto mb-3" />
           <h2 className="font-bold text-[#071B3A]">
             Nenhum processo encontrado
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Os documentos assinados podem ser organizados em um dossiê nesta
-            área.
+            Clique no botão "Novo Processo" para criar a primeira pasta de processo do escritório.
           </p>
         </div>
-      ) : (
-        <div className="grid xl:grid-cols-2 gap-4">
+      ) : explorerViewMode === "GRID" ? (
+        /* MODO ÍCONES GRANDES: PASTAS AMARELAS DO WINDOWS PARA CADA PROCESSO */
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {visible.map((p) => (
             <button
               key={p.id}
-              onClick={() => setSelected(p)}
-              className="text-left bg-white border hover:border-blue-400 rounded-3xl p-5 transition-colors"
+              onClick={() => {
+                setSelected(p);
+                setCurrentFolder("ROOT");
+              }}
+              className="group bg-white hover:bg-blue-50/60 border border-slate-200 hover:border-blue-400 rounded-3xl p-5 text-left transition-all shadow-xs flex flex-col justify-between min-h-[170px] relative overflow-hidden"
             >
-              <div className="flex justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex gap-2 items-center">
-                    <span className="text-[10px] font-extrabold uppercase text-blue-700">
-                      {statusLabel(p.status)}
-                    </span>
-                    <span
-                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${priority(p.priority).color}`}
-                    >
-                      {priority(p.priority).label}
-                    </span>
-                  </div>
-                  <h2 className="font-heading font-black text-[#071B3A] mt-1 truncate">
-                    {p.title}
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-                    <User className="w-3 h-3" />
-                    {p.client.name}
-                  </p>
+              {/* Header da Pasta */}
+              <div className="flex items-start justify-between">
+                <div className="w-12 h-12 rounded-2xl bg-amber-100 group-hover:bg-amber-200 flex items-center justify-center transition-colors shadow-xs">
+                  <Folder className="w-7 h-7 text-amber-600 fill-amber-500/30" />
                 </div>
-                <span className="rounded-xl bg-blue-50 text-blue-700 h-fit px-3 py-1 text-xs font-bold">
-                  {p.documents.length} PDFs
-                </span>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-[9px] font-extrabold uppercase bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-100">
+                    {statusLabel(p.status)}
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                    {p.documents.length + p.attachments.length} arquivos
+                  </span>
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t text-xs text-slate-600">
-                <span>
-                  {p.processNumber || p.protocolNumber || "Sem protocolo"}
+
+              {/* Informações do Cliente & Título do Processo */}
+              <div className="mt-4">
+                <h3 className="font-heading font-black text-[#071B3A] text-sm group-hover:text-blue-700 line-clamp-1">
+                  {p.title}
+                </h3>
+                <p className="text-xs font-bold text-slate-600 mt-1 flex items-center gap-1">
+                  <User className="w-3.5 h-3.5 text-slate-400" />
+                  {p.client.name}
+                </p>
+              </div>
+
+              {/* Rodapé da Pasta do Windows */}
+              <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                <span className="truncate font-mono">
+                  {p.processNumber || p.protocolNumber || "Sem número"}
                 </span>
-                <span
-                  className={`text-right ${overdue(p) ? "font-bold text-rose-600" : ""}`}
-                >
-                  {p.dueDate
-                    ? `Prazo: ${new Date(p.dueDate).toLocaleDateString("pt-BR")}`
-                    : "Sem prazo"}
+                <span className="text-blue-700 font-extrabold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                  Abrir Pasta 📁
                 </span>
               </div>
             </button>
           ))}
+        </div>
+      ) : (
+        /* MODO LISTA DETALHADA DO WINDOWS EXPLORER */
+        <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-700">
+              <thead className="bg-[#071B3A] text-white font-heading text-[11px] uppercase tracking-wider">
+                <tr>
+                  <th className="py-3 px-4">Item</th>
+                  <th className="py-3 px-4">Nome da Pasta / Processo</th>
+                  <th className="py-3 px-4">Cliente</th>
+                  <th className="py-3 px-4">Etapa</th>
+                  <th className="py-3 px-4">Número / Protocolo</th>
+                  <th className="py-3 px-4">Arquivos</th>
+                  <th className="py-3 px-4 text-right">Ação</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {visible.map((p) => (
+                  <tr
+                    key={p.id}
+                    onClick={() => {
+                      setSelected(p);
+                      setCurrentFolder("ROOT");
+                    }}
+                    className="hover:bg-blue-50/60 cursor-pointer transition-colors"
+                  >
+                    <td className="py-3 px-4">
+                      <Folder className="w-5 h-5 text-amber-500 fill-amber-400/30" />
+                    </td>
+                    <td className="py-3 px-4 font-bold text-[#071B3A]">
+                      {p.title}
+                    </td>
+                    <td className="py-3 px-4 text-slate-600 font-medium">
+                      {p.client.name}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="text-[10px] font-bold uppercase bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-100">
+                        {statusLabel(p.status)}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 font-mono text-slate-500">
+                      {p.processNumber || p.protocolNumber || "—"}
+                    </td>
+                    <td className="py-3 px-4 font-bold text-slate-600">
+                      {p.documents.length + p.attachments.length} arquivos
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelected(p);
+                          setCurrentFolder("ROOT");
+                        }}
+                        className="px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg text-[11px]"
+                      >
+                        Abrir Pasta 📁
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
       {modal && (
