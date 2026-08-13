@@ -347,7 +347,11 @@ export async function generateFinalPdfCertificate(documentId: string) {
     if (customStamp) {
       if (idx + 1 !== customStamp.page) return;
       const stampW = Math.min(pW * customStamp.width, pW - 16);
-      const stampH = Math.min(pH * customStamp.height, 92);
+      // A assinatura a rogo tem dois CPFs e, por isso, precisa de uma área
+      // mínima maior. O selo cresce para dentro dos limites da página, sem
+      // cortar nem fazer o texto ultrapassar a borda.
+      const minimumStampH = doc.isIlliterate ? 82 : 65;
+      const stampH = Math.min(92, Math.max(pH * customStamp.height, minimumStampH));
       const stampX = Math.min(pW - stampW - 12, Math.max(12, pW * customStamp.x));
       const rawY = pH * (1 - customStamp.y - customStamp.height);
       const stampY = Math.max(88, Math.min(pH - stampH - 120, rawY));
@@ -356,23 +360,26 @@ export async function generateFinalPdfCertificate(documentId: string) {
       const witnesses = doc.signers.filter((s) => s.role.startsWith('TESTEMUNHA'));
 
       let signerSummary = '';
-      let cpfSummary = '';
+      let cpfLines: string[] = [];
 
       if (doc.isIlliterate) {
         const clientName = clientSigner?.name || 'Cliente Titular';
         const rogoName = rogoSigner?.name || doc.rogoName || 'Acompanhante a Rogo';
         const witCountText = witnesses.length > 0 ? ` + ${witnesses.length} TESTEMUNHA(S)` : '';
         signerSummary = `${safeText(clientName, 35)} (CLIENTE) • A ROGO: ${safeText(rogoName, 35)}${witCountText}`;
-        cpfSummary = `CPF Cliente: ${formatFullCpf(clientSigner?.cpf || '')} | CPF A Rogo: ${formatFullCpf(rogoSigner?.cpf || doc.rogoCpf || '')}`;
+        cpfLines = [
+          `CPF CLIENTE: ${formatFullCpf(clientSigner?.cpf || '')}`,
+          `CPF A ROGO: ${formatFullCpf(rogoSigner?.cpf || doc.rogoCpf || '')}`,
+        ];
       } else {
         signerSummary = doc.signers.length > 2
           ? `${doc.signers.length} PARTICIPANTES COM EVIDÊNCIAS INDIVIDUAIS`
           : doc.signers.map((item) => item.name).join(', ');
-        cpfSummary = `CPF: ${formatFullCpf(clientSigner?.cpf || '')}`;
+        cpfLines = [`CPF: ${formatFullCpf(clientSigner?.cpf || '')}`];
       }
 
       const signerNames = safeText(signerSummary, 180);
-      const qrStampSize = Math.min(38, Math.max(26, stampH - 27));
+      const qrStampSize = Math.min(38, Math.max(26, stampH - 38));
       const contentX = stampX + qrStampSize + 15;
       const contentW = stampX + stampW - contentX - 10;
       const nameLines = wrapTextToWidth(signerNames, bold, 6.8, contentW).slice(0, 2);
@@ -386,8 +393,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
       });
 
       const yAfterName = stampY + stampH - 13 - nameLines.length * 8.0;
-      p.drawText(cpfSummary, { x: contentX, y: yAfterName - 2, size: 5.6, font: bold, color: text });
-      p.drawText('ASSINATURA ELETRÔNICA QUALIFICADA', { x: contentX, y: yAfterName - 10, size: 5.2, font: bold, color: green });
+      // Nunca use uma única linha para os dois CPFs: em assinaturas a rogo
+      // ela extrapolava a largura útil do selo. Cada identificação ocupa a
+      // própria linha, com tamanho adequado à leitura e à área disponível.
+      cpfLines.forEach((line, lineIndex) => {
+        p.drawText(line, { x: contentX, y: yAfterName - 2 - lineIndex * 6.4, size: 5.25, font: bold, color: text });
+      });
+      p.drawText('ASSINATURA ELETRÔNICA QUALIFICADA', { x: contentX, y: yAfterName - 5 - cpfLines.length * 6.4, size: 5.0, font: bold, color: green });
       p.drawImage(qrImage, { x: stampX + 8, y: stampY + 6, width: qrStampSize, height: qrStampSize });
       p.drawLine({ start: { x: contentX - 7, y: stampY + 6 }, end: { x: contentX - 7, y: stampY + stampH - 8 }, thickness: 0.7, color: panelBorder });
 
