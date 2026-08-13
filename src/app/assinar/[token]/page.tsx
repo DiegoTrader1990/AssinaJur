@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   ShieldCheck,
   Lock,
+  Clock,
   CheckCircle2,
   FileText,
   AlertCircle,
