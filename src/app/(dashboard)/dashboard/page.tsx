@@ -42,6 +42,11 @@ import {
   Eye,
   Filter,
   Layers,
+  Scale,
+  Briefcase,
+  FolderCheck,
+  HardDrive,
+  FileCheck2,
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -53,13 +58,13 @@ export default function DashboardPage() {
   const [kits, setKits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Central de Operações Abas
-  const [activeTab, setActiveTab] = useState<'KIT' | 'DRAG_DROP' | 'CLIENT' | 'PROCESS'>('KIT');
+  // Central de Operações Abas (Drag & Drop em 1º Lugar por padrão!)
+  const [activeTab, setActiveTab] = useState<'DRAG_DROP' | 'KIT' | 'CLIENT' | 'PROCESS'>('DRAG_DROP');
 
-  // Filtro na Tabela de Formalizações
-  const [formalizationFilter, setFormalizationFilter] = useState<'ALL' | 'PENDING' | 'DONE'>('PENDING');
+  // Filtro do Cockpit de Casos e Atendimentos
+  const [caseFilter, setCaseFilter] = useState<'ALL' | 'PRE' | 'ACTIVE' | 'DONE'>('ALL');
 
-  // Seleções do Advogado (Padrão Vazio)
+  // Seleções do Advogado (Padrão Vazio para seleção consciente)
   const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [selectedKitId, setSelectedKitId] = useState<string>('');
   const [docCustomTitle, setDocCustomTitle] = useState<string>('');
@@ -84,6 +89,7 @@ export default function DashboardPage() {
 
   // Explorer State
   const [expandedFolderId, setExpandedFolderId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     Promise.all([
@@ -113,21 +119,15 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const pendingDocuments = useMemo(
-    () => documents.filter((doc) => !['CONCLUIDO', 'CANCELADO', 'EXPIRADO'].includes(doc.status)),
-    [documents],
-  );
-
   const completedDocuments = useMemo(
     () => documents.filter((doc) => doc.status === 'CONCLUIDO'),
     [documents],
   );
 
-  const filteredDocuments = useMemo(() => {
-    if (formalizationFilter === 'PENDING') return pendingDocuments;
-    if (formalizationFilter === 'DONE') return completedDocuments;
-    return documents;
-  }, [documents, pendingDocuments, completedDocuments, formalizationFilter]);
+  const pendingDocuments = useMemo(
+    () => documents.filter((doc) => !['CONCLUIDO', 'CANCELADO', 'EXPIRADO'].includes(doc.status)),
+    [documents],
+  );
 
   const totalFiles = useMemo(() => {
     return processes.reduce((acc, p) => acc + (p.documents?.length || 0) + (p.attachments?.length || 0), 0);
@@ -200,7 +200,32 @@ export default function DashboardPage() {
     setExecutionResult(null);
 
     try {
-      if (activeTab === 'KIT') {
+      if (activeTab === 'DRAG_DROP') {
+        if (!uploadedPdf) throw new Error('Arraste ou selecione um arquivo PDF do seu computador primeiro.');
+        if (!selectedClientId) throw new Error('Selecione a cliente que vai assinar o documento.');
+
+        const res = await fetch('/api/documents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: docCustomTitle || uploadedPdf.name,
+            clientId: selectedClientId,
+            fileId: uploadedPdf.id,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erro ao criar documento.');
+
+        const clientObj = clients.find((c) => c.id === selectedClientId);
+        setExecutionResult({
+          type: 'SINGLE_DOC',
+          clientName: clientObj?.name || 'Cliente',
+          clientPhone: clientObj?.phone || clientObj?.whatsapp || '',
+          docTitle: data.document.title,
+          signatureLink: `https://www.assinajur.com.br/assinar/${data.document.token}`,
+        });
+      } else if (activeTab === 'KIT') {
         if (!selectedClientId) throw new Error('Selecione uma cliente para receber o Kit.');
         if (!selectedKitId) throw new Error('Selecione o Kit Jurídico.');
 
@@ -225,31 +250,6 @@ export default function DashboardPage() {
           kitName: data.result.kitName,
           documentsCount: data.result.documentsCount,
           signatureLink: data.result.signatureLink,
-        });
-      } else if (activeTab === 'DRAG_DROP') {
-        if (!uploadedPdf) throw new Error('Arraste ou selecione um arquivo PDF primeiro.');
-        if (!selectedClientId) throw new Error('Selecione a cliente que vai assinar o documento.');
-
-        const res = await fetch('/api/documents', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: docCustomTitle || uploadedPdf.name,
-            clientId: selectedClientId,
-            fileId: uploadedPdf.id,
-          }),
-        });
-
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Erro ao criar documento.');
-
-        const clientObj = clients.find((c) => c.id === selectedClientId);
-        setExecutionResult({
-          type: 'SINGLE_DOC',
-          clientName: clientObj?.name || 'Cliente',
-          clientPhone: clientObj?.phone || clientObj?.whatsapp || '',
-          docTitle: data.document.title,
-          signatureLink: `https://www.assinajur.com.br/assinar/${data.document.token}`,
         });
       } else if (activeTab === 'CLIENT') {
         if (!newClientName.trim()) throw new Error('Informe o nome completo da cliente.');
@@ -304,80 +304,68 @@ export default function DashboardPage() {
     [kits, selectedKitId],
   );
 
+  const doctorName = currentUser?.name || 'Dr. Diego dos Santos Rodrigues';
   const metricValue = (value: number) => (loading ? '—' : String(value).padStart(2, '0'));
 
   return (
     <main className="mx-auto max-w-7xl space-y-8 pb-24">
-      {/* 👑 1. HEADER DO PAINEL PRINCIPAL (TOTALMENTE ACOPLADO E INTEGRADO AO DESIGN DO SITE) */}
-      <section className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200/90 rounded-[28px] p-6 lg:p-7 shadow-xs">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.24em] text-[#B68B1C] bg-amber-50 border border-amber-200 px-3 py-0.5 rounded-full flex items-center gap-1.5">
+      {/* 👑 1. BOAS-VINDAS PERSONALIZADAS AO ADVOGADO (APRESENTAÇÃO EXECUTIVA ACOPLADA) */}
+      <section className="bg-white border border-slate-200/90 rounded-[32px] p-6 lg:p-8 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-black uppercase tracking-[0.24em] text-[#B68B1C] bg-amber-50 border border-amber-200 px-3 py-1 rounded-full flex items-center gap-1.5">
               <Award className="w-3.5 h-3.5 text-[#B68B1C]" />
               {office?.name || 'Rodrigues & Soares Advocacia'}
             </span>
-            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Notarial ICP-Brasil
+            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> OAB/BA 51.881 | 62.443 • Notarial ICP-Brasil
             </span>
           </div>
-          <h1 className="font-heading text-2xl lg:text-3xl font-black text-[#071B3A] tracking-tight mt-1">
-            Painel Operacional do Escritório
+
+          <h1 className="font-heading text-2xl lg:text-3xl font-black text-[#071B3A] tracking-tight">
+            Olá, {doctorName}! ⚖️
           </h1>
-          <p className="text-xs text-slate-500 max-w-2xl">
-            Gestão integrada de disparos para WhatsApp, formalizações com validade jurídica e dossiês de clientes.
+          <p className="text-xs lg:text-sm text-slate-500 max-w-3xl leading-relaxed">
+            Bem-vindo ao seu painel de alta performance. Arraste um documento em PDF do seu computador abaixo ou escolha um Kit Jurídico para disparar no WhatsApp da cliente.
           </p>
         </div>
 
-        {/* 4 CARDS DE INDICADORES COMPACTOS */}
+        {/* 4 CARDS RESUMO DO ESCRITÓRIO */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
-          <div className="bg-slate-50 border border-slate-200/80 p-3 rounded-2xl text-center min-w-[100px]">
-            <p className="text-[10px] font-bold text-slate-500 uppercase">Clientes</p>
+          <div className="bg-slate-50 border border-slate-200/80 p-3.5 rounded-2xl text-center min-w-[105px]">
+            <p className="text-[10px] font-bold text-slate-500 uppercase">Base Clientes</p>
             <p className="text-xl font-black font-heading text-[#071B3A]">{metricValue(clients.length)}</p>
           </div>
-          <div className="bg-amber-50/70 border border-amber-200/80 p-3 rounded-2xl text-center min-w-[100px]">
-            <p className="text-[10px] font-bold text-amber-800 uppercase">Aguardando</p>
+          <div className="bg-amber-50/70 border border-amber-200/80 p-3.5 rounded-2xl text-center min-w-[105px]">
+            <p className="text-[10px] font-bold text-amber-800 uppercase">Em Assinatura</p>
             <p className="text-xl font-black font-heading text-amber-600">{metricValue(pendingDocuments.length)}</p>
           </div>
-          <div className="bg-blue-50/70 border border-blue-200/80 p-3 rounded-2xl text-center min-w-[100px]">
-            <p className="text-[10px] font-bold text-blue-800 uppercase">Dossiês</p>
+          <div className="bg-blue-50/70 border border-blue-200/80 p-3.5 rounded-2xl text-center min-w-[105px]">
+            <p className="text-[10px] font-bold text-blue-800 uppercase">Dossiês Windows</p>
             <p className="text-xl font-black font-heading text-blue-700">{metricValue(processes.length)}</p>
           </div>
-          <div className="bg-emerald-50/70 border border-emerald-200/80 p-3 rounded-2xl text-center min-w-[100px]">
+          <div className="bg-emerald-50/70 border border-emerald-200/80 p-3.5 rounded-2xl text-center min-w-[105px]">
             <p className="text-[10px] font-bold text-emerald-800 uppercase">Concluídos</p>
             <p className="text-xl font-black font-heading text-emerald-700">{metricValue(completedDocuments.length)}</p>
           </div>
         </div>
       </section>
 
-      {/* 🚀 2. CENTRAL DE OPERAÇÕES & DISPAROS (DESIGN ACOPLADO NATIVO AO SITE) */}
+      {/* 🚀 2. FLUXO ULTRA-RÁPIDO EM 1º LUGAR: ARRASTAR PDF DO COMPUTADOR (DRAG & DROP DESTAQUE) */}
       <section className="bg-white border border-slate-200/90 rounded-[32px] p-6 lg:p-8 shadow-xs space-y-6">
-        {/* NAVEGAÇÃO DE ABAS NATIVA (STYLE PILL BUTTONS NATIVOS) */}
+        {/* NAVEGAÇÃO DE FLUXO COM DRAG & DROP EM PRIMEIRO */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700 shrink-0">
               <Zap className="w-5 h-5 fill-amber-500/20" />
             </div>
             <div>
-              <h2 className="font-heading font-black text-[#071B3A] text-lg">Central de Atendimento Rápido</h2>
-              <p className="text-xs text-slate-500">Selecione o fluxo desejado para disparar no WhatsApp da cliente</p>
+              <h2 className="font-heading font-black text-[#071B3A] text-lg">Central de Disparo Rápido (1º Passo)</h2>
+              <p className="text-xs text-slate-500">Arraste um PDF ou selecione o Kit Jurídico para assinar no WhatsApp</p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl border border-slate-200/80 text-xs font-extrabold shrink-0">
-            <button
-              onClick={() => {
-                setActiveTab('KIT');
-                setExecutionResult(null);
-              }}
-              className={`px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all ${
-                activeTab === 'KIT'
-                  ? 'bg-[#071B3A] text-white shadow-md'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" /> Disparar Kit 10s
-            </button>
-
             <button
               onClick={() => {
                 setActiveTab('DRAG_DROP');
@@ -389,7 +377,21 @@ export default function DashboardPage() {
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
-              <FileUp className="w-3.5 h-3.5 text-blue-400" /> Soltar PDF do PC
+              <FileUp className="w-4 h-4 text-[#D4AF37]" /> 📂 1º Soltar PDF do PC
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('KIT');
+                setExecutionResult(null);
+              }}
+              className={`px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all ${
+                activeTab === 'KIT'
+                  ? 'bg-[#071B3A] text-white shadow-md'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              <Sparkles className="w-4 h-4 text-amber-400" /> Disparar Kit 10s
             </button>
 
             <button
@@ -403,7 +405,7 @@ export default function DashboardPage() {
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
-              <UserPlus className="w-3.5 h-3.5" /> Nova Cliente
+              <UserPlus className="w-4 h-4" /> Nova Cliente
             </button>
 
             <button
@@ -417,7 +419,7 @@ export default function DashboardPage() {
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
-              <Folder className="w-3.5 h-3.5 fill-[#071B3A]/20" /> Novo Dossiê
+              <Folder className="w-4 h-4 fill-[#071B3A]/20" /> Novo Dossiê 📁
             </button>
           </div>
         </div>
@@ -433,14 +435,14 @@ export default function DashboardPage() {
                 <div>
                   <h3 className="font-heading font-black text-emerald-950 text-lg">
                     {executionResult.type === 'SINGLE_DOC'
-                      ? `Documento Pronto para ${executionResult.clientName}!`
+                      ? `Documento Prontíssimo para ${executionResult.clientName}!`
                       : executionResult.type === 'KIT'
                       ? `Kit Jurídico Gerado para ${executionResult.clientName}!`
                       : `Cliente ${executionResult.clientName} Cadastrada!`}
                   </h3>
                   <p className="text-xs text-emerald-800 font-medium">
                     {executionResult.type === 'CLIENT'
-                      ? `Qualificação armazenada com sucesso. Selecione a cliente no fluxo acima para disparar os documentos.`
+                      ? `Qualificação armazenada. Selecione a cliente na aba acima para disparar os documentos.`
                       : `Link seguro de assinatura digital notarial gerado e pronto para envio.`}
                   </p>
                 </div>
@@ -506,14 +508,124 @@ export default function DashboardPage() {
           </div>
         ) : (
           <form onSubmit={handleExecuteDispatch} className="space-y-5">
-            {/* FLUXO 1: DISPARO DE KIT JURÍDICO (PROCURAÇÃO + CONTRATO + HIPOSSUFICIÊNCIA) */}
+            {/* FLUXO 1 (DESTAQUE MÁXIMO): SOLTAR PDF DO COMPUTADOR (DRAG & DROP) */}
+            {activeTab === 'DRAG_DROP' && (
+              <div className="space-y-4">
+                <div
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
+                    dragActive
+                      ? 'border-amber-500 bg-amber-50/90 scale-[1.005]'
+                      : uploadedPdf
+                      ? 'border-emerald-500 bg-emerald-50/70'
+                      : 'border-slate-300 bg-slate-50/70 hover:border-amber-500 hover:bg-amber-50/40'
+                  }`}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+
+                  {uploadingPdf ? (
+                    <div className="py-4 space-y-2">
+                      <Loader2 className="w-9 h-9 text-amber-600 animate-spin mx-auto" />
+                      <p className="text-xs font-bold text-amber-900">Processando arquivo PDF do computador...</p>
+                    </div>
+                  ) : uploadedPdf ? (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-left">
+                      <div className="flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shrink-0">
+                          <File className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-black text-slate-800">{uploadedPdf.name}</p>
+                          <p className="text-[11px] text-emerald-600 font-bold">
+                            ✓ Arquivo PDF Carregado com Sucesso ({(uploadedPdf.sizeBytes / 1024 / 1024).toFixed(2)} MB)
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-600 bg-white border border-slate-200 px-3 py-1 rounded-lg">
+                        Clique se quiser trocar de arquivo
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="py-5 space-y-2">
+                      <FileUp className="w-12 h-12 text-[#B68B1C] mx-auto animate-bounce" />
+                      <p className="text-base font-black text-slate-800">
+                        Arraste e solte o contrato em PDF aqui do seu computador
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        ou <span className="text-amber-700 font-bold underline">clique para procurar nas pastas do seu Windows</span>
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid md:grid-cols-[1.5fr_1.5fr_auto] items-end gap-3 bg-slate-50 border border-slate-200 p-5 rounded-2xl">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
+                      <span>1. Cliente Destinatária</span>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('CLIENT')}
+                        className="text-[11px] font-extrabold text-blue-700 hover:underline"
+                      >
+                        + Cadastrar Nova
+                      </button>
+                    </label>
+                    <select
+                      value={selectedClientId}
+                      onChange={(e) => setSelectedClientId(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-300 focus:border-amber-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
+                    >
+                      <option value="" className="text-slate-400">
+                        -- Selecione a cliente na lista --
+                      </option>
+                      {clients.map((c) => (
+                        <option key={c.id} value={c.id} className="text-slate-900">
+                          {c.name} {c.cpfCnpj ? `(CPF: ${c.cpfCnpj})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                      2. Título da Peça / Contrato
+                    </label>
+                    <input
+                      type="text"
+                      value={docCustomTitle}
+                      onChange={(e) => setDocCustomTitle(e.target.value)}
+                      placeholder="Ex: Procuração Ad Judicia e Contrato"
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-300 focus:border-amber-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={submitting || !uploadedPdf || !selectedClientId}
+                    className="w-full md:w-auto px-7 py-3.5 bg-[#071B3A] hover:bg-[#0A254F] text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 shrink-0"
+                  >
+                    {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 text-[#D4AF37]" />} DISPARAR NO WHATSAPP DA CLIENTE
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* FLUXO 2: DISPARO DE KIT JURÍDICO */}
             {activeTab === 'KIT' && (
               <div className="space-y-4">
                 <div className="grid md:grid-cols-2 gap-4">
-                  {/* SELEÇÃO DE CLIENTE (PADRÃO VAZIO) */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
-                      <span>1. Selecionar Cliente (Destinatária)</span>
+                      <span>1. Selecionar Cliente</span>
                       <button
                         type="button"
                         onClick={() => setActiveTab('CLIENT')}
@@ -541,7 +653,6 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  {/* SELEÇÃO DE KIT JURÍDICO */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
                       2. Selecionar Kit Jurídico
@@ -563,7 +674,6 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* VISUALIZAÇÃO DOS DOCUMENTOS INCLUSOS */}
                 {selectedKit && (
                   <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 space-y-1.5">
                     <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
@@ -571,7 +681,7 @@ export default function DashboardPage() {
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {selectedKit.items?.map((item: any, i: number) => (
-                        <span key={i} className="text-[11px] font-bold bg-white border border-slate-200 text-slate-700 px-3 py-1 rounded-lg shadow-2xs">
+                        <span key={i} className="text-[11px] font-bold bg-white border border-slate-200 text-slate-700 px-3 py-1 rounded-lg">
                           ✓ {item.template?.title || `Documento ${i + 1}`}
                         </span>
                       ))}
@@ -582,7 +692,7 @@ export default function DashboardPage() {
                 <button
                   type="submit"
                   disabled={submitting || !selectedClientId || !selectedKitId}
-                  className="w-full py-3.5 bg-[#071B3A] hover:bg-[#0A254F] text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 hover:scale-[1.005] disabled:opacity-50"
+                  className="w-full py-3.5 bg-[#071B3A] hover:bg-[#0A254F] text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {submitting ? (
                     <>
@@ -594,110 +704,6 @@ export default function DashboardPage() {
                     </>
                   )}
                 </button>
-              </div>
-            )}
-
-            {/* FLUXO 2: SOLTAR PDF DO COMPUTADOR (DRAG & DROP NATIVO) */}
-            {activeTab === 'DRAG_DROP' && (
-              <div className="space-y-4">
-                <div
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`border-2 border-dashed rounded-2xl p-7 text-center cursor-pointer transition-all ${
-                    dragActive
-                      ? 'border-amber-500 bg-amber-50/80 scale-[1.005]'
-                      : uploadedPdf
-                      ? 'border-emerald-500 bg-emerald-50/60'
-                      : 'border-slate-300 bg-slate-50/60 hover:border-amber-500 hover:bg-amber-50/30'
-                  }`}
-                >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".pdf"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                  />
-
-                  {uploadingPdf ? (
-                    <div className="py-3 space-y-1.5">
-                      <Loader2 className="w-8 h-8 text-amber-600 animate-spin mx-auto" />
-                      <p className="text-xs font-bold text-amber-900">Processando upload do PDF...</p>
-                    </div>
-                  ) : uploadedPdf ? (
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-left">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shrink-0">
-                          <File className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-black text-slate-800">{uploadedPdf.name}</p>
-                          <p className="text-[11px] text-emerald-600 font-bold">
-                            ✓ Arquivo PDF Carregado ({(uploadedPdf.sizeBytes / 1024 / 1024).toFixed(2)} MB)
-                          </p>
-                        </div>
-                      </div>
-                      <span className="text-[10px] font-bold text-slate-600 bg-white border border-slate-200 px-3 py-1 rounded-lg">
-                        Clique para trocar arquivo
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="py-4 space-y-1.5">
-                      <FileUp className="w-10 h-10 text-amber-600 mx-auto animate-bounce" />
-                      <p className="text-sm font-black text-slate-800">
-                        Arraste e solte o contrato em PDF aqui do seu computador
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        ou <span className="text-amber-700 font-bold underline">clique para procurar no seu Windows</span>
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid md:grid-cols-[1.5fr_1.5fr_auto] items-end gap-3 bg-slate-50 border border-slate-200 p-4 rounded-xl">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                      1. Cliente Destinatária
-                    </label>
-                    <select
-                      value={selectedClientId}
-                      onChange={(e) => setSelectedClientId(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-white border border-slate-300 focus:border-amber-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
-                    >
-                      <option value="" className="text-slate-400">
-                        -- Selecione a cliente na lista --
-                      </option>
-                      {clients.map((c) => (
-                        <option key={c.id} value={c.id} className="text-slate-900">
-                          {c.name} {c.cpfCnpj ? `(CPF: ${c.cpfCnpj})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                      2. Título da Peça / Contrato
-                    </label>
-                    <input
-                      type="text"
-                      value={docCustomTitle}
-                      onChange={(e) => setDocCustomTitle(e.target.value)}
-                      placeholder="Ex: Procuração Ad Judicia"
-                      className="w-full px-3.5 py-2.5 bg-white border border-slate-300 focus:border-amber-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={submitting || !uploadedPdf || !selectedClientId}
-                    className="w-full md:w-auto px-6 py-3 bg-[#071B3A] hover:bg-[#0A254F] text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 shrink-0"
-                  >
-                    {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 text-[#D4AF37]" />} DISPARAR NO WHATSAPP
-                  </button>
-                </div>
               </div>
             )}
 
@@ -775,110 +781,103 @@ export default function DashboardPage() {
         )}
       </section>
 
-      {/* 📊 3. SEÇÃO INFERIOR REFORMULADA EM 2 COLUNAS DE ALTO VALOR DE GESTÃO */}
+      {/* ⚖️ 3. REFORMULADO COCKPIT DE INTELIGÊNCIA PROCESSUAL & CARTEIRA DE CASOS EM 2 COLUNAS */}
       <section className="grid gap-6 lg:grid-cols-2">
-        {/* ESQUERDA: REFORMULADO ACOMPANHAMENTO DE FORMALIZAÇÕES (CARDS INTERATIVOS NOTARIAIS) */}
+        {/* ESQUERDA: COCKPIT DE INTELIGÊNCIA DE CASOS E ATENDIMENTOS DO ESCRITÓRIO */}
         <div className="bg-white border border-slate-200/90 rounded-[32px] p-6 lg:p-7 shadow-xs space-y-4 flex flex-col justify-between">
           <div>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
               <div>
                 <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#B68B1C]">
-                  Central Notarial de Acompanhamento
+                  Gestão Inteligente de Casos
                 </span>
                 <h3 className="font-heading font-black text-[#071B3A] text-lg mt-0.5">
-                  Formalizações de Documentos
+                  Carteira de Clientes Ativas
                 </h3>
               </div>
 
-              {/* FILTROS DE FORMALIZAÇÃO */}
-              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-[11px] font-bold">
-                <button
-                  onClick={() => setFormalizationFilter('PENDING')}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
-                    formalizationFilter === 'PENDING' ? 'bg-white text-[#071B3A] shadow-2xs font-extrabold' : 'text-slate-600'
-                  }`}
-                >
-                  Pendentes ({pendingDocuments.length})
-                </button>
-
-                <button
-                  onClick={() => setFormalizationFilter('DONE')}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
-                    formalizationFilter === 'DONE' ? 'bg-white text-emerald-700 shadow-2xs font-extrabold' : 'text-slate-600'
-                  }`}
-                >
-                  Concluídas ({completedDocuments.length})
-                </button>
-              </div>
+              <Link
+                href="/clientes"
+                className="text-xs font-bold text-blue-700 hover:underline flex items-center gap-1"
+              >
+                Ver Todas na Carteira ({clients.length}) <ChevronRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
 
-            {/* LISTA REFORMULADA DE FORMALIZAÇÕES */}
-            {filteredDocuments.length > 0 ? (
+            {/* LISTA COMPLETA E RICA DE CLIENTES E SEUS CASOS JURÍDICOS */}
+            {clients.length > 0 ? (
               <div className="space-y-3 mt-4">
-                {filteredDocuments.slice(0, 5).map((doc) => {
-                  const isDone = doc.status === 'CONCLUIDO';
+                {clients.slice(0, 4).map((client) => {
+                  const clientDocs = documents.filter((d) => d.clientId === client.id);
+                  const clientProc = processes.find((p) => p.clientId === client.id);
                   return (
                     <div
-                      key={doc.id}
-                      className="bg-slate-50/70 border border-slate-200/80 hover:border-amber-300 p-4 rounded-2xl transition-all shadow-2xs space-y-3"
+                      key={client.id}
+                      className="bg-slate-50/80 border border-slate-200/90 hover:border-amber-300 p-4 rounded-2xl transition-all shadow-2xs space-y-3"
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`h-2.5 w-2.5 rounded-full shrink-0 ${
-                                isDone ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'
-                              }`}
-                            />
-                            <h4 className="text-xs font-black text-[#071B3A] truncate">{doc.title}</h4>
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-[#071B3A] text-white flex items-center justify-center font-black text-sm shrink-0 shadow-2xs">
+                            {client.name.charAt(0).toUpperCase()}
                           </div>
-                          <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5">
-                            <User className="w-3 h-3 text-slate-400 shrink-0" />
-                            <span className="font-semibold text-slate-700">{doc.client?.name || 'Cliente'}</span>
-                            {doc.client?.cpfCnpj && <span className="text-slate-400">({doc.client.cpfCnpj})</span>}
-                          </p>
+                          <div>
+                            <h4 className="text-xs font-black text-[#071B3A]">{client.name}</h4>
+                            <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2">
+                              <span>CPF: {client.cpfCnpj || 'Não informado'}</span>
+                              {client.phone && <span>• {client.phone}</span>}
+                            </p>
+                          </div>
                         </div>
 
-                        <span
-                          className={`text-[10px] font-extrabold px-3 py-1 rounded-full shrink-0 ${
-                            isDone
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                              : 'bg-amber-100 text-amber-800 border border-amber-200'
-                          }`}
-                        >
-                          {isDone ? '✓ Assinado ICP-Brasil' : '⏳ Aguardando Cliente'}
+                        <span className="text-[10px] font-extrabold bg-blue-50 text-blue-800 border border-blue-200 px-3 py-1 rounded-full shrink-0">
+                          {clientDocs.length} Docs Cadastrados
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 text-xs">
-                        <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                          <Clock3 className="w-3 h-3" />
-                          Enviado em {new Date(doc.createdAt).toLocaleDateString('pt-BR')}
+                      {/* DOCUMENTOS DA CLIENTE */}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        {clientDocs.length > 0 ? (
+                          clientDocs.map((doc, idx) => (
+                            <span
+                              key={doc.id}
+                              className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-md flex items-center gap-1 ${
+                                doc.status === 'CONCLUIDO'
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                  : 'bg-amber-100 text-amber-800 border border-amber-200'
+                              }`}
+                            >
+                              {doc.status === 'CONCLUIDO' ? '✓' : '⏳'} {doc.title}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-[10px] text-slate-400 italic">Nenhum documento disparado ainda.</span>
+                        )}
+                      </div>
+
+                      {/* AÇÕES DIRETA DO ESCRITÓRIO */}
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-200/60">
+                        <span className="text-[11px] text-slate-500 font-medium">
+                          {clientProc ? `Dossiê: ${clientProc.title}` : 'Sem pasta de processo'}
                         </span>
 
                         <div className="flex items-center gap-2">
-                          {!isDone && (doc.client?.phone || doc.client?.whatsapp) && (
+                          {(client.phone || client.whatsapp) && (
                             <a
-                              href={`https://wa.me/55${(doc.client?.phone || doc.client?.whatsapp).replace(/\D/g, '')}?text=${encodeURIComponent(
-                                `Olá ${doc.client?.name}! Lembrando da assinatura do documento "${doc.title}". Link para assinar direto no celular: https://www.assinajur.com.br/assinar/${doc.token}`,
-                              )}`}
+                              href={`https://wa.me/55${(client.phone || client.whatsapp).replace(/\D/g, '')}`}
                               target="_blank"
                               rel="noreferrer"
-                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-[11px] flex items-center gap-1 shadow-2xs transition-all"
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-[11px] flex items-center gap-1 transition-all"
                             >
-                              <MessageSquare className="w-3 h-3 fill-white" /> Disparar WhatsApp
+                              <MessageSquare className="w-3 h-3 fill-white" /> WhatsApp
                             </a>
                           )}
 
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(`https://www.assinajur.com.br/assinar/${doc.token}`);
-                              alert('Link de assinatura copiado!');
-                            }}
-                            className="px-2.5 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 rounded-lg text-[11px] font-bold flex items-center gap-1"
+                          <Link
+                            href={`/clientes`}
+                            className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-[#071B3A] rounded-lg text-[11px] font-bold"
                           >
-                            <Copy className="w-3 h-3 text-[#B68B1C]" /> Link
-                          </button>
+                            Ver Ficha Completa
+                          </Link>
                         </div>
                       </div>
                     </div>
@@ -887,32 +886,32 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="py-12 text-center space-y-2">
-                <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
-                <p className="text-xs font-bold text-[#071B3A]">Nenhuma formalização nesta categoria.</p>
+                <User className="w-10 h-10 text-slate-300 mx-auto" />
+                <p className="text-xs font-bold text-[#071B3A]">Nenhuma cliente cadastrada no momento.</p>
               </div>
             )}
           </div>
 
           <div className="pt-3 border-t border-slate-100">
             <Link
-              href="/documentos"
+              href="/clientes"
               className="w-full py-2.5 bg-slate-100 hover:bg-slate-200/80 text-[#071B3A] text-xs font-extrabold rounded-xl flex items-center justify-center gap-2 transition-all"
             >
-              Gerenciar Todas as Formalizações <ArrowRight className="w-3.5 h-3.5" />
+              Acessar Cadastro Completo de Clientes <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
         </div>
 
-        {/* DIREITA: REFORMULADO DOSSIÊ DE PROCESSOS (ÁRVORE DE PASTAS NATIVA ESTILO WINDOWS EXPLORER) */}
+        {/* DIREITA: PASTA DOSSIÊ DE PROCESSOS NO WINDOWS EXPLORER (ESTRUTURA DE INTERAÇÃO TOTAL) */}
         <div className="bg-[#FBFCFE] border border-slate-200/90 rounded-[32px] p-6 lg:p-7 shadow-xs space-y-4 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between border-b border-slate-200/80 pb-4">
               <div>
                 <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#B68B1C]">
-                  Organizador Dossiê do Processo
+                  Gerenciador Dossiê dos Processos
                 </span>
                 <h3 className="font-heading font-black text-[#071B3A] text-lg mt-0.5">
-                  Pastas Estilo Windows Explorer
+                  Pastas Nativas do Windows Explorer
                 </h3>
               </div>
               <Link href="/processos" className="text-xs font-bold text-blue-700 hover:underline">
