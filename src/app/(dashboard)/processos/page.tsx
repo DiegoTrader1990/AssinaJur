@@ -47,7 +47,34 @@ type Process = {
   notes?: string;
   lastActivityAt: string;
   driveFolderUrl?: string | null;
-  client: { id: string; name: string; cpfCnpj: string; phone?: string };
+  client: {
+    id: string;
+    name: string;
+    cpfCnpj: string;
+    rgNumber?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    address?: string | null;
+    number?: string | null;
+    complement?: string | null;
+    neighborhood?: string | null;
+    city?: string | null;
+    state?: string | null;
+    zipCode?: string | null;
+    nationality?: string | null;
+    maritalStatus?: string | null;
+    profession?: string | null;
+    birthDate?: string | null;
+    motherName?: string | null;
+    legalRepresentative?: string | null;
+    representativeCpf?: string | null;
+    representativeRg?: string | null;
+    representativePhone?: string | null;
+    representativeRole?: string | null;
+    financialResponsible?: string | null;
+    notes?: string | null;
+    legalArea?: string | null;
+  };
   documents: Array<{
     id: string;
     title: string;
@@ -98,6 +125,7 @@ export default function ProcessosPage() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
   const [selected, setSelected] = useState<Process | null>(null);
+  const [dossierTab, setDossierTab] = useState<"DOSSIER" | "CLIENT_DATA">("DOSSIER");
   const [editing, setEditing] = useState(false);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -874,42 +902,156 @@ export default function ProcessosPage() {
                 </button>
               </div>
             </div>
-            <div className="grid sm:grid-cols-3 gap-3">
-              <div className="rounded-xl bg-slate-50 border p-3 text-xs">
-                <b>Etapa</b>
-                <br />
-                {statusLabel(selected.status)}
-              </div>
-              <div className="rounded-xl bg-slate-50 border p-3 text-xs">
-                <b>Prioridade</b>
-                <br />
-                {priority(selected.priority).label}
-              </div>
-              <div
-                className={`rounded-xl border p-3 text-xs ${overdue(selected) ? "bg-rose-50 border-rose-200 text-rose-800" : "bg-slate-50"}`}
+            {/* ABAS DO DOSSIÊ: PASTAS VS FICHA DO CLIENTE */}
+            <div className="flex border-b border-slate-200 gap-4 text-xs font-bold font-heading pt-1">
+              <button
+                onClick={() => setDossierTab("DOSSIER")}
+                className={`pb-2.5 border-b-2 transition-all flex items-center gap-1.5 ${
+                  dossierTab === "DOSSIER"
+                    ? "border-blue-600 text-blue-700 font-extrabold"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
               >
-                <b>Próximo prazo</b>
-                <br />
-                {selected.dueDate
-                  ? new Date(selected.dueDate).toLocaleDateString("pt-BR")
-                  : "Não definido"}
+                <Folder className="w-4 h-4 text-amber-500 fill-amber-400/30" /> Pastas do Dossiê
+              </button>
+              <button
+                onClick={() => setDossierTab("CLIENT_DATA")}
+                className={`pb-2.5 border-b-2 transition-all flex items-center gap-1.5 ${
+                  dossierTab === "CLIENT_DATA"
+                    ? "border-blue-600 text-blue-700 font-extrabold"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <User className="w-4 h-4 text-blue-600" /> Ficha Cadastral do Cliente
+              </button>
+            </div>
+
+            {dossierTab === "CLIENT_DATA" ? (
+              /* FICHA CADASTRAL COMPLETA DA CLIENTE */
+              <div className="bg-white border border-slate-200 rounded-3xl p-5 space-y-4 text-xs">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3 flex-wrap gap-2">
+                  <div>
+                    <h3 className="font-heading font-black text-[#071B3A] text-base">
+                      {selected.client.name}
+                    </h3>
+                    <p className="text-slate-500 font-mono text-[11px]">
+                      CPF/CNPJ: {selected.client.cpfCnpj}
+                    </p>
+                  </div>
+                  <Link
+                    href="/clientes"
+                    className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-extrabold rounded-xl text-xs flex items-center gap-1.5"
+                  >
+                    <Pencil className="w-3.5 h-3.5" /> Editar na Central de Clientes
+                  </Link>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  {/* Bloco 1: Dados Pessoais & Qualificação */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+                    <h4 className="font-extrabold uppercase text-[#071B3A] text-[10px] tracking-wider border-b border-slate-200 pb-1">
+                      Dados Pessoais & Qualificação
+                    </h4>
+                    <p><b>Nome completo:</b> {selected.client.name}</p>
+                    <p><b>CPF:</b> {selected.client.cpfCnpj}</p>
+                    <p><b>RG:</b> {selected.client.rgNumber || "Não informado"}</p>
+                    <p><b>Nacionalidade:</b> {selected.client.nationality || "Brasileiro(a)"}</p>
+                    <p><b>Estado Civil:</b> {selected.client.maritalStatus || "Não informado"}</p>
+                    <p><b>Profissão:</b> {selected.client.profession || "Não informada"}</p>
+                    <p>
+                      <b>Data de Nasc.:</b>{" "}
+                      {selected.client.birthDate
+                        ? new Date(selected.client.birthDate).toLocaleDateString("pt-BR")
+                        : "Não informada"}
+                    </p>
+                    <p><b>Nome da Mãe:</b> {selected.client.motherName || "Não informado"}</p>
+                  </div>
+
+                  {/* Bloco 2: Contato & Endereço Residencial */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+                    <h4 className="font-extrabold uppercase text-[#071B3A] text-[10px] tracking-wider border-b border-slate-200 pb-1">
+                      Contato & Endereço Residencial
+                    </h4>
+                    <p><b>WhatsApp / Telefone:</b> {selected.client.phone || "Não informado"}</p>
+                    <p><b>E-mail:</b> {selected.client.email || "Não informado"}</p>
+                    <p>
+                      <b>Endereço:</b>{" "}
+                      {selected.client.address
+                        ? `${selected.client.address}, nº ${selected.client.number || "S/N"}${selected.client.complement ? ` (${selected.client.complement})` : ""}`
+                        : "Não informado"}
+                    </p>
+                    <p><b>Bairro:</b> {selected.client.neighborhood || "Não informado"}</p>
+                    <p>
+                      <b>Cidade/UF:</b>{" "}
+                      {selected.client.city
+                        ? `${selected.client.city} / ${selected.client.state || "BA"}`
+                        : "Não informada"}
+                    </p>
+                    <p><b>CEP:</b> {selected.client.zipCode || "Não informado"}</p>
+                  </div>
+                </div>
+
+                {/* Bloco 3: Representante Legal (se houver) */}
+                {selected.client.legalRepresentative && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-1.5 text-amber-950">
+                    <h4 className="font-extrabold uppercase text-amber-900 text-[10px] tracking-wider border-b border-amber-200 pb-1">
+                      Representante Legal / Curador / Responsável
+                    </h4>
+                    <p><b>Nome do Representante:</b> {selected.client.legalRepresentative}</p>
+                    <p><b>Vínculo / Papel:</b> {selected.client.representativeRole || "Representante Legal"}</p>
+                    <p>
+                      <b>CPF:</b> {selected.client.representativeCpf || "—"} |{" "}
+                      <b>RG:</b> {selected.client.representativeRg || "—"}
+                    </p>
+                    <p><b>Telefone de Contato:</b> {selected.client.representativePhone || "—"}</p>
+                  </div>
+                )}
+
+                {selected.client.notes && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3.5 text-blue-950">
+                    <b>Observações Internas da Cliente:</b>
+                    <p className="mt-1 text-slate-700">{selected.client.notes}</p>
+                  </div>
+                )}
               </div>
-            </div>
-            <div className="text-sm border rounded-2xl p-4">
-              {selected.processNumber && (
-                <p>
-                  <b>Processo:</b> {selected.processNumber}
-                </p>
-              )}
-              {selected.protocolNumber && (
-                <p>
-                  <b>Protocolo:</b> {selected.protocolNumber}
-                </p>
-              )}
-              {selected.notes && (
-                <p className="mt-2 text-slate-600">{selected.notes}</p>
-              )}
-            </div>
+            ) : (
+              <>
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <div className="rounded-xl bg-slate-50 border p-3 text-xs">
+                    <b>Etapa</b>
+                    <br />
+                    {statusLabel(selected.status)}
+                  </div>
+                  <div className="rounded-xl bg-slate-50 border p-3 text-xs">
+                    <b>Prioridade</b>
+                    <br />
+                    {priority(selected.priority).label}
+                  </div>
+                  <div
+                    className={`rounded-xl border p-3 text-xs ${overdue(selected) ? "bg-rose-50 border-rose-200 text-rose-800" : "bg-slate-50"}`}
+                  >
+                    <b>Próximo prazo</b>
+                    <br />
+                    {selected.dueDate
+                      ? new Date(selected.dueDate).toLocaleDateString("pt-BR")
+                      : "Não definido"}
+                  </div>
+                </div>
+                <div className="text-sm border rounded-2xl p-4">
+                  {selected.processNumber && (
+                    <p>
+                      <b>Processo:</b> {selected.processNumber}
+                    </p>
+                  )}
+                  {selected.protocolNumber && (
+                    <p>
+                      <b>Protocolo:</b> {selected.protocolNumber}
+                    </p>
+                  )}
+                  {selected.notes && (
+                    <p className="mt-2 text-slate-600">{selected.notes}</p>
+                  )}
+                </div>
             {/* GERENCIADOR DE DOSSIÊ ESTILO WINDOWS EXPLORER */}
             <div className="border border-slate-200 rounded-3xl overflow-hidden bg-slate-50 shadow-sm space-y-0">
               {/* Barra de Ferramentas / Ribbon do Windows Explorer */}
@@ -1207,6 +1349,8 @@ export default function ProcessosPage() {
                 )}
               </div>
             </div>
+            </>
+            )}
             <div>
               <h3 className="text-xs font-extrabold uppercase text-[#071B3A]">
                 Linha do tempo
