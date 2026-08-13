@@ -45,7 +45,8 @@ import {
   ArrowUpDown,
   SortAsc,
   SortDesc,
-  History
+  History,
+  Eye
 } from 'lucide-react';
 import { maskCpfCnpj } from '@/lib/formatters';
 
@@ -56,6 +57,7 @@ interface Signer {
   role: string;
   status: string;
   token: string;
+  signingMode?: string;
   signedAt?: string;
   ip?: string;
 }
@@ -160,6 +162,12 @@ export default function DocumentsPage() {
       `Olá ${signerName}, tudo bem?\n\nSegue o link seguro para sua assinatura eletrônica no documento *${docTitle}* com Prova de Presença ao Vivo:\n\n${link}\n\nAtenciosamente,\nRodrigues & Soares Advocacia.`
     );
     window.open(`https://wa.me/?text=${text}`, '_blank');
+  };
+  const signerRoleLabel = (role: string) => ({ CLIENTE: 'Cliente', ASSINANTE_A_ROGO: 'Assinante a rogo', TESTEMUNHA_1: '1ª testemunha', TESTEMUNHA_2: '2ª testemunha', TESTEMUNHA: 'Testemunha' }[role] || role.replace(/_/g, ' '));
+  const signerProgress = (signer: Signer) => {
+    if (signer.status === 'ASSINADO') return <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700"><CheckCircle2 className="w-3 h-3" /> Assinou</span>;
+    if (signer.status === 'VISUALIZADO') return <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-extrabold text-blue-700"><Eye className="w-3 h-3" /> Link aberto</span>;
+    return <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-extrabold text-slate-600"><Clock className="w-3 h-3" /> Aguardando</span>;
   };
 
   const handleSyncPackageSignature = async (doc: DocumentItem) => {
@@ -841,23 +849,14 @@ export default function DocumentsPage() {
               )}
 
               <div>
-                <h3 className="text-xs font-extrabold text-[#071B3A] uppercase tracking-wider mb-2 font-heading">
-                  Signatários & Links WhatsApp
-                </h3>
+                <div className="flex items-center justify-between mb-2"><h3 className="text-xs font-extrabold text-[#071B3A] uppercase tracking-wider font-heading">Acompanhamento dos participantes</h3><span className="text-[10px] font-bold text-slate-500">{selectedDoc.signers.filter((s) => s.status === 'ASSINADO').length}/{selectedDoc.signers.length} concluídos</span></div>
+                <p className="mb-2 text-[11px] text-slate-500">Acompanhe se cada pessoa abriu o link e reenvie-o sem precisar copiar manualmente.</p>
                 <div className="space-y-2">
                   {selectedDoc.signers.map((s) => (
-                    <div key={s.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between text-xs">
-                      <div>
-                        <div className="font-extrabold text-slate-900">{s.name} ({s.role})</div>
-                        <div className="text-slate-500 font-mono text-[10px]">CPF: {s.cpf}</div>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => handleOpenWhatsApp(selectedDoc.title, s.name, s.token)}
-                          className="px-3 py-1.5 bg-emerald-50 text-emerald-800 font-extrabold rounded-lg border border-emerald-200 flex items-center gap-1 text-xs"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5 text-emerald-600" /> WhatsApp
-                        </button>
+                    <div key={s.id} className={`p-3 rounded-xl border text-xs ${s.status === 'ASSINADO' ? 'bg-emerald-50/40 border-emerald-200' : s.status === 'VISUALIZADO' ? 'bg-blue-50/40 border-blue-200' : 'bg-slate-50 border-slate-200/80'}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0"><div className="font-extrabold text-slate-900 truncate">{s.name}</div><div className="mt-1 flex flex-wrap gap-1.5 items-center"><span className="text-slate-500 text-[10px]">{signerRoleLabel(s.role)}</span>{signerProgress(s)}{s.signingMode === 'SAME_DEVICE' && <span className="text-[10px] font-bold text-violet-700">Mesmo celular</span>}</div><div className="text-slate-400 font-mono text-[10px] mt-1">CPF: {maskCpfCnpj(s.cpf)}</div></div>
+                        {s.status !== 'ASSINADO' && <div className="flex items-center gap-1 shrink-0"><button onClick={() => handleCopyLink(s.token)} title="Copiar link" className="p-2 rounded-lg border border-blue-200 bg-white text-blue-700 hover:bg-blue-50">{copiedToken === s.token ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}</button><button onClick={() => handleOpenWhatsApp(selectedDoc.title, s.name, s.token)} title="Enviar pelo WhatsApp" className="px-2.5 py-2 bg-emerald-50 text-emerald-800 font-extrabold rounded-lg border border-emerald-200 flex items-center gap-1 text-[10px]"><MessageSquare className="w-3.5 h-3.5 text-emerald-600" /> Enviar</button></div>}
                       </div>
                     </div>
                   ))}
