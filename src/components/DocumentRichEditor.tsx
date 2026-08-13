@@ -88,6 +88,7 @@ export function DocumentRichEditor({
   plainDocumentMode = false,
 }: DocumentRichEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
+  const savedRangeRef = useRef<Range | null>(null);
   
   // AI Copilot state
   const [aiCommand, setAiCommand] = useState('');
@@ -112,6 +113,28 @@ export function DocumentRichEditor({
     }
   }, [value]);
 
+  useEffect(() => {
+    const rememberSelection = () => {
+      const selection = window.getSelection();
+      const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+      if (range && editorRef.current?.contains(range.commonAncestorContainer)) {
+        savedRangeRef.current = range.cloneRange();
+      }
+    };
+    document.addEventListener('selectionchange', rememberSelection);
+    return () => document.removeEventListener('selectionchange', rememberSelection);
+  }, []);
+
+  const restoreEditorSelection = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    if (!savedRangeRef.current) return;
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(savedRangeRef.current);
+  };
+
   const handleInput = () => {
     if (editorRef.current) {
       onChange(editorRef.current.innerHTML);
@@ -128,9 +151,9 @@ export function DocumentRichEditor({
   };
 
   const executeCommand = (command: string, value: string | undefined = undefined) => {
+    restoreEditorSelection();
     document.execCommand(command, false, value);
     if (editorRef.current) {
-      editorRef.current.focus();
       onChange(editorRef.current.innerHTML);
     }
   };
@@ -139,9 +162,7 @@ export function DocumentRichEditor({
     const tagText = `{{${tag}}}`;
     
     // Focus the editor before inserting if it doesn't have focus
-    if (document.activeElement !== editorRef.current && editorRef.current) {
-      editorRef.current.focus();
-    }
+    restoreEditorSelection();
     
     document.execCommand('insertText', false, tagText);
     if (editorRef.current) {
@@ -223,7 +244,7 @@ export function DocumentRichEditor({
   return (
     <div className={`bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs ${className}`}>
       {/* Toolbar */}
-      <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-wrap gap-1 items-center">
+      <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-wrap gap-1 items-center" onMouseDown={(event) => { if ((event.target as HTMLElement).closest('button')) event.preventDefault(); }}>
         <button onClick={() => executeCommand('undo')} className="p-2 rounded-lg hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors" title="Desfazer" type="button"><Undo2 size={16} /></button>
         <button onClick={() => executeCommand('redo')} className="p-2 rounded-lg hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors" title="Refazer" type="button"><Redo2 size={16} /></button>
         <div className="w-px h-6 bg-slate-300 mx-1"></div>
