@@ -64,8 +64,8 @@ export async function POST(req: Request) {
       );
     }
 
-    if (String(password).length < 10 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
-      return NextResponse.json({ error: 'A senha deve ter ao menos 10 caracteres, incluindo letras e números.' }, { status: 400 });
+    if (String(password).length < 6) {
+      return NextResponse.json({ error: 'A senha deve ter ao menos 6 caracteres.' }, { status: 400 });
     }
     if (!['OFFICE_ADMIN', 'LAWYER', 'STAFF', 'VIEWER'].includes(role)) {
       return NextResponse.json({ error: 'Cargo de usuário inválido.' }, { status: 400 });
@@ -213,8 +213,8 @@ export async function PATCH(req: Request) {
     if (role && !['OFFICE_ADMIN', 'LAWYER', 'STAFF', 'VIEWER'].includes(role)) {
       return NextResponse.json({ error: 'Cargo de usuário inválido.' }, { status: 400 });
     }
-    if (password && (String(password).length < 10 || !/[A-Za-z]/.test(password) || !/\d/.test(password))) {
-      return NextResponse.json({ error: 'A senha deve ter ao menos 10 caracteres, incluindo letras e números.' }, { status: 400 });
+    if (password && String(password).length < 6) {
+      return NextResponse.json({ error: 'A senha deve ter ao menos 6 caracteres.' }, { status: 400 });
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
