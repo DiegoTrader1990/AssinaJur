@@ -46,7 +46,7 @@ type ParagraphKind = 'BODY' | 'H1' | 'H2' | 'LIST';
 type TextAlignment = 'LEFT' | 'CENTER' | 'RIGHT' | 'JUSTIFY';
 type PdfFontFamily = 'HELVETICA' | 'TIMES' | 'COURIER';
 type TextRun = { text: string; bold: boolean; fontFamily?: PdfFontFamily; fontSize?: number };
-type RichParagraph = { kind: ParagraphKind; alignment: TextAlignment; runs: TextRun[] };
+type RichParagraph = { kind: ParagraphKind; alignment: TextAlignment; runs: TextRun[]; spacer?: number };
 
 function decodeHtmlText(value: string): string {
   return value
@@ -161,8 +161,10 @@ function parseRichParagraphs(html: string): RichParagraph[] {
     if (!match) return fallback;
     return match[1].toUpperCase() as TextAlignment;
   };
-  const blockMarker = (kind: ParagraphKind, attributes: string, fallback: TextAlignment) =>
-    `\n[[${kind}:${alignmentFromAttributes(attributes, fallback)}]]`;
+  const blockMarker = (kind: ParagraphKind, attributes: string, fallback: TextAlignment) => {
+    const spacer = /data-aj-spacer\s*=\s*["']large["']/i.test(attributes) ? 26 : 0;
+    return `\n[[${kind}:${alignmentFromAttributes(attributes, fallback)}:${spacer}]]`;
+  };
 
   let normalized = cleanedHtml.replace(/\r/g, '');
 
@@ -188,10 +190,12 @@ function parseRichParagraphs(html: string): RichParagraph[] {
       if (!line) return null;
       let kind: ParagraphKind = 'BODY';
       let alignment: TextAlignment = 'JUSTIFY';
-      const marker = line.match(/^\[\[(BODY|H1|H2|LIST):(LEFT|CENTER|RIGHT|JUSTIFY)\]\]/);
+      let spacer = 0;
+      const marker = line.match(/^\[\[(BODY|H1|H2|LIST):(LEFT|CENTER|RIGHT|JUSTIFY)(?::(\d+))?\]\]/);
       if (marker) {
         kind = marker[1] as ParagraphKind;
         alignment = marker[2] as TextAlignment;
+        spacer = Number(marker[3] || 0);
         line = line.slice(marker[0].length);
       }
 
@@ -229,7 +233,7 @@ function parseRichParagraphs(html: string): RichParagraph[] {
       }
       // Linhas vazias criadas no editor (Enter em um parágrafo vazio) também são
       // parte da minuta: preservamos a altura para que a emissão respeite o espaçamento.
-      return { kind, alignment, runs };
+      return { kind, alignment, runs, spacer };
     })
     .filter((item): item is RichParagraph => Boolean(item));
 
@@ -383,7 +387,10 @@ async function renderTemplatePdf({
     );
     if (paragraph.kind === 'LIST') tokens.unshift({ text: '\u2022', bold: true, fontFamily: 'HELVETICA', fontSize });
 
-    if (tokens.length === 0) continue;
+    if (tokens.length === 0) {
+      if (paragraph.spacer) { ensureLineSpace(paragraph.spacer); currentY -= paragraph.spacer; }
+      continue;
+    }
 
     let line: Array<{ text: string; bold: boolean; fontFamily?: PdfFontFamily; fontSize: number }> = [];
     let lineWidth = 0;
@@ -454,7 +461,7 @@ async function renderTemplatePdf({
     // Reserva real para o selo profissional e assinatura, mesmo quando o editor possui
     // linhas em branco que antes eram descartadas pelo compilador.
     // Títulos principais precisam de uma separação visual clara antes da qualificação inicial.
-    currentY -= isClientSignatureLabel ? 84 : isExplicitSignatureLine ? 8 : isSignatureCaption ? 3 : isFollowedByExplicitSignatureLine ? 42 : paragraph.kind === 'H1' ? 12 : heading ? 6 : 5;
+    currentY -= isClientSignatureLabel ? 84 : isExplicitSignatureLine ? 8 : isSignatureCaption ? 3 : isFollowedByExplicitSignatureLine ? 42 : paragraph.kind === 'H1' ? 12 : heading ? 6 : 5 + (paragraph.spacer || 0);
   }
 
   if (watermark) {
