@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import { getSessionUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { createGoogleDriveAuthorizeUrl, googleDriveConfigured } from '@/lib/google-drive';
+import { createGoogleDriveAuthorizeUrl, ensureDriveRoot, googleDriveConfigured } from '@/lib/google-drive';
 
 export const dynamic = 'force-dynamic';
 const stateSecret = () => process.env.JWT_SECRET || 'assinajur_google_drive_state_2026';
@@ -10,8 +10,21 @@ const stateSecret = () => process.env.JWT_SECRET || 'assinajur_google_drive_stat
 export async function GET() {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
-  const connection = await prisma.googleDriveConnection.findUnique({ where: { officeId: user.officeId }, select: { googleEmail: true, rootFolderId: true, createdAt: true, updatedAt: true } });
-  return NextResponse.json({ configured: googleDriveConfigured(), connected: Boolean(connection), connection: connection ? { ...connection, folderUrl: connection.rootFolderId ? `https://drive.google.com/drive/folders/${connection.rootFolderId}` : null } : null });
+  let connection = await prisma.googleDriveConnection.findUnique({ where: { officeId: user.officeId }, select: { googleEmail: true, rootFolderId: true, createdAt: true, updatedAt: true } });
+  let setupError: string | null = null;
+  // Uma conexão só é considerada pronta quando a pasta raiz realmente existe.
+  // Este reparo também recupera conexões feitas antes de o Drive concluir a criação.
+  if (connection && !connection.rootFolderId) {
+    try {
+      await ensureDriveRoot(user.officeId);
+      connection = await prisma.googleDriveConnection.findUnique({ where: { officeId: user.officeId }, select: { googleEmail: true, rootFolderId: true, createdAt: true, updatedAt: true } });
+    } catch (error: any) {
+      console.error('[Google Drive] Falha ao concluir a pasta principal:', error);
+      setupError = 'Não foi possível concluir a pasta principal no Google Drive. Reconecte a integração para autorizar o acesso novamente.';
+    }
+  }
+  const ready = Boolean(connection?.rootFolderId);
+  return NextResponse.json({ configured: googleDriveConfigured(), connected: ready, needsRepair: Boolean(connection && !ready), setupError, connection: connection ? { ...connection, folderUrl: connection.rootFolderId ? `https://drive.google.com/drive/folders/${connection.rootFolderId}` : null } : null });
 }
 
 export async function POST() {

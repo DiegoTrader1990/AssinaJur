@@ -53,7 +53,7 @@ export default function SettingsPage() {
   const [removingLawyerId, setRemovingLawyerId] = useState<string | null>(null);
   const [editingLawyer, setEditingLawyer] = useState<LawyerMember | null>(null);
   const [savingLawyer, setSavingLawyer] = useState(false);
-  const [drive, setDrive] = useState<{ configured: boolean; connected: boolean; connection?: { googleEmail?: string; folderUrl?: string } | null }>({ configured: false, connected: false });
+  const [drive, setDrive] = useState<{ configured: boolean; connected: boolean; needsRepair?: boolean; setupError?: string | null; connection?: { googleEmail?: string; folderUrl?: string } | null }>({ configured: false, connected: false });
   const [connectingDrive, setConnectingDrive] = useState(false);
 
   useEffect(() => {
@@ -550,7 +550,7 @@ export default function SettingsPage() {
               <div className="flex gap-2">{drive.connection?.folderUrl && <a href={drive.connection.folderUrl} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-xl bg-white border border-emerald-200 text-emerald-800 font-bold flex items-center gap-1.5"><ExternalLink className="w-3.5 h-3.5" /> Abrir Drive</a>}<button type="button" onClick={disconnectDrive} className="px-3 py-2 rounded-xl text-red-700 font-bold hover:bg-red-100 flex items-center gap-1.5"><Unplug className="w-3.5 h-3.5" /> Desconectar</button></div>
             </div>
           ) : (
-            <div className="rounded-2xl border border-blue-100 bg-slate-50 p-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-extrabold text-[#071B3A]">Centralize os arquivos do escritório</p><p className="text-[11px] text-slate-500 mt-1">Você autoriza uma única vez; o AssinaJur cria e mantém somente as pastas que utiliza.</p></div><button type="button" onClick={connectDrive} disabled={!drive.configured || connectingDrive} className="px-4 py-2.5 rounded-xl bg-[#071B3A] text-white font-bold text-xs disabled:opacity-50 flex items-center gap-2">{connectingDrive ? <Loader2 className="w-4 h-4 animate-spin" /> : <HardDrive className="w-4 h-4" />}{drive.configured ? 'Conectar Google Drive' : 'Integração em preparação'}</button></div>
+            <div className="rounded-2xl border border-blue-100 bg-slate-50 p-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-extrabold text-[#071B3A]">Centralize os arquivos do escritório</p><p className="text-[11px] text-slate-500 mt-1">Você autoriza uma única vez; o AssinaJur cria e mantém somente as pastas que utiliza.</p>{drive.needsRepair && <p className="text-[11px] font-bold text-amber-700 mt-2">{drive.setupError || 'A conexão precisa ser concluída no Google Drive.'}</p>}</div><button type="button" onClick={connectDrive} disabled={!drive.configured || connectingDrive} className="px-4 py-2.5 rounded-xl bg-[#071B3A] text-white font-bold text-xs disabled:opacity-50 flex items-center gap-2">{connectingDrive ? <Loader2 className="w-4 h-4 animate-spin" /> : <HardDrive className="w-4 h-4" />}{drive.configured ? (drive.needsRepair ? 'Reconectar e reparar' : 'Conectar Google Drive') : 'Integração em preparação'}</button></div>
           )}
         </div>
 
