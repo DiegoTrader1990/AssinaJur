@@ -30,7 +30,11 @@ import {
   Loader2,
   AlertCircle,
   X,
-  ExternalLink,
+  UserPlus,
+  Phone,
+  FileSpreadsheet,
+  Layers,
+  ChevronDown,
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -42,14 +46,21 @@ export default function DashboardPage() {
   const [kits, setKits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Express Launcher State
-  const [dispatchTab, setDispatchTab] = useState<'KIT' | 'SINGLE_DOC' | 'PROCESS'>('KIT');
+  // Central de Disparo & Operações Rápidas (Modos Expansivos)
+  const [activeAction, setActiveAction] = useState<'KIT' | 'DOC' | 'CLIENT' | 'PROCESS'>('KIT');
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedKitId, setSelectedKitId] = useState('');
-  const [singleDocTitle, setSingleDocTitle] = useState('');
-  const [submittingExpress, setSubmittingExpress] = useState(false);
-  const [expressResult, setExpressResult] = useState<any>(null);
-  const [expressError, setExpressError] = useState('');
+  const [docTitle, setDocTitle] = useState('');
+  
+  // Quick Client Register State inside Dashboard
+  const [newClientName, setNewClientName] = useState('');
+  const [newClientCpf, setNewClientCpf] = useState('');
+  const [newClientPhone, setNewClientPhone] = useState('');
+
+  // Execution feedback state
+  const [submitting, setSubmitting] = useState(false);
+  const [executionResult, setExecutionResult] = useState<any>(null);
+  const [executionError, setExecutionError] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
 
   // Search & Explorer state
@@ -101,56 +112,71 @@ export default function DashboardPage() {
     return processes.reduce((acc, p) => acc + (p.documents?.length || 0) + (p.attachments?.length || 0), 0);
   }, [processes]);
 
-  // Handle Express Kit Dispatch directly on Dashboard
-  const handleFireExpressKit = async (e: React.FormEvent) => {
+  // Handler para Execução das Ações da Central GIGANTE
+  const handleExecuteAction = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedClientId) {
-      setExpressError('Por favor, selecione uma cliente para receber os documentos.');
-      return;
-    }
-    if (dispatchTab === 'KIT' && !selectedKitId) {
-      setExpressError('Por favor, selecione um Kit Jurídico.');
-      return;
-    }
-
-    setSubmittingExpress(true);
-    setExpressError('');
-    setExpressResult(null);
+    setSubmitting(true);
+    setExecutionError('');
+    setExecutionResult(null);
 
     try {
-      if (dispatchTab === 'KIT') {
-        const response = await fetch('/api/kits/generate-package', {
+      if (activeAction === 'KIT') {
+        if (!selectedClientId) throw new Error('Selecione uma cliente.');
+        if (!selectedKitId) throw new Error('Selecione um Kit Jurídico.');
+
+        const res = await fetch('/api/kits/generate-package', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             clientId: selectedClientId,
             kitId: selectedKitId,
-            variables: {
-              valor_honorarios: 'R$ 3.000,00',
-              percentual_exito: '30%',
-            },
+            variables: { valor_honorarios: 'R$ 3.000,00', percentual_exito: '30%' },
           }),
         });
-
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Falha ao disparar kit.');
-
-        setExpressResult(data.result);
-
-        // Refresh documents list
-        fetch('/api/documents')
-          .then((r) => r.json())
-          .then((d) => setDocuments(d.documents || []));
-      } else if (dispatchTab === 'SINGLE_DOC') {
-        // Quick document creation redirect or API
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erro ao gerar kit.');
+        setExecutionResult({ type: 'KIT', ...data.result });
+      } else if (activeAction === 'CLIENT') {
+        if (!newClientName.trim()) throw new Error('Informe o nome da cliente.');
+        const res = await fetch('/api/clients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: newClientName,
+            cpfCnpj: newClientCpf,
+            phone: newClientPhone,
+            whatsapp: newClientPhone,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erro ao cadastrar cliente.');
+        
+        // Refresh clients list and select the newly created client
+        const updatedClientsRes = await fetch('/api/clients').then(r => r.json());
+        if (updatedClientsRes?.clients) {
+          setClients(updatedClientsRes.clients);
+          setSelectedClientId(data.client.id);
+        }
+        setExecutionResult({ type: 'CLIENT', clientName: data.client.name });
+        setNewClientName('');
+        setNewClientCpf('');
+        setNewClientPhone('');
+      } else if (activeAction === 'DOC') {
+        if (!selectedClientId) throw new Error('Selecione uma cliente.');
         window.location.href = `/documentos/novo?clientId=${selectedClientId}`;
-      } else if (dispatchTab === 'PROCESS') {
+        return;
+      } else if (activeAction === 'PROCESS') {
+        if (!selectedClientId) throw new Error('Selecione uma cliente.');
         window.location.href = `/processos?novo=true&clientId=${selectedClientId}`;
+        return;
       }
+
+      // Refresh documents
+      fetch('/api/documents').then(r => r.json()).then(d => setDocuments(d.documents || []));
     } catch (err: any) {
-      setExpressError(err.message || 'Erro ao processar disparo.');
+      setExecutionError(err.message || 'Erro no processamento.');
     } finally {
-      setSubmittingExpress(false);
+      setSubmitting(false);
     }
   };
 
@@ -162,248 +188,331 @@ export default function DashboardPage() {
   const metricValue = (value: number) => (loading ? '—' : String(value).padStart(2, '0'));
 
   return (
-    <main className="mx-auto max-w-7xl space-y-7 pb-16">
-      {/* 🚀 CONSOLE DE DISPARO RÁPIDO DO ADVOGADO (O FOCO PRINCIPAL DO ESCRITÓRIO) */}
-      <section className="relative overflow-hidden rounded-[36px] bg-gradient-to-r from-[#071B3A] via-[#0C2B56] to-[#071B3A] text-white p-6 lg:p-8 shadow-[0_25px_60px_rgba(7,27,58,0.35)] border-2 border-[#D4AF37]/50">
-        {/* Glow ambient lights */}
-        <div className="absolute -right-20 -top-20 h-80 w-80 rounded-full bg-amber-400/15 blur-3xl pointer-events-none" />
-        <div className="absolute -left-20 -bottom-20 h-80 w-80 rounded-full bg-blue-500/15 blur-3xl pointer-events-none" />
+    <main className="mx-auto max-w-7xl space-y-8 pb-20">
+      {/* 👑 1. CENTRAL MAGNÍFICA DE DISPARO & OPERAÇÕES RÁPIDAS (BANNER GIGANTE NO TOPO) */}
+      <section className="relative overflow-hidden rounded-[38px] bg-gradient-to-br from-[#06101E] via-[#0A1D38] to-[#040D1A] text-white p-7 lg:p-9 shadow-[0_30px_70px_rgba(6,16,30,0.4)] border-2 border-[#D4AF37]/60 space-y-6">
+        {/* Glow Ambient Gold Lights */}
+        <div className="absolute -right-24 -top-24 h-96 w-96 rounded-full bg-amber-400/20 blur-3xl pointer-events-none" />
+        <div className="absolute -left-24 -bottom-24 h-96 w-96 rounded-full bg-blue-600/20 blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 space-y-5">
-          {/* IDENTIFICAÇÃO E MENSAGEM */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-4">
-            <div>
+        <div className="relative z-10 space-y-6">
+          {/* TOPO: IDENTIFICAÇÃO DO ESCRITÓRIO E SAUDAÇÃO EXECUTIVA */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-white/10 pb-5">
+            <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black uppercase tracking-[0.24em] text-[#D4AF37] bg-amber-400/10 border border-amber-400/30 px-3 py-0.5 rounded-full flex items-center gap-1">
+                <span className="text-[10px] font-black uppercase tracking-[0.26em] text-[#D4AF37] bg-amber-400/10 border border-amber-400/30 px-3.5 py-1 rounded-full flex items-center gap-1.5 shadow-xs">
                   <Award className="w-3.5 h-3.5 text-[#D4AF37]" />
                   {office?.name || 'Rodrigues & Soares Advocacia'}
                 </span>
-                <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> WhatsApp Direct
+                <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/80 border border-emerald-500/30 px-3 py-1 rounded-full flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> WhatsApp Direct • OAB/BA 51.881 | 62.443
                 </span>
               </div>
-              <h1 className="font-heading text-xl lg:text-2xl font-black text-white mt-1">
-                Central de Disparo Rápido • {currentUser?.name ? currentUser.name : 'Dr. Diego & Dra. Dominick'}
+              <h1 className="font-heading text-2xl lg:text-3xl font-black text-white tracking-tight mt-1">
+                Central Magnífica de Operações Rápidas
               </h1>
+              <p className="text-xs lg:text-sm text-slate-300 max-w-3xl leading-relaxed">
+                Dispare kits de procuração e contratos no WhatsApp, cadastre clientes e organize dossiês do Windows em segundos.
+              </p>
             </div>
 
-            {/* SELEÇÃO DE MODALIDADE DE DISPARO */}
-            <div className="flex bg-white/10 p-1 rounded-2xl border border-white/15 text-xs font-black shrink-0">
+            {/* SELEÇÃO DAS 4 OPERAÇÕES RÁPIDAS (BOTÕES GRANDES) */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white/10 p-1.5 rounded-2xl border border-white/15 text-xs font-black shrink-0">
               <button
                 onClick={() => {
-                  setDispatchTab('KIT');
-                  setExpressResult(null);
+                  setActiveAction('KIT');
+                  setExecutionResult(null);
                 }}
-                className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all ${
-                  dispatchTab === 'KIT' ? 'bg-[#D4AF37] text-[#071B3A] shadow-md' : 'text-slate-300 hover:text-white'
+                className={`px-4 py-3 rounded-xl flex items-center justify-center gap-2 transition-all ${
+                  activeAction === 'KIT'
+                    ? 'bg-gradient-to-r from-[#D4AF37] to-[#C59B27] text-[#06101E] font-black shadow-lg scale-[1.02]'
+                    : 'text-slate-200 hover:text-white hover:bg-white/10'
                 }`}
               >
-                <Sparkles className="w-4 h-4" /> Kit 10 Segundos
+                <Sparkles className="w-4 h-4" /> Disparar Kit
               </button>
+
               <button
                 onClick={() => {
-                  setDispatchTab('SINGLE_DOC');
-                  setExpressResult(null);
+                  setActiveAction('DOC');
+                  setExecutionResult(null);
                 }}
-                className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all ${
-                  dispatchTab === 'SINGLE_DOC' ? 'bg-white text-[#071B3A] shadow-md' : 'text-slate-300 hover:text-white'
+                className={`px-4 py-3 rounded-xl flex items-center justify-center gap-2 transition-all ${
+                  activeAction === 'DOC'
+                    ? 'bg-white text-[#06101E] font-black shadow-lg scale-[1.02]'
+                    : 'text-slate-200 hover:text-white hover:bg-white/10'
                 }`}
               >
-                <Send className="w-4 h-4 text-[#D4AF37]" /> Assinatura Avulsa
+                <Send className="w-4 h-4 text-[#D4AF37]" /> Assinar PDF
               </button>
+
               <button
                 onClick={() => {
-                  setDispatchTab('PROCESS');
-                  setExpressResult(null);
+                  setActiveAction('CLIENT');
+                  setExecutionResult(null);
                 }}
-                className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all ${
-                  dispatchTab === 'PROCESS' ? 'bg-white text-[#071B3A] shadow-md' : 'text-slate-300 hover:text-white'
+                className={`px-4 py-3 rounded-xl flex items-center justify-center gap-2 transition-all ${
+                  activeAction === 'CLIENT'
+                    ? 'bg-emerald-500 text-white font-black shadow-lg scale-[1.02]'
+                    : 'text-slate-200 hover:text-white hover:bg-white/10'
                 }`}
               >
-                <Folder className="w-4 h-4 text-amber-400 fill-amber-400/30" /> Novo Dossiê
+                <UserPlus className="w-4 h-4" /> Nova Cliente
+              </button>
+
+              <button
+                onClick={() => {
+                  setActiveAction('PROCESS');
+                  setExecutionResult(null);
+                }}
+                className={`px-4 py-3 rounded-xl flex items-center justify-center gap-2 transition-all ${
+                  activeAction === 'PROCESS'
+                    ? 'bg-amber-500 text-[#06101E] font-black shadow-lg scale-[1.02]'
+                    : 'text-slate-200 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                <Folder className="w-4 h-4 text-[#06101E] fill-[#06101E]/30" /> Novo Dossiê
               </button>
             </div>
           </div>
 
-          {/* PAINEL DE AÇÃO EXPRESSA INTERATIVO */}
-          {expressResult ? (
-            <div className="bg-emerald-950/80 border-2 border-emerald-500/50 rounded-3xl p-5 lg:p-6 space-y-4 animate-in fade-in zoom-in duration-200">
+          {/* PAINEL EXPANSIVO PRINCIPAL DA AÇÃO SELECIONADA */}
+          {executionResult ? (
+            <div className="bg-emerald-950/90 border-2 border-emerald-500/60 rounded-3xl p-6 space-y-4 animate-in fade-in zoom-in duration-200">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 font-bold">
-                    <CheckCircle2 className="w-6 h-6" />
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 font-bold">
+                    <CheckCircle2 className="w-7 h-7" />
                   </div>
                   <div>
-                    <h3 className="font-heading font-black text-white text-base">
-                      Kit Gerado com Sucesso para {expressResult.clientName}!
+                    <h3 className="font-heading font-black text-white text-lg">
+                      {executionResult.type === 'KIT'
+                        ? `Kit Jurídico Gerado para ${executionResult.clientName}!`
+                        : `Cliente ${executionResult.clientName} Cadastrada com Sucesso!`}
                     </h3>
                     <p className="text-xs text-emerald-300">
-                      {expressResult.documentsCount} documento(s) prontos para assinatura digital via WhatsApp.
+                      {executionResult.type === 'KIT'
+                        ? `${executionResult.documentsCount} documento(s) prontos para assinatura no WhatsApp.`
+                        : `Qualificação salva. Agora você pode disparar os documentos ou criar o dossiê.`}
                     </p>
                   </div>
                 </div>
 
                 <button
-                  onClick={() => setExpressResult(null)}
-                  className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white"
+                  onClick={() => setExecutionResult(null)}
+                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              {/* BARRAS DE ENVIO WHATSAPP OU COPIAR LINK */}
-              <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
-                {selectedClient?.phone || selectedClient?.whatsapp ? (
-                  <a
-                    href={`https://wa.me/55${(selectedClient.phone || selectedClient.whatsapp).replace(/\D/g, '')}?text=${encodeURIComponent(
-                      `Olá ${expressResult.clientName}! Seus documentos (${expressResult.kitName}) estão prontos para assinatura digital. Acesse o link seguro no celular: ${expressResult.signatureLink}`,
-                    )}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full sm:w-auto px-6 py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all hover:scale-[1.02]"
-                  >
-                    <MessageSquare className="w-4 h-4 fill-white" /> DISPARAR MENSAGEM NO WHATSAPP
-                  </a>
-                ) : (
-                  <div className="text-xs text-amber-300 bg-amber-950/60 px-3 py-2 rounded-xl">
-                    ⚠️ Cliente sem telefone cadastrado. Copie o link abaixo para enviar manualmente.
-                  </div>
-                )}
-
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(expressResult.signatureLink);
-                    setCopiedLink(true);
-                    setTimeout(() => setCopiedLink(false), 2000);
-                  }}
-                  className="w-full sm:w-auto px-5 py-3.5 bg-white/15 hover:bg-white/25 border border-white/20 text-white font-extrabold text-xs rounded-2xl flex items-center justify-center gap-2 transition-all"
-                >
-                  {copiedLink ? (
-                    <>
-                      <Check className="w-4 h-4 text-emerald-400" /> Link Copiado!
-                    </>
+              {executionResult.type === 'KIT' && (
+                <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+                  {selectedClient?.phone || selectedClient?.whatsapp ? (
+                    <a
+                      href={`https://wa.me/55${(selectedClient.phone || selectedClient.whatsapp).replace(/\D/g, '')}?text=${encodeURIComponent(
+                        `Olá ${executionResult.clientName}! Seus documentos (${executionResult.kitName}) estão prontos para assinatura digital. Acesse o link seguro no celular: ${executionResult.signatureLink}`,
+                      )}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full sm:w-auto px-7 py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs rounded-2xl shadow-xl flex items-center justify-center gap-2 transition-all hover:scale-[1.02]"
+                    >
+                      <MessageSquare className="w-4 h-4 fill-white" /> DISPARAR MENSAGEM NO WHATSAPP DA CLIENTE
+                    </a>
                   ) : (
-                    <>
-                      <Copy className="w-4 h-4 text-[#D4AF37]" /> Copiar Link de Assinatura
-                    </>
+                    <div className="text-xs text-amber-300 bg-amber-950/60 px-4 py-3 rounded-xl">
+                      ⚠️ Cliente sem telefone cadastrado. Copie o link abaixo para enviar manualmente.
+                    </div>
                   )}
-                </button>
 
-                <Link
-                  href="/documentos"
-                  className="w-full sm:w-auto px-4 py-3.5 text-xs font-bold text-slate-300 hover:text-white underline text-center"
-                >
-                  Ver na Central de Documentos
-                </Link>
-              </div>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(executionResult.signatureLink);
+                      setCopiedLink(true);
+                      setTimeout(() => setCopiedLink(false), 2000);
+                    }}
+                    className="w-full sm:w-auto px-6 py-4 bg-white/15 hover:bg-white/25 border border-white/20 text-white font-extrabold text-xs rounded-2xl flex items-center justify-center gap-2 transition-all"
+                  >
+                    {copiedLink ? (
+                      <>
+                        <Check className="w-4 h-4 text-emerald-400" /> Link Copiado!
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4 text-[#D4AF37]" /> Copiar Link de Assinatura
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
-            <form onSubmit={handleFireExpressKit} className="grid md:grid-cols-[1.2fr_1.2fr_auto] items-end gap-3">
-              {/* PASSO 1: SELECIONAR CLIENTE */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-extrabold uppercase tracking-wider text-[#D4AF37] flex items-center justify-between">
-                  <span>1. Selecionar Cliente</span>
-                  <Link href="/clientes?novo=true" className="text-[10px] font-bold text-blue-300 hover:underline">
-                    + Cadastrar Nova
-                  </Link>
-                </label>
-                <div className="relative">
-                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <select
-                    value={selectedClientId}
-                    onChange={(e) => setSelectedClientId(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-slate-900/90 border border-white/20 focus:border-amber-400 rounded-2xl text-xs font-bold text-white focus:outline-none transition-all"
-                  >
-                    {clients.map((c) => (
-                      <option key={c.id} value={c.id} className="bg-slate-900 text-white">
-                        {c.name} {c.cpfCnpj ? `(${c.cpfCnpj})` : ''}
-                      </option>
-                    ))}
-                    {!clients.length && (
-                      <option value="" className="bg-slate-900 text-slate-400">
-                        Nenhum cliente cadastrado ainda
-                      </option>
-                    )}
-                  </select>
-                </div>
-              </div>
+            <form onSubmit={handleExecuteAction} className="bg-slate-900/90 border border-white/15 rounded-3xl p-6 space-y-4 backdrop-blur-md">
+              {/* CASO AÇÃO = KIT */}
+              {activeAction === 'KIT' && (
+                <div className="grid lg:grid-cols-[1.2fr_1.2fr_auto] items-end gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-wider text-[#D4AF37] flex items-center justify-between">
+                      <span>1. Selecionar Cliente</span>
+                      <button
+                        type="button"
+                        onClick={() => setActiveAction('CLIENT')}
+                        className="text-[10px] font-extrabold text-blue-300 hover:underline"
+                      >
+                        + Cadastrar Nova Cliente
+                      </button>
+                    </label>
+                    <div className="relative">
+                      <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <select
+                        value={selectedClientId}
+                        onChange={(e) => setSelectedClientId(e.target.value)}
+                        className="w-full pl-11 pr-4 py-3.5 bg-slate-950 border border-white/20 focus:border-amber-400 rounded-2xl text-xs font-bold text-white focus:outline-none transition-all"
+                      >
+                        {clients.map((c) => (
+                          <option key={c.id} value={c.id} className="bg-slate-900 text-white">
+                            {c.name} {c.cpfCnpj ? `(CPF: ${c.cpfCnpj})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
 
-              {/* PASSO 2: SELECIONAR KIT OU DOCUMENTO */}
-              {dispatchTab === 'KIT' ? (
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-extrabold uppercase tracking-wider text-[#D4AF37]">
-                    2. Selecionar Kit Jurídico
-                  </label>
-                  <div className="relative">
-                    <Sparkles className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-400" />
-                    <select
-                      value={selectedKitId}
-                      onChange={(e) => setSelectedKitId(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-slate-900/90 border border-white/20 focus:border-amber-400 rounded-2xl text-xs font-bold text-white focus:outline-none transition-all"
-                    >
-                      {kits.map((k) => (
-                        <option key={k.id} value={k.id} className="bg-slate-900 text-white">
-                          {k.name} ({k.items?.length || 3} documentos)
-                        </option>
-                      ))}
-                      {!kits.length && (
-                        <option value="" className="bg-slate-900 text-slate-400">
-                          Carregando kits do escritório...
-                        </option>
-                      )}
-                    </select>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-wider text-[#D4AF37]">
+                      2. Kit Jurídico Completo
+                    </label>
+                    <div className="relative">
+                      <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-400" />
+                      <select
+                        value={selectedKitId}
+                        onChange={(e) => setSelectedKitId(e.target.value)}
+                        className="w-full pl-11 pr-4 py-3.5 bg-slate-950 border border-white/20 focus:border-amber-400 rounded-2xl text-xs font-bold text-white focus:outline-none transition-all"
+                      >
+                        {kits.map((k) => (
+                          <option key={k.id} value={k.id} className="bg-slate-900 text-white">
+                            {k.name} ({k.items?.length || 3} documentos automáticos)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-extrabold uppercase tracking-wider text-[#D4AF37]">
-                    2. Título do Documento / PDF
-                  </label>
-                  <div className="relative">
-                    <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={singleDocTitle}
-                      onChange={(e) => setSingleDocTitle(e.target.value)}
-                      placeholder="Ex: Contrato de Honorários Avulso"
-                      className="w-full pl-10 pr-4 py-3 bg-slate-900/90 border border-white/20 focus:border-amber-400 rounded-2xl text-xs font-bold text-white focus:outline-none transition-all placeholder-slate-500"
-                    />
-                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={submitting || !clients.length}
+                    className="w-full lg:w-auto px-7 py-3.5 bg-gradient-to-r from-[#D4AF37] via-[#E5C365] to-[#C59B27] hover:brightness-110 text-[#06101E] font-black text-xs rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] disabled:opacity-50 shrink-0"
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> Gerando Kit...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" /> DISPARAR KIT AGORA VIA WHATSAPP
+                      </>
+                    )}
+                  </button>
                 </div>
               )}
 
-              {/* BOTÃO DE DISPARO RÁPIDO */}
-              <button
-                type="submit"
-                disabled={submittingExpress || !clients.length}
-                className="w-full md:w-auto px-6 py-3.5 bg-gradient-to-r from-[#D4AF37] via-[#E5C365] to-[#C59B27] hover:brightness-110 text-[#071B3A] font-black text-xs rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] disabled:opacity-50 shrink-0"
-              >
-                {submittingExpress ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" /> Gerando Kit...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4" /> DISPARAR KIT AGORA
-                  </>
-                )}
-              </button>
+              {/* CASO AÇÃO = CADASTRO RÁPIDO DE CLIENTE */}
+              {activeAction === 'CLIENT' && (
+                <div className="grid sm:grid-cols-3 lg:grid-cols-[1.5fr_1fr_1fr_auto] items-end gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-black uppercase tracking-wider text-emerald-400">
+                      Nome Completo da Cliente
+                    </label>
+                    <input
+                      type="text"
+                      value={newClientName}
+                      onChange={(e) => setNewClientName(e.target.value)}
+                      placeholder="Ex: Maria das Graças Silva"
+                      className="w-full px-4 py-3 bg-slate-950 border border-white/20 focus:border-emerald-400 rounded-2xl text-xs font-bold text-white focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-black uppercase tracking-wider text-emerald-400">CPF</label>
+                    <input
+                      type="text"
+                      value={newClientCpf}
+                      onChange={(e) => setNewClientCpf(e.target.value)}
+                      placeholder="000.000.000-00"
+                      className="w-full px-4 py-3 bg-slate-950 border border-white/20 focus:border-emerald-400 rounded-2xl text-xs font-bold text-white focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-black uppercase tracking-wider text-emerald-400">WhatsApp / Celular</label>
+                    <input
+                      type="text"
+                      value={newClientPhone}
+                      onChange={(e) => setNewClientPhone(e.target.value)}
+                      placeholder="(71) 99999-9999"
+                      className="w-full px-4 py-3 bg-slate-950 border border-white/20 focus:border-emerald-400 rounded-2xl text-xs font-bold text-white focus:outline-none"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="w-full px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs rounded-2xl shadow-lg transition-all flex items-center justify-center gap-1.5 shrink-0"
+                  >
+                    {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />} Cadastrar Cliente
+                  </button>
+                </div>
+              )}
+
+              {/* CASO AÇÃO = DOCUMENTO AVULSO */}
+              {activeAction === 'DOC' && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div>
+                    <h3 className="font-heading font-black text-white text-base">Enviar Documento PDF Avulso</h3>
+                    <p className="text-xs text-slate-300">Escolha a cliente cadastrada para direcionar o documento para o fluxo de assinatura.</p>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="px-6 py-3.5 bg-white hover:bg-slate-100 text-[#06101E] font-black text-xs rounded-2xl shadow-md flex items-center gap-2 shrink-0"
+                  >
+                    <Send className="w-4 h-4 text-[#D4AF37]" /> Abrir Editor de Envio Avulso
+                  </button>
+                </div>
+              )}
+
+              {/* CASO AÇÃO = NOVO DOSSIÊ */}
+              {activeAction === 'PROCESS' && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div>
+                    <h3 className="font-heading font-black text-white text-base">Criar Nova Pasta de Processo no Windows Explorer</h3>
+                    <p className="text-xs text-slate-300">Crie a pasta padronizada da cliente com as 5 subpastas automáticas de documentos.</p>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="px-6 py-3.5 bg-amber-500 hover:bg-amber-600 text-[#06101E] font-black text-xs rounded-2xl shadow-md flex items-center gap-2 shrink-0"
+                  >
+                    <Folder className="w-4 h-4 fill-[#06101E]/30" /> Criar Pasta Dossiê 📁
+                  </button>
+                </div>
+              )}
             </form>
           )}
 
-          {expressError && (
-            <p className="text-xs font-bold text-rose-300 bg-rose-950/80 border border-rose-500/40 px-3.5 py-2 rounded-xl flex items-center gap-1.5">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" /> {expressError}
+          {executionError && (
+            <p className="text-xs font-bold text-rose-300 bg-rose-950/80 border border-rose-500/40 px-4 py-2.5 rounded-xl flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" /> {executionError}
             </p>
           )}
         </div>
       </section>
 
-      {/* 2. REGISTRO DE RESUMO OPERACIONAL EM 4 CARDS ELEGANTES */}
+      {/* 2. REGISTRO DE RESUMO OPERACIONAL (4 CARDS DE INDICADORES) */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Link
           href="/clientes"
-          className="bg-white border border-slate-200/80 hover:border-amber-400 p-5 rounded-3xl transition-all shadow-xs group"
+          className="bg-white border border-slate-200 hover:border-amber-400 p-5 rounded-3xl transition-all shadow-xs group"
         >
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#B68B1C]">Clientes</span>
@@ -417,7 +526,7 @@ export default function DashboardPage() {
 
         <Link
           href="/documentos"
-          className="bg-white border border-slate-200/80 hover:border-amber-400 p-5 rounded-3xl transition-all shadow-xs group"
+          className="bg-white border border-slate-200 hover:border-amber-400 p-5 rounded-3xl transition-all shadow-xs group"
         >
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-600">Em Assinatura</span>
@@ -431,7 +540,7 @@ export default function DashboardPage() {
 
         <Link
           href="/processos"
-          className="bg-white border border-slate-200/80 hover:border-blue-400 p-5 rounded-3xl transition-all shadow-xs group"
+          className="bg-white border border-slate-200 hover:border-blue-400 p-5 rounded-3xl transition-all shadow-xs group"
         >
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-600">Dossiês Ativos</span>
@@ -445,7 +554,7 @@ export default function DashboardPage() {
 
         <Link
           href="/documentos"
-          className="bg-white border border-slate-200/80 hover:border-emerald-400 p-5 rounded-3xl transition-all shadow-xs group"
+          className="bg-white border border-slate-200 hover:border-emerald-400 p-5 rounded-3xl transition-all shadow-xs group"
         >
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-600">Concluídos</span>
@@ -458,9 +567,9 @@ export default function DashboardPage() {
         </Link>
       </section>
 
-      {/* 3. SEÇÃO PRINCIPAL: ASSINATURAS PENDENTES PARA COBRANÇA DIRETA & WINDOWS EXPLORER */}
-      <section className="grid gap-6 xl:grid-cols-[1.35fr_0.85fr]">
-        {/* COLUNA ESQUERDA: COBRANÇA WHATSAPP DE ASSINATURAS EM ANDAMENTO */}
+      {/* 3. PAINEL INTEGRADO EM 2 COLUNAS DE ALTO EQUILÍBRIO: ASSINATURAS & DOSSIÊS WINDOWS */}
+      <section className="grid gap-6 lg:grid-cols-2">
+        {/* ESQUERDA: CENTRAL DE ASSINATURAS E DISPARO DE COBRANÇA */}
         <div className="bg-white border border-slate-200/90 rounded-[32px] p-6 shadow-xs flex flex-col justify-between space-y-4">
           <div>
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
@@ -469,7 +578,7 @@ export default function DashboardPage() {
                   Acompanhamento de Formalizações
                 </p>
                 <h3 className="font-heading font-black text-[#071B3A] text-lg mt-0.5">
-                  Assinaturas Pendentes dos Clientes
+                  Assinaturas Aguardando Clientes
                 </h3>
               </div>
               <Link href="/documentos" className="text-xs font-bold text-blue-700 hover:underline">
@@ -527,8 +636,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* COLUNA DIREITA: DOSSIÊS DO WINDOWS EXPLORER */}
-        <div className="bg-[#FBFCFE] border border-slate-200/90 rounded-[32px] p-6 shadow-xs flex flex-col justify-between">
+        {/* DIREITA: DOSSIÊS DO WINDOWS EXPLORER (PASTAS AMARELAS) */}
+        <div className="bg-[#FBFCFE] border border-slate-200/90 rounded-[32px] p-6 shadow-xs flex flex-col justify-between space-y-4">
           <div>
             <div className="flex items-center justify-between border-b border-slate-200/80 pb-4">
               <div>
@@ -578,7 +687,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="pt-4 border-t border-slate-200/80 mt-4">
+          <div className="pt-4 border-t border-slate-200/80">
             <Link
               href="/processos"
               className="w-full py-3 bg-amber-50 hover:bg-amber-100/70 border border-amber-200 rounded-2xl text-xs font-extrabold text-amber-900 flex items-center justify-center gap-2 transition-all"
