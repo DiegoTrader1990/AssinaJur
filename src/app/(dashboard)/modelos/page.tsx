@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { FileText, Plus, Search, Edit3, Copy, X, CheckCircle, AlertCircle, Loader2, Eye, Upload, FileType2, Download } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { ClauseEditor } from '@/components/ClauseEditor';
+import { DocumentRichEditor } from '@/components/DocumentRichEditor';
 
 const WordTemplateEditor = dynamic(() => import('@/components/WordTemplateEditor').then(mod => mod.WordTemplateEditor), { ssr: false });
 
@@ -330,10 +330,13 @@ export default function TemplatesPage() {
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Texto do Modelo *</label>
-                <ClauseEditor
+                <DocumentRichEditor
                   key={`${editingTemplate?.id || 'novo'}-${showModal}-${sampleValues.patronos_nomes || 'carregando'}`}
                   value={showEditorPreview(formData.contentHtml, formData.documentType, sampleValues)}
                   onChange={(html) => setFormData({ ...formData, contentHtml: restoreEditorPreview(html, sampleValues) })}
+                  showTags={false}
+                  showAiCopilot={false}
+                  placeholder="Redija ou ajuste o documento..."
                 />
               </div>
 

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { FolderArchive, Send, CheckCircle2, Copy, Check, FileText, ArrowLeft, Loader2, AlertCircle, Sparkles, ChevronDown, Eye, X } from 'lucide-react';
-import { ClauseEditor } from '@/components/ClauseEditor';
+import { DocumentRichEditor } from '@/components/DocumentRichEditor';
 
 interface Client {
   id: string;
@@ -612,7 +612,7 @@ export default function DispatchKitPage() {
           <div className="w-full max-w-6xl h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col">
             <div className="bg-[#071B3A] text-white px-6 py-4 flex items-center justify-between shrink-0"><div><p className="text-[10px] uppercase tracking-widest text-gold-300 font-bold">Revisão da minuta</p><h2 className="text-sm font-extrabold">{reviewItem.template.title}</h2></div><button type="button" onClick={() => setReviewItem(null)} className="p-2 rounded-lg bg-white/10 hover:bg-white/20"><X className="w-5 h-5" /></button></div>
             <div className="flex-1 overflow-auto bg-slate-100 p-4 sm:p-6">
-              {loadingReviewPdf ? <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-600"><Loader2 className="w-8 h-8 animate-spin text-gold-500" /><p className="text-sm font-semibold">Montando a prévia final…</p></div> : editingReview ? <div className="mx-auto max-w-4xl rounded-xl border border-slate-200 bg-white p-4"><ClauseEditor key={reviewItem.id} value={renderEditableReview(customContents[reviewItem.template.id] || reviewItem.template.contentHtml)} onChange={(html) => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: html }))} /></div> : reviewPdfUrl ? <iframe src={reviewPdfUrl} className="w-full h-full bg-white rounded-xl border border-slate-200" title="Prévia final do documento" /> : <div className="h-full flex items-center justify-center text-sm text-slate-500">Não foi possível carregar a prévia.</div>}
+              {loadingReviewPdf ? <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-600"><Loader2 className="w-8 h-8 animate-spin text-gold-500" /><p className="text-sm font-semibold">Montando a prévia final…</p></div> : editingReview ? <div className="mx-auto max-w-4xl rounded-xl border border-slate-200 bg-white p-4"><DocumentRichEditor key={reviewItem.id} value={renderEditableReview(customContents[reviewItem.template.id] || reviewItem.template.contentHtml)} onChange={(html) => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: html }))} showTags={false} showAiCopilot={false} placeholder="Redija ou ajuste o documento..." /></div> : reviewPdfUrl ? <iframe src={reviewPdfUrl} className="w-full h-full bg-white rounded-xl border border-slate-200" title="Prévia final do documento" /> : <div className="h-full flex items-center justify-center text-sm text-slate-500">Não foi possível carregar a prévia.</div>}
             </div>
             <div className="px-6 py-3 border-t border-slate-200 flex justify-between gap-3">
               {editingReview ? <button type="button" onClick={() => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: reviewItem.template.contentHtml }))} className="text-xs font-bold text-slate-600">Restaurar modelo</button> : <span className="text-xs text-slate-500 self-center">Prévia com a diagramação final do documento</span>}

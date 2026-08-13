@@ -20,7 +20,7 @@ import {
   Layers,
   Eye
 } from 'lucide-react';
-import { ClauseEditor } from '@/components/ClauseEditor';
+import { DocumentRichEditor } from '@/components/DocumentRichEditor';
 
 const SAMPLE_VALUES: Record<string, string> = { cliente_nome: 'MARIA APARECIDA DA SILVA', cliente_cpf: '123.456.789-09', cliente_rg: '12.345.678-9', cliente_nacionalidade: 'brasileira', cliente_estado_civil: 'solteira', cliente_profissao: 'aposentada', cliente_endereco: 'Rua das Acácias, nº 120, Centro, Porto Seguro/BA, CEP 45810-000', advogado_nome: 'DR. DIEGO DOS SANTOS RODRIGUES', advogado_oab: 'OAB/BA nº 51.881', escritorio_nome: 'Rodrigues & Soares - Advogados', valor_honorarios: 'R$ 3.000,00', percentual_exito: '30%', cidade: 'Porto Seguro', data_atual: '12 de agosto de 2026' };
 const showSamples = (html: string) => Object.entries(SAMPLE_VALUES).reduce((text, [key, value]) => text.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), value), html);
@@ -807,10 +807,13 @@ export default function KitsAndTemplatesPage() {
                 <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
                   Conteúdo da Minuta (Com Tags Dinâmicas e Copilot de IA): *
                 </label>
-                <ClauseEditor
+                <DocumentRichEditor
                   key={`${editingTemplate?.id || 'novo'}-${showTemplateModal}-${sampleValues.patronos_nomes || 'carregando'}`}
                   value={showEditorPreview(templateFormData.contentHtml, templateFormData.documentType, sampleValues)}
                   onChange={(html) => setTemplateFormData({ ...templateFormData, contentHtml: restoreEditorPreview(html, sampleValues) })}
+                  showTags={false}
+                  showAiCopilot={false}
+                  placeholder="Redija ou ajuste o documento..."
                 />
               </div>
 

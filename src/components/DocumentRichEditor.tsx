@@ -14,6 +14,9 @@ import {
   AlignCenter, 
   AlignRight, 
   AlignJustify, 
+  Undo2,
+  Redo2,
+  RemoveFormatting,
   Code, 
   Sparkles, 
   Loader2, 
@@ -212,6 +215,9 @@ export function DocumentRichEditor({
     <div className={`bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs ${className}`}>
       {/* Toolbar */}
       <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-wrap gap-1 items-center">
+        <button onClick={() => executeCommand('undo')} className="p-2 rounded-lg hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors" title="Desfazer" type="button"><Undo2 size={16} /></button>
+        <button onClick={() => executeCommand('redo')} className="p-2 rounded-lg hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors" title="Refazer" type="button"><Redo2 size={16} /></button>
+        <div className="w-px h-6 bg-slate-300 mx-1"></div>
         <label className="flex items-center gap-1.5 px-2 text-[11px] font-semibold text-slate-600" title="Selecione o texto antes de trocar a fonte">
           Fonte
           <select
@@ -257,6 +263,11 @@ export function DocumentRichEditor({
         >
           <Underline size={16} />
         </button>
+        <label className="relative flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-200" title="Cor do texto">
+          Cor
+          <input type="color" defaultValue="#1e293b" onChange={(event) => executeCommand('foreColor', event.target.value)} className="h-4 w-4 cursor-pointer border-0 bg-transparent p-0" />
+        </label>
+        <button onClick={() => executeCommand('removeFormat')} className="p-2 rounded-lg hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors" title="Limpar formatação do texto selecionado" type="button"><RemoveFormatting size={16} /></button>
         
         <div className="w-px h-6 bg-slate-300 mx-1"></div>
         
@@ -340,16 +351,18 @@ export function DocumentRichEditor({
         </button>
       </div>
 
+      <div className="overflow-auto bg-slate-100 p-4 sm:p-6">
       <div 
         ref={editorRef}
         contentEditable
         onInput={handleInput}
         onBlur={handleInput}
-        className={`min-h-[320px] max-h-[600px] w-full max-w-[794px] mx-auto overflow-y-auto p-[53px] text-[13.33px] leading-[20px] text-slate-800 focus:outline-none [&_p]:m-0 [&_p]:mb-[7px] [&_div]:mb-[7px] [&_h1]:m-0 [&_h1]:mb-[16px] [&_h1]:text-center [&_h1]:text-[16px] [&_h1]:leading-[22px] [&_h1]:font-bold [&_h2]:m-0 [&_h2]:mb-[8px] [&_h2]:text-[14.4px] [&_h2]:leading-[21px] [&_h2]:font-bold ${plainDocumentMode ? '' : ''} empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none ${contentClassName}`}
+        className={`min-h-[1123px] w-full max-w-[794px] mx-auto bg-white p-[53px] text-[13.33px] leading-[20px] text-slate-800 shadow-sm focus:outline-none [&_p]:m-0 [&_p]:mb-[7px] [&_div]:mb-[7px] [&_h1]:m-0 [&_h1]:mb-[16px] [&_h1]:text-center [&_h1]:text-[16px] [&_h1]:leading-[22px] [&_h1]:font-bold [&_h2]:m-0 [&_h2]:mb-[8px] [&_h2]:text-[14.4px] [&_h2]:leading-[21px] [&_h2]:font-bold ${plainDocumentMode ? '' : ''} empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none ${contentClassName}`}
         style={{ fontFamily: 'Helvetica, Arial, sans-serif', boxSizing: 'border-box' }}
         data-placeholder={placeholder}
         suppressContentEditableWarning
       />
+      </div>
 
       {/* Tags Panel */}
       {showTags && (
