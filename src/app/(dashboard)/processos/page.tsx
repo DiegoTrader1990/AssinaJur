@@ -51,8 +51,10 @@ type Process = {
     id: string;
     name: string;
     cpfCnpj: string;
-    rgNumber?: string | null;
+    rg?: string | null;
+    issuingOrgan?: string | null;
     phone?: string | null;
+    whatsapp?: string | null;
     email?: string | null;
     address?: string | null;
     number?: string | null;
@@ -60,12 +62,11 @@ type Process = {
     neighborhood?: string | null;
     city?: string | null;
     state?: string | null;
-    zipCode?: string | null;
+    cep?: string | null;
     nationality?: string | null;
     maritalStatus?: string | null;
     profession?: string | null;
     birthDate?: string | null;
-    motherName?: string | null;
     legalRepresentative?: string | null;
     representativeCpf?: string | null;
     representativeRg?: string | null;
@@ -954,7 +955,10 @@ export default function ProcessosPage() {
                     </h4>
                     <p><b>Nome completo:</b> {selected.client.name}</p>
                     <p><b>CPF:</b> {selected.client.cpfCnpj}</p>
-                    <p><b>RG:</b> {selected.client.rgNumber || "Não informado"}</p>
+                    <p>
+                      <b>RG:</b> {selected.client.rg || "Não informado"}
+                      {selected.client.issuingOrgan ? ` (${selected.client.issuingOrgan})` : ""}
+                    </p>
                     <p><b>Nacionalidade:</b> {selected.client.nationality || "Brasileiro(a)"}</p>
                     <p><b>Estado Civil:</b> {selected.client.maritalStatus || "Não informado"}</p>
                     <p><b>Profissão:</b> {selected.client.profession || "Não informada"}</p>
@@ -964,7 +968,6 @@ export default function ProcessosPage() {
                         ? new Date(selected.client.birthDate).toLocaleDateString("pt-BR")
                         : "Não informada"}
                     </p>
-                    <p><b>Nome da Mãe:</b> {selected.client.motherName || "Não informado"}</p>
                   </div>
 
                   {/* Bloco 2: Contato & Endereço Residencial */}
@@ -972,7 +975,7 @@ export default function ProcessosPage() {
                     <h4 className="font-extrabold uppercase text-[#071B3A] text-[10px] tracking-wider border-b border-slate-200 pb-1">
                       Contato & Endereço Residencial
                     </h4>
-                    <p><b>WhatsApp / Telefone:</b> {selected.client.phone || "Não informado"}</p>
+                    <p><b>WhatsApp / Telefone:</b> {selected.client.whatsapp || selected.client.phone || "Não informado"}</p>
                     <p><b>E-mail:</b> {selected.client.email || "Não informado"}</p>
                     <p>
                       <b>Endereço:</b>{" "}
@@ -987,7 +990,7 @@ export default function ProcessosPage() {
                         ? `${selected.client.city} / ${selected.client.state || "BA"}`
                         : "Não informada"}
                     </p>
-                    <p><b>CEP:</b> {selected.client.zipCode || "Não informado"}</p>
+                    <p><b>CEP:</b> {selected.client.cep || "Não informado"}</p>
                   </div>
                 </div>
 

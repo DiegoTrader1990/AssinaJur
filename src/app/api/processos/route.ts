@@ -12,8 +12,10 @@ const processInclude = {
       id: true,
       name: true,
       cpfCnpj: true,
-      rgNumber: true,
+      rg: true,
+      issuingOrgan: true,
       phone: true,
+      whatsapp: true,
       email: true,
       address: true,
       number: true,
@@ -21,12 +23,11 @@ const processInclude = {
       neighborhood: true,
       city: true,
       state: true,
-      zipCode: true,
+      cep: true,
       nationality: true,
       maritalStatus: true,
       profession: true,
       birthDate: true,
-      motherName: true,
       legalRepresentative: true,
       representativeCpf: true,
       representativeRg: true,
@@ -45,15 +46,17 @@ const processInclude = {
 export async function GET() {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
-  // Recuperação automática: processos criados antes da conexão do Drive não
-  // dependem de um botão manual. Ao abrir a central, criamos as pastas que
-  // ainda estiverem pendentes, sem interromper a consulta se o Drive oscilar.
-  try {
-    const pendingDriveFolders = await prisma.legalProcess.findMany({ where: { officeId: user.officeId, driveFolderId: null }, include: { client: { select: { name: true } } }, take: 30 });
-    for (const process of pendingDriveFolders) {
-      await ensureProcessDriveFolders({ id: process.id, officeId: process.officeId, title: process.title, client: process.client });
-    }
-  } catch (driveError) { console.error('Não foi possível sincronizar automaticamente os processos com o Drive:', driveError); }
+
+  // Recuperação assíncrona em segundo plano: não bloqueia a resposta do usuário
+  prisma.legalProcess.findMany({ where: { officeId: user.officeId, driveFolderId: null }, include: { client: { select: { name: true } } }, take: 10 })
+    .then(async (pendingDriveFolders) => {
+      for (const process of pendingDriveFolders) {
+        try {
+          await ensureProcessDriveFolders({ id: process.id, officeId: process.officeId, title: process.title, client: process.client });
+        } catch (e) { /* silent catch */ }
+      }
+    }).catch(() => {});
+
   const processes = await prisma.legalProcess.findMany({ where: { officeId: user.officeId }, include: processInclude, orderBy: [{ priority: 'desc' }, { lastActivityAt: 'desc' }] });
   return NextResponse.json({ processes });
 }
