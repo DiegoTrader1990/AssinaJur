@@ -49,3 +49,25 @@ export async function GET(req: Request) {
     return new Response('Erro ao carregar modelo.', { status: 500 });
   }
 }
+
+export async function PUT(req: Request) {
+  try {
+    const user = await getSessionUser();
+    if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
+    const data = await req.formData();
+    const file = data.get('file');
+    const id = String(data.get('templateId') || '');
+    if (!(file instanceof File) || !file.name.toLowerCase().endsWith('.docx')) return NextResponse.json({ error: 'Envie a nova versão no formato .docx.' }, { status: 400 });
+    const template = await prisma.template.findFirst({ where: { id, officeId: user.officeId, sourceFormat: 'DOCX' } });
+    if (!template) return NextResponse.json({ error: 'Modelo Word não encontrado.' }, { status: 404 });
+    const buffer = Buffer.from(await file.arrayBuffer());
+    if (buffer.length === 0 || buffer.length > 20 * 1024 * 1024 || buffer.subarray(0, 2).toString('ascii') !== 'PK') return NextResponse.json({ error: 'O arquivo Word não é válido ou ultrapassa 20 MB.' }, { status: 400 });
+    const stored = await saveFile({ officeId: user.officeId, uploadedBy: user.id, fileBuffer: buffer, originalName: file.name, mimeType: DOCX_MIME });
+    const updated = await prisma.template.update({ where: { id: template.id }, data: { sourceFileId: stored.id, version: { increment: 1 } } });
+    await logAuditEvent({ officeId: user.officeId, userId: user.id, eventType: 'WORD_TEMPLATE_UPDATED', description: `Modelo Word "${template.title}" atualizado no editor fiel.` });
+    return NextResponse.json({ success: true, template: updated });
+  } catch (error) {
+    console.error('Erro ao salvar o modelo Word:', error);
+    return NextResponse.json({ error: 'Não foi possível atualizar o modelo Word.' }, { status: 500 });
+  }
+}

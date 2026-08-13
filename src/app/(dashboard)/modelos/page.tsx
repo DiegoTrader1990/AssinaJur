@@ -5,6 +5,7 @@ import { FileText, Plus, Search, Edit3, Copy, X, CheckCircle, AlertCircle, Loade
 import dynamic from 'next/dynamic';
 
 const DocumentRichEditor = dynamic(() => import('@/components/DocumentRichEditor').then(mod => mod.DocumentRichEditor), { ssr: false });
+const WordTemplateEditor = dynamic(() => import('@/components/WordTemplateEditor').then(mod => mod.WordTemplateEditor), { ssr: false });
 
 const SAMPLE_VALUES: Record<string, string> = { cliente_nome: 'MARIA APARECIDA DA SILVA', cliente_cpf: '123.456.789-09', cliente_rg: '12.345.678-9', cliente_nacionalidade: 'brasileira', cliente_estado_civil: 'solteira', cliente_profissao: 'aposentada', cliente_endereco: 'Rua das Acácias, nº 120, Centro, Porto Seguro/BA, CEP 45810-000', advogado_nome: 'DR. DIEGO DOS SANTOS RODRIGUES', advogado_oab: 'OAB/BA nº 51.881', advogada_nome: 'DRA. DOMINICK QUINTO SOARES', advogada_oab: 'OAB/BA nº 62.443', escritorio_nome: 'Rodrigues & Soares - Advogados', valor_honorarios: 'R$ 3.000,00', percentual_exito: '30%', cidade: 'Porto Seguro', data_atual: '12 de agosto de 2026' };
 const showSamples = (html: string) => Object.entries(SAMPLE_VALUES).reduce((text, [key, value]) => text.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), value), html);
@@ -46,6 +47,7 @@ export default function TemplatesPage() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [showWordModal, setShowWordModal] = useState(false);
+  const [wordEditorTemplate, setWordEditorTemplate] = useState<Template | null>(null);
   const [wordFile, setWordFile] = useState<File | null>(null);
   const [wordForm, setWordForm] = useState({ title: '', category: 'Previdenciário', documentType: 'PROCURACAO' });
 
@@ -218,7 +220,7 @@ export default function TemplatesPage() {
                 <div className="pt-3 border-t border-slate-200 flex items-center justify-between text-xs">
                   <span className="text-slate-400 font-medium">{tpl.documentType}</span>
                   <div className="flex items-center gap-2">
-                    {tpl.sourceFormat === 'DOCX' ? <a href={`/api/templates/word?templateId=${tpl.id}`} className="px-3 py-1.5 bg-[#0B1D3D] text-white font-bold rounded-lg flex items-center gap-1 text-xs"><Download className="w-3.5 h-3.5" /> Original Word</a> : <button
+                    {tpl.sourceFormat === 'DOCX' ? <><button onClick={() => setWordEditorTemplate(tpl)} className="px-3 py-1.5 bg-[#0B1D3D] text-white font-bold rounded-lg flex items-center gap-1 text-xs"><Edit3 className="w-3.5 h-3.5" /> Abrir Word</button><a href={`/api/templates/word?templateId=${tpl.id}`} className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 font-bold rounded-lg flex items-center gap-1 text-xs"><Download className="w-3.5 h-3.5" /> Original</a></> : <button
                       onClick={() => {
                         setFormData({
                           title: tpl.title,
@@ -259,6 +261,7 @@ export default function TemplatesPage() {
       </div>
 
       {showWordModal && <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"><form onSubmit={handleWordUpload} className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl"><div className="flex justify-between items-center border-b pb-4"><div className="flex gap-2 items-center"><FileType2 className="text-blue-600" /><div><h2 className="font-bold text-[#0B1D3D]">Novo modelo Word</h2><p className="text-xs text-slate-500">O arquivo original será preservado para a edição fiel.</p></div></div><button type="button" onClick={() => setShowWordModal(false)}><X className="text-slate-400" /></button></div><div className="space-y-4 pt-5"><input required value={wordForm.title} onChange={e=>setWordForm({...wordForm,title:e.target.value})} placeholder="Ex.: Procuração previdenciária" className="w-full p-3 border rounded-xl" /><input type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required onChange={e=>setWordFile(e.target.files?.[0] || null)} className="w-full text-sm" /><p className="rounded-xl bg-blue-50 p-3 text-xs text-blue-800">Piloto Word: nesta primeira etapa o AssinaJur armazena o DOCX original. O editor Syncfusion será conectado em seguida usando a chave temporária recebida.</p><div className="flex justify-end gap-2"><button type="button" onClick={()=>setShowWordModal(false)} className="px-4 py-2 text-sm">Cancelar</button><button disabled={saving} className="px-4 py-2 bg-[#0B1D3D] text-white rounded-xl font-bold text-sm">{saving ? 'Enviando...' : 'Salvar modelo Word'}</button></div></div></form></div>}
+      {wordEditorTemplate && <div className="fixed inset-0 z-[60] bg-slate-950/70 flex items-center justify-center p-4"><div className="w-full max-w-7xl h-[92vh] bg-white rounded-2xl overflow-hidden flex flex-col"><div className="px-5 py-3 bg-[#0B1D3D] text-white flex justify-between items-center"><div><strong>Editor Word — {wordEditorTemplate.title}</strong><p className="text-xs text-slate-300">Modelo original preservado • edição local segura</p></div><button type="button" onClick={() => setWordEditorTemplate(null)} className="px-3 py-1.5 bg-white/10 rounded-lg">Fechar</button></div><div className="p-4 overflow-auto flex-1"><WordTemplateEditor templateId={wordEditorTemplate.id} title={wordEditorTemplate.title} /></div></div></div>}
 
       {/* Modal: Cadastro de Modelo */}
       {showModal && (

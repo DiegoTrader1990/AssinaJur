@@ -12,6 +12,8 @@
 
 # production
 /build
+/word-service/bin/
+/word-service/obj/
 
 # misc
 .DS_Store
