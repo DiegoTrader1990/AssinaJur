@@ -116,6 +116,7 @@ export async function POST(req: Request) {
       rogoPhone,
       rogoEmail,
       enforceSignatureOrder,
+      witnessSigningMode,
       kitBatchId,
     } = body;
 
@@ -190,7 +191,8 @@ export async function POST(req: Request) {
             name: String(rogoName).trim(), cpf: String(rogoCpf), email: rogoEmail || '', phone: rogoPhone || '',
             role: 'ASSINANTE_A_ROGO', signatureOrder: 2, authMethod: 'LINK_CPF_PRESENCA',
           },
-          ...[...rogoWitnesses, ...rogoAdditionalSigners].map((signer: any, index: number) => ({ ...signer, signatureOrder: index + 3 })),
+          ...rogoWitnesses.map((signer: any, index: number) => ({ ...signer, role: `TESTEMUNHA_${index + 1}`, signingMode: witnessSigningMode === 'SAME_DEVICE' ? 'SAME_DEVICE' : 'INDIVIDUAL', signatureOrder: index + 3 })),
+          ...rogoAdditionalSigners.map((signer: any, index: number) => ({ ...signer, signatureOrder: index + 3 + rogoWitnesses.length })),
         ]
       : signers.map((signer: any, index: number) => ({ ...signer, signatureOrder: index + 1 }));
 
@@ -229,6 +231,7 @@ export async function POST(req: Request) {
             phone: s.phone || null,
             role: s.role || 'CLIENTE',
             signatureOrder: s.signatureOrder || i + 1,
+            signingMode: s.signingMode || (s.role === 'ASSINANTE_A_ROGO' ? 'SAME_DEVICE' : 'INDIVIDUAL'),
             status: 'PENDENTE',
             authMethod: s.authMethod || 'EMAIL_OTP_CPF',
           },

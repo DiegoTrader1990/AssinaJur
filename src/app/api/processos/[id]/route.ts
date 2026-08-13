@@ -45,6 +45,23 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     await prisma.legalProcessActivity.create({ data: { processId: process.id, userId: user.id, type: 'ATTACHMENT_REMOVED', description: `Arquivo "${attachment.title}" removido deste dossiê.` } });
     return NextResponse.json({ success: true });
   }
+  if (body.action === 'renameAttachment') {
+    const attachment = await prisma.processAttachment.findFirst({ where: { id: body.fileId, processId: process.id }, select: { id: true, title: true } });
+    if (!attachment) return NextResponse.json({ error: 'Arquivo não encontrado neste dossiê.' }, { status: 404 });
+    const newTitle = String(body.newTitle || '').trim();
+    if (!newTitle) return NextResponse.json({ error: 'O nome do arquivo não pode ficar em branco.' }, { status: 400 });
+    await prisma.processAttachment.update({ where: { id: attachment.id }, data: { title: newTitle } });
+    await prisma.legalProcessActivity.create({ data: { processId: process.id, userId: user.id, type: 'ATTACHMENT_RENAMED', description: `Arquivo "${attachment.title}" renomeado para "${newTitle}".` } });
+    return NextResponse.json({ success: true });
+  }
+  if (body.action === 'moveAttachmentFolder') {
+    const attachment = await prisma.processAttachment.findFirst({ where: { id: body.fileId, processId: process.id }, select: { id: true, title: true } });
+    if (!attachment) return NextResponse.json({ error: 'Arquivo não encontrado neste dossiê.' }, { status: 404 });
+    const folderName = String(body.folderName || '01. Documentos Pessoais').trim();
+    await prisma.processAttachment.update({ where: { id: attachment.id }, data: { description: folderName } });
+    await prisma.legalProcessActivity.create({ data: { processId: process.id, userId: user.id, type: 'ATTACHMENT_MOVED', description: `Arquivo "${attachment.title}" movido para a pasta "${folderName}".` } });
+    return NextResponse.json({ success: true });
+  }
   const changedStatus = body.status && body.status !== process.status;
   const updated = await prisma.$transaction(async (tx) => {
     const item = await tx.legalProcess.update({ where: { id: process.id }, data: { title: body.title?.trim() || process.title, legalArea: body.legalArea ?? process.legalArea, status: body.status || process.status, priority: body.priority || process.priority, dueDate: body.dueDate === '' ? null : body.dueDate ? new Date(body.dueDate) : process.dueDate, processNumber: body.processNumber ?? process.processNumber, protocolNumber: body.protocolNumber ?? process.protocolNumber, notes: body.notes ?? process.notes, lastActivityAt: new Date() } });
@@ -70,10 +87,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const stored = await saveFile({ officeId: user.officeId, uploadedBy: user.id, fileBuffer: buffer, originalName: input.name, mimeType: input.type || 'application/pdf' });
     let driveUpload: { id: string; webViewLink?: string } | null = null;
     try { driveUpload = await uploadProcessFileToDrive({ id: process.id, officeId: user.officeId, title: process.title, client: process.client }, { name: input.name, mimeType: input.type || 'application/pdf', buffer }); } catch (driveError) { console.error('Arquivo mantido no AssinaJur, mas não enviado ao Drive:', driveError); }
+    const folderName = String(form.get('folderName') || form.get('description') || '01. Documentos Pessoais').trim();
     const attachment = await prisma.$transaction(async (tx) => {
-      const created = await tx.processAttachment.create({ data: { processId: process.id, fileId: stored.id, title: String(form.get('title') || input.name).trim() || input.name, description: String(form.get('description') || '').trim() || null, driveFileId: driveUpload?.id || null, driveFileUrl: driveUpload?.webViewLink || null }, include: { file: { select: { id: true, originalName: true, sizeBytes: true } } } });
+      const created = await tx.processAttachment.create({ data: { processId: process.id, fileId: stored.id, title: String(form.get('title') || input.name).trim() || input.name, description: folderName, driveFileId: driveUpload?.id || null, driveFileUrl: driveUpload?.webViewLink || null }, include: { file: { select: { id: true, originalName: true, sizeBytes: true } } } });
       await tx.legalProcess.update({ where: { id: process.id }, data: { lastActivityAt: new Date() } });
-      await tx.legalProcessActivity.create({ data: { processId: process.id, userId: user.id, type: 'ATTACHMENT_ADDED', description: `Arquivo "${created.title}" incluído no dossiê.` } });
+      await tx.legalProcessActivity.create({ data: { processId: process.id, userId: user.id, type: 'ATTACHMENT_ADDED', description: `Arquivo "${created.title}" incluído na pasta "${folderName}".` } });
       return created;
     });
     return NextResponse.json({ success: true, attachment });
