@@ -17,6 +17,7 @@ import {
   X,
   ExternalLink,
   CloudUpload,
+  Trash2,
 } from "lucide-react";
 
 type Activity = {
@@ -230,6 +231,20 @@ export default function ProcessosPage() {
       setUploadingAttachment(false);
     }
   };
+  const manageFile = async (action: "unlinkDocument" | "moveDocument" | "moveAttachment" | "removeAttachment", fileId: string, targetProcessId?: string) => {
+    if (!selected) return;
+    const destructive = action === "unlinkDocument" || action === "removeAttachment";
+    if (destructive && !confirm(action === "unlinkDocument" ? "Remover este documento somente deste dossiê? Ele continuará preservado na Central de Documentos." : "Remover este arquivo deste dossiê?")) return;
+    const processId = selected.id;
+    try {
+      const res = await fetch(`/api/processos/${processId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, fileId, targetProcessId }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Não foi possível atualizar o arquivo.");
+      const updated = await load();
+      setSelected(updated.find((item) => item.id === processId) || null);
+    } catch (error: any) { alert(error.message); }
+  };
+  const otherDossiersForSelected = selected ? processes.filter((item) => item.client.id === selected.client.id && item.id !== selected.id) : [];
   const syncExistingProcessesToDrive = async () => {
     setSyncingDrive(true);
     try {
@@ -291,7 +306,9 @@ export default function ProcessosPage() {
     statuses.find((s) => s.id === id)?.label || id;
   const priority = (id: string) =>
     priorities.find((p) => p.id === id) || priorities[1];
-  const ProcessForm = ({ edit }: { edit?: boolean }) => (
+  // Não é um componente separado: isso preserva o foco dos campos enquanto
+  // cada letra atualiza o estado do formulário.
+  const renderProcessForm = (edit = false) => (
     <form onSubmit={edit ? saveEdit : create} className="space-y-3">
       <div className="grid md:grid-cols-2 gap-3">
         <div className="flex gap-2">
@@ -574,7 +591,7 @@ export default function ProcessosPage() {
                 <X />
               </button>
             </div>
-            <ProcessForm />
+            {renderProcessForm()}
           </div>
         </div>
       )}
@@ -718,16 +735,11 @@ export default function ProcessosPage() {
                         className="border rounded-xl p-3 flex justify-between gap-2 text-sm"
                       >
                         <span>{d.title}</span>
-                        {d.signedFileId && (
-                          <a
-                            href={`/api/documents/${d.id}/download`}
-                            download
-                            className="text-emerald-700 font-bold text-xs flex items-center gap-1"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            PDF
-                          </a>
-                        )}
+                        <div className="flex gap-2 shrink-0 items-center">
+                          {d.signedFileId && <a href={`/api/documents/${d.id}/download`} download className="text-emerald-700 font-bold text-xs flex items-center gap-1"><Download className="w-3.5 h-3.5" /> PDF</a>}
+                          {otherDossiersForSelected.length > 0 && <select aria-label="Mover documento" defaultValue="" onChange={(event) => { if (event.target.value) manageFile("moveDocument", d.id, event.target.value); }} className="max-w-28 border rounded-lg p-1 text-[10px] text-blue-700"><option value="">Mover...</option>{otherDossiersForSelected.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select>}
+                          <button type="button" title="Remover do dossiê" onClick={() => manageFile("unlinkDocument", d.id)} className="p-1 text-slate-400 hover:text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
                       </div>
                     ))
                   ) : (
@@ -824,6 +836,8 @@ export default function ProcessosPage() {
                               <ExternalLink className="w-3.5 h-3.5" /> Drive
                             </a>
                           )}
+                          {otherDossiersForSelected.length > 0 && <select aria-label="Mover arquivo" defaultValue="" onChange={(event) => { if (event.target.value) manageFile("moveAttachment", a.id, event.target.value); }} className="max-w-28 border rounded-lg p-1 text-[10px] text-blue-700"><option value="">Mover...</option>{otherDossiersForSelected.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select>}
+                          <button type="button" title="Excluir do dossiê" onClick={() => manageFile("removeAttachment", a.id)} className="p-1 text-slate-400 hover:text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
                         </div>
                       </div>
                     ))
@@ -870,7 +884,7 @@ export default function ProcessosPage() {
                 <X />
               </button>
             </div>
-            <ProcessForm edit />
+            {renderProcessForm(true)}
           </div>
         </div>
       )}

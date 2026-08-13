@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { saveFile } from '@/lib/storage';
-import { uploadProcessFileToDrive } from '@/lib/google-drive';
+import { deleteDriveFile, syncProcessFilesToDrive, uploadProcessFileToDrive } from '@/lib/google-drive';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +12,39 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const body = await req.json();
   const process = await prisma.legalProcess.findFirst({ where: { id: params.id, officeId: user.officeId } });
   if (!process) return NextResponse.json({ error: 'Processo não encontrado.' }, { status: 404 });
+  if (body.action === 'moveDocument' || body.action === 'moveAttachment') {
+    const destination = await prisma.legalProcess.findFirst({ where: { id: body.targetProcessId, officeId: user.officeId, clientId: process.clientId }, include: { client: { select: { name: true } } } });
+    if (!destination || destination.id === process.id) return NextResponse.json({ error: 'Escolha outro dossiê da mesma cliente.' }, { status: 400 });
+    if (body.action === 'moveDocument') {
+      const document = await prisma.document.findFirst({ where: { id: body.fileId, officeId: user.officeId, processId: process.id, clientId: process.clientId }, select: { id: true, driveFileId: true } });
+      if (!document) return NextResponse.json({ error: 'Documento não encontrado neste dossiê.' }, { status: 404 });
+      await prisma.document.update({ where: { id: document.id }, data: { processId: destination.id, driveFileId: null, driveFileUrl: null } });
+      await syncProcessFilesToDrive({ id: destination.id, officeId: user.officeId, title: destination.title, client: destination.client });
+      try { await deleteDriveFile(user.officeId, document.driveFileId); } catch (error) { console.error('Arquivo antigo preservado no Drive após movimentação:', error); }
+    } else {
+      const attachment = await prisma.processAttachment.findFirst({ where: { id: body.fileId, processId: process.id }, select: { id: true, driveFileId: true } });
+      if (!attachment) return NextResponse.json({ error: 'Arquivo não encontrado neste dossiê.' }, { status: 404 });
+      await prisma.processAttachment.update({ where: { id: attachment.id }, data: { processId: destination.id, driveFileId: null, driveFileUrl: null } });
+      await syncProcessFilesToDrive({ id: destination.id, officeId: user.officeId, title: destination.title, client: destination.client });
+      try { await deleteDriveFile(user.officeId, attachment.driveFileId); } catch (error) { console.error('Arquivo antigo preservado no Drive após movimentação:', error); }
+    }
+    await prisma.legalProcessActivity.create({ data: { processId: destination.id, userId: user.id, type: 'FILE_MOVED', description: 'Arquivo movimentado para este dossiê.' } });
+    return NextResponse.json({ success: true });
+  }
+  if (body.action === 'unlinkDocument') {
+    const document = await prisma.document.findFirst({ where: { id: body.fileId, officeId: user.officeId, processId: process.id }, select: { id: true } });
+    if (!document) return NextResponse.json({ error: 'Documento não encontrado neste dossiê.' }, { status: 404 });
+    await prisma.document.update({ where: { id: document.id }, data: { processId: null } });
+    await prisma.legalProcessActivity.create({ data: { processId: process.id, userId: user.id, type: 'DOCUMENT_UNLINKED', description: 'Documento assinado removido deste dossiê, sem exclusão da Central de Documentos.' } });
+    return NextResponse.json({ success: true });
+  }
+  if (body.action === 'removeAttachment') {
+    const attachment = await prisma.processAttachment.findFirst({ where: { id: body.fileId, processId: process.id }, select: { id: true, title: true } });
+    if (!attachment) return NextResponse.json({ error: 'Arquivo não encontrado neste dossiê.' }, { status: 404 });
+    await prisma.processAttachment.delete({ where: { id: attachment.id } });
+    await prisma.legalProcessActivity.create({ data: { processId: process.id, userId: user.id, type: 'ATTACHMENT_REMOVED', description: `Arquivo "${attachment.title}" removido deste dossiê.` } });
+    return NextResponse.json({ success: true });
+  }
   const changedStatus = body.status && body.status !== process.status;
   const updated = await prisma.$transaction(async (tx) => {
     const item = await tx.legalProcess.update({ where: { id: process.id }, data: { title: body.title?.trim() || process.title, legalArea: body.legalArea ?? process.legalArea, status: body.status || process.status, priority: body.priority || process.priority, dueDate: body.dueDate === '' ? null : body.dueDate ? new Date(body.dueDate) : process.dueDate, processNumber: body.processNumber ?? process.processNumber, protocolNumber: body.protocolNumber ?? process.protocolNumber, notes: body.notes ?? process.notes, lastActivityAt: new Date() } });

@@ -72,6 +72,13 @@ async function driveFetch(path: string, token: string, init?: RequestInit) {
   return res;
 }
 
+export async function deleteDriveFile(officeId: string, fileId: string | null | undefined) {
+  if (!fileId) return;
+  const access = await accessForOffice(officeId);
+  if (!access) return;
+  await driveFetch(`/files/${encodeURIComponent(fileId)}`, access.token, { method: 'DELETE' });
+}
+
 async function accessForOffice(officeId: string) {
   const connection = await prisma.googleDriveConnection.findUnique({ where: { officeId } });
   if (!connection) return null;

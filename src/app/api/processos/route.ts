@@ -38,7 +38,10 @@ export async function POST(req: Request) {
     if (!clientId || !title?.trim()) return NextResponse.json({ error: 'Cliente e título do processo são obrigatórios.' }, { status: 400 });
     const client = await prisma.client.findFirst({ where: { id: clientId, officeId: user.officeId } });
     if (!client) return NextResponse.json({ error: 'Cliente não pertence ao escritório.' }, { status: 400 });
-    const eligibleDocuments = await prisma.document.findMany({ where: documentIds.length ? { id: { in: documentIds }, officeId: user.officeId, clientId, status: 'CONCLUIDO' } : { officeId: user.officeId, clientId, status: 'CONCLUIDO', processId: null }, select: { id: true } });
+    // Um novo dossiê deve começar vazio. Documentos só entram quando foram
+    // escolhidos explicitamente na Central de Documentos, evitando que um
+    // atendimento novo herde arquivos de testes ou de outro fluxo.
+    const eligibleDocuments = await prisma.document.findMany({ where: documentIds.length ? { id: { in: documentIds }, officeId: user.officeId, clientId, status: 'CONCLUIDO' } : { id: { in: [] } }, select: { id: true } });
     if (documentIds.length && eligibleDocuments.length !== documentIds.length) return NextResponse.json({ error: 'Apenas documentos assinados desta cliente podem ser vinculados.' }, { status: 400 });
     const process = await prisma.$transaction(async (tx) => {
       const created = await tx.legalProcess.create({ data: { officeId: user.officeId, clientId, title: title.trim(), legalArea: legalArea || null, status: status || 'EM_TRIAGEM', priority: priority || 'NORMAL', dueDate: dueDate ? new Date(dueDate) : null, processNumber: processNumber || null, protocolNumber: protocolNumber || null, notes: notes || null } });
