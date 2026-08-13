@@ -124,6 +124,9 @@ function cleanHtmlForPdf(html: string): string {
 
   // 2. Aggressively strip span tags, style attributes, and Word style artifacts
   cleaned = cleaned
+    // Alguns navegadores representam negrito como span com CSS. Preserve-o antes
+    // de remover os estilos de colagens do Word.
+    .replace(/<span\b[^>]*style\s*=\s*["'][^"']*font-weight\s*:\s*(?:bold|[6-9]00)[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi, '<strong>$1</strong>')
     .replace(/<\/?span[^>]*>/gi, '')
     .replace(/<?\s*span\s+style\s*=\s*"[\s\S]*?"\s*>/gi, '')
     .replace(/span\s+style\s*=\s*"[^>]*>/gi, '')

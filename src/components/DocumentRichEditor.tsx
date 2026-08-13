@@ -152,6 +152,8 @@ export function DocumentRichEditor({
 
   const executeCommand = (command: string, value: string | undefined = undefined) => {
     restoreEditorSelection();
+    // Forçamos a marcação semântica <strong>, que também é entendida pelo gerador de PDF.
+    if (command === 'bold') document.execCommand('styleWithCSS', false, 'false');
     document.execCommand(command, false, value);
     if (editorRef.current) {
       onChange(editorRef.current.innerHTML);
