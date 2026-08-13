@@ -952,11 +952,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
   for (const signer of doc.signers) {
     const hasPhotos = Boolean(signer.selfieCenterImage || signer.selfieLeftImage || signer.selfieRightImage);
     const hasLocation = signer.geoLat != null && signer.geoLng != null;
-    const mapsUrlStr = hasLocation ? `https://maps.google.com/?q=${Number(signer.geoLat)},${Number(signer.geoLng)}` : '';
     const locationText = hasLocation
       ? `${signer.geoCity ? `${safeText(signer.geoCity, 200)}${signer.geoState ? '/' + signer.geoState : ''} — ` : ''}${Number(
           signer.geoLat
-        ).toFixed(6)}, ${Number(signer.geoLng).toFixed(6)} [Abrir Mapa: ${mapsUrlStr}]${
+        ).toFixed(6)}, ${Number(signer.geoLng).toFixed(6)}${
           signer.geoAccuracy != null ? ` (precisão: ${Math.round(signer.geoAccuracy)}m)` : ''
         }`
       : 'Não coletada (permissão não concedida)';
@@ -1036,6 +1035,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
     cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Geolocalização completa do dispositivo', locationText, { size: 7.5, lineHeight: 9, color: hasLocation ? linkBlue : muted });
 
     if (hasLocation) {
+      // A linha inteira é clicável; o URL não é exibido no certificado.
+      // O destino (nova guia ou mesma guia) é controlado pelo leitor de PDF do usuário.
       const mapsUrl = `https://www.google.com/maps?q=${Number(signer.geoLat)},${Number(signer.geoLng)}`;
       const locationBlockHeight = 12 + locationLines.length * 9;
       addLinkAnnotation(pdfDoc, page, {
