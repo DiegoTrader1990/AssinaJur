@@ -158,6 +158,7 @@ model StorageFile {
 
   originalDocuments Document[] @relation("OriginalFile")
   signedDocuments   Document[] @relation("SignedFile")
+  processAttachments ProcessAttachment[]
 }
 
 // Modelos Jurídicos Próprios (Fase 4)
@@ -281,6 +282,7 @@ model LegalProcess {
   updatedAt        DateTime @updatedAt
   documents        Document[]
   activities       LegalProcessActivity[]
+  attachments      ProcessAttachment[]
 
   @@index([officeId, status])
   @@index([officeId, clientId])
@@ -294,6 +296,19 @@ model LegalProcessActivity {
   userId      String?
   type        String   @default("NOTE")
   description String
+  createdAt   DateTime @default(now())
+
+  @@index([processId, createdAt])
+}
+
+model ProcessAttachment {
+  id          String   @id @default(uuid())
+  processId   String
+  process     LegalProcess @relation(fields: [processId], references: [id], onDelete: Cascade)
+  fileId      String
+  file        StorageFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
   createdAt   DateTime @default(now())
 
   @@index([processId, createdAt])

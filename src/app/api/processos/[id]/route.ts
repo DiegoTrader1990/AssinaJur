@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
+import { saveFile } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,4 +19,27 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return item;
   });
   return NextResponse.json({ success: true, process: updated });
+}
+
+export async function POST(req: Request, { params }: { params: { id: string } }) {
+  try {
+    const user = await getSessionUser();
+    if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
+    const process = await prisma.legalProcess.findFirst({ where: { id: params.id, officeId: user.officeId } });
+    if (!process) return NextResponse.json({ error: 'Processo não encontrado.' }, { status: 404 });
+    const form = await req.formData(); const input = form.get('file');
+    if (!(input instanceof File)) return NextResponse.json({ error: 'Selecione um arquivo PDF.' }, { status: 400 });
+    if (input.type !== 'application/pdf' && !input.name.toLowerCase().endsWith('.pdf')) return NextResponse.json({ error: 'Por segurança, anexe apenas arquivos PDF.' }, { status: 400 });
+    const buffer = Buffer.from(await input.arrayBuffer());
+    if (!buffer.length || buffer.length > 20 * 1024 * 1024) return NextResponse.json({ error: 'O PDF deve ter até 20 MB.' }, { status: 400 });
+    if (buffer.subarray(0, 5).toString('ascii') !== '%PDF-') return NextResponse.json({ error: 'O arquivo enviado não é um PDF válido.' }, { status: 400 });
+    const stored = await saveFile({ officeId: user.officeId, uploadedBy: user.id, fileBuffer: buffer, originalName: input.name, mimeType: input.type || 'application/pdf' });
+    const attachment = await prisma.$transaction(async (tx) => {
+      const created = await tx.processAttachment.create({ data: { processId: process.id, fileId: stored.id, title: String(form.get('title') || input.name).trim() || input.name, description: String(form.get('description') || '').trim() || null }, include: { file: { select: { id: true, originalName: true, sizeBytes: true } } } });
+      await tx.legalProcess.update({ where: { id: process.id }, data: { lastActivityAt: new Date() } });
+      await tx.legalProcessActivity.create({ data: { processId: process.id, userId: user.id, type: 'ATTACHMENT_ADDED', description: `Arquivo "${created.title}" incluído no dossiê.` } });
+      return created;
+    });
+    return NextResponse.json({ success: true, attachment });
+  } catch (error: any) { return NextResponse.json({ error: error?.message || 'Não foi possível anexar o arquivo.' }, { status: 500 }); }
 }

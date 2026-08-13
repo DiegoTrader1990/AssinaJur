@@ -9,6 +9,7 @@ const processInclude = {
   client: { select: { id: true, name: true, cpfCnpj: true, phone: true } },
   documents: { select: { id: true, title: true, status: true, signedFileId: true, completedAt: true }, orderBy: { createdAt: 'desc' as const } },
   activities: { orderBy: { createdAt: 'desc' as const }, take: 8 },
+  attachments: { include: { file: { select: { id: true, originalName: true, sizeBytes: true } } }, orderBy: { createdAt: 'desc' as const } },
 };
 
 export async function GET() {
