@@ -95,6 +95,15 @@ export default function ProcessosPage() {
   const [saving, setSaving] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [draggingFiles, setDraggingFiles] = useState(false);
+  const [syncingDrive, setSyncingDrive] = useState(false);
+  const [quickClientOpen, setQuickClientOpen] = useState(false);
+  const [savingQuickClient, setSavingQuickClient] = useState(false);
+  const [quickClient, setQuickClient] = useState({
+    name: "",
+    cpfCnpj: "",
+    phone: "",
+    legalArea: "Previdenciário",
+  });
   const load = async () => {
     setLoading(true);
     const [p, c] = await Promise.all([
@@ -221,6 +230,63 @@ export default function ProcessosPage() {
       setUploadingAttachment(false);
     }
   };
+  const syncExistingProcessesToDrive = async () => {
+    setSyncingDrive(true);
+    try {
+      const res = await fetch("/api/processos/sync-drive", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok)
+        throw new Error(data.error || "Não foi possível sincronizar o Drive.");
+      await load();
+      alert(
+        data.created
+          ? `${data.created} processo(s) organizado(s) no Google Drive.`
+          : "Todos os processos já possuem pasta no Google Drive.",
+      );
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setSyncingDrive(false);
+    }
+  };
+  const createQuickClient = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSavingQuickClient(true);
+    try {
+      const res = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(quickClient),
+      });
+      const data = await res.json();
+      if (!res.ok)
+        throw new Error(data.error || "Não foi possível cadastrar a cliente.");
+      setClients((current) => [
+        {
+          id: data.client.id,
+          name: data.client.name,
+          cpfCnpj: data.client.cpfCnpj,
+        },
+        ...current,
+      ]);
+      setForm((current) => ({
+        ...current,
+        clientId: data.client.id,
+        legalArea: data.client.legalArea || current.legalArea,
+      }));
+      setQuickClientOpen(false);
+      setQuickClient({
+        name: "",
+        cpfCnpj: "",
+        phone: "",
+        legalArea: "Previdenciário",
+      });
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setSavingQuickClient(false);
+    }
+  };
   const statusLabel = (id: string) =>
     statuses.find((s) => s.id === id)?.label || id;
   const priority = (id: string) =>
@@ -228,20 +294,31 @@ export default function ProcessosPage() {
   const ProcessForm = ({ edit }: { edit?: boolean }) => (
     <form onSubmit={edit ? saveEdit : create} className="space-y-3">
       <div className="grid md:grid-cols-2 gap-3">
-        <select
-          required
-          disabled={!!edit}
-          value={form.clientId}
-          onChange={(e) => setForm({ ...form, clientId: e.target.value })}
-          className="w-full border rounded-xl p-3 text-sm bg-white"
-        >
-          <option value="">Selecione a cliente</option>
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name} — {c.cpfCnpj}
-            </option>
-          ))}
-        </select>
+        <div className="flex gap-2">
+          <select
+            required
+            disabled={!!edit}
+            value={form.clientId}
+            onChange={(e) => setForm({ ...form, clientId: e.target.value })}
+            className="w-full border rounded-xl p-3 text-sm bg-white"
+          >
+            <option value="">Selecione a cliente</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} — {c.cpfCnpj}
+              </option>
+            ))}
+          </select>
+          {!edit && (
+            <button
+              type="button"
+              onClick={() => setQuickClientOpen(true)}
+              className="shrink-0 px-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 font-extrabold text-xs"
+            >
+              + Cliente
+            </button>
+          )}
+        </div>
         <input
           required
           value={form.title}
@@ -333,15 +410,25 @@ export default function ProcessosPage() {
             cada cliente.
           </p>
         </div>
-        <button
-          onClick={() => {
-            setForm(blankForm);
-            setModal(true);
-          }}
-          className="self-start sm:self-center inline-flex items-center gap-2 bg-white text-[#071B3A] px-5 py-3 rounded-xl text-xs font-extrabold"
-        >
-          <FolderPlus className="w-4 h-4" /> Novo processo
-        </button>
+        <div className="self-start sm:self-center flex flex-wrap gap-2">
+          <button
+            onClick={syncExistingProcessesToDrive}
+            disabled={syncingDrive}
+            className="inline-flex items-center gap-2 border border-blue-200/50 bg-blue-950/20 text-white px-4 py-3 rounded-xl text-xs font-extrabold disabled:opacity-60"
+          >
+            <HardDrive className="w-4 h-4" />{" "}
+            {syncingDrive ? "Organizando..." : "Organizar Drive"}
+          </button>
+          <button
+            onClick={() => {
+              setForm(blankForm);
+              setModal(true);
+            }}
+            className="inline-flex items-center gap-2 bg-white text-[#071B3A] px-5 py-3 rounded-xl text-xs font-extrabold"
+          >
+            <FolderPlus className="w-4 h-4" /> Novo processo
+          </button>
+        </div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-white border rounded-2xl p-4">
@@ -488,6 +575,72 @@ export default function ProcessosPage() {
               </button>
             </div>
             <ProcessForm />
+          </div>
+        </div>
+      )}
+      {quickClientOpen && (
+        <div className="fixed inset-0 z-[60] bg-black/50 p-4 flex items-center justify-center">
+          <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h2 className="font-heading font-black text-[#071B3A] text-lg">
+                  Cadastrar cliente rapidamente
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Cadastre o essencial e continue criando este processo.
+                </p>
+              </div>
+              <button onClick={() => setQuickClientOpen(false)}>
+                <X />
+              </button>
+            </div>
+            <form onSubmit={createQuickClient} className="space-y-3">
+              <input
+                required
+                value={quickClient.name}
+                onChange={(e) =>
+                  setQuickClient({ ...quickClient, name: e.target.value })
+                }
+                placeholder="Nome completo"
+                className="w-full border rounded-xl p-3 text-sm"
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  required
+                  value={quickClient.cpfCnpj}
+                  onChange={(e) =>
+                    setQuickClient({ ...quickClient, cpfCnpj: e.target.value })
+                  }
+                  placeholder="CPF"
+                  className="border rounded-xl p-3 text-sm"
+                />
+                <input
+                  required
+                  value={quickClient.phone}
+                  onChange={(e) =>
+                    setQuickClient({ ...quickClient, phone: e.target.value })
+                  }
+                  placeholder="WhatsApp com DDD"
+                  className="border rounded-xl p-3 text-sm"
+                />
+              </div>
+              <input
+                value={quickClient.legalArea}
+                onChange={(e) =>
+                  setQuickClient({ ...quickClient, legalArea: e.target.value })
+                }
+                placeholder="Área"
+                className="w-full border rounded-xl p-3 text-sm"
+              />
+              <button
+                disabled={savingQuickClient}
+                className="w-full py-3 bg-[#071B3A] text-white font-extrabold rounded-xl text-sm"
+              >
+                {savingQuickClient
+                  ? "Cadastrando..."
+                  : "Cadastrar e selecionar cliente"}
+              </button>
+            </form>
           </div>
         </div>
       )}
