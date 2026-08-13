@@ -118,6 +118,15 @@ export function DocumentRichEditor({
     }
   };
 
+  const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    // Enter mantém a edição em parágrafos; Shift+Enter cria uma quebra curta dentro do texto.
+    // Ambos são convertidos corretamente na prévia e no PDF.
+    if (event.key !== 'Enter' || !event.shiftKey) return;
+    event.preventDefault();
+    document.execCommand('insertLineBreak');
+    handleInput();
+  };
+
   const executeCommand = (command: string, value: string | undefined = undefined) => {
     document.execCommand(command, false, value);
     if (editorRef.current) {
@@ -349,6 +358,7 @@ export function DocumentRichEditor({
         >
           <AlignJustify size={16} />
         </button>
+        <span className="ml-auto px-2 text-[10px] font-medium text-slate-500">Enter: novo parágrafo · Shift + Enter: quebra de linha</span>
       </div>
 
       <div className="overflow-auto bg-slate-100 p-4 sm:p-6">
@@ -357,6 +367,7 @@ export function DocumentRichEditor({
         contentEditable
         onInput={handleInput}
         onBlur={handleInput}
+        onKeyDown={handleEditorKeyDown}
         className={`min-h-[1123px] w-full max-w-[794px] mx-auto bg-white p-[53px] text-[13.33px] leading-[20px] text-slate-800 shadow-sm focus:outline-none [&_p]:m-0 [&_p]:mb-[7px] [&_div]:mb-[7px] [&_h1]:m-0 [&_h1]:mb-[16px] [&_h1]:text-center [&_h1]:text-[16px] [&_h1]:leading-[22px] [&_h1]:font-bold [&_h2]:m-0 [&_h2]:mb-[8px] [&_h2]:text-[14.4px] [&_h2]:leading-[21px] [&_h2]:font-bold ${plainDocumentMode ? '' : ''} empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none ${contentClassName}`}
         style={{ fontFamily: 'Helvetica, Arial, sans-serif', boxSizing: 'border-box' }}
         data-placeholder={placeholder}

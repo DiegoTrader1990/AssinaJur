@@ -176,7 +176,8 @@ function parseRichParagraphs(html: string): RichParagraph[] {
   normalized = normalized
     // <br> vindo de colagens e do contentEditable costuma representar quebra visual
     // dentro do bloco; não pode criar áreas vazias repetidas no PDF.
-    .replace(/<\s*br\s*\/?>/gi, '\n')
+    // A quebra curta (Shift+Enter) precisa permanecer dentro do mesmo parágrafo no PDF.
+    .replace(/<\s*br\s*\/?>/gi, '[[AJ_BR]]')
     .replace(/<\s*h1([^>]*)>/gi, (_match, attributes) => blockMarker('H1', attributes, 'CENTER'))
     .replace(/<\s*h2([^>]*)>/gi, (_match, attributes) => blockMarker('H2', attributes, 'LEFT'))
     .replace(/<\s*(?:p|div)([^>]*)>/gi, (_match, attributes) => blockMarker('BODY', attributes, 'JUSTIFY'))
@@ -382,8 +383,12 @@ async function renderTemplatePdf({
     const heading = paragraph.kind === 'H1' || paragraph.kind === 'H2';
     const fontSize = paragraph.kind === 'H1' ? 12 : paragraph.kind === 'H2' ? 10.8 : 10;
     const lineHeight = paragraph.kind === 'H1' ? 17 : paragraph.kind === 'H2' ? 16 : 15;
-    const tokens = paragraph.runs.flatMap((run) =>
-      run.text.trim().split(/\s+/).filter(Boolean).map((word) => ({ text: word, bold: heading || run.bold, fontFamily: run.fontFamily, fontSize: heading ? fontSize : run.fontSize || fontSize }))
+    type LayoutToken = { text: string; bold: boolean; fontFamily?: PdfFontFamily; fontSize: number; hardBreak?: boolean };
+    const tokens: LayoutToken[] = paragraph.runs.flatMap((run) =>
+      run.text.split('[[AJ_BR]]').flatMap((part, index, parts) => [
+        ...part.trim().split(/\s+/).filter(Boolean).map((word) => ({ text: word, bold: heading || run.bold, fontFamily: run.fontFamily, fontSize: heading ? fontSize : run.fontSize || fontSize })),
+        ...(index < parts.length - 1 ? [{ text: '', bold: false, fontFamily: run.fontFamily, fontSize: heading ? fontSize : run.fontSize || fontSize, hardBreak: true }] : []),
+      ])
     );
     if (paragraph.kind === 'LIST') tokens.unshift({ text: '\u2022', bold: true, fontFamily: 'HELVETICA', fontSize });
 
@@ -392,7 +397,7 @@ async function renderTemplatePdf({
       continue;
     }
 
-    let line: Array<{ text: string; bold: boolean; fontFamily?: PdfFontFamily; fontSize: number }> = [];
+    let line: LayoutToken[] = [];
     let lineWidth = 0;
     const drawLine = (isLastLine: boolean) => {
       if (!line.length) return;
@@ -449,6 +454,10 @@ async function renderTemplatePdf({
 
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i];
+      if (token.hardBreak) {
+        drawLine(true);
+        continue;
+      }
       const font = documentFont(token.fontFamily, token.bold);
       const value = `${line.length && !/^[,.;:!?)]/.test(token.text) ? ' ' : ''}${token.text}`;
       const width = font.widthOfTextAtSize(value, token.fontSize);
