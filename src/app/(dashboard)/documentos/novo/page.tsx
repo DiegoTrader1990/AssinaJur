@@ -110,6 +110,7 @@ export default function NewDocumentPage() {
   const [rogoPhone, setRogoPhone] = useState('');
   const [rogoEmail, setRogoEmail] = useState('');
   const [enforceSignatureOrder, setEnforceSignatureOrder] = useState(false);
+  const [witnessSigningMode, setWitnessSigningMode] = useState<'INDIVIDUAL' | 'SAME_DEVICE'>('INDIVIDUAL');
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -502,6 +503,7 @@ export default function NewDocumentPage() {
           rogoPhone: isIlliterate ? rogoPhone : null,
           rogoEmail: isIlliterate ? rogoEmail : null,
           enforceSignatureOrder,
+          witnessSigningMode,
           }),
         });
         const data = await res.json();
@@ -548,6 +550,9 @@ export default function NewDocumentPage() {
               <button onClick={() => handleCopyLink(createdDocument.signers.find((s: any) => s.role === 'CLIENTE')?.token || createdDocument.signers[0]?.token)} className="px-5 py-3 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-xl text-xs shadow-md transition-all flex items-center justify-center gap-2 font-heading">
                 {copiedToken === (createdDocument.signers.find((s: any) => s.role === 'CLIENTE')?.token || createdDocument.signers[0]?.token) ? <><Check className="w-4 h-4 stroke-[3]" /> Copiado!</> : <><Copy className="w-4 h-4" /> Copiar link único</>}
               </button>
+              {createdDocument.signers.filter((s: any) => String(s.role).startsWith('TESTEMUNHA') && s.signingMode === 'INDIVIDUAL').map((s: any, index: number) => (
+                <div key={s.id} className="rounded-xl border border-amber-200 bg-amber-50 p-3 flex items-center justify-between gap-3"><div><p className="text-xs font-extrabold text-amber-950">Testemunha {index + 1}: {s.name}</p><p className="text-[11px] text-amber-800">Assinatura no próprio aparelho.</p></div><button onClick={() => handleCopyLink(s.token)} className="px-3 py-2 bg-amber-700 text-white font-extrabold rounded-lg text-[11px]">{copiedToken === s.token ? 'Copiado!' : 'Copiar link'}</button></div>
+              ))}
             </div>
           ) : createdDocument.isIlliterate || createdDocument.signers.some((s: any) => s.role === 'ASSINANTE_A_ROGO') ? (
             <div className="p-5 bg-gradient-to-r from-blue-50/90 to-indigo-50/70 rounded-2xl border border-blue-200 space-y-3 shadow-xs">
@@ -557,9 +562,7 @@ export default function NewDocumentPage() {
                     <span>{createdDocument.signers.find((s: any) => s.role === 'CLIENTE')?.name || createdDocument.signers[0]?.name}</span>
                     <span className="px-2.5 py-0.5 rounded-full bg-blue-600 text-white text-[10px] uppercase tracking-wider font-bold">Fluxo A Rogo Unificado</span>
                   </div>
-                  <div className="text-xs text-slate-600 font-medium leading-relaxed">
-                    📱 <strong>1 Único Celular:</strong> O cliente e o acompanhante a rogo ({createdDocument.rogoName || createdDocument.signers.find((s: any) => s.role === 'ASSINANTE_A_ROGO')?.name || 'Acompanhante'}) assinarão em sequência no mesmo link abaixo.
-                  </div>
+                  <div className="text-xs text-slate-600 font-medium leading-relaxed">📱 <strong>Mesmo celular:</strong> cliente e assinante a rogo participam em sequência neste link. As testemunhas seguem conforme a modalidade escolhida.</div>
                 </div>
 
                 <button
@@ -577,6 +580,12 @@ export default function NewDocumentPage() {
                   )}
                 </button>
               </div>
+              {createdDocument.signers.filter((s: any) => String(s.role).startsWith('TESTEMUNHA') && s.signingMode === 'INDIVIDUAL').map((s: any, index: number) => (
+                <div key={s.id} className="rounded-xl border border-amber-200 bg-amber-50 p-3 flex items-center justify-between gap-3">
+                  <div><p className="text-xs font-extrabold text-amber-950">Testemunha {index + 1}: {s.name}</p><p className="text-[11px] text-amber-800">Link individual — a pessoa assina no próprio aparelho.</p></div>
+                  <button onClick={() => handleCopyLink(s.token)} className="px-3 py-2 bg-amber-700 text-white font-extrabold rounded-lg text-[11px]">{copiedToken === s.token ? 'Copiado!' : 'Copiar link'}</button>
+                </div>
+              ))}
             </div>
           ) : (
             createdDocument.signers.map((s: any) => (
@@ -1033,8 +1042,16 @@ export default function NewDocumentPage() {
                       placeholder="email@exemplo.com" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
                   </div>
                 </div>
+                {signers.some((s) => s.role === 'TESTEMUNHA') && (
+                  <div className="rounded-xl border border-blue-200 bg-white p-3 space-y-2">
+                    <p className="text-[11px] font-extrabold text-[#071B3A]">Como as testemunhas vão assinar?</p>
+                    <label className="flex gap-2 text-xs text-slate-700"><input type="radio" checked={witnessSigningMode === 'INDIVIDUAL'} onChange={() => setWitnessSigningMode('INDIVIDUAL')} /> Cada testemunha no próprio aparelho (recomendado)</label>
+                    <label className="flex gap-2 text-xs text-slate-700"><input type="radio" checked={witnessSigningMode === 'SAME_DEVICE'} onChange={() => setWitnessSigningMode('SAME_DEVICE')} /> Em sequência no mesmo celular da cliente</label>
+                    <p className="text-[10px] text-slate-500">Mesmo celular mantém links individuais e seguros, mas o sistema abre automaticamente a etapa da próxima testemunha naquele aparelho.</p>
+                  </div>
+                )}
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] font-medium text-amber-900">
-                  Duas testemunhas foram adicionadas à lista acima. Preencha os dados delas antes de avançar. A ordem protegida será: cliente → assinante a rogo → testemunha 1 → testemunha 2.
+                  Preencha os dados das testemunhas antes de avançar. A ordem protegida será: cliente → assinante a rogo → testemunha 1 → testemunha 2.
                 </div>
               </div>
             )}

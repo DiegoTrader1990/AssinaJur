@@ -216,6 +216,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [agreedConsent, setAgreedConsent] = useState(false);
   const [showManualSignature, setShowManualSignature] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [pendingParticipants, setPendingParticipants] = useState<Array<{ name: string; role: string; signingMode: string }>>([]);
 
   // Canvas de assinatura
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -889,6 +890,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao processar assinatura.');
       sessionStorage.setItem(`assinajur-signed-${params.token}`, '1');
+      if (data.nextSigner?.token) {
+        window.location.assign(`/assinar/${data.nextSigner.token}`);
+        return;
+      }
+      setPendingParticipants(data.pendingParticipants || []);
       setStep('SUCCESS');
     } catch (err: any) {
       setError(err.message);
@@ -1443,6 +1449,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 Assinatura Registrada com Sucesso!
               </span>
               <h2 className="font-heading text-xl font-extrabold text-[#071B3A] mt-2">Assinatura confirmada</h2>
+              {pendingParticipants.length > 0 && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left"><p className="text-xs font-extrabold text-amber-950">Aguardando as próximas assinaturas</p><p className="mt-1 text-[11px] text-amber-900">{pendingParticipants.map((item) => item.name).join(', ')}. O escritório enviará o link individual para cada pessoa.</p></div>}
               <p className="text-sm text-slate-600 font-medium leading-relaxed">Obrigado, <strong>{signer?.name}</strong>. Sua assinatura eletrônica foi registrada com segurança pelo Selo Digital AssinaJur. O escritório dará continuidade ao seu atendimento.</p>
               <p className="hidden">
                 A presença do cliente e a assinatura a rogo foram vinculadas ao Certificado de Evidências Jurídicas.

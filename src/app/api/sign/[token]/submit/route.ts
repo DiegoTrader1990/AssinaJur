@@ -280,6 +280,9 @@ export async function POST(
     const rawSigners = freshDoc?.signers || signer.document.signers;
     const allSigners = rawSigners.filter((s) => s.name && s.name.trim().length > 0);
     const allCompleted = allSigners.length > 0 && allSigners.every((s) => s.status === 'ASSINADO');
+    const nextSigner = allSigners
+      .filter((s) => s.status !== 'ASSINADO')
+      .sort((a, b) => a.signatureOrder - b.signatureOrder)[0] || null;
 
     let newDocStatus = 'PARCIALMENTE_ASSINADO';
     if (allCompleted) {
@@ -439,10 +442,12 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: 'Assinatura realizada com sucesso!',
+      message: allCompleted ? 'Assinatura realizada com sucesso!' : 'Participação registrada. Aguardando os demais participantes.',
       signer: updatedSigner,
       documentStatus: newDocStatus,
       kitDocumentsSigned,
+      nextSigner: nextSigner && nextSigner.signingMode === 'SAME_DEVICE' ? { token: nextSigner.token, name: nextSigner.name, role: nextSigner.role } : null,
+      pendingParticipants: allSigners.filter((item) => item.status !== 'ASSINADO').map((item) => ({ name: item.name, role: item.role, signingMode: item.signingMode })),
     });
   } catch (error: any) {
     console.error('Erro na submissão de assinatura:', error);

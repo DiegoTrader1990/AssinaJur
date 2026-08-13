@@ -37,6 +37,7 @@ export async function GET(
                 role: true,
                 status: true,
                 signatureOrder: true,
+                signingMode: true,
               },
               orderBy: { signatureOrder: 'asc' },
             },

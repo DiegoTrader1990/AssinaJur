@@ -363,6 +363,7 @@ model Signer {
   phone            String?
   role             String   @default("CLIENTE")
   signatureOrder   Int      @default(1)
+  signingMode      String   @default("INDIVIDUAL") // INDIVIDUAL | SAME_DEVICE
   
   status           String   @default("PENDENTE")
   authMethod       String   @default("EMAIL_OTP_CPF")
