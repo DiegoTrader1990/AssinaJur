@@ -273,13 +273,30 @@ model LegalProcess {
   processNumber    String?
   protocolNumber   String?
   responsibleId    String?
+  priority         String   @default("NORMAL")
+  dueDate          DateTime?
+  lastActivityAt   DateTime @default(now())
   notes            String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   documents        Document[]
+  activities       LegalProcessActivity[]
 
   @@index([officeId, status])
   @@index([officeId, clientId])
+  @@index([officeId, dueDate])
+}
+
+model LegalProcessActivity {
+  id          String   @id @default(uuid())
+  processId   String
+  process     LegalProcess @relation(fields: [processId], references: [id], onDelete: Cascade)
+  userId      String?
+  type        String   @default("NOTE")
+  description String
+  createdAt   DateTime @default(now())
+
+  @@index([processId, createdAt])
 }
 
 // Etiquetas coloridas para organizar documentos

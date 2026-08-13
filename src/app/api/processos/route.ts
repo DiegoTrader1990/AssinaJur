@@ -5,14 +5,16 @@ import { logAuditEvent } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
+const processInclude = {
+  client: { select: { id: true, name: true, cpfCnpj: true, phone: true } },
+  documents: { select: { id: true, title: true, status: true, signedFileId: true, completedAt: true }, orderBy: { createdAt: 'desc' as const } },
+  activities: { orderBy: { createdAt: 'desc' as const }, take: 8 },
+};
+
 export async function GET() {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
-  const processes = await prisma.legalProcess.findMany({
-    where: { officeId: user.officeId },
-    include: { client: { select: { id: true, name: true, cpfCnpj: true, phone: true } }, documents: { select: { id: true, title: true, status: true, signedFileId: true, completedAt: true }, orderBy: { createdAt: 'desc' } } },
-    orderBy: { updatedAt: 'desc' },
-  });
+  const processes = await prisma.legalProcess.findMany({ where: { officeId: user.officeId }, include: processInclude, orderBy: [{ priority: 'desc' }, { lastActivityAt: 'desc' }] });
   return NextResponse.json({ processes });
 }
 
@@ -21,25 +23,19 @@ export async function POST(req: Request) {
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
     const body = await req.json();
-    const { clientId, title, legalArea, status, processNumber, protocolNumber, notes, documentIds = [] } = body;
+    const { clientId, title, legalArea, status, priority, dueDate, processNumber, protocolNumber, notes, documentIds = [] } = body;
     if (!clientId || !title?.trim()) return NextResponse.json({ error: 'Cliente e título do processo são obrigatórios.' }, { status: 400 });
     const client = await prisma.client.findFirst({ where: { id: clientId, officeId: user.officeId } });
     if (!client) return NextResponse.json({ error: 'Cliente não pertence ao escritório.' }, { status: 400 });
-    const eligibleDocuments = await prisma.document.findMany({
-      where: documentIds.length
-        ? { id: { in: documentIds }, officeId: user.officeId, clientId, status: 'CONCLUIDO' }
-        : { officeId: user.officeId, clientId, status: 'CONCLUIDO', processId: null },
-      select: { id: true },
-    });
+    const eligibleDocuments = await prisma.document.findMany({ where: documentIds.length ? { id: { in: documentIds }, officeId: user.officeId, clientId, status: 'CONCLUIDO' } : { officeId: user.officeId, clientId, status: 'CONCLUIDO', processId: null }, select: { id: true } });
     if (documentIds.length && eligibleDocuments.length !== documentIds.length) return NextResponse.json({ error: 'Apenas documentos assinados desta cliente podem ser vinculados.' }, { status: 400 });
     const process = await prisma.$transaction(async (tx) => {
-      const created = await tx.legalProcess.create({ data: { officeId: user.officeId, clientId, title: title.trim(), legalArea: legalArea || null, status: status || 'EM_TRIAGEM', processNumber: processNumber || null, protocolNumber: protocolNumber || null, notes: notes || null } });
+      const created = await tx.legalProcess.create({ data: { officeId: user.officeId, clientId, title: title.trim(), legalArea: legalArea || null, status: status || 'EM_TRIAGEM', priority: priority || 'NORMAL', dueDate: dueDate ? new Date(dueDate) : null, processNumber: processNumber || null, protocolNumber: protocolNumber || null, notes: notes || null } });
       if (eligibleDocuments.length) await tx.document.updateMany({ where: { id: { in: eligibleDocuments.map((item) => item.id) }, officeId: user.officeId }, data: { processId: created.id } });
+      await tx.legalProcessActivity.create({ data: { processId: created.id, userId: user.id, type: 'CREATED', description: `Dossiê criado${eligibleDocuments.length ? ` com ${eligibleDocuments.length} documento(s) assinado(s) vinculado(s)` : ''}.` } });
       return created;
     });
     await logAuditEvent({ officeId: user.officeId, userId: user.id, eventType: 'PROCESS_CREATED', description: `Processo "${process.title}" criado para ${client.name}.` });
     return NextResponse.json({ success: true, process });
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message || 'Erro ao criar processo.' }, { status: 500 });
-  }
+  } catch (error: any) { return NextResponse.json({ error: error?.message || 'Erro ao criar processo.' }, { status: 500 }); }
 }
