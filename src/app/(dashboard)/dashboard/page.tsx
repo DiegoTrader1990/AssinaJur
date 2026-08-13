@@ -17,14 +17,13 @@ import {
   ShieldCheck,
   Zap,
   MessageSquare,
-  AlertTriangle,
-  FileText,
   Building2,
-  Lock,
+  Search,
+  FileText,
+  Briefcase,
+  Users,
+  ExternalLink,
 } from 'lucide-react';
-
-const formatDate = (value?: string | null) =>
-  value ? new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(new Date(value)) : 'Sem prazo';
 
 export default function DashboardPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -33,6 +32,8 @@ export default function DashboardPage() {
   const [documents, setDocuments] = useState<any[]>([]);
   const [processes, setProcesses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState<'PENDING' | 'COMPLETED' | 'ALL'>('PENDING');
 
   useEffect(() => {
     Promise.all([
@@ -54,297 +55,311 @@ export default function DashboardPage() {
   }, []);
 
   const pendingDocuments = useMemo(
-    () => documents.filter((document) => !['CONCLUIDO', 'CANCELADO', 'EXPIRADO'].includes(document.status)),
+    () => documents.filter((doc) => !['CONCLUIDO', 'CANCELADO', 'EXPIRADO'].includes(doc.status)),
     [documents],
   );
-  const completedDocuments = useMemo(() => documents.filter((document) => document.status === 'CONCLUIDO'), [documents]);
 
-  const totalProcessFiles = useMemo(() => {
+  const completedDocuments = useMemo(
+    () => documents.filter((doc) => doc.status === 'CONCLUIDO'),
+    [documents],
+  );
+
+  const totalFiles = useMemo(() => {
     return processes.reduce((acc, p) => acc + (p.documents?.length || 0) + (p.attachments?.length || 0), 0);
   }, [processes]);
+
+  // Filtered documents by tab & search term
+  const filteredDocuments = useMemo(() => {
+    let list = documents;
+    if (activeTab === 'PENDING') list = pendingDocuments;
+    if (activeTab === 'COMPLETED') list = completedDocuments;
+
+    if (!searchTerm.trim()) return list;
+
+    const term = searchTerm.toLowerCase();
+    return list.filter(
+      (doc) =>
+        doc.title?.toLowerCase().includes(term) ||
+        doc.client?.name?.toLowerCase().includes(term) ||
+        doc.client?.cpf?.includes(term),
+    );
+  }, [documents, pendingDocuments, completedDocuments, activeTab, searchTerm]);
+
+  // Filtered processes by search term
+  const filteredProcesses = useMemo(() => {
+    if (!searchTerm.trim()) return processes;
+    const term = searchTerm.toLowerCase();
+    return processes.filter(
+      (p) =>
+        p.title?.toLowerCase().includes(term) ||
+        p.client?.name?.toLowerCase().includes(term) ||
+        p.processNumber?.includes(term),
+    );
+  }, [processes, searchTerm]);
 
   const metricValue = (value: number) => (loading ? '—' : String(value).padStart(2, '0'));
 
   return (
-    <main className="mx-auto max-w-7xl space-y-8 pb-12">
-      {/* BANNER INSTITUCIONAL E DE BOAS-VINDAS EXECUTIVO */}
-      <section className="relative overflow-hidden rounded-[32px] bg-gradient-to-r from-[#071B3A] via-[#0C2A54] to-[#071B3A] text-white p-7 lg:p-10 shadow-[0_20px_50px_rgba(7,27,58,0.22)] border border-slate-700/50">
-        {/* Detalhes Visuais Gold Luxury */}
-        <div className="absolute -right-20 -top-20 h-80 w-80 rounded-full bg-amber-400/10 blur-3xl pointer-events-none" />
-        <div className="absolute -left-20 -bottom-20 h-80 w-80 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
-
-        <div className="relative z-10 flex flex-col lg:flex-row justify-between lg:items-center gap-6">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-extrabold uppercase tracking-[0.24em] text-[#D4AF37] bg-amber-400/10 border border-amber-400/20 px-3.5 py-1 rounded-full flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-[#D4AF37]" />
-                {office?.name || 'Rodrigues & Soares Advocacia'}
-              </span>
-              <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 px-3 py-1 rounded-full flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Hash ICP-Brasil • Validade Jurídica
-              </span>
+    <main className="mx-auto max-w-7xl space-y-7 pb-16">
+      {/* 1. MESA DE TRABALHO DO ADVOGADO: BARRA DE BUSCA GLOBAL E AÇÕES RÁPIDAS */}
+      <header className="bg-white border border-slate-200/90 rounded-[28px] p-5 lg:p-6 shadow-xs space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-[#071B3A] text-[#D4AF37] flex items-center justify-center font-black shadow-md shrink-0">
+              <Building2 className="w-6 h-6" />
             </div>
-
-            <h1 className="font-heading text-2xl lg:text-3xl font-black tracking-tight text-white">
-              Painel do Escritório • {currentUser?.name ? currentUser.name : 'Dr. Diego & Dra. Dominick'}
-            </h1>
-            <p className="text-xs lg:text-sm text-slate-300 max-w-2xl leading-relaxed">
-              Bem-vindo ao AssinaJur. Gestão centralizada de assinaturas digitais, dossiês estilo Windows Explorer e formalização rápida de clientes.
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#B68B1C]">
+                  {office?.name || 'Rodrigues & Soares Advocacia'}
+                </span>
+                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                  OAB/BA 51.881 | 62.443
+                </span>
+              </div>
+              <h1 className="font-heading text-xl lg:text-2xl font-black text-[#071B3A] mt-0.5">
+                Mesa de Trabalho • {currentUser?.name ? currentUser.name : 'Dr. Diego & Dra. Dominick'}
+              </h1>
+            </div>
           </div>
 
-          {/* AÇÕES DE DESTAQUE NA HEADER */}
-          <div className="flex flex-wrap gap-3 shrink-0">
+          {/* ATALHOS DIRETOS */}
+          <div className="flex flex-wrap items-center gap-2">
             <Link
               href="/kits/enviar"
-              className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#D4AF37] to-[#C59B27] px-5 py-3.5 text-xs font-black text-[#071B3A] shadow-md hover:brightness-110 transition-all hover:scale-[1.02]"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#D4AF37] hover:bg-[#c4a02d] px-4 py-2.5 text-xs font-black text-[#071B3A] shadow-xs transition-all"
             >
-              <Sparkles className="h-4 w-4" /> Kit Jurídico Expresso
+              <Sparkles className="h-4 w-4" /> Kit 10s
             </Link>
             <Link
               href="/documentos/novo"
-              className="inline-flex items-center gap-2 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/20 px-5 py-3.5 text-xs font-extrabold text-white transition-all backdrop-blur-md hover:scale-[1.02]"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#071B3A] hover:bg-[#102d5a] px-4 py-2.5 text-xs font-extrabold text-white shadow-xs transition-all"
             >
-              <Send className="h-4 w-4 text-[#D4AF37]" /> Nova Assinatura
+              <Send className="h-4 w-4 text-[#D4AF37]" /> Assinatura WhatsApp
+            </Link>
+            <Link
+              href="/clientes?novo=true"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 px-4 py-2.5 text-xs font-extrabold text-[#071B3A] transition-all"
+            >
+              <Plus className="h-4 w-4 text-blue-600" /> Nova Cliente
             </Link>
           </div>
         </div>
 
-        {/* METRICAS OPERACIONAIS DIRETA */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8 pt-7 border-t border-white/10">
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-            <p className="text-[10px] font-extrabold uppercase tracking-wider text-[#D4AF37]">Clientes na Base</p>
-            <p className="text-2xl lg:text-3xl font-black font-heading text-white mt-1">{metricValue(clients.length)}</p>
-            <p className="text-[11px] text-slate-300 mt-0.5">cadastros do escritório</p>
-          </div>
-
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-            <p className="text-[10px] font-extrabold uppercase tracking-wider text-amber-300">Em Assinatura</p>
-            <p className="text-2xl lg:text-3xl font-black font-heading text-amber-300 mt-1">{metricValue(pendingDocuments.length)}</p>
-            <p className="text-[11px] text-slate-300 mt-0.5">aguardando clientes</p>
-          </div>
-
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-            <p className="text-[10px] font-extrabold uppercase tracking-wider text-blue-300">Dossiês de Processos</p>
-            <p className="text-2xl lg:text-3xl font-black font-heading text-white mt-1">{metricValue(processes.length)}</p>
-            <p className="text-[11px] text-slate-300 mt-0.5">{totalProcessFiles} arquivos organizados</p>
-          </div>
-
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-            <p className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-300">Assinaturas Concluídas</p>
-            <p className="text-2xl lg:text-3xl font-black font-heading text-emerald-400 mt-1">{metricValue(completedDocuments.length)}</p>
-            <p className="text-[11px] text-slate-300 mt-0.5">com prova e audit trail</p>
-          </div>
+        {/* CAMPO DE BUSCA UNIVERSAL (CLIENTE, DOCUMENTO OU PROCESSO) */}
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Pesquisar cliente por nome ou CPF, documento ou processo..."
+            className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition-all shadow-inner"
+          />
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm('')}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-extrabold text-slate-400 hover:text-slate-600"
+            >
+              Limpar
+            </button>
+          )}
         </div>
-      </section>
+      </header>
 
-      {/* SEÇÃO 1: OS 4 PILARES DO SISTEMA (ATALHOS INTUITIVOS DE ALTA CLAREZA) */}
-      <section className="space-y-4">
-        <div>
-          <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#B68B1C]">
-            Central de Acesso Rápido
+      {/* 2. REGISTRO DE RESUMO OPERACIONAL EM 4 CARDS ELEGANTES */}
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Link
+          href="/clientes"
+          className="bg-white border border-slate-200/80 hover:border-amber-400 p-5 rounded-3xl transition-all shadow-xs group"
+        >
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#B68B1C]">Clientes</span>
+            <Users className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform" />
+          </div>
+          <p className="text-2xl lg:text-3xl font-black font-heading text-[#071B3A] mt-2">
+            {metricValue(clients.length)}
           </p>
-          <h2 className="text-xl font-black font-heading text-[#071B3A] mt-0.5">
-            O que você deseja fazer agora no escritório?
-          </h2>
-        </div>
+          <p className="text-[11px] text-slate-500 mt-0.5">cadastros na base</p>
+        </Link>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* CARD 1: ENVIAR ASSINATURA */}
-          <Link
-            href="/documentos/novo"
-            className="group bg-white hover:bg-emerald-50/50 border border-slate-200 hover:border-emerald-400 p-6 rounded-3xl transition-all shadow-xs flex flex-col justify-between"
-          >
-            <div>
-              <div className="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-700 shadow-xs mb-4">
-                <FileSignature className="w-6 h-6" />
-              </div>
-              <h3 className="font-heading font-black text-[#071B3A] text-base group-hover:text-emerald-700 transition-colors">
-                Nova Assinatura Digital
-              </h3>
-              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-                Envie contratos e procurações diretamente para o WhatsApp do cliente para assinar no celular.
-              </p>
-            </div>
-            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-black text-emerald-700">
-              <span>Iniciar Envio</span>
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </Link>
+        <Link
+          href="/documentos"
+          className="bg-white border border-slate-200/80 hover:border-amber-400 p-5 rounded-3xl transition-all shadow-xs group"
+        >
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-600">Em Assinatura</span>
+            <FileSignature className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform" />
+          </div>
+          <p className="text-2xl lg:text-3xl font-black font-heading text-amber-600 mt-2">
+            {metricValue(pendingDocuments.length)}
+          </p>
+          <p className="text-[11px] text-slate-500 mt-0.5">aguardando clientes</p>
+        </Link>
 
-          {/* CARD 2: PASTA DE PROCESSOS (WINDOWS EXPLORER) */}
-          <Link
-            href="/processos"
-            className="group bg-white hover:bg-amber-50/50 border border-slate-200 hover:border-amber-400 p-6 rounded-3xl transition-all shadow-xs flex flex-col justify-between"
-          >
-            <div>
-              <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-700 shadow-xs mb-4">
-                <Folder className="w-6 h-6 text-amber-600 fill-amber-500/30" />
-              </div>
-              <h3 className="font-heading font-black text-[#071B3A] text-base group-hover:text-amber-700 transition-colors">
-                Dossiês &amp; Windows Explorer
-              </h3>
-              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-                Organize pastas de processos estilo Windows, envie PDFs por drag &amp; drop e renomeie arquivos.
-              </p>
-            </div>
-            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-black text-amber-700">
-              <span>Abrir Pastas 📁</span>
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </Link>
+        <Link
+          href="/processos"
+          className="bg-white border border-slate-200/80 hover:border-blue-400 p-5 rounded-3xl transition-all shadow-xs group"
+        >
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-600">Dossiês Ativos</span>
+            <Folder className="w-4 h-4 text-blue-500 fill-blue-500/20 group-hover:scale-110 transition-transform" />
+          </div>
+          <p className="text-2xl lg:text-3xl font-black font-heading text-[#071B3A] mt-2">
+            {metricValue(processes.length)}
+          </p>
+          <p className="text-[11px] text-slate-500 mt-0.5">{totalFiles} PDFs em pastas</p>
+        </Link>
 
-          {/* CARD 3: KIT JURÍDICO EXPRESSO */}
-          <Link
-            href="/kits/enviar"
-            className="group bg-white hover:bg-blue-50/50 border border-slate-200 hover:border-blue-400 p-6 rounded-3xl transition-all shadow-xs flex flex-col justify-between"
-          >
-            <div>
-              <div className="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center text-blue-700 shadow-xs mb-4">
-                <Sparkles className="w-6 h-6 text-blue-600" />
-              </div>
-              <h3 className="font-heading font-black text-[#071B3A] text-base group-hover:text-blue-700 transition-colors">
-                Kit Jurídico Expresso
-              </h3>
-              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-                Gere Procuração, Contrato de Honorários e Hipossuficiência em um único envio de 10 segundos.
-              </p>
-            </div>
-            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-black text-blue-700">
-              <span>Preparar Kit ✨</span>
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </Link>
-
-          {/* CARD 4: NOVO CLIENTE */}
-          <Link
-            href="/clientes?novo=true"
-            className="group bg-white hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-400 p-6 rounded-3xl transition-all shadow-xs flex flex-col justify-between"
-          >
-            <div>
-              <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center text-indigo-700 shadow-xs mb-4">
-                <User className="w-6 h-6 text-indigo-600" />
-              </div>
-              <h3 className="font-heading font-black text-[#071B3A] text-base group-hover:text-indigo-700 transition-colors">
-                Cadastrar Nova Cliente
-              </h3>
-              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-                Adicione a cliente na base com dados completos de qualificação, CPF, endereço e representante.
-              </p>
-            </div>
-            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-black text-indigo-700">
-              <span>Novo Cadastro</span>
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </Link>
-        </div>
+        <Link
+          href="/documentos"
+          className="bg-white border border-slate-200/80 hover:border-emerald-400 p-5 rounded-3xl transition-all shadow-xs group"
+        >
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-600">Concluídos</span>
+            <CheckCircle2 className="w-4 h-4 text-emerald-500 group-hover:scale-110 transition-transform" />
+          </div>
+          <p className="text-2xl lg:text-3xl font-black font-heading text-emerald-700 mt-2">
+            {metricValue(completedDocuments.length)}
+          </p>
+          <p className="text-[11px] text-slate-500 mt-0.5">com validade ICP-Brasil</p>
+        </Link>
       </section>
 
-      {/* SEÇÃO 2: ASSINATURAS PENDENTES & DOSSIÊS ATIVOS (VISÃO EM TEMPO REAL) */}
-      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        {/* COLUNA ESQUERDA: ASSINATURAS PENDENTES PARA COBRANÇA */}
-        <div className="bg-white border border-slate-200 rounded-[32px] p-6 shadow-xs flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div>
-                <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#B68B1C]">
-                  Acompanhamento de Formalizações
-                </p>
-                <h3 className="font-heading font-black text-[#071B3A] text-lg mt-0.5">
-                  Assinaturas Pendentes dos Clientes
-                </h3>
-              </div>
-              <Link href="/documentos" className="text-xs font-bold text-blue-700 hover:underline">
-                Ver todas ({pendingDocuments.length})
-              </Link>
+      {/* 3. PAINEL INTEGRADO: CENTRAL DE GESTÃO DE DOCUMENTOS E DOSSIÊS */}
+      <section className="grid gap-6 xl:grid-cols-[1.35fr_0.85fr]">
+        {/* COLUNA ESQUERDA: PAINEL DE GESTÃO DE ASSINATURAS */}
+        <div className="bg-white border border-slate-200/90 rounded-[30px] p-6 shadow-xs space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div>
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#B68B1C]">
+                Formalização &amp; Assinaturas
+              </p>
+              <h2 className="font-heading font-black text-[#071B3A] text-lg mt-0.5">
+                Central de Assinaturas Digitais
+              </h2>
             </div>
 
-            {pendingDocuments.length > 0 ? (
-              <div className="divide-y divide-slate-100 mt-2">
-                {pendingDocuments.slice(0, 5).map((doc) => (
-                  <div key={doc.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
-                        <h4 className="text-xs font-extrabold text-[#071B3A] truncate">{doc.title}</h4>
-                      </div>
-                      <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
-                        <User className="w-3 h-3 text-slate-400 shrink-0" />
-                        {doc.client?.name || 'Cliente pendente'}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                      {(doc.client?.phone || doc.client?.whatsapp) && (
-                        <a
-                          href={`https://wa.me/55${(doc.client?.phone || doc.client?.whatsapp).replace(/\D/g, '')}?text=${encodeURIComponent(
-                            `Olá! Lembrando da assinatura pendente do documento "${doc.title}". Link para assinar direto no celular: https://www.assinajur.com.br/assinar/${doc.token}`,
-                          )}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-extrabold flex items-center gap-1 transition-all"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5" /> WhatsApp
-                        </a>
-                      )}
-                      <Link
-                        href="/documentos"
-                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-[#071B3A] rounded-xl text-xs font-bold"
-                      >
-                        Ver Detalhes
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="py-12 text-center space-y-2">
-                <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
-                <p className="text-xs font-bold text-[#071B3A]">Nenhuma assinatura pendente no momento.</p>
-                <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
-                  Todos os documentos enviados até agora foram concluídos pelos clientes com sucesso.
-                </p>
-              </div>
-            )}
+            {/* FILTROS DA TABELA */}
+            <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-extrabold text-slate-600">
+              <button
+                onClick={() => setActiveTab('PENDING')}
+                className={`px-3 py-1.5 rounded-lg transition-all ${
+                  activeTab === 'PENDING' ? 'bg-white text-[#071B3A] shadow-xs' : 'hover:text-slate-900'
+                }`}
+              >
+                Pendentes ({pendingDocuments.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('COMPLETED')}
+                className={`px-3 py-1.5 rounded-lg transition-all ${
+                  activeTab === 'COMPLETED' ? 'bg-white text-emerald-700 shadow-xs' : 'hover:text-slate-900'
+                }`}
+              >
+                Concluídos ({completedDocuments.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('ALL')}
+                className={`px-3 py-1.5 rounded-lg transition-all ${
+                  activeTab === 'ALL' ? 'bg-white text-[#071B3A] shadow-xs' : 'hover:text-slate-900'
+                }`}
+              >
+                Todos ({documents.length})
+              </button>
+            </div>
           </div>
 
-          <div className="pt-4 border-t border-slate-100">
-            <Link
-              href="/documentos/novo"
-              className="w-full py-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl text-xs font-extrabold text-[#071B3A] flex items-center justify-center gap-2 transition-all"
-            >
-              <Send className="w-4 h-4 text-[#D4AF37]" /> Enviar Novo Documento para Assinatura
+          {/* LISTA DE DOCUMENTOS */}
+          {filteredDocuments.length > 0 ? (
+            <div className="divide-y divide-slate-100">
+              {filteredDocuments.slice(0, 6).map((doc) => (
+                <div key={doc.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 group">
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                          doc.status === 'CONCLUIDO' ? 'bg-emerald-500' : 'bg-amber-500'
+                        }`}
+                      />
+                      <h3 className="text-xs font-black text-[#071B3A] truncate group-hover:text-blue-700 transition-colors">
+                        {doc.title}
+                      </h3>
+                    </div>
+                    <p className="text-[11px] text-slate-500 flex items-center gap-2">
+                      <span className="flex items-center gap-1">
+                        <User className="w-3 h-3 text-slate-400" />
+                        {doc.client?.name || 'Cliente avulso'}
+                      </span>
+                      <span>•</span>
+                      <span>{doc.createdAt ? new Date(doc.createdAt).toLocaleDateString('pt-BR') : ''}</span>
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                    {doc.status !== 'CONCLUIDO' && (doc.client?.phone || doc.client?.whatsapp) && (
+                      <a
+                        href={`https://wa.me/55${(doc.client?.phone || doc.client?.whatsapp).replace(/\D/g, '')}?text=${encodeURIComponent(
+                          `Olá! Lembrando da assinatura do documento "${doc.title}". Link seguro para assinar no celular: https://www.assinajur.com.br/assinar/${doc.token}`,
+                        )}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-extrabold flex items-center gap-1 transition-all"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" /> Cobrar WhatsApp
+                      </a>
+                    )}
+                    <Link
+                      href="/documentos"
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-[#071B3A] rounded-xl text-xs font-bold transition-all"
+                    >
+                      Ver Detalhes
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="py-12 text-center space-y-2">
+              <CheckCircle2 className="w-10 h-10 text-slate-300 mx-auto" />
+              <p className="text-xs font-bold text-slate-600">Nenhum documento encontrado.</p>
+            </div>
+          )}
+
+          <div className="pt-3 border-t border-slate-100 text-center">
+            <Link href="/documentos" className="text-xs font-extrabold text-blue-700 hover:underline inline-flex items-center gap-1">
+              Ver todos os documentos na Central de Formalização <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
         </div>
 
-        {/* COLUNA DIREITA: DOSSIÊS DO WINDOWS EXPLORER */}
-        <div className="bg-[#FBFCFE] border border-slate-200 rounded-[32px] p-6 shadow-xs flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between border-b border-slate-200/80 pb-4">
+        {/* COLUNA DIREITA: DOSSIÊS WINDOWS EXPLORER E MODELOS RÁPIDOS */}
+        <div className="space-y-6">
+          {/* DOSSIÊS DE PROCESSOS (PASTAS AMARELAS) */}
+          <div className="bg-[#FBFCFE] border border-slate-200/90 rounded-[30px] p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
               <div>
                 <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#B68B1C]">
                   Windows Explorer
                 </p>
-                <h3 className="font-heading font-black text-[#071B3A] text-lg mt-0.5">
-                  Dossiês Ativos de Processos
+                <h3 className="font-heading font-black text-[#071B3A] text-base mt-0.5">
+                  Dossiês de Processos
                 </h3>
               </div>
               <Link href="/processos" className="text-xs font-bold text-blue-700 hover:underline">
-                Abrir Central 📁
+                Abrir Pastas 📁
               </Link>
             </div>
 
-            <div className="space-y-3 mt-4">
-              {processes.slice(0, 4).map((p) => (
+            <div className="space-y-2.5">
+              {filteredProcesses.slice(0, 4).map((p) => (
                 <Link
                   key={p.id}
                   href="/processos"
-                  className="group flex items-center justify-between bg-white border border-slate-200 hover:border-amber-400 p-3.5 rounded-2xl shadow-xs transition-all"
+                  className="group flex items-center justify-between bg-white border border-slate-200/80 hover:border-amber-400 p-3.5 rounded-2xl shadow-xs transition-all"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-amber-100 group-hover:bg-amber-200 flex items-center justify-center shrink-0">
-                      <Folder className="w-5.5 h-5.5 text-amber-600 fill-amber-500/30" />
+                    <div className="w-9.5 h-9.5 rounded-xl bg-amber-100 group-hover:bg-amber-200 flex items-center justify-center shrink-0">
+                      <Folder className="w-5 h-5 text-amber-600 fill-amber-500/30" />
                     </div>
                     <div className="min-w-0">
                       <h4 className="text-xs font-extrabold text-[#071B3A] truncate">{p.title}</h4>
@@ -354,27 +369,36 @@ export default function DashboardPage() {
                       </p>
                     </div>
                   </div>
-                  <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full shrink-0">
+                  <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full shrink-0">
                     {(p.documents?.length || 0) + (p.attachments?.length || 0)} PDFs
                   </span>
                 </Link>
               ))}
 
-              {!processes.length && (
-                <div className="py-12 text-center text-xs text-slate-400 space-y-2">
-                  <Folder className="w-8 h-8 mx-auto text-slate-300" />
-                  <p>Nenhum processo ativo no momento.</p>
-                </div>
+              {!filteredProcesses.length && (
+                <div className="py-8 text-center text-xs text-slate-400">Nenhum dossiê de processo ativo.</div>
               )}
             </div>
           </div>
 
-          <div className="pt-4 border-t border-slate-200/80 mt-4">
+          {/* MODELOS JURÍDICOS COM IA (ACESSO DIRETO) */}
+          <div className="bg-gradient-to-br from-[#071B3A] to-[#0D2A56] text-white rounded-[30px] p-6 shadow-md space-y-3 relative overflow-hidden">
+            <div className="absolute right-0 bottom-0 translate-x-4 translate-y-4 w-32 h-32 bg-amber-400/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#D4AF37]">
+                Modelos de Peças &amp; Contratos
+              </span>
+              <Sparkles className="w-4 h-4 text-amber-300" />
+            </div>
+            <h3 className="font-heading font-black text-lg text-white">Copiloto IA de Modelos</h3>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Edite clausulados de Procuração, Contratos de Honorários e Petições com inteligência artificial integrada.
+            </p>
             <Link
-              href="/processos"
-              className="w-full py-3 bg-amber-50 hover:bg-amber-100/70 border border-amber-200 rounded-2xl text-xs font-extrabold text-amber-900 flex items-center justify-center gap-2 transition-all"
+              href="/modelos"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#D4AF37] hover:bg-[#c5a02d] text-[#071B3A] text-xs font-black rounded-xl transition-all shadow-xs mt-1"
             >
-              <Folder className="w-4 h-4 text-amber-600 fill-amber-500/30" /> Navegar pelas Pastas dos Processos
+              Abrir Editor de Modelos <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
         </div>
