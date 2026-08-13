@@ -455,7 +455,14 @@ async function renderTemplatePdf({
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i];
       if (token.hardBreak) {
-        drawLine(true);
+        // Shift+Enter em um ponto vazio (ou um parágrafo em branco criado por Enter)
+        // também precisa ocupar uma linha real no PDF.
+        if (line.length) {
+          drawLine(true);
+        } else {
+          ensureLineSpace(lineHeight);
+          currentY -= lineHeight;
+        }
         continue;
       }
       const font = documentFont(token.fontFamily, token.bold);
