@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Settings, Building2, Palette, FileText, CheckCircle, AlertCircle, Loader2, Upload, UserCheck, UserPlus, Plus, Trash2, Pencil, X } from 'lucide-react';
+import { Settings, Building2, Palette, FileText, CheckCircle, AlertCircle, Loader2, Upload, UserCheck, UserPlus, Plus, Trash2, Pencil, X, HardDrive, ExternalLink, Unplug } from 'lucide-react';
 
 interface LawyerMember {
   id: string;
@@ -53,6 +53,8 @@ export default function SettingsPage() {
   const [removingLawyerId, setRemovingLawyerId] = useState<string | null>(null);
   const [editingLawyer, setEditingLawyer] = useState<LawyerMember | null>(null);
   const [savingLawyer, setSavingLawyer] = useState(false);
+  const [drive, setDrive] = useState<{ configured: boolean; connected: boolean; connection?: { googleEmail?: string; folderUrl?: string } | null }>({ configured: false, connected: false });
+  const [connectingDrive, setConnectingDrive] = useState(false);
 
   useEffect(() => {
     fetch('/api/office')
@@ -90,7 +92,24 @@ export default function SettingsPage() {
       .catch((err) => console.error('Erro ao carregar papel timbrado:', err));
 
     fetchLawyers();
+    fetch('/api/integrations/google-drive').then((res) => res.json()).then(setDrive).catch(() => {});
   }, []);
+
+  const connectDrive = async () => {
+    setConnectingDrive(true);
+    try {
+      const res = await fetch('/api/integrations/google-drive', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Não foi possível iniciar a conexão.');
+      window.location.href = data.url;
+    } catch (err: any) { alert(err.message); setConnectingDrive(false); }
+  };
+
+  const disconnectDrive = async () => {
+    if (!confirm('Desconectar o Google Drive deste escritório? Os arquivos já existentes permanecerão no Drive.')) return;
+    const res = await fetch('/api/integrations/google-drive', { method: 'DELETE' });
+    if (res.ok) setDrive({ configured: drive.configured, connected: false });
+  };
 
   const fetchLawyers = () => {
     fetch('/api/office/team')
@@ -516,6 +535,23 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Papel Timbrado Oficial */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+          <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2 text-[#071B3A] font-extrabold font-heading"><HardDrive className="w-5 h-5 text-blue-600" /><span>Google Drive do Escritório</span></div>
+            {drive.connected && <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-extrabold">Conectado</span>}
+          </div>
+          <p className="text-xs text-slate-500 font-medium">Organize os processos em pastas próprias no Drive. Cada dossiê criado terá áreas para documentos assinados, arquivos do escritório e protocolos.</p>
+          {drive.connected ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div><p className="font-extrabold text-emerald-900">Drive conectado{drive.connection?.googleEmail ? `: ${drive.connection.googleEmail}` : ''}</p><p className="text-emerald-700 mt-1">Novos processos já recebem uma pasta individual automaticamente.</p></div>
+              <div className="flex gap-2">{drive.connection?.folderUrl && <a href={drive.connection.folderUrl} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-xl bg-white border border-emerald-200 text-emerald-800 font-bold flex items-center gap-1.5"><ExternalLink className="w-3.5 h-3.5" /> Abrir Drive</a>}<button type="button" onClick={disconnectDrive} className="px-3 py-2 rounded-xl text-red-700 font-bold hover:bg-red-100 flex items-center gap-1.5"><Unplug className="w-3.5 h-3.5" /> Desconectar</button></div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-blue-100 bg-slate-50 p-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-extrabold text-[#071B3A]">Centralize os arquivos do escritório</p><p className="text-[11px] text-slate-500 mt-1">Você autoriza uma única vez; o AssinaJur cria e mantém somente as pastas que utiliza.</p></div><button type="button" onClick={connectDrive} disabled={!drive.configured || connectingDrive} className="px-4 py-2.5 rounded-xl bg-[#071B3A] text-white font-bold text-xs disabled:opacity-50 flex items-center gap-2">{connectingDrive ? <Loader2 className="w-4 h-4 animate-spin" /> : <HardDrive className="w-4 h-4" />}{drive.configured ? 'Conectar Google Drive' : 'Integração em preparação'}</button></div>
+          )}
         </div>
 
         {/* Papel Timbrado Oficial */}

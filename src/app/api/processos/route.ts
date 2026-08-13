@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
+import { ensureProcessDriveFolders } from '@/lib/google-drive';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +37,9 @@ export async function POST(req: Request) {
       await tx.legalProcessActivity.create({ data: { processId: created.id, userId: user.id, type: 'CREATED', description: `Dossiê criado${eligibleDocuments.length ? ` com ${eligibleDocuments.length} documento(s) assinado(s) vinculado(s)` : ''}.` } });
       return created;
     });
+    // A organização no Drive é complementar: uma eventual indisponibilidade não
+    // impede a criação do dossiê no AssinaJur.
+    try { await ensureProcessDriveFolders({ id: process.id, officeId: user.officeId, title: process.title, client: { name: client.name } }); } catch (driveError) { console.error('Não foi possível criar pasta no Drive:', driveError); }
     await logAuditEvent({ officeId: user.officeId, userId: user.id, eventType: 'PROCESS_CREATED', description: `Processo "${process.title}" criado para ${client.name}.` });
     return NextResponse.json({ success: true, process });
   } catch (error: any) { return NextResponse.json({ error: error?.message || 'Erro ao criar processo.' }, { status: 500 }); }
