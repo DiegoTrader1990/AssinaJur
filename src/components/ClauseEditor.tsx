@@ -15,7 +15,16 @@ function toClauses(html: string): Clause[] {
     const tag = element.tagName.toLowerCase();
     return [{ id: crypto.randomUUID(), type: tag === 'h1' ? 'title' : /^h[2-6]$/.test(tag) ? 'heading' : 'paragraph', text } as Clause];
   });
-  return blocks.length ? blocks : [{ id: crypto.randomUUID(), type: 'paragraph', text: root.textContent?.replace(/\s+/g, ' ').trim() || '' }];
+  const rawText = root.textContent?.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim() || '';
+  // Alguns modelos antigos foram salvos como um único bloco (por exemplo, um H1
+  // contendo toda a minuta). Nesta situação identificamos os tópicos jurídicos
+  // para que o advogado não receba um texto gigante e impossível de revisar.
+  if (blocks.length <= 1 && /\b(?:OUTORGANTE|OUTORGADOS|CONTRATANTE|CONTRATADOS|OBJETO|PODERES|CLÁUSULA)\s*:/i.test(rawText)) {
+    const markers = /\s+(?=(?:OUTORGANTE|OUTORGADOS|CONTRATANTE|CONTRATADOS|OBJETO|PODERES(?:\s+(?:GERAIS|ESPECIAIS))?|CLÁUSULA\s+\d+|ASSIM,|DECLARA,|POR\s+SER)\b)/gi;
+    const parts = rawText.split(markers).map((text) => text.trim()).filter(Boolean);
+    return parts.map((text, index) => ({ id: crypto.randomUUID(), type: index === 0 ? 'title' : /^(?:CLÁUSULA|PODERES)/i.test(text) ? 'heading' : 'paragraph', text }));
+  }
+  return blocks.length ? blocks : [{ id: crypto.randomUUID(), type: 'paragraph', text: rawText }];
 }
 const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 function clauseToHtml(clause: Clause) {
