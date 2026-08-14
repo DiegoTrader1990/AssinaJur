@@ -33,12 +33,14 @@ export function ensureClientQualificationTokens(contentHtml: string, title: stri
   }
   // Cidade/data e nome de assinatura também podem ter ficado fixos numa revisão
   // anterior. Só alcançamos os blocos finais para não tocar no corpo jurídico.
-  result = result.replace(/(?:[A-ZÀ-ÿ][A-Za-zÀ-ÿ'\- ]{2,}),\s*\d{1,2}\s+de\s+[A-Za-zÀ-ÿ]+\s+de\s+\d{4}\.?/g, '{{cidade}}, {{data_atual}}.');
+  // Aceita cidade com UF ("São Paulo/SP") e acentos, sem depender da
+  // codificação do texto que veio de um Word ou de uma minuta antiga.
+  result = result.replace(/[A-Za-z][^,<]{1,80},\s*\d{1,2}\s+de\s+[^\s<]+\s+de\s+\d{4}\.?/g, '{{cidade}}, {{data_atual}}.');
   const blocks = [...result.matchAll(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi)];
   const candidate = blocks.slice(-5).reverse().find((block) => {
     const text = String(block[3]).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
     const words = text.split(/\s+/).filter(Boolean);
-    return words.length >= 2 && words.length <= 5 && !/(OUTORGANTE|CONTRATANTE|DECLARANTE|LOCAL|DATA|ASSINATURA)/i.test(text) && /^[A-ZÀ-Ý][A-ZÀ-Ýa-zà-ÿ'\- ]+$/.test(text);
+    return words.length >= 2 && words.length <= 5 && !/(OUTORGANTE|CONTRATANTE|DECLARANTE|LOCAL|DATA|ASSINATURA)/i.test(text) && !/[0-9]/.test(text);
   });
   if (candidate) {
     const full = candidate[0];
