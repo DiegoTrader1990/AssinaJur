@@ -91,15 +91,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       group: 'CONTRATAÇÃO E ASSINATURA',
       items: [
         { label: 'Documentos', href: '/documentos', icon: FileCheck2 },
-        { label: 'WhatsApp IA', href: '/whatsapp', icon: MessageSquare, badge: 'IA Robô' },
-        { label: 'Kits & Modelos', href: '/kits', icon: FolderArchive, badge: 'Diferencial' },
+        { label: 'WhatsApp IA', href: '/whatsapp', icon: MessageSquare },
+        { label: 'Kits & Modelos', href: '/kits', icon: FolderArchive },
       ],
     },
     {
       group: 'GESTÃO DO ESCRITÓRIO',
       items: [
         { label: 'Clientes', href: '/clientes', icon: Users },
-        { label: 'Caixa de Entrada', href: '/entrada', icon: FolderArchive, badge: 'Drive' },
+        { label: 'Caixa de Entrada', href: '/entrada', icon: FolderArchive },
         { label: 'Processos', href: '/processos', icon: FolderArchive },
         { label: 'Equipe', href: '/equipe', icon: UserCheck },
         { label: 'Relatórios', href: '/relatorios', icon: BarChart3 },
@@ -214,9 +214,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <Icon className={`w-4 h-4 ${isActive ? 'text-blue-400' : 'text-slate-400'}`} />
                         <span>{item.label}</span>
                       </div>
-                      {item.badge && (
+                      {(item as any).badge && (
                         <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-extrabold text-[9px] uppercase border border-blue-400/30">
-                          {item.badge}
+                          {(item as any).badge}
                         </span>
                       )}
                     </button>

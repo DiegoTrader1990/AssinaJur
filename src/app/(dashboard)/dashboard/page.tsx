@@ -28,13 +28,16 @@ import {
   Activity,
   AlertTriangle,
   FolderPlus,
-  Edit3,
   CheckCircle,
   Zap,
+  Plus,
+  ArrowRight,
+  Filter,
+  Workflow,
 } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  FORMATADORES & MÁSCARAS                                    */
+/*  FORMATADORES                                               */
 /* ═══════════════════════════════════════════════════════════ */
 const formatCpf = (v: string) =>
   v.replace(/\D/g, '').slice(0, 11)
@@ -61,7 +64,7 @@ function ClientSelector({
   value,
   onChange,
   onNew,
-  placeholder = 'Selecione ou busque o cliente...',
+  placeholder = 'Selecione o cliente...',
 }: {
   clients: any[];
   value: string;
@@ -100,7 +103,7 @@ function ClientSelector({
     <div ref={containerRef} className="relative w-full">
       <div
         onClick={() => setOpen(!open)}
-        className={`w-full flex items-center justify-between gap-2.5 px-3 py-2 bg-white rounded-xl border transition-all duration-150 cursor-pointer select-none ${
+        className={`w-full flex items-center justify-between gap-2 px-3 py-2 bg-white rounded-xl border transition-all duration-150 cursor-pointer select-none ${
           open
             ? 'border-[#0B192C] ring-2 ring-[#0B192C]/10 shadow-2xs'
             : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/60 shadow-2xs'
@@ -206,7 +209,7 @@ function ClientSelector({
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  DASHBOARD PRINCIPAL — CENTRAL DE OPERAÇÕES JURÍDICAS       */
+/*  MESA INTELIGENTE DO ADVOGADO (RECONSTRUÇÃO DA HOME)         */
 /* ═══════════════════════════════════════════════════════════ */
 export default function DashboardPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -217,7 +220,14 @@ export default function DashboardPage() {
   const [kits, setKits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Modais da Central de Trabalho
+  // Filtro de Etapa Selecionada no Mapa Operacional
+  const [selectedStageFilter, setSelectedStageFilter] = useState<string | null>(null);
+
+  // Dropdown de Ações "+ Criar"
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const createMenuRef = useRef<HTMLDivElement>(null);
+
+  // Modais de Ação
   const [actionModal, setActionModal] = useState<'ATENDIMENTO' | 'ASSINATURA' | 'KIT' | 'PROCESSO' | null>(null);
 
   // Formulários
@@ -249,6 +259,17 @@ export default function DashboardPage() {
   const [copiedLink, setCopiedLink] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
+  // Fechar dropdown de criar ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (createMenuRef.current && !createMenuRef.current.contains(e.target as Node)) {
+        setCreateMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // Carregamento de dados
   const loadData = useCallback(() => {
     Promise.all([
@@ -277,255 +298,179 @@ export default function DashboardPage() {
     loadData();
   }, [loadData]);
 
-  // Métricas
+  // Métricas de Documentos
   const completedDocs = useMemo(() => documents.filter((d) => d.status === 'CONCLUIDO'), [documents]);
   const pendingDocs = useMemo(
     () => documents.filter((d) => !['CONCLUIDO', 'CANCELADO', 'EXPIRADO'].includes(d.status)),
     [documents]
   );
 
-  const automatedTasksCount = useMemo(() => {
-    return completedDocs.length * 3 + processes.length * 2 + documents.length;
-  }, [completedDocs, processes, documents]);
-
-  const timeSaved = useMemo(() => {
-    const mins = completedDocs.length * 45 + processes.length * 20 + pendingDocs.length * 15;
-    return { h: Math.max(1, Math.floor(mins / 60)), m: mins % 60 };
-  }, [completedDocs, pendingDocs, processes]);
-
-  const pendingDetails = useMemo(() => {
-    const pendingSigns = pendingDocs.length;
-    const incompleteClients = clients.filter((c) => !c.cpfCnpj || !c.phone).length;
-    const total = pendingSigns + incompleteClients;
-    return {
-      total,
-      pendingSigns,
-      incompleteClients,
-      text: total > 0 ? `${incompleteClients} docs + ${pendingSigns} assina.` : 'Nenhuma crítica',
-    };
-  }, [pendingDocs, clients]);
-
-  const signWaitDetails = useMemo(() => {
-    const overdue = pendingDocs.filter((d) => {
-      const diffHours = (Date.now() - new Date(d.createdAt).getTime()) / 36e5;
-      return diffHours >= 24;
-    }).length;
-    return {
-      count: pendingDocs.length,
-      overdue,
-      text: overdue > 0 ? `${overdue} há > 24h` : 'No prazo',
-    };
-  }, [pendingDocs]);
-
-  // Pipeline Jurídico dos Fluxos em Andamento
-  const clientFlows = useMemo(() => {
-    const flows = clients.map((c) => {
+  // Mapeamento Dinâmico de Etapas dos Clientes (Mapa Operacional)
+  const mappedClients = useMemo(() => {
+    return clients.map((c) => {
       const clientDocs = documents.filter((d) => d.clientId === c.id);
       const clientProcesses = processes.filter((p) => p.clientId === c.id);
       const signedDocs = clientDocs.filter((d) => d.status === 'CONCLUIDO');
       const hasPendingSign = clientDocs.some((d) => !['CONCLUIDO', 'CANCELADO'].includes(d.status));
 
-      let currentStep = 1;
+      let stage: 'ENTRADA' | 'DOCUMENTACAO' | 'PREPARACAO' | 'ASSINATURA' | 'PROCESSO' = 'ENTRADA';
       let stageName = 'Entrada';
-      let statusBadge: 'URGENTE' | 'ATENÇÃO' | 'AGUARDANDO' | 'CONCLUÍDO' | 'ATIVO' = 'ATIVO';
-      let nextAction = 'Conferir dados do cliente e iniciar documentação';
-      let actionLabel = 'Continuar atendimento';
+      let statusText = 'Novo cliente cadastrado no sistema';
+      let nextActionText = 'Conferir dados e solicitar documentos iniciais';
+      let actionLabel = 'Iniciar documentação';
       let actionType: 'SIGN' | 'KIT' | 'PROCESS' | 'VIEW' = 'KIT';
-      let urgencyScore = 10;
+      let priorityScore = 10;
 
       if (clientProcesses.length > 0) {
-        currentStep = 5;
+        stage = 'PROCESSO';
         stageName = 'Processo';
-        statusBadge = 'ATIVO';
-        nextAction = 'Acompanhar andamento processual no Dossiê';
+        statusText = 'Processo judicial ativo e acompanhado no Dossiê';
+        nextActionText = 'Acompanhar andamento e movimentações do caso';
         actionLabel = 'Ver Dossiê';
         actionType = 'PROCESS';
-        urgencyScore = 50;
+        priorityScore = 50;
       } else if (signedDocs.length > 0 && !hasPendingSign) {
-        currentStep = 5;
-        stageName = 'Preparação p/ Processo';
-        statusBadge = 'CONCLUÍDO';
-        nextAction = 'Todas as assinaturas colhidas. Pronto para protocolo.';
+        stage = 'PROCESSO';
+        stageName = 'Preparação p/ Ajuizamento';
+        statusText = 'Kit de documentos 100% assinado pelo cliente';
+        nextActionText = 'Ajuizar ou vincular processo judicial ao Dossiê';
         actionLabel = 'Criar Processo';
         actionType = 'PROCESS';
-        urgencyScore = 15;
+        priorityScore = 15;
       } else if (hasPendingSign) {
-        currentStep = 4;
+        stage = 'ASSINATURA';
         stageName = 'Assinatura';
         const isOverdue = clientDocs.some((d) => (Date.now() - new Date(d.createdAt).getTime()) / 36e5 >= 24);
-        statusBadge = isOverdue ? 'URGENTE' : 'AGUARDANDO';
-        nextAction = isOverdue
-          ? 'Assinatura parada há mais de 24 horas'
-          : `Aguardando assinatura de ${signedDocs.length}/${clientDocs.length} doc(s)`;
-        actionLabel = 'Enviar lembrete';
+        statusText = isOverdue
+          ? 'Assinatura digital parada há mais de 24 horas'
+          : `Aguardando assinatura de ${signedDocs.length}/${clientDocs.length} documento(s)`;
+        nextActionText = isOverdue
+          ? 'Enviar lembrete amigável no WhatsApp do cliente'
+          : 'Aguardar ou reenviar link de assinatura';
+        actionLabel = 'Enviar lembrete WhatsApp';
         actionType = 'SIGN';
-        urgencyScore = isOverdue ? 1 : 5;
+        priorityScore = isOverdue ? 1 : 5;
       } else if (!c.cpfCnpj || !c.phone) {
-        currentStep = 2;
+        stage = 'DOCUMENTACAO';
         stageName = 'Documentação';
-        statusBadge = 'ATENÇÃO';
-        nextAction = 'Falta documento de qualificação (CPF / WhatsApp)';
+        statusText = 'Cadastro com pendência de CPF ou telefone';
+        nextActionText = 'Completar qualificação do cliente para confecção de peças';
         actionLabel = 'Completar cadastro';
         actionType = 'KIT';
-        urgencyScore = 8;
+        priorityScore = 8;
+      } else if (clientDocs.length === 0) {
+        stage = 'ENTRADA';
+        stageName = 'Entrada';
+        statusText = 'Novo cliente cadastrado no sistema';
+        nextActionText = 'Conferir dados e solicitar documentos iniciais';
+        actionLabel = 'Iniciar documentação';
+        actionType = 'KIT';
+        priorityScore = 10;
       } else {
-        currentStep = 3;
+        stage = 'PREPARACAO';
         stageName = 'Preparação Jurídica';
-        statusBadge = 'ATENÇÃO';
-        nextAction = 'Gerar procuração e contrato de honorários do kit';
+        statusText = 'Qualificação completa. Pronto para elaboração do Kit';
+        nextActionText = 'Gerar procuração, contrato e declaração a partir do Kit';
         actionLabel = 'Gerar Kit Jurídico';
         actionType = 'KIT';
-        urgencyScore = 12;
+        priorityScore = 12;
       }
 
       return {
         id: c.id,
         name: c.name,
-        legalArea: c.legalArea || 'Previdenciário · Obrigação de Fazer',
+        legalArea: c.legalArea || 'Previdenciário',
         phone: c.phone || c.whatsapp || '',
         cpf: c.cpfCnpj || '',
-        currentStep,
+        stage,
         stageName,
-        statusBadge,
-        nextAction,
+        statusText,
+        nextActionText,
         actionLabel,
         actionType,
-        urgencyScore,
-        updatedAt: new Date(c.updatedAt || c.createdAt),
+        priorityScore,
+        docsCount: clientDocs.length,
+        signedDocsCount: signedDocs.length,
       };
     });
-
-    return flows.sort((a, b) => a.urgencyScore - b.urgencyScore).slice(0, 5);
   }, [clients, documents, processes]);
 
-  // Fila de Ações Humanas: "Precisa de Você"
-  const humanActionsQueue = useMemo(() => {
-    const queue: {
-      id: string;
-      clientName: string;
-      actionText: string;
-      btnLabel: string;
-      btnType: 'KIT' | 'SIGN' | 'PROCESS' | 'CHECK';
-      clientId: string;
-      phone?: string;
-    }[] = [];
+  // Contagem por Etapa da Operação do Escritório (Mapa Operacional)
+  const stageCounts = useMemo(() => {
+    return {
+      ENTRADA: mappedClients.filter((c) => c.stage === 'ENTRADA').length,
+      DOCUMENTACAO: mappedClients.filter((c) => c.stage === 'DOCUMENTACAO').length,
+      PREPARACAO: mappedClients.filter((c) => c.stage === 'PREPARACAO').length,
+      ASSINATURA: mappedClients.filter((c) => c.stage === 'ASSINATURA').length,
+      PROCESSO: mappedClients.filter((c) => c.stage === 'PROCESSO').length,
+      overdueSignatures: pendingDocs.filter((d) => (Date.now() - new Date(d.createdAt).getTime()) / 36e5 >= 24).length,
+    };
+  }, [mappedClients, pendingDocs]);
 
-    // Clientes sem Kit gerado
-    clients.forEach((c) => {
-      const cd = documents.filter((d) => d.clientId === c.id);
-      const cp = processes.filter((p) => p.clientId === c.id);
-      if (cd.length === 0 && cp.length === 0) {
-        queue.push({
-          id: `kit-${c.id}`,
-          clientName: c.name,
-          actionText: 'Gerar Kit Jurídico',
-          btnLabel: 'Gerar',
-          btnType: 'KIT',
-          clientId: c.id,
-        });
-      }
-    });
+  // COMPONENTE 1: SUA PRIORIDADE AGORA (A Situação #1 do Escritório)
+  const topPriorityCase = useMemo(() => {
+    if (mappedClients.length === 0) return null;
+    const sorted = [...mappedClients].sort((a, b) => a.priorityScore - b.priorityScore);
+    return sorted[0];
+  }, [mappedClients]);
 
-    // Assinaturas aguardando há mais de 24h
-    pendingDocs.forEach((d) => {
-      const diffHours = (Date.now() - new Date(d.createdAt).getTime()) / 36e5;
-      if (diffHours >= 24) {
-        queue.push({
-          id: `sign-${d.id}`,
-          clientName: d.client?.name || 'Cliente',
-          actionText: `Assinatura parada há ${Math.floor(diffHours)}h`,
-          btnLabel: 'Lembrar',
-          btnType: 'SIGN',
-          clientId: d.clientId,
-          phone: d.client?.phone || d.client?.whatsapp || '',
-        });
-      }
-    });
+  // COMPONENTE 2: PRÓXIMOS DA FILA (Fila Filtrável de Próximas Ações)
+  const nextInQueue = useMemo(() => {
+    let list = mappedClients;
+    if (selectedStageFilter) {
+      list = list.filter((c) => c.stage === selectedStageFilter);
+    } else {
+      list = [...list].sort((a, b) => a.priorityScore - b.priorityScore);
+    }
+    return list.slice(0, 5);
+  }, [mappedClients, selectedStageFilter]);
 
-    // Clientes prontos para virar processo
-    clients.forEach((c) => {
-      const cd = documents.filter((d) => d.clientId === c.id);
-      const cp = processes.filter((p) => p.clientId === c.id);
-      if (cd.length > 0 && cd.every((d) => d.status === 'CONCLUIDO') && cp.length === 0) {
-        queue.push({
-          id: `proc-${c.id}`,
-          clientName: c.name,
-          actionText: 'Kit assinado. Criar processo',
-          btnLabel: 'Criar',
-          btnType: 'PROCESS',
-          clientId: c.id,
-        });
-      }
-    });
+  // COMPONENTE 3: RESUMO DA ASSINAJUR IA (Síntese Operacional)
+  const aiSummary = useMemo(() => {
+    const items: { text: string; urgent?: boolean }[] = [];
 
-    return queue.slice(0, 3);
-  }, [clients, documents, processes, pendingDocs]);
-
-  // AssinaJur IA Copilot Insights
-  const aiInsights = useMemo(() => {
-    const insights: {
-      id: string;
-      level: 'RED' | 'YELLOW' | 'GREEN';
-      title: string;
-      message: string;
-      actionText: string;
-      clientName?: string;
-      phone?: string;
-    }[] = [];
-
-    const overdueDocs = pendingDocs.filter((d) => {
-      const diffHours = (Date.now() - new Date(d.createdAt).getTime()) / 36e5;
-      return diffHours >= 24;
-    });
-
-    if (overdueDocs.length > 0) {
-      const top = overdueDocs[0];
-      insights.push({
-        id: 'overdue',
-        level: 'RED',
-        title: 'Assinatura Pendente',
-        message: `A assinatura de ${top.client?.name || 'cliente'} em "${top.title}" está parada há > 24h.`,
-        actionText: 'Enviar lembrete WhatsApp',
-        clientName: top.client?.name,
-        phone: top.client?.phone || top.client?.whatsapp || '',
+    const overdueCount = stageCounts.overdueSignatures;
+    if (overdueCount > 0) {
+      items.push({
+        text: `${overdueCount} assinatura(s) aguardando há mais de 24h.`,
+        urgent: true,
       });
     }
 
-    const readyClients = clients.filter((c) => {
-      const cd = documents.filter((d) => d.clientId === c.id);
-      const cp = processes.filter((p) => p.clientId === c.id);
-      return cd.length > 0 && cd.every((d) => d.status === 'CONCLUIDO') && cp.length === 0;
-    });
-
-    if (readyClients.length > 0) {
-      insights.push({
-        id: 'ready-lawsuit',
-        level: 'GREEN',
-        title: 'Pronto para Protocolo',
-        message: `${readyClients[0].name} assinou todo o kit e está pronto para virar processo.`,
-        actionText: 'Criar processo',
-        clientName: readyClients[0].name,
+    const readyForKit = mappedClients.filter((c) => c.stage === 'PREPARACAO').length;
+    if (readyForKit > 0) {
+      items.push({
+        text: `${readyForKit} cliente(s) com documentação pronta para gerar Kit Jurídico.`,
       });
     }
 
-    const incompleteClients = clients.filter((c) => !c.cpfCnpj || !c.phone);
-    if (incompleteClients.length > 0) {
-      insights.push({
-        id: 'incomplete',
-        level: 'YELLOW',
-        title: 'Documentação Pendente',
-        message: `${incompleteClients[0].name} possui pendência de qualificação para confecção das peças.`,
-        actionText: 'Conferir dados',
-        clientName: incompleteClients[0].name,
+    const readyForLawsuit = mappedClients.filter((c) => c.stage === 'PROCESSO' && c.signedDocsCount > 0).length;
+    if (readyForLawsuit > 0) {
+      items.push({
+        text: `${readyForLawsuit} atendimento(s) com Kit assinado aptos para ajuizamento.`,
       });
     }
 
-    return insights.slice(0, 2);
-  }, [pendingDocs, clients, documents, processes]);
+    return items;
+  }, [stageCounts, mappedClients]);
 
-  // Timeline Recente
-  const officeTimeline = useMemo(() => {
-    const list: { time: string; text: string; icon: string; color: string }[] = [];
+  // PROVA DE AUTOMAÇÃO (HOJE O ASSINAJUR TRABALHOU POR VOCÊ)
+  const automationMetrics = useMemo(() => {
+    const docsOrganized = completedDocs.length * 2 + documents.length;
+    const validationsDone = completedDocs.length;
+    const signaturesProcessed = completedDocs.length;
+    const dossiersUpdated = processes.length;
+    return {
+      docsOrganized,
+      validationsDone,
+      signaturesProcessed,
+      dossiersUpdated,
+    };
+  }, [completedDocs, documents, processes]);
+
+  // ÚLTIMAS ATIVIDADES
+  const recentActivities = useMemo(() => {
+    const list: { time: string; text: string }[] = [];
 
     documents.forEach((d) => {
       const dt = new Date(d.updatedAt || d.createdAt);
@@ -534,15 +479,11 @@ export default function DashboardPage() {
         list.push({
           time: timeStr,
           text: `${d.client?.name || 'Cliente'} assinou a procuração`,
-          icon: '✓',
-          color: 'text-emerald-700 bg-emerald-100',
         });
       } else {
         list.push({
           time: timeStr,
           text: `Documento "${d.title}" enviado para ${d.client?.name || 'Cliente'}`,
-          icon: '⏱',
-          color: 'text-amber-700 bg-amber-100',
         });
       }
     });
@@ -553,21 +494,30 @@ export default function DashboardPage() {
       list.push({
         time: timeStr,
         text: `Dossiê criado para "${p.client?.name || p.title}"`,
-        icon: '📁',
-        color: 'text-blue-700 bg-blue-100',
       });
     });
 
-    return list.slice(0, 4);
+    return list.slice(0, 3);
   }, [documents, processes]);
 
-  // Saudação Curta e Nome Compacto
+  // Saudação Curta
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Bom dia';
     if (hour < 18) return 'Boa tarde';
     return 'Boa noite';
   }, []);
+
+  const userFirstName = useMemo(() => {
+    if (!currentUser?.name) return 'Dr. Diego';
+    const first = currentUser.name.trim().split(' ')[0];
+    return first.toLowerCase().startsWith('dr') ? first : `Dr. ${first}`;
+  }, [currentUser]);
+
+  // Total de situações pendentes
+  const totalAttentionCount = useMemo(() => {
+    return stageCounts.overdueSignatures + stageCounts.PREPARACAO + stageCounts.DOCUMENTACAO;
+  }, [stageCounts]);
 
   // Upload rápido
   const handleFastFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -606,14 +556,7 @@ export default function DashboardPage() {
 
   const handleFastDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fastClientId) {
-      setErrorMessage('Selecione o cliente para o envio.');
-      return;
-    }
-    if (!uploadedPdf) {
-      setErrorMessage('Selecione ou arraste um PDF.');
-      return;
-    }
+    if (!fastClientId || !uploadedPdf) return;
     setSubmitting(true);
     setErrorMessage('');
     try {
@@ -649,10 +592,7 @@ export default function DashboardPage() {
   // Modais de Criação
   const handleCreateClientModal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clientName.trim()) {
-      setErrorMessage('Informe o nome completo do cliente.');
-      return;
-    }
+    if (!clientName.trim()) return;
     setSubmitting(true);
     setErrorMessage('');
     try {
@@ -696,10 +636,7 @@ export default function DashboardPage() {
 
   const handleCreateKitDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formClientId || !formKitId) {
-      setErrorMessage('Selecione o cliente e o Kit Jurídico.');
-      return;
-    }
+    if (!formClientId || !formKitId) return;
     setSubmitting(true);
     setErrorMessage('');
     try {
@@ -738,10 +675,7 @@ export default function DashboardPage() {
 
   const handleCreateProcess = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formClientId || !formProcessTitle.trim()) {
-      setErrorMessage('Preencha o título e selecione o cliente.');
-      return;
-    }
+    if (!formClientId || !formProcessTitle.trim()) return;
     setSubmitting(true);
     setErrorMessage('');
     try {
@@ -770,657 +704,531 @@ export default function DashboardPage() {
   };
 
   return (
-    <main className="space-y-4">
+    <main className="space-y-4 max-w-[1600px] mx-auto pb-16">
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 1. CABEÇALHO COMPACTO & VISÃO DO DIA                          */}
+      {/* 1. CABEÇALHO OPERACIONAL SIMPLES                              */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-0">
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
         <div className="space-y-0.5">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-black uppercase tracking-wider text-[#B68B1C] bg-[#B68B1C]/10 border border-[#B68B1C]/20 px-2 py-0.5 rounded-full flex items-center gap-1">
-              <Scale className="w-3 h-3 text-[#B68B1C]" />
-              {office?.name || 'Rodrigues & Soares Advocacia'}
-            </span>
-            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
-              <ShieldCheck className="w-3 h-3 text-emerald-600" />
-              ICP-Brasil
-            </span>
-          </div>
-
           <h1 className="text-xl lg:text-2xl font-extrabold text-[#0B192C] tracking-tight">
-            {greeting}, Dr. Diego. ⚖️
+            {greeting}, {userFirstName}. ⚖️
           </h1>
-          <p className="text-xs text-slate-500 font-medium">
-            Veja o que precisa da sua atenção hoje.
+          <p className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+            {totalAttentionCount > 0 ? (
+              <span className="text-amber-800 font-extrabold flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                {totalAttentionCount} situação(ões) precisam da sua atenção hoje.
+              </span>
+            ) : (
+              <span className="text-emerald-700 font-bold flex items-center gap-1">
+                ✓ Seu escritório está em dia. Nenhuma ação crítica pendente.
+              </span>
+            )}
           </p>
         </div>
 
-        {/* VISÃO DO DIA: KPIS COMPACTOS & ELEGANTES */}
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <div className="bg-gradient-to-br from-amber-50 to-amber-100/40 border border-amber-200/90 px-3 py-1.5 rounded-xl min-w-[120px] shadow-2xs">
-            <p className="text-[9px] font-black text-amber-800 uppercase tracking-wider">⏱ Automação</p>
-            <p className="text-xs font-black text-amber-700 tabular-nums">
-              {timeSaved.h}h{String(timeSaved.m).padStart(2, '0')}m economizadas
-            </p>
-            <p className="text-[10px] text-amber-800/80 font-semibold">{automatedTasksCount} tarefas</p>
-          </div>
+        {/* BOTOES DE AÇÃO DA CENTRAL: [ + Novo Atendimento ] & [ + Criar ▾ ] */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setActionModal('ATENDIMENTO')}
+            className="px-4 py-2 bg-gradient-to-r from-[#D4AF37] to-[#B68B1C] hover:from-[#e0bd48] hover:to-[#c59822] text-[#071B3A] font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 hover:-translate-y-0.5"
+          >
+            <UserPlus className="w-3.5 h-3.5" /> Novo Atendimento
+          </button>
 
-          <div className="bg-white border border-slate-200/90 px-3 py-1.5 rounded-xl text-left min-w-[105px] shadow-2xs">
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Pendências</p>
-            {pendingDetails.total > 0 ? (
-              <>
-                <p className="text-xs font-black text-rose-600 tabular-nums flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-                  {pendingDetails.total} pendência(s)
-                </p>
-                <p className="text-[10px] text-slate-500 truncate">{pendingDetails.text}</p>
-              </>
-            ) : (
-              <>
-                <p className="text-xs font-black text-emerald-700">✓ Nenhuma crítica</p>
-                <p className="text-[10px] text-slate-400">Em dia</p>
-              </>
+          {/* DROPDOWN [+ Criar ▾] */}
+          <div ref={createMenuRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setCreateMenuOpen(!createMenuOpen)}
+              className="px-3.5 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white font-extrabold text-xs rounded-xl transition-all flex items-center gap-1.5 shadow-2xs"
+            >
+              <Plus className="w-3.5 h-3.5 text-[#D4AF37]" /> Criar <ChevronDown className="w-3 h-3 text-slate-300" />
+            </button>
+
+            {createMenuOpen && (
+              <div className="absolute right-0 mt-1.5 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 py-1 divide-y divide-slate-100 text-xs font-bold animate-in fade-in duration-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    setActionModal('ATENDIMENTO');
+                  }}
+                  className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center gap-2"
+                >
+                  <UserPlus className="w-3.5 h-3.5 text-[#B68B1C]" /> Novo Atendimento
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    const el = document.getElementById('fast-signature-card');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center gap-2"
+                >
+                  <FileUp className="w-3.5 h-3.5 text-amber-600" /> Nova Assinatura
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    setActionModal('KIT');
+                  }}
+                  className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center gap-2"
+                >
+                  <Layers className="w-3.5 h-3.5 text-blue-600" /> Gerar Kit Jurídico
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    setActionModal('PROCESSO');
+                  }}
+                  className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center gap-2"
+                >
+                  <Briefcase className="w-3.5 h-3.5 text-purple-600" /> Novo Processo
+                </button>
+              </div>
             )}
-          </div>
-
-          <div className="bg-white border border-slate-200/90 px-3 py-1.5 rounded-xl text-left min-w-[105px] shadow-2xs">
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Assinaturas</p>
-            {signWaitDetails.count > 0 ? (
-              <>
-                <p className="text-xs font-black text-amber-600 tabular-nums">
-                  {signWaitDetails.count} aguardando
-                </p>
-                <p className="text-[10px] text-slate-500 truncate">{signWaitDetails.text}</p>
-              </>
-            ) : (
-              <>
-                <p className="text-xs font-black text-emerald-700">✓ Assinaturas em dia</p>
-                <p className="text-[10px] text-slate-400">Sem atrasos</p>
-              </>
-            )}
-          </div>
-
-          <div className="bg-white border border-slate-200/90 px-3 py-1.5 rounded-xl text-left min-w-[95px] shadow-2xs">
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Clientes</p>
-            <p className="text-xs font-black text-[#0B192C] tabular-nums">
-              {loading ? '—' : clients.length} ativos
-            </p>
-            <p className="text-[10px] text-slate-500">Pipeline ativo</p>
-          </div>
-
-          <div className="bg-white border border-slate-200/90 px-3 py-1.5 rounded-xl text-left min-w-[100px] shadow-2xs">
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Processos</p>
-            <p className="text-xs font-black text-blue-700 tabular-nums">
-              {loading ? '—' : processes.length} no Dossiê
-            </p>
-            <p className="text-[10px] text-slate-500">Centralizados</p>
           </div>
         </div>
       </header>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 2. CENTRAL DE TRABALHO (EQUILIBRADA & DENSIDADE REFINADA)     */}
+      {/* 2. SEÇÃO PRINCIPAL (2 COLUNAS): PRIORIDADE AGORA x RESUMO IA  */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <section className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-[11px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-            <Briefcase className="w-3.5 h-3.5 text-[#B68B1C]" /> Central de Trabalho
-          </h2>
-          <span className="text-[10px] text-slate-400 font-medium">Ações rápidas do escritório</span>
-        </div>
+      <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+        {/* ESQUERDA (8 COLUNAS): SUA PRIORIDADE AGORA */}
+        <div className="lg:col-span-8 bg-gradient-to-br from-white via-slate-50/50 to-amber-50/20 border-2 border-amber-200/90 rounded-2xl p-4 lg:p-5 shadow-xs flex flex-col justify-between space-y-3 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-28 h-28 bg-[#D4AF37]/10 rounded-full blur-xl pointer-events-none" />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-stretch">
-          {/* DESTAQUE PRIORITÁRIO: NOVO ATENDIMENTO (4 COLUNAS COMPACTAS) */}
-          <div className="sm:col-span-2 lg:col-span-4 bg-gradient-to-br from-[#0B192C] via-[#0F2644] to-[#071B3A] text-white p-4 rounded-2xl shadow-2xs border border-slate-800 flex flex-col justify-between relative overflow-hidden group">
-            <div className="space-y-1.5 relative z-10">
-              <div className="flex items-center justify-between">
-                <div className="w-7 h-7 rounded-lg bg-[#D4AF37]/20 border border-[#D4AF37]/30 text-[#D4AF37] flex items-center justify-center font-bold">
-                  <UserPlus className="w-3.5 h-3.5" />
+          {topPriorityCase ? (
+            <>
+              <div className="space-y-2 relative z-10">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                    <h2 className="text-xs font-black uppercase tracking-wider text-rose-800">
+                      Sua Prioridade Agora
+                    </h2>
+                  </div>
+                  <span className="text-[10px] font-extrabold text-[#B68B1C] bg-[#B68B1C]/10 border border-[#B68B1C]/20 px-2 py-0.5 rounded-md">
+                    {topPriorityCase.legalArea}
+                  </span>
                 </div>
-                <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] bg-[#D4AF37]/15 border border-[#D4AF37]/30 px-2 py-0.5 rounded-full">
-                  Fluxo Completo
+
+                {/* DADOS DO CLIENTE & CONTEXTO HUMANO */}
+                <div className="border-l-4 border-[#0B192C] pl-3 py-0.5 space-y-1">
+                  <h3 className="text-base font-extrabold text-[#0B192C]">
+                    {topPriorityCase.name}
+                  </h3>
+                  <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <span className="text-emerald-700 font-extrabold">✓</span> {topPriorityCase.statusText}
+                  </p>
+                </div>
+
+                {/* PRÓXIMO PASSO EXPLICADO */}
+                <div className="bg-white border border-slate-200/90 rounded-xl p-3 space-y-1 shadow-2xs">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                    Próximo Passo Recomendado
+                  </span>
+                  <p className="text-xs font-bold text-slate-900 leading-snug">
+                    {topPriorityCase.nextActionText}
+                  </p>
+                </div>
+              </div>
+
+              {/* BOTÕES DE AÇÃO DIRETA & TRAJETÓRIA */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-200/80">
+                <div className="flex items-center gap-2">
+                  {topPriorityCase.actionType === 'SIGN' && topPriorityCase.phone && (
+                    <a
+                      href={`https://wa.me/55${topPriorityCase.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                        `Olá, ${topPriorityCase.name}! Passando para lembrar da assinatura digital dos seus documentos no escritório ${
+                          office?.name || 'Rodrigues & Soares'
+                        }. Podemos te ajudar a concluir?`
+                      )}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-4 py-2 bg-[#25D366] hover:bg-[#1fb855] text-white text-xs font-extrabold rounded-xl flex items-center gap-1.5 shadow-xs transition-all"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 fill-white" /> Enviar lembrete WhatsApp
+                    </a>
+                  )}
+
+                  {topPriorityCase.actionType === 'KIT' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormClientId(topPriorityCase.id);
+                        setActionModal('KIT');
+                      }}
+                      className="px-4 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-xs font-extrabold rounded-xl flex items-center gap-1.5 shadow-xs transition-all"
+                    >
+                      <Layers className="w-3.5 h-3.5 text-[#D4AF37]" /> Gerar Kit Jurídico
+                    </button>
+                  )}
+
+                  {topPriorityCase.actionType === 'PROCESS' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormClientId(topPriorityCase.id);
+                        setActionModal('PROCESSO');
+                      }}
+                      className="px-4 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-xs font-extrabold rounded-xl flex items-center gap-1.5 shadow-xs transition-all"
+                    >
+                      <Briefcase className="w-3.5 h-3.5 text-[#D4AF37]" /> Criar Processo
+                    </button>
+                  )}
+
+                  <Link
+                    href="/processos"
+                    className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold rounded-xl transition-all"
+                  >
+                    Ver Dossiê
+                  </Link>
+                </div>
+
+                <span className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
+                  Depois disso: <strong className="text-slate-800">Assinatura → Processo</strong>
                 </span>
               </div>
-              <h3 className="text-xs font-extrabold text-white">
-                Novo Atendimento
-              </h3>
-              <p className="text-[11px] text-slate-300 leading-snug">
-                Inicie um novo atendimento e deixe o AssinaJur conduzir todo o fluxo jurídico: <strong className="text-white font-semibold">Cliente → Docs → Assinaturas → Processo</strong>.
-              </p>
+            </>
+          ) : (
+            <div className="py-8 text-center space-y-1">
+              <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
+              <h3 className="text-xs font-extrabold text-slate-800">Nenhuma Ação Crítica Pendente</h3>
+              <p className="text-[11px] text-slate-500">Seu escritório está em dia. 2 fluxos podem avançar hoje.</p>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setActionModal('ATENDIMENTO')}
-              className="mt-3 w-full py-2 bg-gradient-to-r from-[#D4AF37] to-[#B68B1C] hover:from-[#e0bd48] hover:to-[#c59822] text-[#071B3A] font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 hover:-translate-y-0.5"
-            >
-              <UserPlus className="w-3 h-3" /> Iniciar Atendimento
-            </button>
-          </div>
-
-          {/* ATALHO 1: NOVA ASSINATURA (2.66 COLUNAS) */}
-          <div className="lg:col-span-3 sm:col-span-1 bg-white hover:bg-slate-50/80 border border-slate-200/90 p-3.5 rounded-2xl transition-all shadow-2xs flex flex-col justify-between">
-            <div className="space-y-1">
-              <div className="w-7 h-7 rounded-lg bg-amber-100 text-[#B68B1C] flex items-center justify-center font-bold">
-                <FileUp className="w-3.5 h-3.5" />
-              </div>
-              <h3 className="text-xs font-extrabold text-slate-900">Nova Assinatura</h3>
-              <p className="text-[11px] text-slate-500 leading-snug">
-                Enviar diretamente um documento para assinatura.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                const el = document.getElementById('fast-signature-card');
-                if (el) el.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="mt-2.5 w-full py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-800 border border-slate-200 text-[11px] font-bold rounded-lg transition-all"
-            >
-              Enviar PDF
-            </button>
-          </div>
-
-          {/* ATALHO 2: CRIAR KIT JURÍDICO (2.66 COLUNAS) */}
-          <div className="lg:col-span-2 sm:col-span-1 bg-white hover:bg-slate-50/80 border border-slate-200/90 p-3.5 rounded-2xl transition-all shadow-2xs flex flex-col justify-between">
-            <div className="space-y-1">
-              <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
-                <Layers className="w-3.5 h-3.5" />
-              </div>
-              <h3 className="text-xs font-extrabold text-slate-900">Kit Jurídico</h3>
-              <p className="text-[11px] text-slate-500 leading-snug">
-                Gerar documentos a partir dos modelos.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setActionModal('KIT')}
-              className="mt-2.5 w-full py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-800 border border-slate-200 text-[11px] font-bold rounded-lg transition-all"
-            >
-              Gerar Kit
-            </button>
-          </div>
-
-          {/* ATALHO 3: NOVO PROCESSO (2.66 COLUNAS) */}
-          <div className="lg:col-span-3 sm:col-span-1 bg-white hover:bg-slate-50/80 border border-slate-200/90 p-3.5 rounded-2xl transition-all shadow-2xs flex flex-col justify-between">
-            <div className="space-y-1">
-              <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-800 flex items-center justify-center font-bold">
-                <Briefcase className="w-3.5 h-3.5" />
-              </div>
-              <h3 className="text-xs font-extrabold text-slate-900">Novo Processo</h3>
-              <p className="text-[11px] text-slate-500 leading-snug">
-                Vincular processo e centralizar no Dossiê.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setActionModal('PROCESSO')}
-              className="mt-2.5 w-full py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-800 border border-slate-200 text-[11px] font-bold rounded-lg transition-all"
-            >
-              Criar Processo
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* ───────────────────────────────────────────────────────────── */}
-      {/* 3. COLUNA DUPLA: FLUXOS (70%) x PAINEL OPERACIONAL (30%)      */}
-      {/* ───────────────────────────────────────────────────────────── */}
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* COLUNA ESQUERDA: ONDE MEUS CLIENTES ESTÃO? (8 COLUNAS ~70%) */}
-        <div className="lg:col-span-8 bg-white border border-slate-200/90 rounded-2xl p-4.5 shadow-2xs space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-            <div>
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 rounded-md bg-[#0B192C] text-[#D4AF37] flex items-center justify-center text-[10px] font-bold">
-                  <Briefcase className="w-3 h-3" />
-                </div>
-                <h2 className="text-xs font-black text-[#0B192C] uppercase tracking-wide">Fluxos em Andamento</h2>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Onde cada cliente está na jornada jurídica
-              </p>
-            </div>
-
-            <Link
-              href="/clientes"
-              className="text-[11px] font-bold text-[#B68B1C] hover:underline flex items-center gap-1"
-            >
-              Ver todos ({clients.length}) <ChevronRight className="w-3 h-3" />
-            </Link>
-          </div>
-
-          <div className="space-y-2.5">
-            {clientFlows.length > 0 ? (
-              clientFlows.map((flow) => (
-                <div
-                  key={flow.id}
-                  className="p-3 rounded-xl border border-slate-200/80 hover:border-slate-300 bg-slate-50/40 hover:bg-white transition-all space-y-2 shadow-2xs"
-                >
-                  {/* LINHA 1: NOME + ÁREA + BADGE */}
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <h3 className="text-xs font-black text-slate-900 truncate">{flow.name}</h3>
-                      <span className="text-[9px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded shrink-0">
-                        {flow.legalArea}
-                      </span>
-                    </div>
-
-                    <span
-                      className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border shrink-0 ${
-                        flow.statusBadge === 'URGENTE'
-                          ? 'bg-rose-50 text-rose-800 border-rose-200'
-                          : flow.statusBadge === 'ATENÇÃO'
-                          ? 'bg-amber-50 text-amber-800 border-amber-200'
-                          : flow.statusBadge === 'CONCLUÍDO'
-                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                          : 'bg-blue-50 text-blue-800 border-blue-200'
-                      }`}
-                    >
-                      {flow.statusBadge}
-                    </span>
-                  </div>
-
-                  {/* LINHA 2: PIPELINE VISUAL STEPPER COMPACTO */}
-                  <div className="bg-white border border-slate-200/80 rounded-lg px-2.5 py-1.5 flex items-center justify-between text-[10px] font-bold text-slate-600 overflow-x-auto gap-1">
-                    {[
-                      { step: 1, label: 'Entrada' },
-                      { step: 2, label: 'Docs' },
-                      { step: 3, label: 'Preparação' },
-                      { step: 4, label: 'Assinatura' },
-                      { step: 5, label: 'Processo' },
-                    ].map((st, i, arr) => {
-                      const isCompleted = flow.currentStep > st.step;
-                      const isCurrent = flow.currentStep === st.step;
-                      return (
-                        <div key={st.step} className="flex items-center gap-1 shrink-0">
-                          <span
-                            className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                              isCompleted
-                                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                                : isCurrent
-                                ? 'bg-[#0B192C] text-white'
-                                : 'text-slate-400 bg-slate-50'
-                            }`}
-                          >
-                            {isCompleted ? '✓' : isCurrent ? '●' : '○'} {st.label}
-                          </span>
-                          {i < arr.length - 1 && (
-                            <span className="text-slate-300 text-[10px]">——</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* LINHA 3: PRÓXIMA AÇÃO CLARA + BOTÃO */}
-                  <div className="flex items-center justify-between gap-2 pt-0.5 text-xs">
-                    <div className="flex items-center gap-1 text-slate-700 min-w-0">
-                      <span className="text-[9px] font-black uppercase text-slate-400 shrink-0">
-                        Próxima Ação:
-                      </span>
-                      <p className="text-[11px] font-bold text-slate-800 truncate">
-                        {flow.nextAction}
-                      </p>
-                    </div>
-
-                    <div className="shrink-0">
-                      {flow.actionType === 'SIGN' && flow.phone && (
-                        <a
-                          href={`https://wa.me/55${flow.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
-                            `Olá, ${flow.name}! Passando para lembrar sobre a assinatura digital dos seus documentos do processo no escritório ${
-                              office?.name || 'Rodrigues & Soares'
-                            }.`
-                          )}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="px-2.5 py-1 bg-[#25D366] hover:bg-[#1fb855] text-white text-[10px] font-bold rounded-lg flex items-center gap-1 transition-all shadow-2xs"
-                        >
-                          <MessageSquare className="w-3 h-3 fill-white" /> Enviar lembrete
-                        </a>
-                      )}
-
-                      {flow.actionType === 'KIT' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFormClientId(flow.id);
-                            setActionModal('KIT');
-                          }}
-                          className="px-2.5 py-1 bg-[#0B192C] hover:bg-[#152a47] text-white text-[10px] font-bold rounded-lg flex items-center gap-1 transition-all shadow-2xs"
-                        >
-                          <Layers className="w-3 h-3 text-[#D4AF37]" /> {flow.actionLabel}
-                        </button>
-                      )}
-
-                      {flow.actionType === 'PROCESS' && (
-                        <Link
-                          href="/processos"
-                          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-[10px] font-bold rounded-lg flex items-center gap-1 transition-all shadow-2xs"
-                        >
-                          <Folder className="w-3 h-3 text-blue-600" /> {flow.actionLabel}
-                        </Link>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="py-8 text-center space-y-1.5">
-                <Briefcase className="w-6 h-6 text-slate-300 mx-auto" />
-                <p className="text-xs font-bold text-slate-700">Nenhum fluxo em andamento.</p>
-                <button
-                  type="button"
-                  onClick={() => setActionModal('ATENDIMENTO')}
-                  className="px-3 py-1.5 bg-[#0B192C] text-white text-xs font-bold rounded-xl"
-                >
-                  Iniciar Atendimento
-                </button>
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
-        {/* COLUNA DIREITA: O QUE PRECISA ACONTECER AGORA? (4 COLUNAS ~30%) */}
-        <div className="lg:col-span-4 space-y-3.5">
-          {/* 1. ASSINAJUR IA COPILOT */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-2xs space-y-2.5">
-            <div className="bg-[#0B192C] text-white px-3.5 py-2.5 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-lg bg-[#D4AF37]/20 border border-[#D4AF37]/40 text-[#D4AF37] flex items-center justify-center">
+        {/* DIREITA (4 COLUNAS): RESUMO DO ASSINAJUR (IA COPILOT) */}
+        <div className="lg:col-span-4 bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col justify-between space-y-3">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-6 rounded-lg bg-[#0B192C] text-[#D4AF37] flex items-center justify-center">
                   <Bot className="w-3.5 h-3.5" />
                 </div>
-                <div>
-                  <h3 className="text-[11px] font-black tracking-wide text-white uppercase flex items-center gap-1">
-                    AssinaJur IA <Sparkles className="w-2.5 h-2.5 text-[#D4AF37]" />
-                  </h3>
-                  <p className="text-[9px] text-slate-400">Copiloto do escritório</p>
-                </div>
+                <h3 className="text-xs font-black uppercase text-[#0B192C] tracking-wide">
+                  Resumo do AssinaJur
+                </h3>
               </div>
-              <span className="text-[8px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">
-                Ativo
+              <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                IA Copilot
               </span>
             </div>
 
-            <div className="p-3 pt-0 space-y-2">
-              {aiInsights.length > 0 ? (
-                <>
-                  <p className="text-[11px] font-bold text-slate-800">
-                    {aiInsights.length} situação(ões) identificadas:
-                  </p>
+            {aiSummary.length > 0 ? (
+              <div className="space-y-1.5">
+                <p className="text-xs font-bold text-slate-800">
+                  {aiSummary.length} ações dependem da sua atenção:
+                </p>
 
-                  <div className="space-y-1.5">
-                    {aiInsights.map((ins) => (
-                      <div
-                        key={ins.id}
-                        className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5 hover:bg-white transition-all shadow-2xs"
-                      >
-                        <div className="flex items-start gap-1.5">
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full mt-1 shrink-0 ${
-                              ins.level === 'RED'
-                                ? 'bg-rose-500 animate-pulse'
-                                : ins.level === 'YELLOW'
-                                ? 'bg-amber-500'
-                                : 'bg-emerald-500'
-                            }`}
-                          />
-                          <div className="min-w-0">
-                            <p className="text-[9px] font-bold uppercase text-slate-400">{ins.title}</p>
-                            <p className="text-[11px] text-slate-700 leading-snug font-medium">
-                              {ins.message}
-                            </p>
-                          </div>
-                        </div>
-
-                        {ins.phone ? (
-                          <a
-                            href={`https://wa.me/55${ins.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
-                              `Olá, ${ins.clientName}! Passando para lembrar da assinatura dos seus documentos no escritório ${
-                                office?.name || 'Rodrigues & Soares'
-                              }.`
-                            )}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="block text-center py-1 bg-[#25D366] hover:bg-[#1fb855] text-white text-[10px] font-bold rounded-lg transition-all"
-                          >
-                            💬 {ins.actionText}
-                          </a>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (ins.id === 'ready-lawsuit') setActionModal('PROCESSO');
-                              else if (ins.id === 'incomplete') setActionModal('ATENDIMENTO');
-                            }}
-                            className="w-full py-1 bg-slate-800 hover:bg-slate-900 text-white text-[10px] font-bold rounded-lg transition-all"
-                          >
-                            {ins.actionText}
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="p-2.5 bg-emerald-50/60 border border-emerald-200/80 rounded-xl space-y-0.5 text-center">
-                  <p className="text-[11px] font-bold text-emerald-900">✓ Tudo sob controle</p>
-                  <p className="text-[10px] text-emerald-800">
-                    Nenhuma situação crítica identificada.
-                  </p>
-                </div>
-              )}
-
-              {/* RODAPÉ DO COPILOT */}
-              <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500 font-medium">
-                <span>Automatizadas hoje:</span>
-                <strong className="text-slate-800 font-bold">{automatedTasksCount} tarefas</strong>
-              </div>
-            </div>
-          </div>
-
-          {/* 2. PRECISA DE VOCÊ (FILA DE TRABALHO HUMANO) */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-2xs space-y-2">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-md bg-amber-100 text-amber-800 flex items-center justify-center">
-                  <Zap className="w-3 h-3" />
-                </div>
-                <h3 className="text-[11px] font-black text-[#0B192C] uppercase tracking-wide">Precisa de Você</h3>
-              </div>
-              <span className="text-[9px] font-bold text-slate-400">Próximas Ações</span>
-            </div>
-
-            <div className="space-y-1.5">
-              {humanActionsQueue.length > 0 ? (
-                humanActionsQueue.map((item) => (
+                {aiSummary.map((item, i) => (
                   <div
-                    key={item.id}
-                    className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-50 border border-slate-200/70"
+                    key={i}
+                    className={`p-2 rounded-xl border text-[11px] font-medium leading-snug flex items-start gap-1.5 ${
+                      item.urgent
+                        ? 'bg-rose-50/60 border-rose-200 text-rose-900'
+                        : 'bg-slate-50 border-slate-200/80 text-slate-700'
+                    }`}
                   >
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-bold text-slate-900 truncate leading-tight">{item.clientName}</p>
-                      <p className="text-[10px] text-slate-500 truncate">{item.actionText}</p>
-                    </div>
-
-                    {item.btnType === 'SIGN' && item.phone ? (
-                      <a
-                        href={`https://wa.me/55${item.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
-                          `Olá, ${item.clientName}! Passando para lembrar sobre a assinatura dos seus documentos no escritório ${
-                            office?.name || 'Rodrigues & Soares'
-                          }.`
-                        )}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-2 py-1 bg-[#25D366] text-white text-[9px] font-bold rounded shrink-0 shadow-2xs"
-                      >
-                        Lembrar
-                      </a>
-                    ) : item.btnType === 'KIT' ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFormClientId(item.clientId);
-                          setActionModal('KIT');
-                        }}
-                        className="px-2 py-1 bg-[#0B192C] text-white text-[9px] font-bold rounded shrink-0"
-                      >
-                        Gerar
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFormClientId(item.clientId);
-                          setActionModal('PROCESSO');
-                        }}
-                        className="px-2 py-1 bg-blue-700 text-white text-[9px] font-bold rounded shrink-0"
-                      >
-                        Criar
-                      </button>
-                    )}
+                    <span className={`w-1.5 h-1.5 rounded-full mt-1 shrink-0 ${item.urgent ? 'bg-rose-500 animate-pulse' : 'bg-amber-500'}`} />
+                    <span>{item.text}</span>
                   </div>
-                ))
-              ) : (
-                <div className="py-2.5 text-center space-y-0.5">
-                  <CheckCircle className="w-4 h-4 text-emerald-500 mx-auto" />
-                  <p className="text-[10px] font-bold text-slate-800">Nada aguardando sua intervenção.</p>
-                  <p className="text-[9px] text-slate-400">O AssinaJur está cuidando do restante.</p>
-                </div>
-              )}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-3 bg-emerald-50/60 border border-emerald-200/80 rounded-xl space-y-0.5 text-center">
+                <p className="text-xs font-bold text-emerald-900">✓ Tudo sob controle</p>
+                <p className="text-[10px] text-emerald-800">Nenhuma pendência crítica identificada.</p>
+              </div>
+            )}
           </div>
 
-          {/* 3. ATIVIDADE RECENTE (AGORA NO ESCRITÓRIO) */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-2xs space-y-2">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
-              <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-md bg-slate-100 text-slate-700 flex items-center justify-center">
-                  <Activity className="w-3 h-3" />
-                </div>
-                <h3 className="text-[11px] font-black text-[#0B192C] uppercase tracking-wide">Atividade Recente</h3>
-              </div>
-              <Link href="/relatorios" className="text-[10px] font-bold text-[#B68B1C] hover:underline">
-                Ver tudo
-              </Link>
-            </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (topPriorityCase) {
+                setFormClientId(topPriorityCase.id);
+                setActionModal('KIT');
+              }
+            }}
+            className="w-full py-2 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-xl transition-all"
+          >
+            Resolver Pendências
+          </button>
+        </div>
+      </section>
 
-            <div className="space-y-1.5">
-              {officeTimeline.length > 0 ? (
-                officeTimeline.map((ev, idx) => (
-                  <div key={idx} className="flex items-center gap-2 text-[10px] py-1 border-b border-slate-50 last:border-0">
-                    <span className="font-mono text-slate-400 w-8 shrink-0">{ev.time}</span>
-                    <span className={`w-4 h-4 rounded flex items-center justify-center text-[9px] font-bold shrink-0 ${ev.color}`}>
-                      {ev.icon}
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* 3. OPERAÇÃO DO ESCRITÓRIO (MAPA OPERACIONAL HORIZONTAL)       */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      <section className="bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-2xs space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xs font-black uppercase text-[#0B192C] tracking-wide flex items-center gap-1.5">
+              <Workflow className="w-3.5 h-3.5 text-[#B68B1C]" /> Operação do Escritório
+            </h2>
+            <span className="text-[10px] text-slate-400 font-medium">Clique em uma etapa para filtrar a fila abaixo</span>
+          </div>
+
+          {selectedStageFilter && (
+            <button
+              type="button"
+              onClick={() => setSelectedStageFilter(null)}
+              className="text-[10px] font-bold text-slate-500 hover:text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md flex items-center gap-1"
+            >
+              Limpar filtro (Ver todos) <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+
+        {/* FAIXA HORIZONTAL INTEGRADA DE ETAPAS */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs font-bold">
+          {[
+            { key: 'ENTRADA', label: 'Entrada', count: stageCounts.ENTRADA },
+            { key: 'DOCUMENTACAO', label: 'Documentação', count: stageCounts.DOCUMENTACAO },
+            { key: 'PREPARACAO', label: 'Preparação', count: stageCounts.PREPARACAO },
+            { key: 'ASSINATURA', label: 'Assinatura', count: stageCounts.ASSINATURA, badge: stageCounts.overdueSignatures > 0 ? `${stageCounts.overdueSignatures} atrasada` : null },
+            { key: 'PROCESSO', label: 'Processos', count: stageCounts.PROCESSO },
+          ].map((st) => {
+            const isSelected = selectedStageFilter === st.key;
+            return (
+              <button
+                key={st.key}
+                type="button"
+                onClick={() => setSelectedStageFilter(isSelected ? null : st.key)}
+                className={`p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col items-center justify-between ${
+                  isSelected
+                    ? 'bg-[#0B192C] text-white border-[#0B192C] shadow-xs'
+                    : 'bg-slate-50/70 hover:bg-white border-slate-200/90 text-slate-800'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <span className={`text-[10px] font-black uppercase tracking-wider ${isSelected ? 'text-slate-300' : 'text-slate-400'}`}>
+                    {st.label}
+                  </span>
+                  {st.badge && (
+                    <span className="text-[8px] font-black text-rose-700 bg-rose-100 px-1.5 py-0.2 rounded-full">
+                      {st.badge}
                     </span>
-                    <p className="text-slate-700 font-medium truncate flex-1 leading-tight">{ev.text}</p>
+                  )}
+                </div>
+
+                <span className={`text-base font-black tabular-nums mt-1 ${isSelected ? 'text-[#D4AF37]' : 'text-slate-900'}`}>
+                  {st.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* 4. PRÓXIMOS DA FILA (FILA DE TRABALHO RESUMIDA)               */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      <section className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-black uppercase text-[#0B192C] tracking-wide flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-amber-500" /> Próximos da Fila
+            </h3>
+            {selectedStageFilter && (
+              <span className="text-[10px] font-bold text-[#B68B1C] bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                Filtrado por: {selectedStageFilter}
+              </span>
+            )}
+          </div>
+
+          <Link href="/clientes" className="text-[11px] font-bold text-[#B68B1C] hover:underline flex items-center gap-1">
+            Ver todos os fluxos ({clients.length}) <ChevronRight className="w-3 h-3" />
+          </Link>
+        </div>
+
+        <div className="divide-y divide-slate-100">
+          {nextInQueue.length > 0 ? (
+            nextInQueue.map((item) => (
+              <div key={item.id} className="py-2.5 flex items-center justify-between gap-3 hover:bg-slate-50/50 transition-colors px-1 rounded-lg">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-extrabold text-slate-900 truncate">{item.name}</p>
+                    <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded">
+                      {item.legalArea}
+                    </span>
+                    <span className="text-[9px] font-bold text-[#0B192C] bg-slate-200/60 px-1.5 py-0.2 rounded">
+                      {item.stageName}
+                    </span>
                   </div>
-                ))
-              ) : (
-                <p className="text-[10px] text-slate-400 py-2 text-center">Nenhum evento recente registrado.</p>
-              )}
+                  <p className="text-[11px] text-slate-600 truncate mt-0.5">
+                    {item.statusText}
+                  </p>
+                </div>
+
+                <div className="shrink-0">
+                  {item.actionType === 'SIGN' && item.phone ? (
+                    <a
+                      href={`https://wa.me/55${item.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                        `Olá, ${item.name}! Passando para lembrar da assinatura dos seus documentos no escritório ${
+                          office?.name || 'Rodrigues & Soares'
+                        }.`
+                      )}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1.5 bg-[#25D366] hover:bg-[#1fb855] text-white text-[11px] font-bold rounded-lg transition-all shadow-2xs"
+                    >
+                      Lembrar
+                    </a>
+                  ) : item.actionType === 'KIT' ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormClientId(item.id);
+                        setActionModal('KIT');
+                      }}
+                      className="px-3 py-1.5 bg-[#0B192C] hover:bg-[#152a47] text-white text-[11px] font-bold rounded-lg transition-all shadow-2xs"
+                    >
+                      {item.actionLabel}
+                    </button>
+                  ) : (
+                    <Link
+                      href="/processos"
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold rounded-lg transition-all"
+                    >
+                      {item.actionLabel}
+                    </Link>
+                  )}
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="py-6 text-center text-xs text-slate-400 font-medium">
+              Nenhum cliente nesta etapa no momento.
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* 5. PROVA DE AUTOMAÇÃO & ÚLTIMAS ATIVIDADES                     */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+        {/* HOJE O ASSINAJUR TRABALHOU POR VOCÊ (8 COLUNAS) */}
+        <div className="lg:col-span-8 bg-gradient-to-r from-slate-900 to-[#0B192C] text-white rounded-2xl p-4 shadow-2xs flex flex-col justify-between space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase tracking-wider text-[#D4AF37] flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5" /> Hoje o AssinaJur trabalhou por você
+            </span>
+            <span className="text-[10px] font-bold text-slate-300">
+              Automação Contínua
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center py-1">
+            <div className="bg-white/5 border border-white/10 rounded-xl p-2">
+              <p className="text-sm font-black text-[#D4AF37]">{automationMetrics.docsOrganized}</p>
+              <p className="text-[10px] text-slate-300 font-medium">documentos organizados</p>
             </div>
+            <div className="bg-white/5 border border-white/10 rounded-xl p-2">
+              <p className="text-sm font-black text-emerald-400">{automationMetrics.validationsDone}</p>
+              <p className="text-[10px] text-slate-300 font-medium">validações concluídas</p>
+            </div>
+            <div className="bg-white/5 border border-white/10 rounded-xl p-2">
+              <p className="text-sm font-black text-amber-400">{automationMetrics.signaturesProcessed}</p>
+              <p className="text-[10px] text-slate-300 font-medium">assinaturas processadas</p>
+            </div>
+            <div className="bg-white/5 border border-white/10 rounded-xl p-2">
+              <p className="text-sm font-black text-blue-400">{automationMetrics.dossiersUpdated}</p>
+              <p className="text-[10px] text-slate-300 font-medium">Dossiês atualizados</p>
+            </div>
+          </div>
+        </div>
+
+        {/* ÚLTIMAS ATIVIDADES (4 COLUNAS) */}
+        <div className="lg:col-span-4 bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-2xs space-y-2">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+            <h3 className="text-[11px] font-black uppercase text-[#0B192C] tracking-wide flex items-center gap-1.5">
+              <Activity className="w-3 h-3 text-slate-500" /> Últimas Atividades
+            </h3>
+            <Link href="/relatorios" className="text-[10px] font-bold text-[#B68B1C] hover:underline">
+              Histórico
+            </Link>
+          </div>
+
+          <div className="space-y-1.5">
+            {recentActivities.length > 0 ? (
+              recentActivities.map((ev, idx) => (
+                <div key={idx} className="flex items-center gap-2 text-[10px] py-0.5">
+                  <span className="font-mono text-slate-400 w-8 shrink-0">{ev.time}</span>
+                  <p className="text-slate-700 font-medium truncate flex-1 leading-tight">{ev.text}</p>
+                </div>
+              ))
+            ) : (
+              <p className="text-[10px] text-slate-400 py-2 text-center">Nenhum evento recente.</p>
+            )}
           </div>
         </div>
       </section>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 4. DOSSIÊ JURÍDICO & ASSINATURA RÁPIDA (QUADRANTE INFERIOR)   */}
+      {/* 6. CARD DE ASSINATURA RÁPIDA (PDF COMPACTO PARA ENVIOS AVULSOS) */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* DOSSIÊ JURÍDICO (8 COLUNAS) */}
-        <div className="lg:col-span-8 bg-white border border-slate-200/90 rounded-2xl p-4.5 shadow-2xs space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-md bg-amber-100 text-amber-700 flex items-center justify-center">
-                <Folder className="w-3.5 h-3.5 fill-amber-400/30" />
-              </div>
-              <h3 className="text-xs font-black text-[#0B192C] uppercase tracking-wide">Dossiê Jurídico & Processos</h3>
-            </div>
-            <Link href="/processos" className="text-[11px] font-bold text-[#B68B1C] hover:underline flex items-center gap-1">
-              Ver todos os processos <ChevronRight className="w-3 h-3" />
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {processes.slice(0, 4).map((p) => (
-              <div
-                key={p.id}
-                className="p-3 rounded-xl border border-slate-200 hover:border-amber-400 bg-slate-50/50 hover:bg-white transition-all space-y-1 shadow-2xs"
-              >
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-bold text-slate-900 truncate">{p.title}</p>
-                  <span className="text-[9px] font-bold text-slate-500 bg-white border border-slate-200 px-1 py-0.2 rounded">
-                    {p.legalArea || 'Previdenciário'}
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-500 truncate">
-                  Cliente: <strong className="text-slate-700">{p.client?.name || 'Cliente'}</strong>
-                </p>
-                <p className="text-[10px] text-slate-400 flex items-center gap-1">
-                  <Clock className="w-2.5 h-2.5 text-slate-300" /> Dossiê ativo e sincronizado
-                </p>
-              </div>
-            ))}
-
-            {!processes.length && (
-              <div className="col-span-2 py-6 text-center space-y-1">
-                <Folder className="w-6 h-6 text-slate-300 mx-auto" />
-                <p className="text-xs text-slate-500">Nenhum processo ativo no momento.</p>
-              </div>
-            )}
+      <section id="fast-signature-card" className="bg-white border-2 border-slate-200/90 rounded-2xl p-4 shadow-2xs space-y-2.5">
+        <div className="border-b border-slate-100 pb-2 flex items-center justify-between">
+          <div>
+            <h3 className="text-xs font-black uppercase tracking-wider text-[#0B192C] flex items-center gap-1.5">
+              <FileUp className="w-3.5 h-3.5 text-[#B68B1C]" /> Assinatura Rápida de PDF Avulso
+            </h3>
+            <p className="text-[10px] text-slate-500">Envie um PDF diretamente para o WhatsApp do cliente</p>
           </div>
         </div>
 
-        {/* ASSINATURA RÁPIDA (4 COLUNAS COMPACTAS) */}
-        <div id="fast-signature-card" className="lg:col-span-4 bg-white border-2 border-slate-200/90 rounded-2xl p-4 shadow-2xs space-y-2.5">
-          <div className="border-b border-slate-100 pb-2">
-            <h3 className="text-xs font-black uppercase tracking-wider text-[#0B192C] flex items-center gap-1.5">
-              <FileUp className="w-3.5 h-3.5 text-[#B68B1C]" /> Assinatura Rápida
-            </h3>
-            <p className="text-[10px] text-slate-500">Precisa apenas enviar um PDF avulso?</p>
-          </div>
-
-          {executionResult ? (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1.5 text-xs">
-              <p className="font-bold text-emerald-900">✓ Link de Assinatura Pronto!</p>
-              <p className="text-emerald-800 text-[10px]">Destinatário: {executionResult.clientName}</p>
-              <div className="flex gap-2 pt-1">
-                {executionResult.clientPhone && (
-                  <a
-                    href={`https://wa.me/55${executionResult.clientPhone.replace(/\D/g, '')}?text=${encodeURIComponent(whatsappMsg)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-2.5 py-1 bg-[#25D366] text-white font-bold rounded-lg text-[10px]"
-                  >
-                    WhatsApp
-                  </a>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(executionResult.signatureLink);
-                    setCopiedLink(true);
-                    setTimeout(() => setCopiedLink(false), 2000);
-                  }}
-                  className="px-2.5 py-1 bg-white border border-slate-200 text-slate-700 font-bold rounded-lg text-[10px]"
+        {executionResult ? (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1.5 text-xs">
+            <p className="font-bold text-emerald-900">✓ Link de Assinatura Pronto!</p>
+            <p className="text-emerald-800 text-[10px]">Destinatário: {executionResult.clientName}</p>
+            <div className="flex gap-2 pt-1">
+              {executionResult.clientPhone && (
+                <a
+                  href={`https://wa.me/55${executionResult.clientPhone.replace(/\D/g, '')}?text=${encodeURIComponent(whatsappMsg)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1 bg-[#25D366] text-white font-bold rounded-lg text-[10px]"
                 >
-                  {copiedLink ? 'Copiado!' : 'Copiar'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setExecutionResult(null);
-                    setUploadedPdf(null);
-                  }}
-                  className="p-1 text-slate-400 hover:text-slate-600 ml-auto"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
+                  Abrir WhatsApp
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(executionResult.signatureLink);
+                  setCopiedLink(true);
+                  setTimeout(() => setCopiedLink(false), 2000);
+                }}
+                className="px-3 py-1 bg-white border border-slate-200 text-slate-700 font-bold rounded-lg text-[10px]"
+              >
+                {copiedLink ? 'Copiado!' : 'Copiar Link'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setExecutionResult(null);
+                  setUploadedPdf(null);
+                }}
+                className="p-1 text-slate-400 hover:text-slate-600 ml-auto"
+              >
+                <X className="w-3 h-3" />
+              </button>
             </div>
-          ) : (
-            <form onSubmit={handleFastDispatch} className="space-y-2">
+          </div>
+        ) : (
+          <form onSubmit={handleFastDispatch} className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
+            <div className="sm:col-span-6">
               <div
                 onDragOver={(e) => {
                   e.preventDefault();
@@ -1463,14 +1271,15 @@ export default function DashboardPage() {
                     <span className="text-[9px] text-slate-400 font-bold underline">Trocar</span>
                   </div>
                 ) : (
-                  <div className="space-y-0.5">
-                    <FileUp className="w-4 h-4 text-[#B68B1C] mx-auto" />
-                    <p className="text-[10px] font-bold text-slate-800">Solte um PDF aqui</p>
-                    <p className="text-[9px] text-slate-400">ou clique para buscar</p>
+                  <div className="flex items-center justify-center gap-2">
+                    <FileUp className="w-4 h-4 text-[#B68B1C]" />
+                    <span className="text-xs font-bold text-slate-800">Arraste um PDF aqui ou clique para selecionar</span>
                   </div>
                 )}
               </div>
+            </div>
 
+            <div className="sm:col-span-4">
               <ClientSelector
                 clients={clients}
                 value={fastClientId}
@@ -1478,24 +1287,20 @@ export default function DashboardPage() {
                 placeholder="Selecione o cliente..."
                 onNew={() => setActionModal('ATENDIMENTO')}
               />
+            </div>
 
+            <div className="sm:col-span-2">
               <button
                 type="submit"
                 disabled={submitting || !fastClientId || !uploadedPdf}
-                className="w-full py-2 bg-[#0B192C] hover:bg-[#152a47] text-white font-bold text-xs rounded-xl transition-all disabled:opacity-35 flex items-center justify-center gap-1.5 shadow-2xs"
+                className="w-full py-2 bg-[#0B192C] hover:bg-[#152a47] text-white font-bold text-xs rounded-xl transition-all disabled:opacity-35 flex items-center justify-center gap-1 shadow-2xs"
               >
                 {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3 text-[#D4AF37]" />}
-                Disparar Assinatura
+                Disparar
               </button>
-            </form>
-          )}
-
-          {errorMessage && (
-            <p className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 p-1.5 rounded-lg">
-              {errorMessage}
-            </p>
-          )}
-        </div>
+            </div>
+          </form>
+        )}
       </section>
 
       {/* ───────────────────────────────────────────────────────────── */}
