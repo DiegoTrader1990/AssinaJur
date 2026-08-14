@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import brazilMap from '@svg-maps/brazil';
 import { AlertCircle, ChevronRight, MapPinned, RefreshCw, UsersRound, BriefcaseBusiness } from 'lucide-react';
@@ -47,6 +47,8 @@ export default function BrazilOperationsMap() {
   const [mode, setMode] = useState<Mode>('CLIENTS');
   const [selectedUf, setSelectedUf] = useState<string | null>(null);
   const [hoveredUf, setHoveredUf] = useState<string | null>(null);
+  const pathRefs = useRef<Record<string, SVGPathElement | null>>({});
+  const [labelPositions, setLabelPositions] = useState<Record<string, { x: number; y: number; width: number; height: number }>>({});
 
   useEffect(() => {
     fetch('/api/clients/geographic-summary')
@@ -83,6 +85,17 @@ export default function BrazilOperationsMap() {
       setSelectedUf((data?.states || []).find((state) => metricFor(state, nextMode) > 0)?.uf || null);
     }
   };
+
+  useLayoutEffect(() => {
+    if (!data) return;
+    const positions: Record<string, { x: number; y: number; width: number; height: number }> = {};
+    Object.entries(pathRefs.current).forEach(([uf, path]) => {
+      if (!path) return;
+      const box = path.getBBox();
+      positions[uf] = { x: box.x + box.width / 2, y: box.y + box.height / 2, width: box.width, height: box.height };
+    });
+    setLabelPositions(positions);
+  }, [data]);
 
   return (
     <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-[0_18px_55px_-42px_rgba(11,25,44,0.5)] lg:p-7">
@@ -141,7 +154,9 @@ export default function BrazilOperationsMap() {
 
           <div className="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-5 lg:items-start">
             <div className="lg:col-span-3">
-              <div className="relative mx-auto max-w-[510px] rounded-2xl bg-[#F8FAFC] p-3 sm:p-5">
+              <div className="relative mx-auto max-w-[510px] overflow-hidden rounded-2xl border border-slate-200/80 bg-[radial-gradient(circle_at_30%_25%,#ffffff_0%,#f8fafc_46%,#edf2f7_100%)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] sm:p-5">
+                <div className="pointer-events-none absolute -left-20 top-1/3 h-40 w-40 rounded-full bg-[#D4AF37]/10 blur-3xl" />
+                <div className="pointer-events-none absolute -right-16 bottom-0 h-44 w-44 rounded-full bg-blue-500/10 blur-3xl" />
                 <svg viewBox={brazilMap.viewBox} className="h-auto w-full" aria-label="Mapa do Brasil por estados">
                   {brazilMap.locations.map((location) => {
                     const uf = UF_BY_LOCATION_ID[location.id];
@@ -155,6 +170,7 @@ export default function BrazilOperationsMap() {
                     return (
                       <path
                         key={location.id}
+                        ref={(node) => { pathRefs.current[uf] = node; }}
                         d={location.path}
                         fill={fill}
                         stroke={selected ? '#E0BD48' : active ? '#A77815' : '#D9E1EA'}
@@ -166,6 +182,25 @@ export default function BrazilOperationsMap() {
                       >
                         <title>{state ? `${state.name}: ${plural(metric, mode === 'CLIENTS' ? 'cliente' : 'processo')}` : location.name}</title>
                       </path>
+                    );
+                  })}
+                  {brazilMap.locations.map((location) => {
+                    const uf = UF_BY_LOCATION_ID[location.id];
+                    const state = stateByUf[uf];
+                    const position = labelPositions[uf];
+                    const metric = metricFor(state, mode);
+                    if (!state || !position || metric === 0 || position.width < 18 || position.height < 14) return null;
+                    const selected = selectedUf === uf;
+                    return (
+                      <text
+                        key={`label-${uf}`}
+                        x={position.x}
+                        y={position.y + 2.5}
+                        textAnchor="middle"
+                        className={`pointer-events-none select-none text-[8px] font-black ${selected ? 'fill-[#E0BD48]' : 'fill-[#071B3A]'}`}
+                      >
+                        {uf} {metric}
+                      </text>
                     );
                   })}
                 </svg>
@@ -188,7 +223,9 @@ export default function BrazilOperationsMap() {
 
             <aside className="lg:col-span-2">
               {selectedState && selectedMetric > 0 ? (
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_12px_32px_-26px_rgba(11,25,44,0.8)]">
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_32px_-26px_rgba(11,25,44,0.8)]">
+                  <div className="bg-[#071B3A] px-4 py-2 text-[10px] font-black uppercase tracking-[0.15em] text-[#E0BD48]">Painel territorial</div>
+                  <div className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#9E7515]">Estado selecionado</p>
@@ -218,6 +255,7 @@ export default function BrazilOperationsMap() {
                   <div className="mt-4 flex gap-2">
                     <Link href="/clientes" className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-center text-[11px] font-extrabold text-[#071B3A] transition hover:bg-slate-50">Ver clientes</Link>
                     <Link href="/processos" className="flex-1 rounded-xl bg-[#071B3A] px-3 py-2 text-center text-[11px] font-extrabold text-white transition hover:bg-[#102D55]">Ver processos</Link>
+                  </div>
                   </div>
                 </div>
               ) : (
