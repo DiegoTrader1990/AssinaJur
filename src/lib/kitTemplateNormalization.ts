@@ -5,6 +5,21 @@ export function formatCpfCnpj(value: string | null | undefined): string {
   return String(value || '');
 }
 
+// Remove o nome isolado que alguns fluxos de revisão herdaram do Word antes da
+// qualificação. Recebe também o nome já renderizado, pois a cópia temporária da
+// revisão pode não conter mais a tag {{cliente_nome}}.
+export function removeStandaloneClientNameBeforeQualification(contentHtml: string, clientName: string): string {
+  const normalizedName = String(clientName || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('pt-BR');
+  if (!normalizedName) return contentHtml;
+  let reachedQualification = false;
+  return contentHtml.replace(/<(p|div|h1|h2|h3)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attrs, inner) => {
+    const visibleText = String(inner).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
+    if (/^OUTORGANTE\s*:/i.test(visibleText)) reachedQualification = true;
+    const isClientName = visibleText.toLocaleUpperCase('pt-BR') === normalizedName || /^{{\s*cliente_nome\s*}}$/i.test(visibleText);
+    return !reachedQualification && isClientName ? '' : `<${tag}${attrs}>${inner}</${tag}>`;
+  });
+}
+
 // Garante que dados pessoais nunca fiquem fixos em modelos usados dentro de um kit.
 export function ensureClientQualificationTokens(contentHtml: string, title: string, documentType = '') {
   let result = contentHtml;

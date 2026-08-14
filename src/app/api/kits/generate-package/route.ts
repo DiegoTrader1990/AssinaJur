@@ -5,7 +5,7 @@ import { logAuditEvent } from '@/lib/audit';
 import { compileTemplateToPdf } from '@/lib/templateCompiler';
 import { getFileBuffer } from '@/lib/storage';
 import { randomUUID } from 'crypto';
-import { ensureClientQualificationTokens, formatCpfCnpj } from '@/lib/kitTemplateNormalization';
+import { ensureClientQualificationTokens, formatCpfCnpj, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -221,10 +221,13 @@ export async function POST(req: Request) {
       const template = item.template;
 
       // Usar conteúdo customizado (editado pelo advogado) se disponível
-      const normalizedClientContent = ensureClientQualificationTokens(
-        customContents?.[template.id] || template.contentHtml,
-        template.title,
-        template.documentType,
+      const normalizedClientContent = removeStandaloneClientNameBeforeQualification(
+        ensureClientQualificationTokens(
+          customContents?.[template.id] || template.contentHtml,
+          template.title,
+          template.documentType,
+        ),
+        client.name,
       );
       const clientContentHtml = ensureClientRepresentativeQualification(
         normalizedClientContent,
