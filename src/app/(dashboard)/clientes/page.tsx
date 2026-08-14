@@ -150,12 +150,20 @@ export default function ClientsPage() {
   const [formData, setFormData] = useState(EMPTY_CLIENT_FORM);
 
   useEffect(() => {
-    fetchClients();
+    // Deep-link vindo da Home (ex: CTA "Iniciar documentação" / "Completar cadastro") já filtra o cliente certo
+    const deepLinkQuery = searchParams.get('q');
+    if (deepLinkQuery) {
+      setSearchQuery(deepLinkQuery);
+      fetchClients(deepLinkQuery);
+    } else {
+      fetchClients();
+    }
+
     if (searchParams.get('novo') === 'true') {
       setFormData({ ...EMPTY_CLIENT_FORM, name: searchParams.get('nome') || '', legalArea: searchParams.get('area') || 'Previdenciário' });
       setShowModal(true);
     }
-    
+
     // Atualização em tempo real para exibir novos cadastros vindos do WhatsApp
     const interval = setInterval(fetchClients, 6000);
     const onFocus = () => fetchClients();
@@ -168,11 +176,12 @@ export default function ClientsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  const fetchClients = async () => {
+  const fetchClients = async (queryOverride?: string) => {
     try {
       const url = new URL('/api/clients', window.location.origin);
       url.searchParams.set('_t', Date.now().toString());
-      if (searchQuery) url.searchParams.set('q', searchQuery);
+      const effectiveQuery = queryOverride !== undefined ? queryOverride : searchQuery;
+      if (effectiveQuery) url.searchParams.set('q', effectiveQuery);
       if (areaFilter) url.searchParams.set('legalArea', areaFilter);
 
       const res = await fetch(url.toString(), {

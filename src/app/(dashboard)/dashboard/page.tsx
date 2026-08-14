@@ -30,7 +30,6 @@ import {
   FolderPlus,
   CheckCircle,
   Zap,
-  Plus,
   ArrowRight,
   Filter,
   Workflow,
@@ -234,6 +233,8 @@ export default function DashboardPage() {
   // Formulários
   const [formClientId, setFormClientId] = useState('');
   const [formKitId, setFormKitId] = useState('');
+  // Seleção rápida de cliente no bloco "Criar Kit Jurídico" do Fluxo Rápido
+  const [quickKitClientId, setQuickKitClientId] = useState('');
   const [formProcessTitle, setFormProcessTitle] = useState('');
   const [formProcessArea, setFormProcessArea] = useState('Previdenciário');
   const [formProcessNumber, setFormProcessNumber] = useState('');
@@ -319,7 +320,8 @@ export default function DashboardPage() {
       let statusText = 'Novo cliente cadastrado no sistema';
       let nextActionText = 'Conferir dados e solicitar documentos iniciais';
       let actionLabel = 'Iniciar documentação';
-      let actionType: 'SIGN' | 'KIT' | 'PROCESS' | 'VIEW' = 'KIT';
+      // Cada etapa aponta para UMA ação coerente: nunca "Gerar Kit" numa etapa de documentação, por exemplo.
+      let actionType: 'SIGN' | 'KIT' | 'DOCS' | 'VIEW_PROCESS' | 'CREATE_PROCESS' = 'DOCS';
       let priorityScore = 10;
 
       if (clientProcesses.length > 0) {
@@ -327,8 +329,8 @@ export default function DashboardPage() {
         stageName = 'Processo';
         statusText = 'Processo judicial ativo e acompanhado no Dossiê';
         nextActionText = 'Acompanhar andamento e movimentações do caso';
-        actionLabel = 'Ver Dossiê';
-        actionType = 'PROCESS';
+        actionLabel = 'Analisar movimentação';
+        actionType = 'VIEW_PROCESS';
         priorityScore = 50;
       } else if (signedDocs.length > 0 && !hasPendingSign) {
         stage = 'PROCESSO';
@@ -336,7 +338,7 @@ export default function DashboardPage() {
         statusText = 'Kit de documentos 100% assinado pelo cliente';
         nextActionText = 'Ajuizar ou vincular processo judicial ao Dossiê';
         actionLabel = 'Criar Processo';
-        actionType = 'PROCESS';
+        actionType = 'CREATE_PROCESS';
         priorityScore = 15;
       } else if (hasPendingSign) {
         stage = 'ASSINATURA';
@@ -348,7 +350,7 @@ export default function DashboardPage() {
         nextActionText = isOverdue
           ? 'Enviar lembrete amigável no WhatsApp do cliente'
           : 'Aguardar ou reenviar link de assinatura';
-        actionLabel = 'Enviar lembrete WhatsApp';
+        actionLabel = isOverdue ? 'Enviar lembrete' : 'Reenviar link';
         actionType = 'SIGN';
         priorityScore = isOverdue ? 1 : 5;
       } else if (!c.cpfCnpj || !c.phone) {
@@ -357,7 +359,7 @@ export default function DashboardPage() {
         statusText = 'Cadastro com pendência de CPF ou telefone';
         nextActionText = 'Completar qualificação do cliente para confecção de peças';
         actionLabel = 'Completar cadastro';
-        actionType = 'KIT';
+        actionType = 'DOCS';
         priorityScore = 8;
       } else if (clientDocs.length === 0) {
         stage = 'ENTRADA';
@@ -365,7 +367,7 @@ export default function DashboardPage() {
         statusText = 'Novo cliente cadastrado no sistema';
         nextActionText = 'Conferir dados e solicitar documentos iniciais';
         actionLabel = 'Iniciar documentação';
-        actionType = 'KIT';
+        actionType = 'DOCS';
         priorityScore = 10;
       } else {
         stage = 'PREPARACAO';
@@ -469,36 +471,63 @@ export default function DashboardPage() {
     };
   }, [completedDocs, documents, processes]);
 
-  // ÚLTIMAS ATIVIDADES
+  // ÚLTIMAS ATIVIDADES — agrupadas por cliente/minuto para nunca repetir o mesmo evento
   const recentActivities = useMemo(() => {
-    const list: { time: string; text: string }[] = [];
+    type Ev = { ts: number; time: string; text: string };
+
+    const groups = new Map<
+      string,
+      { ts: number; clientName: string; count: number; kind: 'signed' | 'sent'; sample: string }
+    >();
 
     documents.forEach((d) => {
       const dt = new Date(d.updatedAt || d.createdAt);
-      const timeStr = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      if (d.status === 'CONCLUIDO') {
-        list.push({
-          time: timeStr,
-          text: `${d.client?.name || 'Cliente'} assinou a procuração`,
-        });
+      const kind: 'signed' | 'sent' = d.status === 'CONCLUIDO' ? 'signed' : 'sent';
+      const key = `${d.clientId}-${kind}-${Math.floor(dt.getTime() / 60000)}`;
+      const clientName = d.client?.name || 'Cliente';
+      const existing = groups.get(key);
+      if (existing) {
+        existing.count += 1;
+        if (dt.getTime() > existing.ts) existing.ts = dt.getTime();
       } else {
-        list.push({
-          time: timeStr,
-          text: `Documento "${d.title}" enviado para ${d.client?.name || 'Cliente'}`,
-        });
+        groups.set(key, { ts: dt.getTime(), clientName, count: 1, kind, sample: d.title || 'documento' });
       }
     });
 
-    processes.forEach((p) => {
-      const dt = new Date(p.createdAt);
-      const timeStr = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      list.push({
-        time: timeStr,
-        text: `Dossiê criado para "${p.client?.name || p.title}"`,
-      });
+    const docEvents: Ev[] = Array.from(groups.values()).map((g) => {
+      const dt = new Date(g.ts);
+      const time = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const text =
+        g.kind === 'signed'
+          ? g.count > 1
+            ? `${g.clientName} assinou ${g.count} documentos`
+            : `${g.clientName} assinou "${g.sample}"`
+          : g.count > 1
+          ? `${g.count} documentos enviados para ${g.clientName}`
+          : `"${g.sample}" enviado para ${g.clientName}`;
+      return { ts: g.ts, time, text };
     });
 
-    return list.slice(0, 3);
+    const processEvents: Ev[] = processes.map((p) => {
+      const dt = new Date(p.createdAt);
+      return {
+        ts: dt.getTime(),
+        time: dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        text: `Dossiê criado para "${p.client?.name || p.title}"`,
+      };
+    });
+
+    const all = [...docEvents, ...processEvents].sort((a, b) => b.ts - a.ts);
+
+    // Segurança extra: nunca mostrar a mesma linha duas vezes seguidas
+    const deduped: Ev[] = [];
+    for (const ev of all) {
+      if (deduped.length === 0 || deduped[deduped.length - 1].text !== ev.text) {
+        deduped.push(ev);
+      }
+    }
+
+    return deduped.slice(0, 4);
   }, [documents, processes]);
 
   // Saudação Curta
@@ -709,96 +738,269 @@ export default function DashboardPage() {
       {/* ───────────────────────────────────────────────────────────── */}
       {/* 1. CABEÇALHO OPERACIONAL SIMPLES                              */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
-        <div className="space-y-0.5">
-          <h1 className="text-xl lg:text-2xl font-extrabold text-[#0B192C] tracking-tight">
-            {greeting}, {userFirstName}. ⚖️
-          </h1>
-          <p className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-            {totalAttentionCount > 0 ? (
-              <span className="text-amber-800 font-extrabold flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                {totalAttentionCount} situação(ões) precisam da sua atenção hoje.
-              </span>
-            ) : (
-              <span className="text-emerald-700 font-bold flex items-center gap-1">
-                ✓ Seu escritório está em dia. Nenhuma ação crítica pendente.
-              </span>
-            )}
-          </p>
-        </div>
-
-        {/* BOTOES DE AÇÃO DA CENTRAL: [ + Novo Atendimento ] & [ + Criar ▾ ] */}
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => setActionModal('ATENDIMENTO')}
-            className="px-4 py-2 bg-gradient-to-r from-[#D4AF37] to-[#B68B1C] hover:from-[#e0bd48] hover:to-[#c59822] text-[#071B3A] font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 hover:-translate-y-0.5"
-          >
-            <UserPlus className="w-3.5 h-3.5" /> Novo Atendimento
-          </button>
-
-          {/* DROPDOWN [+ Criar ▾] */}
-          <div ref={createMenuRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setCreateMenuOpen(!createMenuOpen)}
-              className="px-3.5 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white font-extrabold text-xs rounded-xl transition-all flex items-center gap-1.5 shadow-2xs"
-            >
-              <Plus className="w-3.5 h-3.5 text-[#D4AF37]" /> Criar <ChevronDown className="w-3 h-3 text-slate-300" />
-            </button>
-
-            {createMenuOpen && (
-              <div className="absolute right-0 mt-1.5 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 py-1 divide-y divide-slate-100 text-xs font-bold animate-in fade-in duration-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCreateMenuOpen(false);
-                    setActionModal('ATENDIMENTO');
-                  }}
-                  className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center gap-2"
-                >
-                  <UserPlus className="w-3.5 h-3.5 text-[#B68B1C]" /> Novo Atendimento
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCreateMenuOpen(false);
-                    const el = document.getElementById('fast-signature-card');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center gap-2"
-                >
-                  <FileUp className="w-3.5 h-3.5 text-amber-600" /> Nova Assinatura
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCreateMenuOpen(false);
-                    setActionModal('KIT');
-                  }}
-                  className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center gap-2"
-                >
-                  <Layers className="w-3.5 h-3.5 text-blue-600" /> Gerar Kit Jurídico
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCreateMenuOpen(false);
-                    setActionModal('PROCESSO');
-                  }}
-                  className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center gap-2"
-                >
-                  <Briefcase className="w-3.5 h-3.5 text-purple-600" /> Novo Processo
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+      <header className="border-b border-slate-200/80 pb-3">
+        <h1 className="text-xl lg:text-2xl font-extrabold text-[#0B192C] tracking-tight">
+          {greeting}, {userFirstName}. ⚖️
+        </h1>
+        <p className="text-xs font-semibold text-slate-600 flex items-center gap-1.5 mt-0.5">
+          {totalAttentionCount > 0 ? (
+            <span className="text-amber-800 font-extrabold flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              {totalAttentionCount} situação(ões) precisam da sua atenção hoje.
+            </span>
+          ) : (
+            <span className="text-emerald-700 font-bold flex items-center gap-1">
+              ✓ Seu escritório está em dia. Nenhuma ação crítica pendente.
+            </span>
+          )}
+        </p>
       </header>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 2. SEÇÃO PRINCIPAL (2 COLUNAS): PRIORIDADE AGORA x RESUMO IA  */}
+      {/* 1.5 FLUXO RÁPIDO — a porta de entrada para o trabalho          */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      <section className="space-y-2">
+        <div className="flex items-center gap-2 px-0.5">
+          <h2 className="text-[11px] font-black uppercase tracking-wider text-slate-500">Fluxo Rápido</h2>
+          <span className="text-[10px] text-slate-400 font-medium">Comece por aqui</span>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
+          {/* BLOCO 1 — ENVIAR DOCUMENTO */}
+          <div
+            id="quick-upload-card"
+            className="lg:col-span-4 bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-2xs flex flex-col gap-2.5"
+          >
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-slate-100 text-[#0B192C] flex items-center justify-center shrink-0">
+                <FileUp className="w-3.5 h-3.5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-xs font-black text-[#0B192C] leading-tight">Enviar Documento</h3>
+                <p className="text-[10px] text-slate-500 leading-tight">Envie um PDF para assinatura do cliente.</p>
+              </div>
+            </div>
+
+            {executionResult ? (
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1.5 text-xs">
+                <p className="font-bold text-emerald-900 text-[11px]">✓ Link de assinatura pronto</p>
+                <p className="text-emerald-800 text-[10px] truncate">Destinatário: {executionResult.clientName}</p>
+                <div className="flex items-center gap-1.5 pt-0.5">
+                  {executionResult.clientPhone && (
+                    <a
+                      href={`https://wa.me/55${executionResult.clientPhone.replace(/\D/g, '')}?text=${encodeURIComponent(whatsappMsg)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-2.5 py-1 bg-[#25D366] text-white font-bold rounded-lg text-[10px]"
+                    >
+                      WhatsApp
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(executionResult.signatureLink);
+                      setCopiedLink(true);
+                      setTimeout(() => setCopiedLink(false), 2000);
+                    }}
+                    className="px-2.5 py-1 bg-white border border-slate-200 text-slate-700 font-bold rounded-lg text-[10px]"
+                  >
+                    {copiedLink ? 'Copiado!' : 'Copiar link'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExecutionResult(null);
+                      setUploadedPdf(null);
+                      setFastClientId('');
+                    }}
+                    className="p-1 text-slate-400 hover:text-slate-600 ml-auto"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleFastDispatch} className="flex flex-col gap-2">
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragActive(true);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    setDragActive(false);
+                  }}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    setDragActive(false);
+                    if (e.dataTransfer.files?.[0]) await handleFastFileProcess(e.dataTransfer.files[0]);
+                  }}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`border border-dashed rounded-xl px-2.5 py-2 text-center cursor-pointer transition-all ${
+                    dragActive
+                      ? 'border-[#B68B1C] bg-amber-50'
+                      : uploadedPdf
+                      ? 'border-emerald-400 bg-emerald-50/50'
+                      : 'border-slate-300 bg-slate-50/50 hover:border-[#B68B1C] hover:bg-amber-50/40'
+                  }`}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf"
+                    onChange={handleFastFileSelect}
+                    className="hidden"
+                  />
+
+                  {uploadingPdf ? (
+                    <Loader2 className="w-3.5 h-3.5 text-[#B68B1C] animate-spin mx-auto" />
+                  ) : uploadedPdf ? (
+                    <div className="flex items-center justify-between gap-2 text-left">
+                      <p className="text-[11px] font-bold text-slate-900 truncate">{uploadedPdf.name}</p>
+                      <span className="text-[9px] text-slate-400 font-bold underline shrink-0">Trocar</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center gap-1.5">
+                      <FileUp className="w-3.5 h-3.5 text-[#B68B1C]" />
+                      <span className="text-[11px] font-bold text-slate-700">Arraste aqui ou selecione um PDF</span>
+                    </div>
+                  )}
+                </div>
+
+                <ClientSelector
+                  clients={clients}
+                  value={fastClientId}
+                  onChange={setFastClientId}
+                  placeholder="Selecionar cliente..."
+                  onNew={() => setActionModal('ATENDIMENTO')}
+                />
+
+                <button
+                  type="submit"
+                  disabled={submitting || !fastClientId || !uploadedPdf}
+                  className="w-full py-1.5 bg-[#0B192C] hover:bg-[#152a47] text-white font-bold text-[11px] rounded-lg transition-all disabled:opacity-35 flex items-center justify-center gap-1.5 shadow-2xs"
+                >
+                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3 text-[#D4AF37]" />}
+                  Enviar para assinatura
+                </button>
+              </form>
+            )}
+          </div>
+
+          {/* BLOCO 2 — CRIAR KIT JURÍDICO */}
+          <div className="lg:col-span-4 bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-2xs flex flex-col gap-2.5">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
+                <Layers className="w-3.5 h-3.5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-xs font-black text-[#0B192C] leading-tight">Criar Kit Jurídico</h3>
+                <p className="text-[10px] text-slate-500 leading-tight">
+                  Gere procuração, contrato e declarações a partir dos modelos.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 mt-auto">
+              <ClientSelector
+                clients={clients}
+                value={quickKitClientId}
+                onChange={setQuickKitClientId}
+                placeholder="Selecionar cliente..."
+                onNew={() => setActionModal('ATENDIMENTO')}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (quickKitClientId) setFormClientId(quickKitClientId);
+                  setActionModal('KIT');
+                }}
+                className="w-full py-1.5 bg-[#0B192C] hover:bg-[#152a47] text-white font-bold text-[11px] rounded-lg transition-all flex items-center justify-center gap-1.5 shadow-2xs"
+              >
+                <Layers className="w-3 h-3 text-[#D4AF37]" /> Gerar Kit
+              </button>
+            </div>
+          </div>
+
+          {/* BLOCO 3 — NOVO ATENDIMENTO (porta de entrada do sistema, leve destaque) */}
+          <div className="lg:col-span-4 bg-gradient-to-br from-[#0B192C] to-[#152a47] text-white rounded-2xl p-3.5 shadow-xs flex flex-col gap-2.5 relative overflow-hidden">
+            <div className="absolute -top-6 -right-6 w-24 h-24 bg-[#D4AF37]/10 rounded-full blur-xl pointer-events-none" />
+            <div className="flex items-center gap-2 relative z-10">
+              <div className="w-7 h-7 rounded-lg bg-[#D4AF37]/15 text-[#D4AF37] flex items-center justify-center shrink-0">
+                <UserPlus className="w-3.5 h-3.5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-xs font-black text-white leading-tight">Novo Atendimento</h3>
+                <p className="text-[10px] text-slate-300 leading-tight">
+                  Cadastre um cliente e inicie o fluxo jurídico completo.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 mt-auto relative z-10">
+              <button
+                type="button"
+                onClick={() => setActionModal('ATENDIMENTO')}
+                className="flex-1 py-1.5 bg-gradient-to-r from-[#D4AF37] to-[#B68B1C] hover:from-[#e0bd48] hover:to-[#c59822] text-[#071B3A] font-extrabold text-[11px] rounded-lg shadow-2xs transition-all flex items-center justify-center gap-1.5"
+              >
+                <UserPlus className="w-3 h-3" /> Iniciar Atendimento
+              </button>
+
+              {/* MENU "OUTRAS AÇÕES" — absorve o antigo botão [+ Criar] */}
+              <div ref={createMenuRef} className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setCreateMenuOpen(!createMenuOpen)}
+                  aria-label="Outras ações"
+                  className="p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-all"
+                >
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${createMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {createMenuOpen && (
+                  <div className="absolute right-0 bottom-full mb-1.5 w-44 bg-white border border-slate-200 rounded-xl shadow-lg z-50 py-1 divide-y divide-slate-100 text-xs font-bold animate-in fade-in duration-100">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreateMenuOpen(false);
+                        const el = document.getElementById('quick-upload-card');
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      }}
+                      className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center gap-2"
+                    >
+                      <FileUp className="w-3.5 h-3.5 text-amber-600" /> Nova Assinatura
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreateMenuOpen(false);
+                        setActionModal('KIT');
+                      }}
+                      className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center gap-2"
+                    >
+                      <Layers className="w-3.5 h-3.5 text-blue-600" /> Gerar Kit Jurídico
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreateMenuOpen(false);
+                        setActionModal('PROCESSO');
+                      }}
+                      className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center gap-2"
+                    >
+                      <Briefcase className="w-3.5 h-3.5 text-purple-600" /> Novo Processo
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* 2. OPERAÇÃO INTELIGENTE: PRIORIDADE AGORA x RESUMO IA         */}
       {/* ───────────────────────────────────────────────────────────── */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
         {/* ESQUERDA (8 COLUNAS): SUA PRIORIDADE AGORA */}
@@ -841,7 +1043,7 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* BOTÕES DE AÇÃO DIRETA & TRAJETÓRIA */}
+              {/* BOTÃO DE AÇÃO ÚNICO E COERENTE COM A ETAPA DO CLIENTE */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-200/80">
                 <div className="flex items-center gap-2">
                   {topPriorityCase.actionType === 'SIGN' && topPriorityCase.phone && (
@@ -855,8 +1057,17 @@ export default function DashboardPage() {
                       rel="noreferrer"
                       className="px-4 py-2 bg-[#25D366] hover:bg-[#1fb855] text-white text-xs font-extrabold rounded-xl flex items-center gap-1.5 shadow-xs transition-all"
                     >
-                      <MessageSquare className="w-3.5 h-3.5 fill-white" /> Enviar lembrete WhatsApp
+                      <MessageSquare className="w-3.5 h-3.5 fill-white" /> {topPriorityCase.actionLabel}
                     </a>
+                  )}
+
+                  {topPriorityCase.actionType === 'DOCS' && (
+                    <Link
+                      href={`/clientes?q=${encodeURIComponent(topPriorityCase.name)}`}
+                      className="px-4 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-xs font-extrabold rounded-xl flex items-center gap-1.5 shadow-xs transition-all"
+                    >
+                      <FolderPlus className="w-3.5 h-3.5 text-[#D4AF37]" /> {topPriorityCase.actionLabel}
+                    </Link>
                   )}
 
                   {topPriorityCase.actionType === 'KIT' && (
@@ -868,11 +1079,11 @@ export default function DashboardPage() {
                       }}
                       className="px-4 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-xs font-extrabold rounded-xl flex items-center gap-1.5 shadow-xs transition-all"
                     >
-                      <Layers className="w-3.5 h-3.5 text-[#D4AF37]" /> Gerar Kit Jurídico
+                      <Layers className="w-3.5 h-3.5 text-[#D4AF37]" /> {topPriorityCase.actionLabel}
                     </button>
                   )}
 
-                  {topPriorityCase.actionType === 'PROCESS' && (
+                  {topPriorityCase.actionType === 'CREATE_PROCESS' && (
                     <button
                       type="button"
                       onClick={() => {
@@ -881,20 +1092,31 @@ export default function DashboardPage() {
                       }}
                       className="px-4 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-xs font-extrabold rounded-xl flex items-center gap-1.5 shadow-xs transition-all"
                     >
-                      <Briefcase className="w-3.5 h-3.5 text-[#D4AF37]" /> Criar Processo
+                      <Briefcase className="w-3.5 h-3.5 text-[#D4AF37]" /> {topPriorityCase.actionLabel}
                     </button>
                   )}
 
-                  <Link
-                    href="/processos"
-                    className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold rounded-xl transition-all"
-                  >
-                    Ver Dossiê
-                  </Link>
+                  {topPriorityCase.actionType === 'VIEW_PROCESS' && (
+                    <Link
+                      href={`/processos?clienteId=${topPriorityCase.id}`}
+                      className="px-4 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-xs font-extrabold rounded-xl flex items-center gap-1.5 shadow-xs transition-all"
+                    >
+                      <Briefcase className="w-3.5 h-3.5 text-[#D4AF37]" /> {topPriorityCase.actionLabel}
+                    </Link>
+                  )}
+
+                  {topPriorityCase.actionType !== 'VIEW_PROCESS' && (
+                    <Link
+                      href={`/processos?clienteId=${topPriorityCase.id}`}
+                      className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold rounded-xl transition-all"
+                    >
+                      Ver Dossiê
+                    </Link>
+                  )}
                 </div>
 
                 <span className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
-                  Depois disso: <strong className="text-slate-800">Assinatura → Processo</strong>
+                  Etapa atual: <strong className="text-slate-800">{topPriorityCase.stageName}</strong>
                 </span>
               </div>
             </>
@@ -968,7 +1190,7 @@ export default function DashboardPage() {
       </section>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 3. OPERAÇÃO DO ESCRITÓRIO (MAPA OPERACIONAL HORIZONTAL)       */}
+      {/* 3. CONTROLE DO ESCRITÓRIO: OPERAÇÃO DO ESCRITÓRIO (ETAPAS)    */}
       {/* ───────────────────────────────────────────────────────────── */}
       <section className="bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-2xs space-y-2">
         <div className="flex items-center justify-between">
@@ -1032,7 +1254,7 @@ export default function DashboardPage() {
       </section>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 4. PRÓXIMOS DA FILA (FILA DE TRABALHO RESUMIDA)               */}
+      {/* 3.5 CONTROLE DO ESCRITÓRIO: PRÓXIMOS DA FILA                  */}
       {/* ───────────────────────────────────────────────────────────── */}
       <section className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs space-y-3">
         <div className="flex items-center justify-between border-b border-slate-100 pb-2">
@@ -1083,7 +1305,7 @@ export default function DashboardPage() {
                       rel="noreferrer"
                       className="px-3 py-1.5 bg-[#25D366] hover:bg-[#1fb855] text-white text-[11px] font-bold rounded-lg transition-all shadow-2xs"
                     >
-                      Lembrar
+                      {item.actionLabel}
                     </a>
                   ) : item.actionType === 'KIT' ? (
                     <button
@@ -1096,9 +1318,27 @@ export default function DashboardPage() {
                     >
                       {item.actionLabel}
                     </button>
+                  ) : item.actionType === 'CREATE_PROCESS' ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormClientId(item.id);
+                        setActionModal('PROCESSO');
+                      }}
+                      className="px-3 py-1.5 bg-[#0B192C] hover:bg-[#152a47] text-white text-[11px] font-bold rounded-lg transition-all shadow-2xs"
+                    >
+                      {item.actionLabel}
+                    </button>
+                  ) : item.actionType === 'VIEW_PROCESS' ? (
+                    <Link
+                      href={`/processos?clienteId=${item.id}`}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold rounded-lg transition-all"
+                    >
+                      {item.actionLabel}
+                    </Link>
                   ) : (
                     <Link
-                      href="/processos"
+                      href={`/clientes?q=${encodeURIComponent(item.name)}`}
                       className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold rounded-lg transition-all"
                     >
                       {item.actionLabel}
@@ -1116,197 +1356,64 @@ export default function DashboardPage() {
       </section>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 5. PROVA DE AUTOMAÇÃO & ÚLTIMAS ATIVIDADES                     */}
+      {/* 5. VISÃO E ESCALA: OPERAÇÃO NACIONAL (MAPA COM DADOS REAIS)   */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
-        {/* HOJE O ASSINAJUR TRABALHOU POR VOCÊ (8 COLUNAS) */}
-        <div className="lg:col-span-8 bg-gradient-to-r from-slate-900 to-[#0B192C] text-white rounded-2xl p-4 shadow-2xs flex flex-col justify-between space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase tracking-wider text-[#D4AF37] flex items-center gap-1.5">
-              <Zap className="w-3.5 h-3.5" /> Hoje o AssinaJur trabalhou por você
-            </span>
-            <span className="text-[10px] font-bold text-slate-300">
-              Automação Contínua
-            </span>
-          </div>
+      <BrazilOperationsMap />
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center py-1">
-            <div className="bg-white/5 border border-white/10 rounded-xl p-2">
-              <p className="text-sm font-black text-[#D4AF37]">{automationMetrics.docsOrganized}</p>
-              <p className="text-[10px] text-slate-300 font-medium">documentos organizados</p>
-            </div>
-            <div className="bg-white/5 border border-white/10 rounded-xl p-2">
-              <p className="text-sm font-black text-emerald-400">{automationMetrics.validationsDone}</p>
-              <p className="text-[10px] text-slate-300 font-medium">validações concluídas</p>
-            </div>
-            <div className="bg-white/5 border border-white/10 rounded-xl p-2">
-              <p className="text-sm font-black text-amber-400">{automationMetrics.signaturesProcessed}</p>
-              <p className="text-[10px] text-slate-300 font-medium">assinaturas processadas</p>
-            </div>
-            <div className="bg-white/5 border border-white/10 rounded-xl p-2">
-              <p className="text-sm font-black text-blue-400">{automationMetrics.dossiersUpdated}</p>
-              <p className="text-[10px] text-slate-300 font-medium">Dossiês atualizados</p>
-            </div>
-          </div>
+      {/* HOJE O ASSINAJUR TRABALHOU POR VOCÊ — acabamento premium, sem faixa escura pesada */}
+      <section className="bg-white border border-slate-200/90 rounded-2xl p-4 lg:p-5 shadow-2xs">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
+          <h2 className="text-[11px] font-black uppercase tracking-wider text-[#0B192C] flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5 text-[#B68B1C]" /> Hoje o AssinaJur trabalhou por você
+          </h2>
+          <span className="text-[10px] font-bold text-slate-400">Automação contínua</span>
         </div>
 
-        {/* ÚLTIMAS ATIVIDADES (4 COLUNAS) */}
-        <div className="lg:col-span-4 bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-2xs space-y-2">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
-            <h3 className="text-[11px] font-black uppercase text-[#0B192C] tracking-wide flex items-center gap-1.5">
-              <Activity className="w-3 h-3 text-slate-500" /> Últimas Atividades
-            </h3>
-            <Link href="/relatorios" className="text-[10px] font-bold text-[#B68B1C] hover:underline">
-              Histórico
-            </Link>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3 text-center">
+            <p className="text-lg font-black text-[#0B192C]">{automationMetrics.docsOrganized}</p>
+            <p className="text-[10px] text-slate-500 font-semibold mt-0.5 leading-tight">documentos organizados</p>
           </div>
-
-          <div className="space-y-1.5">
-            {recentActivities.length > 0 ? (
-              recentActivities.map((ev, idx) => (
-                <div key={idx} className="flex items-center gap-2 text-[10px] py-0.5">
-                  <span className="font-mono text-slate-400 w-8 shrink-0">{ev.time}</span>
-                  <p className="text-slate-700 font-medium truncate flex-1 leading-tight">{ev.text}</p>
-                </div>
-              ))
-            ) : (
-              <p className="text-[10px] text-slate-400 py-2 text-center">Nenhum evento recente.</p>
-            )}
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3 text-center">
+            <p className="text-lg font-black text-emerald-600">{automationMetrics.validationsDone}</p>
+            <p className="text-[10px] text-slate-500 font-semibold mt-0.5 leading-tight">validações concluídas</p>
+          </div>
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3 text-center">
+            <p className="text-lg font-black text-[#B68B1C]">{automationMetrics.signaturesProcessed}</p>
+            <p className="text-[10px] text-slate-500 font-semibold mt-0.5 leading-tight">assinaturas processadas</p>
+          </div>
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3 text-center">
+            <p className="text-lg font-black text-blue-600">{automationMetrics.dossiersUpdated}</p>
+            <p className="text-[10px] text-slate-500 font-semibold mt-0.5 leading-tight">Dossiês atualizados</p>
           </div>
         </div>
       </section>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 5.5 OPERAÇÃO NACIONAL (MAPA DO BRASIL COM DADOS 100% REAIS)   */}
+      {/* 6. APOIO: ÚLTIMAS ATIVIDADES                                  */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <BrazilOperationsMap />
-
-      {/* ───────────────────────────────────────────────────────────── */}
-      {/* 6. CARD DE ASSINATURA RÁPIDA (PDF COMPACTO PARA ENVIOS AVULSOS) */}
-      {/* ───────────────────────────────────────────────────────────── */}
-      <section id="fast-signature-card" className="bg-white border-2 border-slate-200/90 rounded-2xl p-4 shadow-2xs space-y-2.5">
-        <div className="border-b border-slate-100 pb-2 flex items-center justify-between">
-          <div>
-            <h3 className="text-xs font-black uppercase tracking-wider text-[#0B192C] flex items-center gap-1.5">
-              <FileUp className="w-3.5 h-3.5 text-[#B68B1C]" /> Assinatura Rápida de PDF Avulso
-            </h3>
-            <p className="text-[10px] text-slate-500">Envie um PDF diretamente para o WhatsApp do cliente</p>
-          </div>
+      <section className="bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-2xs space-y-2">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+          <h3 className="text-[11px] font-black uppercase text-[#0B192C] tracking-wide flex items-center gap-1.5">
+            <Activity className="w-3 h-3 text-slate-500" /> Últimas Atividades
+          </h3>
+          <Link href="/relatorios" className="text-[10px] font-bold text-[#B68B1C] hover:underline">
+            Histórico
+          </Link>
         </div>
 
-        {executionResult ? (
-          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1.5 text-xs">
-            <p className="font-bold text-emerald-900">✓ Link de Assinatura Pronto!</p>
-            <p className="text-emerald-800 text-[10px]">Destinatário: {executionResult.clientName}</p>
-            <div className="flex gap-2 pt-1">
-              {executionResult.clientPhone && (
-                <a
-                  href={`https://wa.me/55${executionResult.clientPhone.replace(/\D/g, '')}?text=${encodeURIComponent(whatsappMsg)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1 bg-[#25D366] text-white font-bold rounded-lg text-[10px]"
-                >
-                  Abrir WhatsApp
-                </a>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(executionResult.signatureLink);
-                  setCopiedLink(true);
-                  setTimeout(() => setCopiedLink(false), 2000);
-                }}
-                className="px-3 py-1 bg-white border border-slate-200 text-slate-700 font-bold rounded-lg text-[10px]"
-              >
-                {copiedLink ? 'Copiado!' : 'Copiar Link'}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setExecutionResult(null);
-                  setUploadedPdf(null);
-                }}
-                className="p-1 text-slate-400 hover:text-slate-600 ml-auto"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-        ) : (
-          <form onSubmit={handleFastDispatch} className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
-            <div className="sm:col-span-6">
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragActive(true);
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault();
-                  setDragActive(false);
-                }}
-                onDrop={async (e) => {
-                  e.preventDefault();
-                  setDragActive(false);
-                  if (e.dataTransfer.files?.[0]) await handleFastFileProcess(e.dataTransfer.files[0]);
-                }}
-                onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-xl p-2.5 text-center cursor-pointer transition-all ${
-                  dragActive
-                    ? 'border-[#B68B1C] bg-amber-50'
-                    : uploadedPdf
-                    ? 'border-emerald-400 bg-emerald-50/50'
-                    : 'border-slate-300 bg-slate-50/50 hover:border-[#B68B1C]'
-                }`}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf"
-                  onChange={handleFastFileSelect}
-                  className="hidden"
-                />
-
-                {uploadingPdf ? (
-                  <Loader2 className="w-4 h-4 text-[#B68B1C] animate-spin mx-auto my-0.5" />
-                ) : uploadedPdf ? (
-                  <div className="flex items-center justify-between text-left">
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-slate-900 truncate">{uploadedPdf.name}</p>
-                      <p className="text-[9px] text-emerald-700 font-semibold">✓ PDF pronto</p>
-                    </div>
-                    <span className="text-[9px] text-slate-400 font-bold underline">Trocar</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center gap-2">
-                    <FileUp className="w-4 h-4 text-[#B68B1C]" />
-                    <span className="text-xs font-bold text-slate-800">Arraste um PDF aqui ou clique para selecionar</span>
-                  </div>
-                )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+          {recentActivities.length > 0 ? (
+            recentActivities.map((ev, idx) => (
+              <div key={idx} className="flex items-center gap-2 text-[10px] py-0.5">
+                <span className="font-mono text-slate-400 w-8 shrink-0">{ev.time}</span>
+                <p className="text-slate-700 font-medium truncate flex-1 leading-tight">{ev.text}</p>
               </div>
-            </div>
-
-            <div className="sm:col-span-4">
-              <ClientSelector
-                clients={clients}
-                value={fastClientId}
-                onChange={setFastClientId}
-                placeholder="Selecione o cliente..."
-                onNew={() => setActionModal('ATENDIMENTO')}
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <button
-                type="submit"
-                disabled={submitting || !fastClientId || !uploadedPdf}
-                className="w-full py-2 bg-[#0B192C] hover:bg-[#152a47] text-white font-bold text-xs rounded-xl transition-all disabled:opacity-35 flex items-center justify-center gap-1 shadow-2xs"
-              >
-                {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3 text-[#D4AF37]" />}
-                Disparar
-              </button>
-            </div>
-          </form>
-        )}
+            ))
+          ) : (
+            <p className="text-[10px] text-slate-400 py-2 text-center sm:col-span-2">Nenhum evento recente.</p>
+          )}
+        </div>
       </section>
 
       {/* ───────────────────────────────────────────────────────────── */}
