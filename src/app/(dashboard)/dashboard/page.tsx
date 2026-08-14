@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import BrazilOperationsMap from '@/components/BrazilOperationsMap';
 import {
   FileUp,
   Layers,
@@ -1448,7 +1449,7 @@ export default function DashboardPage() {
       {/* ───────────────────────────────────────────────────────────── */}
       {/* 5. VISÃO E ESCALA: OPERAÇÃO NACIONAL (MAPA COM DADOS REAIS)   */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden rounded-[28px] border border-[#17345D] bg-[#071B3A] px-5 py-6 text-white shadow-[0_28px_80px_-48px_rgba(7,27,58,0.95)] lg:px-7 lg:py-7">
+      {false && <section className="relative overflow-hidden rounded-[28px] border border-[#17345D] bg-[#071B3A] px-5 py-6 text-white shadow-[0_28px_80px_-48px_rgba(7,27,58,0.95)] lg:px-7 lg:py-7">
         <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-[#D4AF37]/10 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-32 left-1/3 h-64 w-64 rounded-full bg-blue-500/10 blur-3xl" />
 
@@ -1535,7 +1536,9 @@ export default function DashboardPage() {
             <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">Evidências preservadas</span>
           </div>
         </div>
-      </section>
+      </section>}
+
+      <BrazilOperationsMap />
 
       {/* HOJE O ASSINAJUR TRABALHOU POR VOCÊ — acabamento premium, sem faixa escura pesada */}
       <section className="bg-white border border-slate-200/90 rounded-2xl p-4 lg:p-5 shadow-2xs">

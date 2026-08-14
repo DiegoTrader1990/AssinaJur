@@ -35,23 +35,28 @@ const UF_MAP: Record<string, { uf: string; name: string }> = {
   TO: { uf: 'TO', name: 'Tocantins' },
 };
 
+const normalizeText = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+
 function normalizeUf(input?: string | null): { uf: string; name: string } | null {
   if (!input || !input.trim()) return null;
-  const clean = input.trim().toUpperCase();
-
+  const clean = normalizeText(input);
+  const ufMatch = clean.match(/(?:^|[\s,/\-])(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)(?:$|[\s,/\-])/);
+  if (ufMatch && UF_MAP[ufMatch[1]]) return UF_MAP[ufMatch[1]];
   if (UF_MAP[clean]) return UF_MAP[clean];
-
-  for (const [code, info] of Object.entries(UF_MAP)) {
-    if (info.name.toUpperCase() === clean || clean.includes(info.name.toUpperCase())) {
-      return info;
-    }
+  for (const info of Object.values(UF_MAP)) {
+    if (normalizeText(info.name) === clean || clean.includes(normalizeText(info.name))) return info;
   }
-
-  if (clean.length === 2 && /^[A-Z]{2}$/.test(clean)) {
-    return { uf: clean, name: clean };
-  }
-
   return null;
+}
+
+function normalizeCity(input?: string | null, uf?: string) {
+  if (!input?.trim()) return null;
+  const city = input.trim().replace(new RegExp(`(?:\\s*[,/\\-]\\s*|\\s+)${uf || '[A-Z]{2}'}$`, 'i'), '').trim();
+  if (!city) return null;
+  return {
+    key: normalizeText(city).replace(/\s+/g, ' '),
+    name: city.toLocaleLowerCase('pt-BR').replace(/(^|\s)(\S)/g, (_, prefix, letter) => `${prefix}${letter.toLocaleUpperCase('pt-BR')}`),
+  };
 }
 
 export async function GET() {
@@ -96,15 +101,15 @@ export async function GET() {
 
     clients.forEach((client) => {
       const norm = normalizeUf(client.state);
-      if (!norm) {
+      const city = normalizeCity(client.city, norm?.uf);
+      if (!norm || !city) {
         totalClientsWithoutLocation++;
         return;
       }
 
       totalClientsWithLocation++;
       const uf = norm.uf;
-      const rawCity = client.city?.trim() || 'Cidade Não Especificada';
-      const formattedCity = rawCity.charAt(0).toUpperCase() + rawCity.slice(1).toLowerCase();
+      const formattedCity = city.name;
 
       if (!stateAggregation[uf]) {
         stateAggregation[uf] = {
@@ -120,15 +125,15 @@ export async function GET() {
       stateAggregation[uf].clientCount++;
       stateAggregation[uf].processCount += client.processes.length;
 
-      if (!stateAggregation[uf].cities[formattedCity]) {
-        stateAggregation[uf].cities[formattedCity] = {
+      if (!stateAggregation[uf].cities[city.key]) {
+        stateAggregation[uf].cities[city.key] = {
           name: formattedCity,
           clientCount: 0,
           processCount: 0,
         };
       }
-      stateAggregation[uf].cities[formattedCity].clientCount++;
-      stateAggregation[uf].cities[formattedCity].processCount += client.processes.length;
+      stateAggregation[uf].cities[city.key].clientCount++;
+      stateAggregation[uf].cities[city.key].processCount += client.processes.length;
 
       stateAggregation[uf].clientList.push({
         id: client.id,
@@ -152,10 +157,13 @@ export async function GET() {
       .sort((a, b) => b.clientCount - a.clientCount);
 
     const totalCitiesCount = new Set(
-      clients
-        .filter((c) => normalizeUf(c.state) && c.city?.trim())
-        .map((c) => `${normalizeUf(c.state)?.uf}-${c.city?.trim().toLowerCase()}`)
+      clients.flatMap((client) => {
+        const norm = normalizeUf(client.state);
+        const city = normalizeCity(client.city, norm?.uf);
+        return norm && city ? [`${norm.uf}-${city.key}`] : [];
+      })
     ).size;
+    const totalProcessCount = statesList.reduce((total, state) => total + state.processCount, 0);
 
     return NextResponse.json({
       success: true,
@@ -164,6 +172,7 @@ export async function GET() {
         totalClientsWithoutLocation,
         totalStatesCount: statesList.length,
         totalCitiesCount,
+        totalProcessCount,
         topStates: statesList.slice(0, 5),
         states: statesList,
       },
