@@ -23,28 +23,22 @@ function classify(name: string) {
 async function readIdentity(bytes: Buffer, mimeType: string) {
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
   if (!key || (!mimeType.includes('pdf') && !mimeType.startsWith('image/'))) return null;
-  try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`, {
+  for (const model of ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-1.5-flash']) try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents: [{ parts: [{ inlineData: { mimeType, data: bytes.toString('base64') } }, { text: 'Extraia apenas JSON com name, cpf e legalArea (Previdenciário se o documento indicar INSS, BPC ou LOAS). Não invente dados.' }] }], generationConfig: { temperature: 0, response_mime_type: 'application/json' } }),
     });
+    if (!response.ok) continue;
     const data = await response.json();
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    return text ? JSON.parse(text.replace(/```json|```/g, '').trim()) : null;
-  } catch { return null; }
+    if (text) return JSON.parse(text.replace(/```json|```/g, '').trim());
+  } catch { /* tenta o próximo modelo disponível */ }
+  return null;
 }
 
 function validKey(request: Request) {
   const expected = process.env.LOCAL_INGEST_KEY;
   return Boolean(expected && request.headers.get('x-assinajur-intake-key') === expected);
-}
-
-// Diagnóstico restrito ao conector local durante a implantação. Não expõe
-// qualquer dado de cliente e exige a mesma chave privada de importação.
-export async function GET(request: Request) {
-  if (!validKey(request)) return NextResponse.json({ error: 'Conector local não autorizado.' }, { status: 401 });
-  const offices = await prisma.office.findMany({ select: { id: true, name: true, email: true }, orderBy: { createdAt: 'asc' } });
-  return NextResponse.json({ offices });
 }
 
 export async function POST(request: Request) {
@@ -62,10 +56,6 @@ export async function POST(request: Request) {
     let office = process.env.LOCAL_INGEST_OFFICE_EMAIL
       ? await prisma.office.findFirst({ where: { email: process.env.LOCAL_INGEST_OFFICE_EMAIL }, select: { id: true } })
       : await prisma.office.findUnique({ where: { id: officeId }, select: { id: true } });
-    // Durante a implantação piloto existe apenas um escritório ligado ao
-    // conector. Isto também cobre instalações antigas cujo e-mail institucional
-    // ainda não foi atualizado na configuração do escritório.
-    if (!office) office = await prisma.office.findFirst({ select: { id: true }, orderBy: { createdAt: 'asc' } });
     if (!office) return NextResponse.json({ error: 'Escritório do conector não foi encontrado.' }, { status: 404 });
     const bytes = Buffer.from(await file.arrayBuffer());
     if (!bytes.length || bytes.length > 20 * 1024 * 1024) return NextResponse.json({ error: 'O arquivo precisa ter até 20 MB.' }, { status: 400 });
@@ -85,6 +75,22 @@ export async function POST(request: Request) {
       folder = await prisma.intakeFolder.update({ where: { id: folder.id }, data: { suggestedClientId: suggested.id, extractedName: suggested.name, extractedCpf: cpf || folder.extractedCpf, suggestedArea: area || folder.suggestedArea, confidence: cpf ? 96 : 78 } });
     } else if (!folder.extractedCpf && (cpf || detected?.name)) {
       folder = await prisma.intakeFolder.update({ where: { id: folder.id }, data: { extractedName: detected?.name || folder.extractedName, extractedCpf: cpf || null, suggestedArea: area || folder.suggestedArea, confidence: detected?.name ? 70 : folder.confidence } });
+    }
+    // Versões antigas tratavam subpastas como novos atendimentos. Todos os
+    // documentos da pasta principal agora são reunidos em uma única entrada.
+    if (sourceFolderPath) {
+      const fragmented = await prisma.intakeFolder.findMany({
+        where: { officeId: targetOfficeId, sourceFolderPath: { startsWith: sourceFolderPath }, id: { not: folder.id }, status: 'AGUARDANDO_REVISAO' },
+        include: { files: true },
+      });
+      for (const oldFolder of fragmented) {
+        for (const oldFile of oldFolder.files) {
+          const alreadyImported = await prisma.intakeFile.findUnique({ where: { intakeFolderId_contentHash: { intakeFolderId: folder.id, contentHash: oldFile.contentHash } } });
+          if (!alreadyImported) await prisma.intakeFile.update({ where: { id: oldFile.id }, data: { intakeFolderId: folder.id } });
+          else await prisma.intakeFile.delete({ where: { id: oldFile.id } });
+        }
+        await prisma.intakeFolder.delete({ where: { id: oldFolder.id } });
+      }
     }
     const duplicate = await prisma.intakeFile.findUnique({ where: { intakeFolderId_contentHash: { intakeFolderId: folder.id, contentHash } } });
     if (duplicate) return NextResponse.json({ success: true, duplicate: true, folderId: folder.id });
