@@ -13,6 +13,11 @@ export function ensureClientQualificationTokens(contentHtml: string, title: stri
   const isDeclaration = /DECLAR/i.test(documentType) || /declara[cç][aã]o/i.test(title);
   if (!isPower && !isContract && !isDeclaration) return result;
 
+  // Alguns modelos antigos mantiveram um {{cliente_nome}} isolado logo abaixo
+  // do título. A qualificação completa já vem no parágrafo próprio; esse bloco
+  // solto apenas duplica o nome e prejudica a apresentação da minuta.
+  result = result.replace(/(<h1[^>]*>[\s\S]*?<\/h1>)\s*<(p|div)([^>]*)>\s*{{\s*cliente_nome\s*}}\s*<\/\2>/i, '$1');
+
   const label = isPower ? 'OUTORGANTE' : isContract ? 'CONTRATANTE' : '';
   if (label) {
     let replaced = false;
