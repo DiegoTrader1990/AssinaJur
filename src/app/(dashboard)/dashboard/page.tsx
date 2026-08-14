@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   FileUp,
   Layers,
@@ -211,6 +212,7 @@ function ClientSelector({
 /*  MESA INTELIGENTE DO ADVOGADO (RECONSTRUÇÃO DA HOME)         */
 /* ═══════════════════════════════════════════════════════════ */
 export default function DashboardPage() {
+  const router = useRouter();
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [office, setOffice] = useState<any>(null);
   const [clients, setClients] = useState<any[]>([]);
@@ -618,53 +620,16 @@ export default function DashboardPage() {
     [office]
   );
 
-  const handleFastDispatch = async (e: React.FormEvent) => {
+  const handleFastDispatch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!fastClientId || uploadedPdfs.length === 0) return;
-    setSubmitting(true);
     setErrorMessage('');
-    try {
-      const cl = clients.find((c) => c.id === fastClientId);
-
-      // Disparar a criação de todos os documentos selecionados em lote
-      const createdDocs = await Promise.all(
-        uploadedPdfs.map(async (pdfFile) => {
-          const title = pdfFile.name.replace(/\.pdf$/i, '');
-          const r = await fetch('/api/documents', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              title,
-              clientId: fastClientId,
-              fileId: pdfFile.id,
-            }),
-          });
-          const d = await r.json();
-          if (!r.ok) throw new Error(d.error || `Erro ao gerar documento "${pdfFile.name}".`);
-          return {
-            id: d.document.id,
-            title: d.document.title,
-            token: d.document.token,
-            link: `https://www.assinajur.com.br/assinar/${d.document.token}`,
-          };
-        })
-      );
-
-      const msg = buildWhatsappMessage(cl?.name || 'Cliente', createdDocs);
-      setWhatsappMsg(msg);
-      setExecutionResult({
-        clientName: cl?.name || 'Cliente',
-        clientPhone: cl?.phone || cl?.whatsapp || '',
-        docsCount: createdDocs.length,
-        documents: createdDocs,
-        allLinksText: createdDocs.map((d) => `${d.title}: ${d.link}`).join('\n'),
-      });
-      loadData();
-    } catch (err: any) {
-      setErrorMessage(err.message);
-    } finally {
-      setSubmitting(false);
-    }
+    const params = new URLSearchParams({
+      files: uploadedPdfs.map((pdfFile) => pdfFile.id).join(','),
+      clientId: fastClientId,
+      source: 'dashboard',
+    });
+    router.push(`/documentos/novo?${params.toString()}`);
   };
 
   // Modais de Criação
@@ -735,7 +700,7 @@ export default function DashboardPage() {
 
       const cl = clients.find((c) => c.id === formClientId);
       const link = d.result.signatureLink;
-      setWhatsappMsg(buildWhatsappMessage(d.result.clientName, link));
+      setWhatsappMsg(buildWhatsappMessage(d.result.clientName, [{ title: d.result.kitName, link }]));
       setExecutionResult({
         clientName: d.result.clientName,
         clientPhone: cl?.phone || cl?.whatsapp || '',
@@ -846,15 +811,15 @@ export default function DashboardPage() {
           {/* BLOCO 1 — ENVIAR DOCUMENTO */}
           <div
             id="quick-upload-card"
-            className="lg:col-span-4 bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-2xs flex flex-col gap-2.5"
+            className="lg:col-span-6 bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs flex flex-col gap-3"
           >
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-slate-100 text-[#0B192C] flex items-center justify-center shrink-0">
                 <FileUp className="w-3.5 h-3.5" />
               </div>
               <div className="min-w-0">
-                <h3 className="text-xs font-black text-[#0B192C] leading-tight">Enviar Documento(s)</h3>
-                <p className="text-[10px] text-slate-500 leading-tight">Envie 1 ou mais PDFs para assinatura do cliente.</p>
+                <h3 className="text-sm font-black text-[#0B192C] leading-tight">Preparar documentos para assinatura</h3>
+                <p className="text-[11px] text-slate-500 leading-tight">Envie vários PDFs, revise cada página e posicione o selo antes de gerar um único link.</p>
               </div>
             </div>
 
@@ -939,7 +904,7 @@ export default function DashboardPage() {
                     }
                   }}
                   onClick={() => fileInputRef.current?.click()}
-                  className={`border border-dashed rounded-xl px-2.5 py-2 text-center cursor-pointer transition-all ${
+                  className={`border border-dashed rounded-2xl px-4 py-4 text-center cursor-pointer transition-all ${
                     dragActive
                       ? 'border-[#B68B1C] bg-amber-50'
                       : uploadedPdfs.length > 0
@@ -1007,14 +972,14 @@ export default function DashboardPage() {
                   className="w-full py-1.5 bg-[#0B192C] hover:bg-[#152a47] text-white font-bold text-[11px] rounded-lg transition-all disabled:opacity-35 flex items-center justify-center gap-1.5 shadow-2xs"
                 >
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3 text-[#D4AF37]" />}
-                  Enviar {uploadedPdfs.length > 1 ? `${uploadedPdfs.length} documentos` : 'para assinatura'}
+                  Continuar para revisar páginas e selo
                 </button>
               </form>
             )}
           </div>
 
           {/* BLOCO 2 — CRIAR KIT JURÍDICO */}
-          <div className="lg:col-span-4 bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-2xs flex flex-col gap-2.5">
+          <div className="lg:col-span-3 bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-2xs flex flex-col gap-2.5">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
                 <Layers className="w-3.5 h-3.5" />
@@ -1049,7 +1014,7 @@ export default function DashboardPage() {
           </div>
 
           {/* BLOCO 3 — NOVO ATENDIMENTO (porta de entrada do sistema, leve destaque) */}
-          <div className="lg:col-span-4 bg-gradient-to-br from-[#0B192C] to-[#152a47] text-white rounded-2xl p-3.5 shadow-xs flex flex-col gap-2.5 relative overflow-hidden">
+          <div className="lg:col-span-3 bg-gradient-to-br from-[#0B192C] to-[#152a47] text-white rounded-2xl p-3.5 shadow-xs flex flex-col gap-2.5 relative overflow-hidden">
             <div className="absolute -top-6 -right-6 w-24 h-24 bg-[#D4AF37]/10 rounded-full blur-xl pointer-events-none" />
             <div className="flex items-center gap-2 relative z-10">
               <div className="w-7 h-7 rounded-lg bg-[#D4AF37]/15 text-[#D4AF37] flex items-center justify-center shrink-0">

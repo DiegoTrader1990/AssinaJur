@@ -143,6 +143,7 @@ export default function NewDocumentPage() {
           placementPage: 1, stampPlacement: { x: 0.33, y: 0.79, width: 0.34, height: 0.095 },
         }])));
         if (files[0]) setTitle(files[0].name.replace(/\.[^/.]+$/, ''));
+        if (searchParams.get('source') === 'dashboard') setStep(2);
       })
       .catch((err) => setError(err.message || 'Não foi possível carregar os PDFs enviados.'))
       .finally(() => setUploading(false));
@@ -342,6 +343,14 @@ export default function NewDocumentPage() {
       }
     }
   };
+
+  useEffect(() => {
+    const clientIdFromDashboard = searchParams.get('clientId') || '';
+    if (!clientIdFromDashboard || clients.length === 0 || selectedClientId) return;
+    if (clients.some((client) => client.id === clientIdFromDashboard)) {
+      handleSelectClient(clientIdFromDashboard);
+    }
+  }, [clients, searchParams, selectedClientId]);
 
   const currentSettings = (): DocumentSettings => ({ title, documentType, signaturePosition, placementPage, stampPlacement });
 
@@ -631,8 +640,8 @@ export default function NewDocumentPage() {
       {/* Top Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-heading text-2xl font-extrabold text-[#071B3A] tracking-tight">Novo Envio de Documento PDF</h1>
-          <p className="text-xs text-slate-500 mt-1 font-medium">Envie um documento PDF para colher assinaturas eletrônicas com validade jurídica.</p>
+          <h1 className="font-heading text-2xl font-extrabold text-[#071B3A] tracking-tight">Novo envio para assinatura</h1>
+          <p className="text-xs text-slate-500 mt-1 font-medium">Reúna um ou mais PDFs em um único fluxo de assinatura eletrônica com validade jurídica.</p>
         </div>
         <button
           onClick={() => router.push('/documentos')}
@@ -670,7 +679,7 @@ export default function NewDocumentPage() {
       {/* Passo 1: Upload do PDF */}
       {step === 1 && (
         <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
-          <h2 className="font-heading text-base font-extrabold text-[#071B3A]">Passo 1: Selecione o Arquivo PDF</h2>
+          <h2 className="font-heading text-base font-extrabold text-[#071B3A]">Passo 1: Selecione os documentos PDF</h2>
 
           <div
             onDragEnter={handleDrag}
