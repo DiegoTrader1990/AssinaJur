@@ -35,6 +35,7 @@ import {
   Filter,
   Workflow,
 } from 'lucide-react';
+import BrazilOperationsMap from '@/components/BrazilOperationsMap';
 
 /* ═══════════════════════════════════════════════════════════ */
 /*  FORMATADORES                                               */
@@ -1174,6 +1175,11 @@ export default function DashboardPage() {
           </div>
         </div>
       </section>
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* 5.5 OPERAÇÃO NACIONAL (MAPA DO BRASIL COM DADOS 100% REAIS)   */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      <BrazilOperationsMap />
 
       {/* ───────────────────────────────────────────────────────────── */}
       {/* 6. CARD DE ASSINATURA RÁPIDA (PDF COMPACTO PARA ENVIOS AVULSOS) */}
