@@ -738,19 +738,18 @@ export default function DashboardPage() {
       {/* ───────────────────────────────────────────────────────────── */}
       {/* 1. CABEÇALHO OPERACIONAL SIMPLES                              */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <header className="relative overflow-hidden rounded-[28px] border border-[#17345c] bg-gradient-to-br from-[#071b3a] via-[#0b2749] to-[#102f55] px-6 py-6 shadow-[0_22px_55px_-34px_rgba(7,27,58,.9)] sm:px-8">
-        <p className="mb-2 text-[10px] font-bold uppercase tracking-[.18em] text-[#e4c55b]">Centro de operação do escritório</p>
-        <h1 className="text-2xl lg:text-3xl font-semibold text-white tracking-tight">
+      <header className="border-b border-slate-200/80 pb-3">
+        <h1 className="text-xl lg:text-2xl font-extrabold text-[#0B192C] tracking-tight">
           {greeting}, {userFirstName}. ⚖️
         </h1>
-        <p className="text-sm font-medium text-slate-300 flex items-center gap-1.5 mt-2">
+        <p className="text-xs font-semibold text-slate-600 flex items-center gap-1.5 mt-0.5">
           {totalAttentionCount > 0 ? (
-            <span className="text-amber-200 font-semibold flex items-center gap-1">
+            <span className="text-amber-800 font-extrabold flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
               {totalAttentionCount} situação(ões) precisam da sua atenção hoje.
             </span>
           ) : (
-            <span className="text-emerald-300 font-semibold flex items-center gap-1">
+            <span className="text-emerald-700 font-bold flex items-center gap-1">
               ✓ Seu escritório está em dia. Nenhuma ação crítica pendente.
             </span>
           )}
