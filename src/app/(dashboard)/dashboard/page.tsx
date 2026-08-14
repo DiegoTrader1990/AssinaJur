@@ -3,35 +3,60 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  CheckCircle2, ChevronRight, FolderPlus, Send, Folder, User, ShieldCheck,
-  Zap, MessageSquare, Search, Copy, Check, Loader2, AlertCircle, X,
-  UserPlus, FileUp, File, QrCode, ChevronDown, Bell, Activity,
-  Edit3, Scale, ArrowUpRight, Clock, FileText, Layers, Sparkles,
-  Lock, CheckCheck, HelpCircle, FileCheck, RefreshCw, Award,
-  ExternalLink, Hash, Smartphone, ArrowRight, ShieldAlert,
+  FileUp,
+  FileText,
+  Layers,
+  UserPlus,
+  Send,
+  CheckCircle2,
+  Clock,
+  Search,
+  ChevronDown,
+  Copy,
+  Check,
+  Loader2,
+  X,
+  MessageSquare,
+  QrCode,
+  Folder,
+  User,
+  ShieldCheck,
+  Sparkles,
+  ArrowUpRight,
+  Bell,
+  RefreshCw,
+  Scale,
+  FileCheck2,
+  CheckCheck,
+  AlertTriangle,
+  ExternalLink,
+  ChevronRight,
+  Plus,
+  Edit3,
+  FolderPlus,
 } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  MÁSCARAS E VALIDAÇÃO DE DADOS BRASILEIROS                  */
+/*  FORMATTERS & CPF VALIDATION                                */
 /* ═══════════════════════════════════════════════════════════ */
-const maskCpf = (v: string) =>
+const formatCpf = (v: string) =>
   v.replace(/\D/g, '').slice(0, 11)
     .replace(/(\d{3})(\d)/, '$1.$2')
     .replace(/(\d{3})(\d)/, '$1.$2')
     .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
 
-const maskPhone = (v: string) =>
+const formatPhone = (v: string) =>
   v.replace(/\D/g, '').slice(0, 11)
     .replace(/(\d{2})(\d)/, '($1) $2')
     .replace(/(\d{5})(\d)/, '$1-$2');
 
-const maskRg = (v: string) =>
+const formatRg = (v: string) =>
   v.replace(/\D/g, '').slice(0, 9)
     .replace(/(\d{2})(\d)/, '$1.$2')
     .replace(/(\d{3})(\d)/, '$1.$2')
     .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
 
-const validateCpf = (cpf: string) => {
+const isValidCpf = (cpf: string) => {
   const n = cpf.replace(/\D/g, '');
   if (n.length !== 11 || /^(\d)\1+$/.test(n)) return false;
   let s = 0;
@@ -47,9 +72,9 @@ const validateCpf = (cpf: string) => {
 };
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  COMBOBOX EXECUTIVO DE BUSCA DE CLIENTES                    */
+/*  LUXURY CLIENT AUTOCOMPLETE PICKER                          */
 /* ═══════════════════════════════════════════════════════════ */
-function ExecutiveClientSearch({
+function ClientPicker({
   clients,
   value,
   onChange,
@@ -61,132 +86,132 @@ function ExecutiveClientSearch({
   onNew?: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [q, setQ] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
+  const [query, setQuery] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const list = useMemo(() => {
-    if (!q) return clients;
-    const s = q.toLowerCase();
+  const filtered = useMemo(() => {
+    if (!query.trim()) return clients;
+    const q = query.toLowerCase();
     return clients.filter(
       (c) =>
-        c.name?.toLowerCase().includes(s) ||
-        c.cpfCnpj?.includes(s) ||
-        c.phone?.includes(s)
+        c.name?.toLowerCase().includes(q) ||
+        c.cpfCnpj?.includes(q) ||
+        c.phone?.includes(q)
     );
-  }, [clients, q]);
+  }, [clients, query]);
 
-  const sel = clients.find((c) => c.id === value);
+  const selectedClient = clients.find((c) => c.id === value);
 
   useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
     };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   return (
-    <div ref={ref} className="relative w-full">
-      <button
-        type="button"
+    <div ref={containerRef} className="relative w-full">
+      <div
         onClick={() => setOpen(!open)}
-        className={`w-full flex items-center gap-3 px-4 py-3 bg-slate-50/80 hover:bg-white border-2 rounded-2xl text-left transition-all duration-200 ${
+        className={`w-full flex items-center justify-between gap-3 px-4 py-3.5 bg-white rounded-2xl border transition-all duration-200 cursor-pointer select-none ${
           open
-            ? 'border-gold-500 bg-white ring-4 ring-gold-100/50 shadow-md'
-            : 'border-slate-200/90 hover:border-slate-300 shadow-2xs'
+            ? 'border-[#0B192C] ring-4 ring-[#0B192C]/5 shadow-sm'
+            : 'border-slate-200/90 hover:border-slate-300 hover:bg-slate-50/50 shadow-2xs'
         }`}
       >
-        {sel ? (
-          <>
-            <div className="w-8 h-8 rounded-xl bg-[#071B3A] text-gold-400 flex items-center justify-center text-xs font-black shrink-0 border border-gold-500/20">
-              {sel.name.charAt(0)}
+        {selectedClient ? (
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-[#0B192C] text-[#D4AF37] flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
+              {selectedClient.name.charAt(0)}
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-slate-900 truncate">{sel.name}</p>
-              <p className="text-[11px] text-slate-500 truncate">
-                {sel.cpfCnpj ? `CPF ${sel.cpfCnpj}` : 'Sem CPF'} {sel.phone ? `• WhatsApp ${sel.phone}` : ''}
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-900 truncate">
+                {selectedClient.name}
+              </p>
+              <p className="text-xs text-slate-500 truncate">
+                {selectedClient.cpfCnpj ? `CPF ${selectedClient.cpfCnpj}` : 'Sem CPF'}{' '}
+                {selectedClient.phone ? `• ${selectedClient.phone}` : ''}
               </p>
             </div>
-          </>
+          </div>
         ) : (
-          <>
-            <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
-              <Search className="w-4 h-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-slate-700">Selecione o Cliente Destinatário</p>
-              <p className="text-[11px] text-slate-400">Buscar por nome, CPF ou WhatsApp...</p>
-            </div>
-          </>
+          <div className="flex items-center gap-3 text-slate-400">
+            <Search className="w-4 h-4 text-slate-400 shrink-0" />
+            <span className="text-sm font-medium">Selecione ou busque o cliente...</span>
+          </div>
         )}
+
         <ChevronDown
-          className={`w-4 h-4 text-slate-400 shrink-0 ml-auto transition-transform duration-200 ${
-            open ? 'rotate-180 text-gold-600' : ''
+          className={`w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 ${
+            open ? 'rotate-180 text-slate-800' : ''
           }`}
         />
-      </button>
+      </div>
 
       {open && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-[0_20px_50px_-10px_rgba(7,27,58,0.15)] max-h-80 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-          <div className="p-3 border-b border-slate-100 bg-slate-50/80">
+        <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-white border border-slate-200/90 rounded-2xl shadow-[0_20px_50px_-15px_rgba(11,25,44,0.12)] max-h-72 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+          <div className="p-2.5 border-b border-slate-100 bg-slate-50/60">
             <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Digitar nome, CPF ou telefone..."
-                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-gold-500 shadow-2xs"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Buscar por nome, CPF ou telefone..."
+                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-[#0B192C]"
                 autoFocus
               />
             </div>
           </div>
 
-          <div className="overflow-y-auto max-h-52 py-1 divide-y divide-slate-50">
-            {list.length > 0 ? (
-              list.map((c) => (
+          <div className="overflow-y-auto max-h-48 py-1 divide-y divide-slate-50">
+            {filtered.length > 0 ? (
+              filtered.map((c) => (
                 <button
                   key={c.id}
                   type="button"
                   onClick={() => {
                     onChange(c.id);
                     setOpen(false);
-                    setQ('');
+                    setQuery('');
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                    value === c.id ? 'bg-amber-50/90' : 'hover:bg-slate-50'
+                    value === c.id ? 'bg-amber-50/80' : 'hover:bg-slate-50'
                   }`}
                 >
-                  <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center text-xs font-bold shrink-0">
+                  <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-xs shrink-0">
                     {c.name.charAt(0)}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold text-slate-800 truncate">{c.name}</p>
-                    <p className="text-[10px] text-slate-500">
+                    <p className="text-xs font-bold text-slate-900 truncate">{c.name}</p>
+                    <p className="text-[11px] text-slate-500">
                       {c.cpfCnpj || 'Sem CPF'} {c.phone ? `• ${c.phone}` : ''}
                     </p>
                   </div>
-                  {value === c.id && <Check className="w-4 h-4 text-gold-600 shrink-0" />}
+                  {value === c.id && <Check className="w-4 h-4 text-[#B68B1C] shrink-0" />}
                 </button>
               ))
             ) : (
               <p className="px-4 py-6 text-center text-xs text-slate-400 font-medium">
-                Nenhum cliente cadastrado com esse termo.
+                Nenhum cliente encontrado.
               </p>
             )}
           </div>
 
           {onNew && (
-            <div className="border-t border-slate-100 p-2 bg-slate-50">
+            <div className="border-t border-slate-100 p-2 bg-slate-50/50">
               <button
                 type="button"
                 onClick={() => {
                   onNew();
                   setOpen(false);
                 }}
-                className="w-full py-2 bg-[#071B3A] hover:bg-[#0A254F] text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-2xs"
+                className="w-full py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2"
               >
-                <UserPlus className="w-3.5 h-3.5 text-gold-400" /> Cadastrar Novo Cliente Agora
+                <UserPlus className="w-3.5 h-3.5 text-[#D4AF37]" /> Cadastrar Novo Cliente
               </button>
             </div>
           )}
@@ -197,7 +222,7 @@ function ExecutiveClientSearch({
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  DASHBOARD EXECUTIVO PRINCIPAL                              */
+/*  MAIN COMPONENT: OPERATIONAL SUITE                          */
 /* ═══════════════════════════════════════════════════════════ */
 export default function DashboardPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -208,29 +233,29 @@ export default function DashboardPage() {
   const [kits, setKits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Modo ativo de trabalho
-  const [mode, setMode] = useState<'PDF' | 'KIT' | 'CLIENT'>('PDF');
+  // Workflow mode
+  const [dispatchTab, setDispatchTab] = useState<'PDF' | 'KIT' | 'CLIENT'>('PDF');
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedKitId, setSelectedKitId] = useState('');
   const [docCustomTitle, setDocCustomTitle] = useState('');
 
-  // Drag and Drop & Upload
+  // Drag and drop state
   const [dragActive, setDragActive] = useState(false);
   const [uploadedPdf, setUploadedPdf] = useState<any>(null);
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Cadastro Rápido de Cliente
+  // Quick Client State
   const [newClientName, setNewClientName] = useState('');
   const [newClientCpf, setNewClientCpf] = useState('');
   const [newClientPhone, setNewClientPhone] = useState('');
   const [newClientRg, setNewClientRg] = useState('');
   const cpfValid = useMemo(() => {
     const r = newClientCpf.replace(/\D/g, '');
-    return r.length < 11 ? null : validateCpf(newClientCpf);
+    return r.length < 11 ? null : isValidCpf(newClientCpf);
   }, [newClientCpf]);
 
-  // Mensagem e Envio
+  // Dispatch & Result State
   const [whatsappMsg, setWhatsappMsg] = useState('');
   const [editingMsg, setEditingMsg] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -239,10 +264,10 @@ export default function DashboardPage() {
   const [copiedLink, setCopiedLink] = useState(false);
   const [showQr, setShowQr] = useState(false);
 
-  // Dossiê de Processos
+  // Dossier expansion
   const [expandedFolder, setExpandedFolder] = useState<string | null>(null);
 
-  // Inicialização
+  // Load initial data
   useEffect(() => {
     Promise.all([
       fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)),
@@ -281,26 +306,6 @@ export default function DashboardPage() {
     return { h: Math.floor(m / 60), m: m % 60 };
   }, [completed, pending, processes]);
 
-  const activities = useMemo(() => {
-    const a: { date: Date; type: 'signed' | 'pending' | 'folder'; text: string; hash?: string }[] = [];
-    documents.forEach((d) =>
-      a.push({
-        date: new Date(d.updatedAt || d.createdAt),
-        type: d.status === 'CONCLUIDO' ? 'signed' : 'pending',
-        text: `${d.title} — ${d.client?.name || 'Cliente'}`,
-        hash: d.id.slice(0, 8),
-      })
-    );
-    processes.forEach((p) =>
-      a.push({
-        date: new Date(p.createdAt),
-        type: 'folder',
-        text: `Dossiê criado: "${p.client?.name || p.title}"`,
-      })
-    );
-    return a.sort((x, y) => y.date.getTime() - x.date.getTime()).slice(0, 4);
-  }, [documents, processes]);
-
   const pendingAlerts = useMemo(() => {
     return pending
       .map((doc) => {
@@ -318,7 +323,7 @@ export default function DashboardPage() {
       .slice(0, 4);
   }, [pending]);
 
-  /* Handlers */
+  // File Upload Processor
   const processFile = async (file: File) => {
     if (!file.name.toLowerCase().endsWith('.pdf')) {
       setError('Por favor, selecione um arquivo em formato PDF.');
@@ -345,14 +350,14 @@ export default function DashboardPage() {
     (clientName: string, link: string) =>
       `Olá, ${clientName}!\n\nSeus documentos jurídicos do escritório ${
         office?.name || 'Rodrigues & Soares Advocacia'
-      } estão prontos para sua assinatura digital eletrônica com validade jurídica oficial.\n\nClique no link seguro para assinar pelo celular em menos de 1 minuto:\n${link}\n\nQualquer dúvida, estamos à disposição no escritório.`,
+      } estão prontos para assinatura digital.\n\nAcesse o link seguro no celular para assinar:\n${link}\n\nQualquer dúvida, estamos à disposição.`,
     [office]
   );
 
   const handleDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClientId) {
-      setError('Selecione a cliente destinatária.');
+      setError('Selecione o cliente destinatário.');
       return;
     }
     setSubmitting(true);
@@ -360,7 +365,7 @@ export default function DashboardPage() {
     setResult(null);
 
     try {
-      if (mode === 'PDF') {
+      if (dispatchTab === 'PDF') {
         if (!uploadedPdf) throw new Error('Por favor, arraste ou selecione um documento PDF.');
         const r = await fetch('/api/documents', {
           method: 'POST',
@@ -384,7 +389,7 @@ export default function DashboardPage() {
           docTitle: d.document.title,
           signatureLink: link,
         });
-      } else if (mode === 'KIT') {
+      } else if (dispatchTab === 'KIT') {
         if (!selectedKitId) throw new Error('Selecione o Kit Jurídico.');
         const r = await fetch('/api/kits/generate-package', {
           method: 'POST',
@@ -426,7 +431,7 @@ export default function DashboardPage() {
   const handleNewClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newClientName.trim()) {
-      setError('Informe o nome da cliente.');
+      setError('Informe o nome completo do cliente.');
       return;
     }
     setSubmitting(true);
@@ -447,7 +452,7 @@ export default function DashboardPage() {
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Erro ao cadastrar cliente.');
 
-      // Criação automática do dossiê
+      // Criação automática do dossiê no banco
       await fetch('/api/processos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -465,7 +470,7 @@ export default function DashboardPage() {
       if (up?.processes) setProcesses(up.processes);
 
       setSelectedClientId(d.client.id);
-      setMode('PDF');
+      setDispatchTab('PDF');
       setNewClientName('');
       setNewClientCpf('');
       setNewClientPhone('');
@@ -484,148 +489,141 @@ export default function DashboardPage() {
   const doctorName = currentUser?.name || 'Dr. Diego dos Santos Rodrigues';
 
   return (
-    <main className="mx-auto max-w-6xl pb-24 space-y-6">
+    <main className="mx-auto max-w-6xl pb-24 space-y-8">
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 1. CABEÇALHO EXECUTIVO DE ALTA ADVOCACIA                       */}
+      {/* 1. TOP EXECUTIVE BAR — LUXURY MINIMALIST HEADER               */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-[#071B3A] via-[#0A254F] to-[#0E2A52] rounded-[28px] p-6 lg:p-7 text-white shadow-card border border-navy-700/50">
-        {/* Ambient Glow */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-gold-400/10 rounded-full blur-3xl -translate-y-24 translate-x-24 pointer-events-none" />
-        <div className="absolute bottom-0 left-1/3 w-64 h-64 bg-brand-500/10 rounded-full blur-2xl pointer-events-none" />
+      <section className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-1">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-black uppercase tracking-[0.25em] text-[#B68B1C] bg-[#B68B1C]/10 border border-[#B68B1C]/20 px-3 py-1 rounded-full flex items-center gap-1.5">
+              <Scale className="w-3 h-3 text-[#B68B1C]" />
+              {office?.name || 'Rodrigues & Soares Advocacia'}
+            </span>
+            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-full flex items-center gap-1">
+              <ShieldCheck className="w-3 h-3 text-emerald-600" />
+              ICP-Brasil • MP 2.200-2/2001
+            </span>
+          </div>
 
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-          {/* IDENTIDADE DO ESCRITÓRIO */}
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-300 bg-gold-400/15 border border-gold-400/30 px-3 py-0.5 rounded-full flex items-center gap-1.5 backdrop-blur-md">
-                <Award className="w-3 h-3 text-gold-400" />
-                {office?.name || 'Rodrigues & Soares Advocacia'}
-              </span>
-              <span className="text-[10px] font-bold text-emerald-300 bg-emerald-500/15 border border-emerald-400/30 px-2.5 py-0.5 rounded-full flex items-center gap-1 backdrop-blur-md">
-                <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                ICP-Brasil • MP 2.200-2/2001
-              </span>
-            </div>
+          <h1 className="text-2xl lg:text-3xl font-black text-[#0B192C] tracking-tight">
+            Olá, {doctorName} ⚖️
+          </h1>
+          <p className="text-xs text-slate-500 font-medium">
+            Estúdio de Formalização Jurídica • Dispare e acompanhe assinaturas digitais instantaneamente.
+          </p>
+        </div>
 
-            <h1 className="text-xl lg:text-2xl font-black text-white tracking-tight font-heading">
-              Olá, {doctorName} ⚖️
-            </h1>
-            <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
-              Painel de Operações Jurídicas. Arraste petições, dispare kits contratuais e acompanhe assinaturas eletrônicas com validade jurídica integral.
+        {/* TIME SAVED & STATS STRIP */}
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="bg-gradient-to-br from-amber-50 via-amber-100/50 to-amber-50 border border-amber-200/90 px-4 py-2.5 rounded-2xl text-center min-w-[95px] shadow-2xs">
+            <p className="text-[9px] font-black text-amber-800 uppercase tracking-widest">⏱ Tempo Salvo</p>
+            <p className="text-lg font-black text-amber-700 tabular-nums">
+              {timeSaved.h}<span className="text-xs font-bold">h</span>
+              {String(timeSaved.m).padStart(2, '0')}<span className="text-xs font-bold">m</span>
             </p>
           </div>
 
-          {/* PAINEL DE PERFORMANCE (TEMPO SALVO + KPIS) */}
-          <div className="flex items-center gap-2.5 shrink-0">
-            <div className="bg-gradient-to-br from-gold-400/20 to-gold-500/10 border border-gold-400/30 backdrop-blur-md px-4 py-3 rounded-2xl text-center min-w-[100px] shadow-2xs">
-              <p className="text-[9px] font-black text-gold-300 uppercase tracking-widest">⏱ Tempo Salvo</p>
-              <p className="text-xl font-black text-gold-300 tabular-nums font-heading mt-0.5">
-                {timeSaved.h}<span className="text-xs font-bold text-gold-400">h</span>
-                {String(timeSaved.m).padStart(2, '0')}<span className="text-xs font-bold text-gold-400">m</span>
-              </p>
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              {[
-                { n: loading ? '—' : String(clients.length).padStart(2, '0'), l: 'Clientes', c: 'text-white' },
-                { n: loading ? '—' : String(pending.length).padStart(2, '0'), l: 'Pendentes', c: 'text-amber-300', dot: pending.length > 0 },
-                { n: loading ? '—' : String(completed.length).padStart(2, '0'), l: 'Assinados', c: 'text-emerald-400' },
-              ].map((m, i) => (
-                <div
-                  key={i}
-                  className="bg-white/10 border border-white/10 backdrop-blur-md px-3.5 py-3 rounded-2xl text-center min-w-[68px]"
-                >
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{m.l}</p>
-                  <p className={`text-xl font-black ${m.c} tabular-nums font-heading mt-0.5`}>{m.n}</p>
-                  {m.dot && <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mx-auto mt-1 animate-pulse" />}
-                </div>
-              ))}
-            </div>
+          <div className="flex items-center gap-2">
+            {[
+              { n: loading ? '—' : String(clients.length).padStart(2, '0'), l: 'Clientes', c: 'text-[#0B192C]' },
+              { n: loading ? '—' : String(pending.length).padStart(2, '0'), l: 'Pendentes', c: 'text-amber-600', dot: pending.length > 0 },
+              { n: loading ? '—' : String(completed.length).padStart(2, '0'), l: 'Assinados', c: 'text-emerald-700' },
+            ].map((m, i) => (
+              <div
+                key={i}
+                className="bg-white border border-slate-200/90 px-3.5 py-2.5 rounded-2xl text-center min-w-[70px] shadow-2xs"
+              >
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{m.l}</p>
+                <p className={`text-lg font-black ${m.c} tabular-nums leading-tight`}>{m.n}</p>
+                {m.dot && <div className="w-1.5 h-1.5 rounded-full bg-amber-500 mx-auto mt-0.5 animate-pulse" />}
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 2. MESA EXECUTIVA DE DISPARO (DROP ZONE EM DESTAQUE TOTAL)    */}
+      {/* 2. THE SIGNATURE STUDIO (HERO ACTION DESK WITH VISIBLE DROP) */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <section className="bg-white border border-slate-200/90 rounded-[28px] shadow-card overflow-hidden">
-        {/* NAVEGAÇÃO DE FLUXO SUPERIOR */}
-        <div className="bg-slate-50/90 px-6 lg:px-8 py-3.5 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 bg-white p-1 rounded-2xl border border-slate-200/80 shadow-2xs">
+      <section className="bg-white border-2 border-slate-200/90 rounded-[32px] shadow-[0_4px_25px_-4px_rgba(11,25,44,0.06)] overflow-hidden">
+        {/* EXECUTIVE STUDIO TABS */}
+        <div className="bg-slate-50/80 px-6 lg:px-8 py-3 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 bg-white p-1 rounded-2xl border border-slate-200/90 shadow-2xs">
             <button
               type="button"
               onClick={() => {
-                setMode('PDF');
+                setDispatchTab('PDF');
                 setResult(null);
                 setError('');
               }}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                mode === 'PDF'
-                  ? 'bg-[#071B3A] text-white shadow-sm'
+                dispatchTab === 'PDF'
+                  ? 'bg-[#0B192C] text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              <FileUp className="w-3.5 h-3.5 text-gold-400" />
-              1. Enviar PDF do Computador
+              <FileUp className="w-4 h-4 text-[#D4AF37]" />
+              1. Enviar PDF Avulso
             </button>
 
             <button
               type="button"
               onClick={() => {
-                setMode('KIT');
+                setDispatchTab('KIT');
                 setResult(null);
                 setError('');
               }}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                mode === 'KIT'
-                  ? 'bg-[#071B3A] text-white shadow-sm'
+                dispatchTab === 'KIT'
+                  ? 'bg-[#0B192C] text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              <Layers className="w-3.5 h-3.5 text-brand-300" />
+              <Layers className="w-4 h-4 text-blue-300" />
               2. Kit Jurídico Automático
             </button>
 
             <button
               type="button"
               onClick={() => {
-                setMode('CLIENT');
+                setDispatchTab('CLIENT');
                 setResult(null);
                 setError('');
               }}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                mode === 'CLIENT'
-                  ? 'bg-emerald-700 text-white shadow-sm'
+                dispatchTab === 'CLIENT'
+                  ? 'bg-emerald-700 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              <UserPlus className="w-3.5 h-3.5 text-emerald-300" />
+              <UserPlus className="w-4 h-4 text-emerald-300" />
               3. Cadastrar Cliente & Dossiê
             </button>
           </div>
 
           <div className="hidden lg:flex items-center gap-2 text-[11px] font-bold text-slate-500">
-            <span className="flex items-center gap-1 text-[#071B3A]">
-              <span className="w-4 h-4 rounded-full bg-[#071B3A] text-gold-400 flex items-center justify-center text-[9px] font-black">1</span>
+            <span className="flex items-center gap-1 text-[#0B192C]">
+              <span className="w-4 h-4 rounded-full bg-[#0B192C] text-[#D4AF37] flex items-center justify-center text-[9px] font-black">1</span>
               Solte o PDF
             </span>
             <ChevronRight className="w-3 h-3 text-slate-300" />
-            <span className="flex items-center gap-1 text-[#071B3A]">
-              <span className="w-4 h-4 rounded-full bg-[#071B3A] text-gold-400 flex items-center justify-center text-[9px] font-black">2</span>
+            <span className="flex items-center gap-1 text-[#0B192C]">
+              <span className="w-4 h-4 rounded-full bg-[#0B192C] text-[#D4AF37] flex items-center justify-center text-[9px] font-black">2</span>
               Escolha o Cliente
             </span>
             <ChevronRight className="w-3 h-3 text-slate-300" />
             <span className="flex items-center gap-1 text-emerald-700">
               <span className="w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[9px] font-black">3</span>
-              WhatsApp 1-Click
+              Envie no WhatsApp
             </span>
           </div>
         </div>
 
-        {/* ÁREA DE DISPARO INTERATIVA */}
+        {/* WORKSPACE AREA */}
         <div className="p-6 lg:p-8">
           {result ? (
-            /* SUCESSO DO ENVIO */
+            /* SUCCESS STATE */
             <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in zoom-in-95 duration-200">
               <div className="flex items-center justify-between bg-gradient-to-r from-emerald-50 via-emerald-100/40 to-emerald-50 border border-emerald-300 rounded-2xl p-5 shadow-2xs">
                 <div className="flex items-center gap-3.5">
@@ -634,10 +632,10 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <h2 className="text-sm font-black text-emerald-950">
-                      {result.type === 'KIT' ? 'Kit Jurídico Gerado com Sucesso!' : 'Documento Pronto para Assinatura!'}
+                      {result.type === 'KIT' ? 'Kit Jurídico Pronto para Assinatura!' : 'Documento Pronto para Assinatura!'}
                     </h2>
                     <p className="text-xs text-emerald-800 font-medium">
-                      Destinatária: <strong className="text-emerald-950">{result.clientName}</strong> • Link seguro ativo.
+                      Cliente: <strong className="text-emerald-950">{result.clientName}</strong> • Link seguro gerado.
                     </p>
                   </div>
                 </div>
@@ -652,19 +650,19 @@ export default function DashboardPage() {
                 </button>
               </div>
 
-              {/* PRÉVIA DA MENSAGEM DO WHATSAPP */}
+              {/* WHATSAPP MESSAGE PREVIEW */}
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold uppercase text-slate-500 tracking-wider flex items-center gap-1.5">
-                    <MessageSquare className="w-3.5 h-3.5 text-[#25D366]" /> Mensagem Pré-Formatada do WhatsApp
+                    <MessageSquare className="w-3.5 h-3.5 text-[#25D366]" /> Mensagem do WhatsApp
                   </span>
                   <button
                     type="button"
                     onClick={() => setEditingMsg(!editingMsg)}
-                    className="text-xs font-bold text-gold-600 hover:underline flex items-center gap-1"
+                    className="text-xs font-bold text-[#B68B1C] hover:underline flex items-center gap-1"
                   >
                     <Edit3 className="w-3 h-3" />
-                    {editingMsg ? 'OK' : 'Personalizar'}
+                    {editingMsg ? 'OK' : 'Personalizar Texto'}
                   </button>
                 </div>
 
@@ -673,16 +671,16 @@ export default function DashboardPage() {
                     value={whatsappMsg}
                     onChange={(e) => setWhatsappMsg(e.target.value)}
                     rows={4}
-                    className="w-full px-3.5 py-2.5 bg-white border border-gold-500 rounded-xl text-xs text-slate-800 focus:outline-none resize-none font-sans leading-relaxed shadow-inner"
+                    className="w-full px-3.5 py-2.5 bg-white border border-[#B68B1C] rounded-xl text-xs text-slate-800 focus:outline-none resize-none leading-relaxed shadow-inner"
                   />
                 ) : (
-                  <div className="bg-white border border-slate-200/80 rounded-xl p-3 text-xs text-slate-700 whitespace-pre-line leading-relaxed max-h-24 overflow-y-auto font-sans">
+                  <div className="bg-white border border-slate-200/80 rounded-xl p-3 text-xs text-slate-700 whitespace-pre-line leading-relaxed max-h-24 overflow-y-auto">
                     {whatsappMsg}
                   </div>
                 )}
               </div>
 
-              {/* BOTÕES DE DISPARO */}
+              {/* ACTION BUTTONS */}
               <div className="flex flex-wrap items-center gap-2.5">
                 {result.clientPhone ? (
                   <a
@@ -714,7 +712,7 @@ export default function DashboardPage() {
                     </>
                   ) : (
                     <>
-                      <Copy className="w-3.5 h-3.5 text-gold-600" /> Copiar Link
+                      <Copy className="w-3.5 h-3.5 text-[#B68B1C]" /> Copiar Link
                     </>
                   )}
                 </button>
@@ -728,12 +726,12 @@ export default function DashboardPage() {
                 </button>
               </div>
             </div>
-          ) : mode === 'PDF' ? (
+          ) : dispatchTab === 'PDF' ? (
             /* ─────────────────────────────────────────────────── */
-            /* MODO 1: PDF AVULSO — DROP ZONE VISÍVEL              */
+            /* TAB 1: PDF AVULSO — VISIBLE DROP SURFACE            */
             /* ─────────────────────────────────────────────────── */
             <form onSubmit={handleDispatch} className="max-w-2xl mx-auto space-y-4">
-              {/* DROP ZONE EXECUTIVO COM EFEITO DE PROFUNDIDADE */}
+              {/* THE DROP SURFACE */}
               <div
                 onDragOver={(e) => {
                   e.preventDefault();
@@ -751,10 +749,10 @@ export default function DashboardPage() {
                 onClick={() => fileInputRef.current?.click()}
                 className={`relative border-2 border-dashed rounded-3xl cursor-pointer transition-all duration-300 ${
                   dragActive
-                    ? 'border-gold-500 bg-amber-50/80 shadow-card scale-[1.01]'
+                    ? 'border-[#B68B1C] bg-amber-50/80 shadow-md scale-[1.01]'
                     : uploadedPdf
-                    ? 'border-emerald-400 bg-emerald-50/40 shadow-xs'
-                    : 'border-slate-300 bg-slate-50/50 hover:border-gold-500 hover:bg-amber-50/20 hover:shadow-xs'
+                    ? 'border-emerald-400 bg-emerald-50/40 shadow-2xs'
+                    : 'border-slate-300 bg-slate-50/50 hover:border-[#B68B1C] hover:bg-amber-50/20 hover:shadow-2xs'
                 }`}
               >
                 <input
@@ -769,19 +767,19 @@ export default function DashboardPage() {
 
                 {uploadingPdf ? (
                   <div className="py-10 text-center space-y-2">
-                    <Loader2 className="w-7 h-7 text-gold-500 animate-spin mx-auto" />
+                    <Loader2 className="w-7 h-7 text-[#B68B1C] animate-spin mx-auto" />
                     <p className="text-xs font-bold text-slate-700">Validando estrutura do PDF...</p>
                   </div>
                 ) : uploadedPdf ? (
                   <div className="p-4 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 shadow-2xs">
-                        <FileCheck className="w-5 h-5" />
+                        <FileCheck2 className="w-5 h-5" />
                       </div>
                       <div className="min-w-0">
                         <p className="text-xs font-black text-slate-900 truncate">{uploadedPdf.name}</p>
                         <p className="text-[11px] text-emerald-700 font-bold mt-0.5">
-                          ✓ PDF Pronto • {(uploadedPdf.sizeBytes / 1024 / 1024).toFixed(2)} MB • Hash SHA-256 Validado
+                          ✓ PDF Validado • {(uploadedPdf.sizeBytes / 1024 / 1024).toFixed(2)} MB • Pronto para Assinatura
                         </p>
                       </div>
                     </div>
@@ -792,21 +790,21 @@ export default function DashboardPage() {
                 ) : (
                   <div className="py-9 text-center space-y-2">
                     <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-100 to-amber-200/50 border border-amber-300/40 flex items-center justify-center mx-auto shadow-2xs">
-                      <FileUp className="w-6 h-6 text-gold-600" />
+                      <FileUp className="w-6 h-6 text-[#B68B1C]" />
                     </div>
                     <div>
                       <p className="text-xs font-black text-slate-900">
                         Arraste e solte o documento PDF aqui
                       </p>
                       <p className="text-[11px] text-slate-500 mt-0.5">
-                        Petições, procurações, contratos — ou <span className="text-gold-600 font-bold underline">clique para selecionar do seu computador</span>
+                        Petições, procurações, contratos — ou <span className="text-[#B68B1C] font-bold underline">clique para selecionar do seu computador</span>
                       </p>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* TÍTULO PERSONALIZADO */}
+              {/* DOCUMENT TITLE */}
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
                   Título do Documento
@@ -816,40 +814,40 @@ export default function DashboardPage() {
                   value={docCustomTitle}
                   onChange={(e) => setDocCustomTitle(e.target.value)}
                   placeholder="Ex: Procuração Ad Judicia e Declaração de Hipossuficiência"
-                  className="w-full px-4 py-2.5 bg-slate-50/80 focus:bg-white border-2 border-slate-200/90 focus:border-gold-500 rounded-2xl text-xs font-bold text-slate-800 focus:outline-none transition-all shadow-2xs"
+                  className="w-full px-4 py-2.5 bg-slate-50/80 focus:bg-white border-2 border-slate-200/90 focus:border-[#B68B1C] rounded-2xl text-xs font-bold text-slate-800 focus:outline-none transition-all shadow-2xs"
                 />
               </div>
 
-              {/* BUSCA DA CLIENTE */}
+              {/* CLIENT PICKER */}
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                  Destinatária da Assinatura
+                  Destinatário(a) da Assinatura
                 </label>
-                <ExecutiveClientSearch
+                <ClientPicker
                   clients={clients}
                   value={selectedClientId}
                   onChange={setSelectedClientId}
-                  onNew={() => setMode('CLIENT')}
+                  onNew={() => setDispatchTab('CLIENT')}
                 />
               </div>
 
-              {/* CTA PRINCIPAL */}
+              {/* SUBMIT BUTTON */}
               <button
                 type="submit"
                 disabled={submitting || !selectedClientId || !uploadedPdf}
-                className="w-full py-3.5 bg-gradient-to-r from-[#071B3A] to-[#0A254F] hover:from-[#0A254F] hover:to-[#143464] text-white font-black text-xs rounded-2xl shadow-card transition-all flex items-center justify-center gap-2 disabled:opacity-35 hover:shadow-card-hover hover:-translate-y-0.5 active:translate-y-0"
+                className="w-full py-3.5 bg-gradient-to-r from-[#0B192C] to-[#152a47] hover:from-[#152a47] hover:to-[#1e3c66] text-white font-black text-xs rounded-2xl shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-35 hover:shadow-md hover:-translate-y-0.5 active:translate-y-0"
               >
                 {submitting ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Send className="w-4 h-4 text-gold-400" />
+                  <Send className="w-4 h-4 text-[#D4AF37]" />
                 )}
                 GERAR LINK DE ASSINATURA & DISPARAR NO WHATSAPP
               </button>
             </form>
-          ) : mode === 'KIT' ? (
+          ) : dispatchTab === 'KIT' ? (
             /* ─────────────────────────────────────────────────── */
-            /* MODO 2: KIT JURÍDICO AUTOMÁTICO                     */
+            /* TAB 2: KIT JURÍDICO AUTOMÁTICO                      */
             /* ─────────────────────────────────────────────────── */
             <form onSubmit={handleDispatch} className="max-w-2xl mx-auto space-y-4">
               <div className="bg-slate-50/80 border border-slate-200/90 rounded-2xl p-4 space-y-2.5 shadow-2xs">
@@ -859,7 +857,7 @@ export default function DashboardPage() {
                 <select
                   value={selectedKitId}
                   onChange={(e) => setSelectedKitId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white border-2 border-slate-200 focus:border-gold-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none shadow-2xs"
+                  className="w-full px-3.5 py-2.5 bg-white border-2 border-slate-200 focus:border-[#B68B1C] rounded-xl text-xs font-bold text-slate-800 focus:outline-none shadow-2xs"
                 >
                   {kits.map((k) => (
                     <option key={k.id} value={k.id}>
@@ -884,37 +882,37 @@ export default function DashboardPage() {
 
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                  Destinatária do Pacote
+                  Destinatário(a) do Pacote
                 </label>
-                <ExecutiveClientSearch
+                <ClientPicker
                   clients={clients}
                   value={selectedClientId}
                   onChange={setSelectedClientId}
-                  onNew={() => setMode('CLIENT')}
+                  onNew={() => setDispatchTab('CLIENT')}
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={submitting || !selectedClientId || !selectedKitId}
-                className="w-full py-3.5 bg-gradient-to-r from-[#071B3A] to-[#0A254F] text-white font-black text-xs rounded-2xl shadow-card transition-all flex items-center justify-center gap-2 disabled:opacity-35 hover:shadow-card-hover hover:-translate-y-0.5"
+                className="w-full py-3.5 bg-gradient-to-r from-[#0B192C] to-[#152a47] text-white font-black text-xs rounded-2xl shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-35 hover:shadow-md hover:-translate-y-0.5"
               >
                 {submitting ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Send className="w-4 h-4 text-gold-400" />
+                  <Send className="w-4 h-4 text-[#D4AF37]" />
                 )}
                 GERAR KIT COMPLETO & DISPARAR NO WHATSAPP
               </button>
             </form>
           ) : (
             /* ─────────────────────────────────────────────────── */
-            /* MODO 3: CADASTRO RÁPIDO + DOSSIÊ AUTOMÁTICO         */
+            /* TAB 3: CADASTRO RÁPIDO DE CLIENTE + DOSSIÊ          */
             /* ─────────────────────────────────────────────────── */
             <form onSubmit={handleNewClient} className="max-w-2xl mx-auto space-y-3.5">
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-slate-600">
-                  Nome Completo da Cliente
+                  Nome Completo do Cliente
                 </label>
                 <input
                   type="text"
@@ -938,7 +936,7 @@ export default function DashboardPage() {
                   <input
                     type="text"
                     value={newClientCpf}
-                    onChange={(e) => setNewClientCpf(maskCpf(e.target.value))}
+                    onChange={(e) => setNewClientCpf(formatCpf(e.target.value))}
                     placeholder="000.000.000-00"
                     className={`w-full px-3.5 py-2.5 bg-white border-2 rounded-xl text-xs font-bold text-slate-800 focus:outline-none shadow-2xs ${
                       cpfValid === false
@@ -957,7 +955,7 @@ export default function DashboardPage() {
                   <input
                     type="text"
                     value={newClientPhone}
-                    onChange={(e) => setNewClientPhone(maskPhone(e.target.value))}
+                    onChange={(e) => setNewClientPhone(formatPhone(e.target.value))}
                     placeholder="(71) 99999-9999"
                     className="w-full px-3.5 py-2.5 bg-white border-2 border-slate-200 focus:border-emerald-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none shadow-2xs"
                   />
@@ -971,7 +969,7 @@ export default function DashboardPage() {
                 <input
                   type="text"
                   value={newClientRg}
-                  onChange={(e) => setNewClientRg(maskRg(e.target.value))}
+                  onChange={(e) => setNewClientRg(formatRg(e.target.value))}
                   placeholder="00.000.000-00"
                   className="w-full px-3.5 py-2.5 bg-white border-2 border-slate-200 focus:border-emerald-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none shadow-2xs"
                 />
@@ -980,7 +978,7 @@ export default function DashboardPage() {
               <button
                 type="submit"
                 disabled={submitting || !newClientName.trim()}
-                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-35 hover:shadow-lg hover:-translate-y-0.5"
+                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-35 hover:shadow-md hover:-translate-y-0.5"
               >
                 {submitting ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -994,7 +992,7 @@ export default function DashboardPage() {
 
           {error && (
             <p className="mt-3 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-2xs">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
               {error}
             </p>
           )}
@@ -1002,24 +1000,24 @@ export default function DashboardPage() {
       </section>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 3. GRID OPERACIONAL: ATENÇÃO PRIORITÁRIA + DOSSIÊS NATIVOS   */}
+      {/* 3. OPERATIONAL GRID: RADAR DE ASSINATURAS + DOSSIÊS           */}
       {/* ───────────────────────────────────────────────────────────── */}
       <section className="grid lg:grid-cols-2 gap-6">
-        {/* COLUNA 1: ATENÇÃO PRIORITÁRIA & COBRANÇA 1-CLICK */}
+        {/* RADAR DE ASSINATURAS & COBRANÇA WHATSAPP 1-CLICK */}
         <div className="bg-white border border-slate-200/90 rounded-[28px] p-5 lg:p-6 shadow-card space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 border border-rose-100">
                 <Bell className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="font-heading font-black text-[#071B3A] text-sm">Atenção Prioritária</h3>
+                <h3 className="font-black text-[#0B192C] text-sm">Atenção Prioritária</h3>
                 <p className="text-[11px] text-slate-500">Cobrança de assinaturas pendentes</p>
               </div>
             </div>
 
             {pendingAlerts.length > 0 && (
-              <span className="text-[10px] bg-rose-100 text-rose-800 font-black px-2.5 py-0.5 rounded-full border border-rose-200">
+              <span className="text-[10px] bg-rose-50 text-rose-700 font-bold px-2.5 py-0.5 rounded-full border border-rose-200">
                 {pendingAlerts.length} pendente(s)
               </span>
             )}
@@ -1076,52 +1074,24 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
-
-          {/* ATIVIDADE RECENTE LOG */}
-          {activities.length > 0 && (
-            <div className="pt-2.5 border-t border-slate-100 space-y-1.5">
-              <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">
-                Últimos Registros
-              </p>
-              <div className="space-y-1">
-                {activities.slice(0, 3).map((act, i) => (
-                  <div key={i} className="flex items-center gap-2 text-[11px] text-slate-700">
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                        act.type === 'signed'
-                          ? 'bg-emerald-500'
-                          : act.type === 'pending'
-                          ? 'bg-amber-500'
-                          : 'bg-blue-500'
-                      }`}
-                    />
-                    <p className="truncate flex-1 font-medium">{act.text}</p>
-                    <span className="text-[10px] text-slate-400 shrink-0">
-                      {act.date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* COLUNA 2: GERENCIADOR DOSSIÊ DOS PROCESSOS (WINDOWS EXPLORER) */}
+        {/* GERENCIADOR DOSSIÊ DOS PROCESSOS (WINDOWS EXPLORER) */}
         <div className="bg-white border border-slate-200/90 rounded-[28px] p-5 lg:p-6 shadow-card space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-                <Folder className="w-4 h-4 fill-amber-400/30" />
+              <div className="w-8 h-8 rounded-xl bg-amber-50 text-[#B68B1C] flex items-center justify-center shrink-0 border border-amber-100">
+                <Folder className="w-4 h-4 fill-[#B68B1C]/30" />
               </div>
               <div>
-                <h3 className="font-heading font-black text-[#071B3A] text-sm">Dossiê de Processos</h3>
+                <h3 className="font-black text-[#0B192C] text-sm">Dossiê de Processos</h3>
                 <p className="text-[11px] text-slate-500">Pastas Nativas do Windows Explorer</p>
               </div>
             </div>
 
             <Link
               href="/processos"
-              className="text-xs font-bold text-gold-600 hover:underline flex items-center gap-1"
+              className="text-xs font-bold text-[#B68B1C] hover:underline flex items-center gap-1"
             >
               Ver todos <ArrowUpRight className="w-3 h-3" />
             </Link>
@@ -1210,11 +1180,11 @@ export default function DashboardPage() {
             >
               <X className="w-5 h-5" />
             </button>
-            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-gold-600 flex items-center justify-center mx-auto shadow-2xs">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-[#B68B1C] flex items-center justify-center mx-auto shadow-2xs">
               <QrCode className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-base font-extrabold text-[#071B3A]">Assinatura Presencial</h3>
+              <h3 className="text-base font-extrabold text-[#0B192C]">Assinatura Presencial</h3>
               <p className="text-xs text-slate-500 mt-0.5">
                 Peça para a cliente apontar a câmera do celular para assinar na hora:
               </p>
@@ -1230,7 +1200,7 @@ export default function DashboardPage() {
             </div>
             <button
               onClick={() => setShowQr(false)}
-              className="w-full py-3 bg-[#071B3A] text-white text-xs font-extrabold rounded-xl shadow-sm hover:bg-[#0A254F] transition-all"
+              className="w-full py-3 bg-[#0B192C] text-white text-xs font-extrabold rounded-xl shadow-sm hover:bg-[#152a47] transition-all"
             >
               Concluir Atendimento
             </button>

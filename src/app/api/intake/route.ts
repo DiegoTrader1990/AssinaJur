@@ -4,6 +4,32 @@ import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
+function normalize(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function documentType(title: string) {
+  const value = normalize(title);
+  if (value.includes('rg') || value.includes('identidade') || value.includes('cnh')) return 'Identificação';
+  if (value.includes('cpf')) return 'CPF';
+  if (value.includes('cadunico') || value.includes('cad unico') || value.includes('nis')) return 'CadÚnico / NIS';
+  if (value.includes('laudo') || value.includes('relatorio med')) return 'Laudo / relatório médico';
+  if (value.includes('residencia') || value.includes('endereco') || value.includes('agua') || value.includes('energia')) return 'Comprovante de residência';
+  if (value.includes('cnis') || value.includes('inss') || value.includes('beneficio') || value.includes('bpc') || value.includes('loas')) return 'INSS / benefício';
+  if (value.includes('procuracao')) return 'Procuração';
+  if (value.includes('contrato')) return 'Contrato';
+  if (value.includes('declaracao')) return 'Declaração';
+  return 'Documento recebido';
+}
+
+function assessment(files: Array<{ title: string }>, suggestedArea?: string | null) {
+  const types = files.map((file) => documentType(file.title));
+  const counts = types.reduce<Record<string, number>>((total, type) => ({ ...total, [type]: (total[type] || 0) + 1 }), {});
+  const isBpc = suggestedArea === 'Previdenciário' || files.some((file) => /\bbpc\b|loas|inss/i.test(file.title));
+  const expected = isBpc ? ['Identificação', 'CPF', 'Comprovante de residência', 'CadÚnico / NIS', 'Laudo / relatório médico'] : ['Identificação', 'CPF', 'Comprovante de residência'];
+  return { categories: counts, pending: expected.filter((item) => !counts[item]), isBpc };
+}
+
 export async function GET() {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
@@ -34,5 +60,9 @@ export async function GET() {
     parent.files.push(...folder.files.filter((file) => !parent.files.some((existing) => existing.contentHash === file.contentHash)));
     return result;
   }, []);
-  return NextResponse.json({ folders });
+  return NextResponse.json({ folders: folders.map((folder) => ({
+    ...folder,
+    files: folder.files.map((file) => ({ ...file, classification: documentType(file.title) })),
+    assessment: assessment(folder.files, folder.suggestedArea),
+  })) });
 }
