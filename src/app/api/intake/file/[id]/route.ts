@@ -21,6 +21,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       'Content-Type': intakeFile.file.mimeType || 'application/octet-stream',
       'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(intakeFile.file.originalName)}`,
       'Cache-Control': 'private, no-store',
+      'X-Frame-Options': 'SAMEORIGIN',
+      'Content-Security-Policy': "frame-ancestors 'self'",
     },
   });
 }
