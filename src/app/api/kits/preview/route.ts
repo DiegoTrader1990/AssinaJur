@@ -72,6 +72,7 @@ export async function POST(req: Request) {
       cliente_endereco: [client.address, client.number, client.neighborhood, [client.city, client.state].filter(Boolean).join('/')].filter(Boolean).join(', ') || '—',
       advogado_nome: lawyer?.name || 'Advogado responsável', advogado_oab: lawyer?.oabNumber || '—', escritorio_nome: office.tradeName || office.name,
       patronos_qualificacao_conjunta: `${patronosQualification}, com escritório profissional na ${fullAddress}`,
+      patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),
       data_atual: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date()),
       ...(customVariables || {}),
       cidade: client.city || '—',
