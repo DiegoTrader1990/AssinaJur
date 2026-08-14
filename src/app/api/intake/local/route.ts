@@ -25,6 +25,14 @@ function validKey(request: Request) {
   return Boolean(expected && request.headers.get('x-assinajur-intake-key') === expected);
 }
 
+// Diagnóstico restrito ao conector local durante a implantação. Não expõe
+// qualquer dado de cliente e exige a mesma chave privada de importação.
+export async function GET(request: Request) {
+  if (!validKey(request)) return NextResponse.json({ error: 'Conector local não autorizado.' }, { status: 401 });
+  const offices = await prisma.office.findMany({ select: { id: true, name: true, email: true }, orderBy: { createdAt: 'asc' } });
+  return NextResponse.json({ offices });
+}
+
 export async function POST(request: Request) {
   if (!validKey(request)) return NextResponse.json({ error: 'Conector local não autorizado.' }, { status: 401 });
   try {
