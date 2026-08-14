@@ -70,6 +70,8 @@ interface Client {
   legalArea?: string;
   processNumber?: string;
   lawyerInCharge?: { id: string; name: string; oabNumber?: string };
+  processes?: Array<{ id: string; title: string; legalArea?: string; status: string; priority: string; dueDate?: string | null; protocolNumber?: string | null; lastActivityAt: string; _count: { documents: number; attachments: number } }>;
+  documents?: Array<{ id: string; title: string; status: string; createdAt: string; completedAt?: string | null; process?: { id: string; title: string } | null }>;
   createdAt: string;
 }
 
@@ -256,6 +258,18 @@ export default function ClientsPage() {
     setOcrDocPreview(null);
     setOcrSuccess(false);
     setShowModal(true);
+  };
+
+  const openClientDossier = async (client: Client) => {
+    setSelectedClient(client);
+    setActiveTab('resumo');
+    try {
+      const response = await fetch(`/api/clients/${client.id}`, { cache: 'no-store' });
+      const data = await response.json();
+      if (response.ok && data.client) setSelectedClient(data.client);
+    } catch {
+      // A ficha básica continua disponível mesmo que os dados complementares falhem.
+    }
   };
 
   const processOcrFile = async (file: File) => {
@@ -572,7 +586,7 @@ export default function ClientsPage() {
                     <td className="px-6 py-4 text-right">
                       <div className="inline-flex items-center gap-1.5">
                         <button
-                          onClick={() => setSelectedClient(client)}
+                          onClick={() => openClientDossier(client)}
                           className="px-3.5 py-1.5 bg-slate-100 hover:bg-[#071B3A] hover:text-white text-slate-700 font-bold rounded-xl text-xs transition-all font-heading"
                         >
                           Abrir Ficha
@@ -1140,6 +1154,14 @@ export default function ClientsPage() {
               >
                 Dados Pessoais
               </button>
+              <button
+                onClick={() => setActiveTab('documentos')}
+                className={`py-2.5 px-4 border-b-2 transition-all ${
+                  activeTab === 'documentos' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Processos e documentos
+              </button>
             </div>
 
             {/* Conteúdo da Aba */}
@@ -1185,6 +1207,34 @@ export default function ClientsPage() {
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase">Estado Civil</span>
                     <p className="font-bold text-slate-800 mt-0.5">{selectedClient.maritalStatus || 'Não informado'}</p>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'documentos' && (
+                <div className="space-y-5">
+                  <div className="flex flex-col gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-[10px] font-extrabold uppercase tracking-wider text-blue-700">Visão 360º</p>
+                      <p className="mt-1 text-xs text-slate-600">Processos, arquivos e formalizações vinculados a este cliente.</p>
+                    </div>
+                    <a href={`/processos?clienteId=${selectedClient.id}`} className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#071B3A] px-3 py-2.5 text-xs font-bold text-white"><FolderOpen className="h-3.5 w-3.5" /> Novo processo</a>
+                  </div>
+
+                  <div>
+                    <div className="mb-2 flex items-center justify-between"><p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Processos</p><span className="text-[11px] font-bold text-slate-500">{selectedClient.processes?.length || 0} em acompanhamento</span></div>
+                    <div className="space-y-2">
+                      {selectedClient.processes?.map((process) => <a key={process.id} href={`/processos?clienteId=${selectedClient.id}`} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-blue-300 hover:bg-slate-50"><span className={`h-2.5 w-2.5 rounded-full ${process.status === 'CONCLUIDO' ? 'bg-emerald-500' : process.priority === 'ALTA' ? 'bg-rose-500' : 'bg-blue-500'}`} /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-extrabold text-[#071B3A]">{process.title}</span><span className="mt-0.5 block text-[11px] text-slate-500">{process.legalArea || 'Geral'} · {process._count.documents} documentos · {process._count.attachments} arquivos</span></span><span className="text-[10px] font-bold text-slate-400">{process.dueDate ? new Date(process.dueDate).toLocaleDateString('pt-BR') : process.status.replaceAll('_', ' ')}</span></a>)}
+                      {!selectedClient.processes?.length && <div className="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-center text-xs text-slate-500">Nenhum processo criado para este cliente.</div>}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-2 flex items-center justify-between"><p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Documentos e assinaturas</p><a href="/documentos" className="text-[11px] font-bold text-blue-700">Abrir central</a></div>
+                    <div className="space-y-2">
+                      {selectedClient.documents?.map((document) => <a key={document.id} href="/documentos" className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-blue-300 hover:bg-slate-50"><FileText className={`h-4 w-4 shrink-0 ${document.status === 'CONCLUIDO' ? 'text-emerald-600' : 'text-amber-500'}`} /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-extrabold text-[#071B3A]">{document.title}</span><span className="mt-0.5 block truncate text-[11px] text-slate-500">{document.process?.title || 'Sem processo vinculado'}</span></span><span className={`rounded-full px-2 py-1 text-[9px] font-extrabold ${document.status === 'CONCLUIDO' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{document.status === 'CONCLUIDO' ? 'ASSINADO' : document.status.replaceAll('_', ' ')}</span></a>)}
+                      {!selectedClient.documents?.length && <div className="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-center text-xs text-slate-500">Nenhum documento vinculado a este cliente.</div>}
+                    </div>
                   </div>
                 </div>
               )}

@@ -22,6 +22,32 @@ export async function GET(
         lawyerInCharge: {
           select: { id: true, name: true, oabNumber: true, email: true },
         },
+        processes: {
+          select: {
+            id: true,
+            title: true,
+            legalArea: true,
+            status: true,
+            priority: true,
+            dueDate: true,
+            protocolNumber: true,
+            lastActivityAt: true,
+            _count: { select: { documents: true, attachments: true } },
+          },
+          orderBy: { lastActivityAt: 'desc' },
+        },
+        documents: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            completedAt: true,
+            createdAt: true,
+            process: { select: { id: true, title: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+        },
       },
     });
 
