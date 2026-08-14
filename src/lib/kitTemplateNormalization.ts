@@ -1,18 +1,20 @@
 // Garante que dados pessoais nunca fiquem fixos em modelos usados dentro de um kit.
 export function ensureClientQualificationTokens(contentHtml: string, title: string, documentType = '') {
   let result = contentHtml;
-  const hasClientVariable = /{{\s*cliente_nome\s*}}/i.test(result);
   const isPower = /PROCUR/i.test(documentType) || /procura[cç][aã]o/i.test(title);
   const isContract = /CONTRAT/i.test(documentType) || /contrato/i.test(title);
   const isDeclaration = /DECLAR/i.test(documentType) || /declara[cç][aã]o/i.test(title);
   if (!isPower && !isContract && !isDeclaration) return result;
 
   const label = isPower ? 'OUTORGANTE' : isContract ? 'CONTRATANTE' : '';
-  if (label && !hasClientVariable) {
+  if (label) {
     let replaced = false;
     result = result.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attrs, inner) => {
       const text = String(inner).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
-      if (replaced || !new RegExp(`^${label}\\s*:`, 'i').test(text)) return block;
+      // Não basta existir uma variável em outro trecho da minuta. A qualificação
+      // inicial precisa ser dinâmica por si só; caso ainda tenha dados fixos de
+      // outra pessoa, ela é reconstruída integralmente.
+      if (replaced || !new RegExp(`^${label}\\s*:`, 'i').test(text) || /{{\s*cliente_(?:nome|cpf|rg|endereco)\s*}}/i.test(inner)) return block;
       replaced = true;
       const suffix = isContract ? ', doravante denominado(a) CONTRATANTE.' : '.';
       return `<${tag}${attrs}><strong>${label}:</strong> {{cliente_nome}}, {{cliente_nacionalidade}}, {{cliente_estado_civil}}, {{cliente_profissao}}, portador(a) do RG nº {{cliente_rg}} e inscrito(a) no CPF sob o nº {{cliente_cpf}}, residente e domiciliado(a) em {{cliente_endereco}}${suffix}</${tag}>`;
