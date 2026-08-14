@@ -290,6 +290,53 @@ function parseRichParagraphs(html: string): RichParagraph[] {
   return mergedParagraphs;
 }
 
+// Modelos antigos podem ter chegado do Word com o rodapé já preenchido com uma
+// cliente anterior. Depois que o HTML foi convertido em parágrafos, não
+// dependemos mais da estrutura de tags do Word: identificamos o bloco final de
+// assinatura e reconstruímos somente seus dados com a cliente desta emissão.
+function applyDynamicSignatureFooter(paragraphs: RichParagraph[], variables: VariableValues): RichParagraph[] {
+  const clientName = String(variables.cliente_nome || '').trim();
+  const city = String(variables.cidade || '').trim();
+  const date = String(variables.data_atual || '').trim();
+  if (!clientName && !(city && date)) return paragraphs;
+
+  const paragraphText = (paragraph: RichParagraph) => paragraph.runs.map((run) => run.text).join(' ').replace(/\s+/g, ' ').trim();
+  const roleIndex = paragraphs
+    .map((paragraph, index) => /^(?:OUTORGANTE|CONTRATANTE|DECLARANTE|ASSINATURA\s+DO\s+CLIENTE)\.?$/i.test(paragraphText(paragraph)) ? index : -1)
+    .filter((index) => index >= 0)
+    .at(-1);
+
+  // Só é rodapé quando o rótulo está no fim do documento. Isso preserva a
+  // qualificação inicial "OUTORGANTE:" presente no corpo da procuração.
+  if (roleIndex === undefined || roleIndex < Math.max(1, paragraphs.length - 8)) return paragraphs;
+
+  const result = paragraphs.map((paragraph) => ({ ...paragraph, runs: paragraph.runs.map((run) => ({ ...run })) }));
+  const signatureNameIndex = roleIndex - 1;
+  if (clientName && result[signatureNameIndex]) {
+    const existing = result[signatureNameIndex];
+    result[signatureNameIndex] = {
+      ...existing,
+      alignment: 'CENTER',
+      runs: [{ text: clientName, bold: existing.runs.some((run) => run.bold), fontFamily: existing.runs[0]?.fontFamily, fontSize: existing.runs[0]?.fontSize }],
+    };
+  }
+
+  const dateIndex = result
+    .slice(0, Math.max(0, signatureNameIndex))
+    .map((paragraph, index) => ({ index, text: paragraphText(paragraph) }))
+    .filter(({ text }) => /\d{1,2}\s+de\s+/i.test(text) || /\d{1,2}[/.\-]\d{2,4}/.test(text))
+    .map(({ index }) => index)
+    .at(-1);
+  if (dateIndex !== undefined && city && date) {
+    const existing = result[dateIndex];
+    result[dateIndex] = {
+      ...existing,
+      runs: [{ text: `${city}, ${date}.`, bold: existing.runs.some((run) => run.bold), fontFamily: existing.runs[0]?.fontFamily, fontSize: existing.runs[0]?.fontSize }],
+    };
+  }
+  return result;
+}
+
 async function renderTemplatePdf({
   title,
   contentHtml,
@@ -363,7 +410,7 @@ async function renderTemplatePdf({
   let currentY = height - startTopMargin;
   const marginX = 40;
   const maxWidth = width - 80;
-  const paragraphs = parseRichParagraphs(presentationHtml);
+  const paragraphs = applyDynamicSignatureFooter(parseRichParagraphs(presentationHtml), variables);
   let signaturePlacement: { page: number; x: number; y: number; width: number; height: number } | null = null;
   let explicitSignatureLineFound = false;
   const ensureLineSpace = (lineHeight: number) => {

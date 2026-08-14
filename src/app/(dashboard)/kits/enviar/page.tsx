@@ -133,6 +133,18 @@ export default function DispatchKitPage() {
 
   const selectedKit = kits.find((k) => k.id === selectedKitId);
 
+  // Uma revisão pertence a uma combinação específica de cliente e kit. Ao trocar
+  // qualquer um deles, descartamos a cópia temporária anterior para nunca levar
+  // dados de outra cliente (inclusive cidade e assinatura final) à nova minuta.
+  const resetReviewForSelection = () => {
+    setShowReviewStep(false);
+    setReviewItem(null);
+    setReviewClientData({});
+    setCustomContents({});
+    if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl);
+    setReviewPdfUrl(null);
+  };
+
   const handleReviewStep = async () => {
     if (!selectedKit) return;
     
@@ -464,7 +476,10 @@ export default function DispatchKitPage() {
           <select
             required
             value={selectedClientId}
-            onChange={(e) => setSelectedClientId(e.target.value)}
+            onChange={(e) => {
+              resetReviewForSelection();
+              setSelectedClientId(e.target.value);
+            }}
             className="w-full p-3 border border-slate-300 rounded-xl text-slate-800 text-sm focus:border-gold-500 focus:outline-none"
           >
             <option value="">Selecione o Cliente Cadastrado...</option>
@@ -484,7 +499,10 @@ export default function DispatchKitPage() {
           <select
             required
             value={selectedKitId}
-            onChange={(e) => setSelectedKitId(e.target.value)}
+            onChange={(e) => {
+              resetReviewForSelection();
+              setSelectedKitId(e.target.value);
+            }}
             className="w-full p-3 border border-slate-300 rounded-xl text-slate-800 text-sm focus:border-gold-500 focus:outline-none"
           >
             <option value="">Selecione o Kit Jurídico...</option>
