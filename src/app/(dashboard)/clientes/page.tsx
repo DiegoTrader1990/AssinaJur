@@ -539,7 +539,7 @@ export default function ClientsPage() {
           </div>
 
           <button
-            onClick={fetchClients}
+            onClick={() => void fetchClients()}
             className="px-4 py-2 bg-[#071B3A] text-white rounded-xl text-xs font-bold font-heading hover:bg-[#0B1D3D] transition-colors"
           >
             Filtrar

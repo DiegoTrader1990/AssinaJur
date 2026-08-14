@@ -20,6 +20,17 @@ export function ensureClientQualificationTokens(contentHtml: string, title: stri
     const visibleText = String(inner).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
     return /^{{\s*cliente_nome\s*}}$/i.test(visibleText) ? heading : whole;
   });
+  if (isPower) {
+    let reachedQualification = false;
+    result = result.replace(/<(p|div|h1|h2|h3)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attrs, inner) => {
+      const visibleText = String(inner).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
+      if (/^OUTORGANTE\s*:/i.test(visibleText)) reachedQualification = true;
+      // Na procuração, um nome isolado antes da qualificação é resíduo do modelo
+      // Word e não faz parte da redação jurídica.
+      if (!reachedQualification && /^{{\s*cliente_nome\s*}}$/i.test(visibleText)) return '';
+      return `<${tag}${attrs}>${inner}</${tag}>`;
+    });
+  }
 
   const label = isPower ? 'OUTORGANTE' : isContract ? 'CONTRATANTE' : '';
   if (label) {
