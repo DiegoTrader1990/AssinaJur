@@ -245,11 +245,11 @@ export default function DashboardPage() {
   const [clientRg, setClientRg] = useState('');
   const [clientArea, setClientArea] = useState('Previdenciário');
 
-  // Assinatura Rápida (PDF Compacto)
+  // Assinatura Rápida (Upload Multi-Documento)
   const [fastDocTitle, setFastDocTitle] = useState('');
   const [fastClientId, setFastClientId] = useState('');
   const [dragActive, setDragActive] = useState(false);
-  const [uploadedPdf, setUploadedPdf] = useState<any>(null);
+  const [uploadedPdfs, setUploadedPdfs] = useState<Array<{ id: string; name: string; sizeBytes?: number }>>([]);
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -552,26 +552,43 @@ export default function DashboardPage() {
     return stageCounts.overdueSignatures + stageCounts.PREPARACAO + stageCounts.DOCUMENTACAO;
   }, [stageCounts]);
 
-  // Upload rápido
+  // Upload rápido (Suporte a múltiplos PDFs simultâneos)
   const handleFastFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) await handleFastFileProcess(e.target.files[0]);
+    if (e.target.files && e.target.files.length > 0) {
+      const filesArray = Array.from(e.target.files);
+      await handleFastFileProcess(filesArray);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
-  const handleFastFileProcess = async (file: File) => {
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      setErrorMessage('Por favor, selecione um arquivo em formato PDF.');
+  const handleFastFileProcess = async (files: File | File[]) => {
+    const fileList = Array.isArray(files) ? files : [files];
+    const pdfFiles = fileList.filter((f) => f.name.toLowerCase().endsWith('.pdf'));
+
+    if (pdfFiles.length === 0) {
+      setErrorMessage('Por favor, selecione arquivo(s) no formato PDF.');
       return;
     }
+
     setUploadingPdf(true);
     setErrorMessage('');
-    setFastDocTitle(file.name.replace(/\.pdf$/i, ''));
+
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const r = await fetch('/api/documents/upload', { method: 'POST', body: fd });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Erro no upload do PDF.');
-      setUploadedPdf(d.file);
+      const uploadPromises = pdfFiles.map(async (file) => {
+        const fd = new FormData();
+        fd.append('file', file);
+        const r = await fetch('/api/documents/upload', { method: 'POST', body: fd });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || `Erro no upload do arquivo ${file.name}.`);
+        return {
+          id: d.file.id,
+          name: file.name,
+          sizeBytes: file.size,
+        };
+      });
+
+      const newUploadedFiles = await Promise.all(uploadPromises);
+      setUploadedPdfs((prev) => [...prev, ...newUploadedFiles]);
     } catch (err: any) {
       setErrorMessage(err.message);
     } finally {
@@ -579,40 +596,68 @@ export default function DashboardPage() {
     }
   };
 
+  const handleRemoveUploadedFile = (indexToRemove: number) => {
+    setUploadedPdfs((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
   const buildWhatsappMessage = useCallback(
-    (name: string, link: string) =>
-      `Olá, ${name}!\n\nSeus documentos jurídicos do escritório ${
+    (name: string, docs: Array<{ title: string; link: string }>) => {
+      if (docs.length === 1) {
+        return `Olá, ${name}!\n\nSeu documento ("${docs[0].title}") do escritório ${
+          office?.name || 'Rodrigues & Soares Advocacia'
+        } está pronto para sua assinatura digital.\n\nAcesse o link seguro no celular para assinar:\n${
+          docs[0].link
+        }\n\nQualquer dúvida, estamos à disposição no escritório.`;
+      }
+
+      const listStr = docs.map((d, idx) => `📄 ${idx + 1}. ${d.title}:\n${d.link}`).join('\n\n');
+      return `Olá, ${name}!\n\nSeus ${docs.length} documentos jurídicos do escritório ${
         office?.name || 'Rodrigues & Soares Advocacia'
-      } estão prontos para sua assinatura digital.\n\nAcesse o link seguro no celular para assinar:\n${link}\n\nQualquer dúvida, estamos à disposição no escritório.`,
+      } estão prontos para sua assinatura digital:\n\n${listStr}\n\nAcesse os links acima no celular para assinar cada documento.\n\nQualquer dúvida, estamos à disposição no escritório.`;
+    },
     [office]
   );
 
   const handleFastDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fastClientId || !uploadedPdf) return;
+    if (!fastClientId || uploadedPdfs.length === 0) return;
     setSubmitting(true);
     setErrorMessage('');
     try {
-      const r = await fetch('/api/documents', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: fastDocTitle || uploadedPdf.name,
-          clientId: fastClientId,
-          fileId: uploadedPdf.id,
-        }),
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Erro ao gerar documento.');
-
       const cl = clients.find((c) => c.id === fastClientId);
-      const link = `https://www.assinajur.com.br/assinar/${d.document.token}`;
-      setWhatsappMsg(buildWhatsappMessage(cl?.name || 'Cliente', link));
+
+      // Disparar a criação de todos os documentos selecionados em lote
+      const createdDocs = await Promise.all(
+        uploadedPdfs.map(async (pdfFile) => {
+          const title = pdfFile.name.replace(/\.pdf$/i, '');
+          const r = await fetch('/api/documents', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title,
+              clientId: fastClientId,
+              fileId: pdfFile.id,
+            }),
+          });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || `Erro ao gerar documento "${pdfFile.name}".`);
+          return {
+            id: d.document.id,
+            title: d.document.title,
+            token: d.document.token,
+            link: `https://www.assinajur.com.br/assinar/${d.document.token}`,
+          };
+        })
+      );
+
+      const msg = buildWhatsappMessage(cl?.name || 'Cliente', createdDocs);
+      setWhatsappMsg(msg);
       setExecutionResult({
         clientName: cl?.name || 'Cliente',
         clientPhone: cl?.phone || cl?.whatsapp || '',
-        docTitle: d.document.title,
-        signatureLink: link,
+        docsCount: createdDocs.length,
+        documents: createdDocs,
+        allLinksText: createdDocs.map((d) => `${d.title}: ${d.link}`).join('\n'),
       });
       loadData();
     } catch (err: any) {
@@ -808,47 +853,70 @@ export default function DashboardPage() {
                 <FileUp className="w-3.5 h-3.5" />
               </div>
               <div className="min-w-0">
-                <h3 className="text-xs font-black text-[#0B192C] leading-tight">Enviar Documento</h3>
-                <p className="text-[10px] text-slate-500 leading-tight">Envie um PDF para assinatura do cliente.</p>
+                <h3 className="text-xs font-black text-[#0B192C] leading-tight">Enviar Documento(s)</h3>
+                <p className="text-[10px] text-slate-500 leading-tight">Envie 1 ou mais PDFs para assinatura do cliente.</p>
               </div>
             </div>
 
             {executionResult ? (
-              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1.5 text-xs">
-                <p className="font-bold text-emerald-900 text-[11px]">✓ Link de assinatura pronto</p>
-                <p className="text-emerald-800 text-[10px] truncate">Destinatário: {executionResult.clientName}</p>
-                <div className="flex items-center gap-1.5 pt-0.5">
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <p className="font-extrabold text-emerald-950 text-[11px]">
+                    ✓ {executionResult.docsCount || 1} documento(s) gerado(s) para {executionResult.clientName}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExecutionResult(null);
+                      setUploadedPdfs([]);
+                      setFastClientId('');
+                    }}
+                    className="p-1 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
+                  {executionResult.documents?.map((doc: any, idx: number) => (
+                    <div key={doc.id || idx} className="flex items-center justify-between px-2 py-1 bg-white border border-emerald-200/80 rounded-lg text-[10px]">
+                      <span className="font-semibold text-slate-800 truncate">{idx + 1}. {doc.title}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(doc.link);
+                          setCopiedLink(true);
+                          setTimeout(() => setCopiedLink(false), 2000);
+                        }}
+                        className="text-[#0B192C] font-bold underline hover:text-amber-700 ml-2 shrink-0"
+                      >
+                        Copiar link
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-1.5 pt-1 border-t border-emerald-200/60">
                   {executionResult.clientPhone && (
                     <a
                       href={`https://wa.me/55${executionResult.clientPhone.replace(/\D/g, '')}?text=${encodeURIComponent(whatsappMsg)}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-2.5 py-1 bg-[#25D366] text-white font-bold rounded-lg text-[10px]"
+                      className="flex-1 py-1.5 bg-[#25D366] hover:bg-[#1fb855] text-white font-bold rounded-lg text-[10px] flex items-center justify-center gap-1 shadow-2xs"
                     >
-                      WhatsApp
+                      <MessageSquare className="w-3 h-3 fill-white" /> WhatsApp ({executionResult.docsCount || 1})
                     </a>
                   )}
                   <button
                     type="button"
                     onClick={() => {
-                      navigator.clipboard.writeText(executionResult.signatureLink);
+                      navigator.clipboard.writeText(whatsappMsg);
                       setCopiedLink(true);
                       setTimeout(() => setCopiedLink(false), 2000);
                     }}
-                    className="px-2.5 py-1 bg-white border border-slate-200 text-slate-700 font-bold rounded-lg text-[10px]"
+                    className="px-2.5 py-1.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-lg text-[10px] shrink-0"
                   >
-                    {copiedLink ? 'Copiado!' : 'Copiar link'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setExecutionResult(null);
-                      setUploadedPdf(null);
-                      setFastClientId('');
-                    }}
-                    className="p-1 text-slate-400 hover:text-slate-600 ml-auto"
-                  >
-                    <X className="w-3 h-3" />
+                    {copiedLink ? 'Copiado!' : 'Copiar Todos'}
                   </button>
                 </div>
               </div>
@@ -866,14 +934,16 @@ export default function DashboardPage() {
                   onDrop={async (e) => {
                     e.preventDefault();
                     setDragActive(false);
-                    if (e.dataTransfer.files?.[0]) await handleFastFileProcess(e.dataTransfer.files[0]);
+                    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                      await handleFastFileProcess(Array.from(e.dataTransfer.files));
+                    }
                   }}
                   onClick={() => fileInputRef.current?.click()}
                   className={`border border-dashed rounded-xl px-2.5 py-2 text-center cursor-pointer transition-all ${
                     dragActive
                       ? 'border-[#B68B1C] bg-amber-50'
-                      : uploadedPdf
-                      ? 'border-emerald-400 bg-emerald-50/50'
+                      : uploadedPdfs.length > 0
+                      ? 'border-emerald-400 bg-emerald-50/40'
                       : 'border-slate-300 bg-slate-50/50 hover:border-[#B68B1C] hover:bg-amber-50/40'
                   }`}
                 >
@@ -881,21 +951,44 @@ export default function DashboardPage() {
                     ref={fileInputRef}
                     type="file"
                     accept=".pdf"
+                    multiple
                     onChange={handleFastFileSelect}
                     className="hidden"
                   />
 
                   {uploadingPdf ? (
-                    <Loader2 className="w-3.5 h-3.5 text-[#B68B1C] animate-spin mx-auto" />
-                  ) : uploadedPdf ? (
-                    <div className="flex items-center justify-between gap-2 text-left">
-                      <p className="text-[11px] font-bold text-slate-900 truncate">{uploadedPdf.name}</p>
-                      <span className="text-[9px] text-slate-400 font-bold underline shrink-0">Trocar</span>
+                    <div className="flex items-center justify-center gap-1.5 text-xs text-[#B68B1C] font-bold py-1">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando arquivo(s)...
+                    </div>
+                  ) : uploadedPdfs.length > 0 ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[11px] font-extrabold text-slate-800 border-b border-slate-200/60 pb-1">
+                        <span>{uploadedPdfs.length} PDF(s) selecionado(s)</span>
+                        <span className="text-[9px] text-[#B68B1C] font-black underline">+ Adicionar outro PDF</span>
+                      </div>
+                      <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
+                        {uploadedPdfs.map((f, idx) => (
+                          <div
+                            key={f.id || idx}
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center justify-between px-2 py-0.5 bg-white border border-slate-200 rounded-md text-[10px]"
+                          >
+                            <span className="font-bold text-slate-900 truncate">{idx + 1}. {f.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveUploadedFile(idx)}
+                              className="text-slate-400 hover:text-rose-600 ml-1 shrink-0 p-0.5"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center gap-1.5">
+                    <div className="flex items-center justify-center gap-1.5 py-1">
                       <FileUp className="w-3.5 h-3.5 text-[#B68B1C]" />
-                      <span className="text-[11px] font-bold text-slate-700">Arraste aqui ou selecione um PDF</span>
+                      <span className="text-[11px] font-bold text-slate-700">Arraste PDFs ou clique (vários arquivos)</span>
                     </div>
                   )}
                 </div>
@@ -910,11 +1003,11 @@ export default function DashboardPage() {
 
                 <button
                   type="submit"
-                  disabled={submitting || !fastClientId || !uploadedPdf}
+                  disabled={submitting || !fastClientId || uploadedPdfs.length === 0}
                   className="w-full py-1.5 bg-[#0B192C] hover:bg-[#152a47] text-white font-bold text-[11px] rounded-lg transition-all disabled:opacity-35 flex items-center justify-center gap-1.5 shadow-2xs"
                 >
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3 text-[#D4AF37]" />}
-                  Enviar para assinatura
+                  Enviar {uploadedPdfs.length > 1 ? `${uploadedPdfs.length} documentos` : 'para assinatura'}
                 </button>
               </form>
             )}
