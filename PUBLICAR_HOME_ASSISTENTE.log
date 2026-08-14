@@ -1,0 +1,117 @@
+=== DIAGNOSTICO === 
+C:\Program Files\nodejs\node.exe
+C:\Program Files\nodejs\npx
+C:\Program Files\nodejs\npx.cmd
+ 
+=== LIMPEZA DE CACHE (.next) === 
+ 
+=== BUILD DE VALIDACAO (next build, sem tocar no banco) === 
+  ▲ Next.js 14.2.35
+  - Environments: .env.production.local, .env.local, .env
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/28) ...
+   Generating static pages (7/28) 
+   Generating static pages (14/28) 
+   Generating static pages (21/28) 
+ ✓ Generating static pages (28/28)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                  Size     First Load JS
+┌ ○ /                                        18.5 kB         115 kB
+├ ○ /_not-found                              880 B            89 kB
+├ ○ /admin                                   4.07 kB         101 kB
+├ ○ /admin/login                             2.56 kB        90.6 kB
+├ ƒ /api/admin/login                         0 B                0 B
+├ ƒ /api/admin/offices                       0 B                0 B
+├ ƒ /api/admin/offices/[id]                  0 B                0 B
+├ ƒ /api/auth/login                          0 B                0 B
+├ ƒ /api/auth/logout                         0 B                0 B
+├ ƒ /api/auth/me                             0 B                0 B
+├ ƒ /api/auth/register-office                0 B                0 B
+├ ƒ /api/clients                             0 B                0 B
+├ ƒ /api/clients/[id]                        0 B                0 B
+├ ƒ /api/clients/geographic-summary          0 B                0 B
+├ ƒ /api/clients/parse-document              0 B                0 B
+├ ƒ /api/documents                           0 B                0 B
+├ ƒ /api/documents/[id]                      0 B                0 B
+├ ƒ /api/documents/[id]/download             0 B                0 B
+├ ƒ /api/documents/bulk                      0 B                0 B
+├ ƒ /api/documents/upload                    0 B                0 B
+├ ƒ /api/intake                              0 B                0 B
+├ ƒ /api/intake/file/[id]                    0 B                0 B
+├ ƒ /api/intake/local                        0 B                0 B
+├ ƒ /api/integrations/google-drive           0 B                0 B
+├ ƒ /api/integrations/google-drive/callback  0 B                0 B
+├ ƒ /api/kits                                0 B                0 B
+├ ƒ /api/kits/[id]                           0 B                0 B
+├ ƒ /api/kits/generate-package               0 B                0 B
+├ ƒ /api/kits/preview                        0 B                0 B
+├ ƒ /api/office                              0 B                0 B
+├ ƒ /api/office/letterhead                   0 B                0 B
+├ ƒ /api/office/plan                         0 B                0 B
+├ ƒ /api/office/team                         0 B                0 B
+├ ƒ /api/processos                           0 B                0 B
+├ ƒ /api/processos/[id]                      0 B                0 B
+├ ƒ /api/processos/sync-drive                0 B                0 B
+├ ƒ /api/sign/[token]                        0 B                0 B
+├ ƒ /api/sign/[token]/confirm-identity       0 B                0 B
+├ ƒ /api/sign/[token]/document               0 B                0 B
+├ ƒ /api/sign/[token]/event                  0 B                0 B
+├ ƒ /api/sign/[token]/submit                 0 B                0 B
+├ ƒ /api/tags                                0 B                0 B
+├ ƒ /api/tags/[id]                           0 B                0 B
+├ ƒ /api/templates                           0 B                0 B
+├ ƒ /api/templates/[id]                      0 B                0 B
+├ ƒ /api/templates/ai-edit                   0 B                0 B
+├ ƒ /api/templates/preview                   0 B                0 B
+├ ƒ /api/templates/word                      0 B                0 B
+├ ƒ /api/verify/[code]                       0 B                0 B
+├ ƒ /api/whatsapp/qr                         0 B                0 B
+├ ƒ /api/whatsapp/status                     0 B                0 B
+├ ƒ /api/whatsapp/webhook                    0 B                0 B
+├ ƒ /assinar/[token]                         14 kB           102 kB
+├ ○ /clientes                                12.3 kB         100 kB
+├ ○ /configuracoes                           8.12 kB        96.2 kB
+├ ○ /dashboard                               15.1 kB         112 kB
+├ ○ /documentos                              9.93 kB         107 kB
+├ ○ /documentos/novo                         12.8 kB         101 kB
+├ ○ /entrada                                 5.51 kB         102 kB
+├ ○ /equipe                                  3.77 kB        91.9 kB
+├ ○ /kits                                    6.58 kB         110 kB
+├ ○ /kits/enviar                             8.16 kB         102 kB
+├ ○ /login                                   3.23 kB         100 kB
+├ ○ /modelos                                 6.39 kB         101 kB
+├ ○ /plano                                   2.88 kB          91 kB
+├ ○ /privacidade                             180 B            97 kB
+├ ○ /processos                               10.8 kB         108 kB
+├ ○ /register                                5.04 kB         102 kB
+├ ○ /relatorios                              3.43 kB        91.5 kB
+├ ○ /termos                                  183 B            97 kB
+├ ○ /verificar                               2.83 kB        99.6 kB
+├ ƒ /verificar/[code]                        5.45 kB         102 kB
+└ ○ /whatsapp                                7.05 kB        95.1 kB
++ First Load JS shared by all                88.1 kB
+  ├ chunks/2117-bb4489d31fd06a8d.js          31.9 kB
+  ├ chunks/fd9d1056-fce59b0479af7689.js      53.6 kB
+  └ other shared chunks (total)              2.54 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+BUILD_EXIT=0 
+ 
+=== PULL --rebase === 
+From https://github.com/DiegoTrader1990/AssinaJur
+ * branch            main       -> FETCH_HEAD
+Already up to date.
+PULL_EXIT=0 
+ 
+=== PUSH === 
+Everything up-to-date
+PUSH_EXIT=0 
