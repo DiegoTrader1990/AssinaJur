@@ -255,24 +255,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Banner Superior de Status do Plano */}
-        <div className="bg-[#071B3A] text-white px-6 py-2 flex items-center justify-between text-xs border-b border-white/10 shadow-xs">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-            <span className="font-medium text-slate-200">
-              ⚡ <strong>Plano {displayPlan} ativo</strong> — Consulte aqui o consumo mensal do escritório.
-            </span>
-          </div>
-          <Link
-            href="/plano"
-            className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-lg text-[11px] transition-colors shadow-xs"
-          >
-            Gerenciar Plano →
-          </Link>
-        </div>
-
-        {/* Top Header com Barra de Busca e Perfil */}
-        <header className="h-16 bg-white border-b border-slate-200/80 px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs">
+        {/* Top Header com Barra de Busca, Indicador do Plano e Perfil */}
+        <header className="h-14 bg-white border-b border-slate-200/80 px-4 md:px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
           <div className="flex items-center gap-4 flex-1">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -283,7 +267,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             {/* Global Search Input */}
             <div className="relative max-w-md w-full hidden sm:block">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 value={searchQuery}
@@ -294,34 +278,43 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   }
                 }}
                 placeholder="Busque por um documento, cliente ou CPF..."
-                className="w-full bg-slate-50/80 hover:bg-slate-100 focus:bg-white border border-slate-200 focus:border-blue-600 rounded-xl py-2 pl-9 pr-4 text-xs text-slate-800 placeholder-slate-400 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium"
+                className="w-full bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200 focus:border-[#071B3A] rounded-xl py-1.5 pl-9 pr-4 text-xs text-slate-800 placeholder-slate-400 transition-all focus:outline-none focus:ring-2 focus:ring-[#071B3A]/10 font-medium"
               />
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            {/* Indicador Discreto do Plano */}
+            <Link
+              href="/plano"
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-[11px] font-bold transition-colors"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <span>Plano {displayPlan}</span>
+            </Link>
+
             {/* Notificações */}
-            <button className="relative p-2 text-slate-500 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors">
-              <Bell className="w-5 h-5" />
+            <button className="relative p-1.5 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors">
+              <Bell className="w-4 h-4" />
             </button>
 
-            <div className="h-6 w-px bg-slate-200" />
+            <div className="h-5 w-px bg-slate-200" />
 
             {/* Perfil do Advogado */}
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-[#071B3A] text-white font-bold flex items-center justify-center text-xs shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-full bg-[#071B3A] text-white font-bold flex items-center justify-center text-[11px] shadow-2xs">
                 {user?.name?.substring(0, 2).toUpperCase()}
               </div>
               <div className="hidden lg:block text-left">
-                <span className="font-extrabold text-[#071B3A] text-xs block leading-none font-heading">{user?.name}</span>
-                <span className="text-[10px] text-slate-400 font-semibold mt-0.5 block">{user?.officeName}</span>
+                <span className="font-extrabold text-[#071B3A] text-xs block leading-none">{user?.name}</span>
+                <span className="text-[10px] text-slate-400 font-semibold block">{user?.officeName}</span>
               </div>
             </div>
           </div>
         </header>
 
-        {/* Container das Páginas */}
-        <main className="p-6 md:p-8 max-w-7xl w-full mx-auto flex-1 space-y-6">
+        {/* Container das Páginas com Max-Width Amplo */}
+        <main className="p-4 md:p-6 lg:p-7 max-w-[1600px] w-full mx-auto flex-1 space-y-5">
           {children}
         </main>
       </div>
