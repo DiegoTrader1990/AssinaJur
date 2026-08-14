@@ -13,7 +13,7 @@ type Intake = {
   suggestedArea?: string | null;
   confidence: number;
   suggestedClient?: { id: string; name: string; cpfCnpj: string } | null;
-  files: Array<{ id: string; title: string; classification?: string | null; file: { sizeBytes: number } }>;
+  files: Array<{ id: string; title: string; classification?: string | null; file: { id: string; sizeBytes: number } }>;
 };
 
 export default function EntradaPage() {
