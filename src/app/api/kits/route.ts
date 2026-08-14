@@ -23,8 +23,11 @@ export async function GET(req: Request) {
       include: {
         items: {
           include: {
+            // A revisão do kit precisa receber o mesmo conteúdo do modelo que
+            // será compilado. Antes a tela recebia só título/id e dependia de
+            // uma segunda requisição por item, que podia deixar a minuta crua.
             template: {
-              select: { id: true, title: true, documentType: true },
+              select: { id: true, title: true, documentType: true, contentHtml: true },
             },
           },
           orderBy: { displayOrder: 'asc' },

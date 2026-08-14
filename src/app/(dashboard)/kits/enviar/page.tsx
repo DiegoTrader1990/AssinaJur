@@ -154,10 +154,15 @@ export default function DispatchKitPage() {
       }
     }
     try {
-      const [clientResponse, officeResponse, teamResponse] = await Promise.all([
-        fetch(`/api/clients/${selectedClientId}`), fetch('/api/office'), fetch('/api/office/team'),
+      // O cliente é indispensável. Dados institucionais são complementares e
+      // não podem zerar toda a revisão se uma consulta secundária falhar.
+      const clientResponse = await fetch(`/api/clients/${selectedClientId}`, { cache: 'no-store' });
+      if (!clientResponse.ok) throw new Error('Não foi possível carregar os dados da cliente selecionada.');
+      const clientPayload = await clientResponse.json();
+      const [officePayload, teamPayload] = await Promise.all([
+        fetch('/api/office', { cache: 'no-store' }).then((response) => response.ok ? response.json() : { office: {} }).catch(() => ({ office: {} })),
+        fetch('/api/office/team', { cache: 'no-store' }).then((response) => response.ok ? response.json() : { members: [] }).catch(() => ({ members: [] })),
       ]);
-      const [clientPayload, officePayload, teamPayload] = await Promise.all([clientResponse.json(), officeResponse.json(), teamResponse.json()]);
       const client = clientPayload.client || {};
       const activeLawyers = (teamPayload.members || []).filter((member: any) => member.active && ['LAWYER', 'OFFICE_ADMIN'].includes(member.role));
       const lawyer = activeLawyers[0] || {};
@@ -180,7 +185,11 @@ export default function DispatchKitPage() {
         cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${[client.representativeRole, client.representativeCpf ? `CPF nº ${client.representativeCpf}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${client.representativePhone}` : ''].filter(Boolean).join(', ')}` : '',
         data_atual: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date()),
       });
-    } catch { setReviewClientData({}); }
+    } catch (reviewError: any) {
+      setReviewClientData({});
+      setError(reviewError?.message || 'Não foi possível aplicar os dados da cliente à revisão.');
+      return;
+    }
     setCustomContents(contents);
     setShowReviewStep(true);
     setReviewItem(null);
