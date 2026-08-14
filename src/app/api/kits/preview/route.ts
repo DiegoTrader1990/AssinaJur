@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { compileTemplatePreviewToPdf } from '@/lib/templateCompiler';
 import { getFileBuffer } from '@/lib/storage';
-import { ensureClientQualificationTokens } from '@/lib/kitTemplateNormalization';
+import { ensureClientQualificationTokens, formatCpfCnpj } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
       representante_legal: client.legalRepresentative || '', representante_cpf: client.representativeCpf || '', representante_rg: client.representativeRg || '', representante_telefone: client.representativePhone || '',
       representante_qualificacao: [client.representativeRole, client.representativeCpf ? `CPF nº ${client.representativeCpf}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${client.representativePhone}` : ''].filter(Boolean).join(', '),
       cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${[client.representativeRole, client.representativeCpf ? `CPF nº ${client.representativeCpf}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${client.representativePhone}` : ''].filter(Boolean).join(', ')}` : '',
-      cliente_nome: client.name, cliente_cpf: client.cpfCnpj, cliente_rg: client.rg || '—', cliente_nacionalidade: client.nationality || 'Brasileira',
+      cliente_nome: client.name, cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '—', cliente_nacionalidade: client.nationality || 'Brasileira',
       cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—',
       cliente_endereco: [client.address, client.number, client.neighborhood, [client.city, client.state].filter(Boolean).join('/')].filter(Boolean).join(', ') || '—',
       advogado_nome: lawyer?.name || 'Advogado responsável', advogado_oab: lawyer?.oabNumber || '—', escritorio_nome: office.tradeName || office.name,

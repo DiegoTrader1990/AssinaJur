@@ -5,7 +5,7 @@ import { logAuditEvent } from '@/lib/audit';
 import { compileTemplateToPdf } from '@/lib/templateCompiler';
 import { getFileBuffer } from '@/lib/storage';
 import { randomUUID } from 'crypto';
-import { ensureClientQualificationTokens } from '@/lib/kitTemplateNormalization';
+import { ensureClientQualificationTokens, formatCpfCnpj } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -157,7 +157,7 @@ export async function POST(req: Request) {
     // Montar mapa completo de variáveis para substituição automática
     const variableValues = {
       cliente_nome: client.name,
-      cliente_cpf: client.cpfCnpj,
+      cliente_cpf: formatCpfCnpj(client.cpfCnpj),
       cliente_rg: client.rg || '—',
       cliente_nacionalidade: client.nationality || 'Brasileira',
       cliente_genero: client.gender || '',

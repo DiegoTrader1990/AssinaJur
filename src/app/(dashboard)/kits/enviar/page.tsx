@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { FolderArchive, Send, CheckCircle2, Copy, Check, FileText, ArrowLeft, Loader2, AlertCircle, Sparkles, ChevronDown, Eye, X } from 'lucide-react';
 import { DocumentRichEditor } from '@/components/DocumentRichEditor';
-import { ensureClientQualificationTokens } from '@/lib/kitTemplateNormalization';
+import { ensureClientQualificationTokens, formatCpfCnpj } from '@/lib/kitTemplateNormalization';
 
 interface Client {
   id: string;
@@ -187,7 +187,7 @@ export default function DispatchKitPage() {
         return `${member.name}, ${role} ${/\bOAB\b/i.test(oab) ? `na ${oab}` : oab ? `na OAB/${officeState} sob o nº ${oab}` : 'na Ordem dos Advogados do Brasil'}`;
       }).join(' e ');
       setReviewClientData({
-        cliente_nome: client.name || '', cliente_cpf: client.cpfCnpj || '', cliente_rg: client.rg || '—', cliente_nacionalidade: client.nationality || 'Brasileira',
+        cliente_nome: client.name || '', cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '—', cliente_nacionalidade: client.nationality || 'Brasileira',
         cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—', cliente_endereco: [client.address, client.number, client.neighborhood, [client.city, client.state].filter(Boolean).join('/')].filter(Boolean).join(', ') || '—', cidade: [client.city, client.state].filter(Boolean).join('/') || '—',
         advogado_nome: lawyer.name || 'Advogado responsável', advogado_oab: lawyer.oabNumber || '—', escritorio_nome: officePayload.office?.tradeName || officePayload.office?.name || '—',
         patronos_qualificacao_conjunta: patronos ? `${patronos}, com escritório profissional na ${officeAddress}` : 'Advogado responsável',
