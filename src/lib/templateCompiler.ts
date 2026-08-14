@@ -306,9 +306,10 @@ function applyDynamicSignatureFooter(paragraphs: RichParagraph[], variables: Var
     .filter((index) => index >= 0)
     .at(-1);
 
-  // Só é rodapé quando o rótulo está no fim do documento. Isso preserva a
-  // qualificação inicial "OUTORGANTE:" presente no corpo da procuração.
-  if (roleIndex === undefined || roleIndex < Math.max(1, paragraphs.length - 8)) return paragraphs;
+  // Usamos o último rótulo encontrado. Arquivos do Word podem trazer parágrafos
+  // invisíveis depois da assinatura; limitar pela posição final faria o rodapé
+  // antigo escapar da atualização.
+  if (roleIndex === undefined) return paragraphs;
 
   const result = paragraphs.map((paragraph) => ({ ...paragraph, runs: paragraph.runs.map((run) => ({ ...run })) }));
   const roleText = paragraphText(result[roleIndex]);
