@@ -16,7 +16,10 @@ export function ensureClientQualificationTokens(contentHtml: string, title: stri
   // Alguns modelos antigos mantiveram um {{cliente_nome}} isolado logo abaixo
   // do título. A qualificação completa já vem no parágrafo próprio; esse bloco
   // solto apenas duplica o nome e prejudica a apresentação da minuta.
-  result = result.replace(/(<h1[^>]*>[\s\S]*?<\/h1>)\s*<(p|div)([^>]*)>\s*{{\s*cliente_nome\s*}}\s*<\/\2>/i, '$1');
+  result = result.replace(/(<h[1-3][^>]*>[\s\S]*?<\/h[1-3]>)\s*<(p|div|h1|h2|h3)([^>]*)>([\s\S]*?)<\/\2>/i, (whole, heading, _tag, _attrs, inner) => {
+    const visibleText = String(inner).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
+    return /^{{\s*cliente_nome\s*}}$/i.test(visibleText) ? heading : whole;
+  });
 
   const label = isPower ? 'OUTORGANTE' : isContract ? 'CONTRATANTE' : '';
   if (label) {
