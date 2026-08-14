@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { FolderArchive, Send, CheckCircle2, Copy, Check, FileText, ArrowLeft, Loader2, AlertCircle, Sparkles, ChevronDown, Eye, X } from 'lucide-react';
 import { DocumentRichEditor } from '@/components/DocumentRichEditor';
+import { ensureClientQualificationTokens } from '@/lib/kitTemplateNormalization';
 
 interface Client {
   id: string;
@@ -201,7 +202,7 @@ export default function DispatchKitPage() {
   ).replace(/{{\s*[a-zA-Z0-9_]+\s*}}/g, '—');
 
   const renderEditableReview = (html: string) => {
-    let rendered = renderForReview(html);
+    let rendered = renderForReview(ensureClientQualificationTokens(html, reviewItem?.template.title || ''));
     if (/(procura[cç][aã]o|contrato)/i.test(reviewItem?.template.title || '')) {
       let replaced = false;
       rendered = rendered.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
