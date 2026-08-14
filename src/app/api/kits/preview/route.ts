@@ -75,7 +75,7 @@ export async function POST(req: Request) {
       patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),
       data_atual: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date()),
       ...(customVariables || {}),
-      cidade: client.city || '—',
+      cidade: [client.city, client.state].filter(Boolean).join('/') || '—',
     };
     const normalizedClientContent = ensureClientQualificationTokens(contentHtml, title || '');
     const clientContentHtml = ensureClientRepresentativeQualification(normalizedClientContent, title || '', Boolean(client.legalRepresentative));

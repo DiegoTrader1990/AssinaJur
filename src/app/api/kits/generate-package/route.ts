@@ -192,7 +192,7 @@ export async function POST(req: Request) {
       patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),
       ...(customVariables || {}),
       // A cidade é um dado do cliente selecionado; um valor antigo salvo no kit não pode sobrescrevê-la.
-      cidade: client.city || 'Porto Seguro',
+      cidade: [client.city, client.state].filter(Boolean).join('/') || 'Porto Seguro/BA',
     };
 
     // Carregar papel timbrado do escritório (se configurado)
