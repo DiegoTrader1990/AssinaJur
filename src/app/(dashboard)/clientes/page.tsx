@@ -152,6 +152,7 @@ export default function ClientsPage() {
   useEffect(() => {
     fetchClients();
     if (searchParams.get('novo') === 'true') {
+      setFormData({ ...EMPTY_CLIENT_FORM, name: searchParams.get('nome') || '', legalArea: searchParams.get('area') || 'Previdenciário' });
       setShowModal(true);
     }
     

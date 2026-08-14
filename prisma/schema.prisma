@@ -61,6 +61,7 @@ model Office {
   whatsAppSession WhatsAppSession?
   whatsAppLogs    WhatsAppLog[]
   googleDrive     GoogleDriveConnection?
+  intakeFolders   IntakeFolder[]
 }
 
 // Usuário do Escritório
@@ -141,6 +142,7 @@ model Client {
 
   documents           Document[]
   processes           LegalProcess[]
+  intakeSuggestions   IntakeFolder[]
 
   @@unique([officeId, cpfCnpj])
 }
@@ -160,6 +162,7 @@ model StorageFile {
   originalDocuments Document[] @relation("OriginalFile")
   signedDocuments   Document[] @relation("SignedFile")
   processAttachments ProcessAttachment[]
+  intakeFiles         IntakeFile[]
   templateSources    Template[] @relation("TemplateSourceFile")
 }
 
@@ -325,6 +328,44 @@ model ProcessAttachment {
   createdAt   DateTime @default(now())
 
   @@index([processId, createdAt])
+}
+
+// Pastas recebidas pelo conector local do escritório. A entrada é sempre uma
+// pré-triagem: nenhum cliente ou processo é criado sem validação do advogado.
+model IntakeFolder {
+  id                String   @id @default(uuid())
+  officeId          String
+  office            Office   @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  sourceFolderName  String
+  sourceFolderPath  String?
+  status            String   @default("AGUARDANDO_REVISAO")
+  suggestedClientId String?
+  suggestedClient   Client?  @relation(fields: [suggestedClientId], references: [id], onDelete: SetNull)
+  extractedName     String?
+  extractedCpf      String?
+  suggestedArea     String?
+  confidence        Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  files             IntakeFile[]
+
+  @@index([officeId, status])
+  @@index([officeId, sourceFolderName])
+}
+
+model IntakeFile {
+  id             String       @id @default(uuid())
+  intakeFolderId String
+  intakeFolder   IntakeFolder @relation(fields: [intakeFolderId], references: [id], onDelete: Cascade)
+  fileId         String
+  file           StorageFile  @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  title          String
+  classification String?
+  contentHash    String
+  createdAt      DateTime     @default(now())
+
+  @@unique([intakeFolderId, contentHash])
+  @@index([intakeFolderId, createdAt])
 }
 
 // Conexão OAuth com o Google Drive do escritório. Tokens são criptografados
