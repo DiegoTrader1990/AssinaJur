@@ -27,17 +27,9 @@ export function ensureClientQualificationTokens(contentHtml: string, title: stri
   const replaceBlock = (block: RegExpMatchArray, content: string) => {
     result = result.replace(block[0], `<${block[1]}${block[2]}>${content}</${block[1]}>`);
   };
-  if (roleIndex !== undefined) {
-    const roleText = textOf(blocks[roleIndex]);
-    const inlineRole = /^(OUTORGANTE|CONTRATANTE|DECLARANTE)\s*:/i.exec(roleText);
-    // Há dois formatos aceitos: "NOME / Outorgante" e "OUTORGANTE: NOME".
-    // Ambos precisam ser dinâmicos — no segundo, o nome está no mesmo bloco do rótulo.
-    if (inlineRole) {
-      replaceBlock(blocks[roleIndex], `<strong>${inlineRole[1].toUpperCase()}:</strong> {{cliente_nome}}`);
-    } else if (blocks[roleIndex - 1]) {
-      replaceBlock(blocks[roleIndex - 1], '{{cliente_nome}}');
-    }
-    const dateBlock = blocks.slice(0, Math.max(0, roleIndex)).reverse().find((block) => /\d{1,2}\s+de\s+/i.test(textOf(block)) || /\d{1,2}[\/.\-]\d{2,4}/.test(textOf(block)));
+  if (roleIndex !== undefined && roleIndex >= Math.max(1, blocks.length - 10)) {
+    if (blocks[roleIndex - 1]) replaceBlock(blocks[roleIndex - 1], '{{cliente_nome}}');
+    const dateBlock = blocks.slice(0, Math.max(0, roleIndex - 1)).reverse().find((block) => /\d{1,2}\s+de\s+/i.test(textOf(block)) || /\d{1,2}[\/.\-]\d{2,4}/.test(textOf(block)));
     if (dateBlock) replaceBlock(dateBlock, '{{cidade}}, {{data_atual}}.');
   }
   return result;

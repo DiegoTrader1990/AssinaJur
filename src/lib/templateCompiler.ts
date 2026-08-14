@@ -302,32 +302,27 @@ function applyDynamicSignatureFooter(paragraphs: RichParagraph[], variables: Var
 
   const paragraphText = (paragraph: RichParagraph) => paragraph.runs.map((run) => run.text).join(' ').replace(/\s+/g, ' ').trim();
   const roleIndex = paragraphs
-    .map((paragraph, index) => /^(?:OUTORGANTE|CONTRATANTE|DECLARANTE|ASSINATURA\s+DO\s+CLIENTE)\s*[:.]?/i.test(paragraphText(paragraph)) ? index : -1)
+    .map((paragraph, index) => /^(?:OUTORGANTE|CONTRATANTE|DECLARANTE|ASSINATURA\s+DO\s+CLIENTE)\.?$/i.test(paragraphText(paragraph)) ? index : -1)
     .filter((index) => index >= 0)
     .at(-1);
 
-  // Usamos o último rótulo encontrado. Arquivos do Word podem trazer parágrafos
-  // invisíveis depois da assinatura; limitar pela posição final faria o rodapé
-  // antigo escapar da atualização.
-  if (roleIndex === undefined) return paragraphs;
+  // Só é rodapé quando o rótulo está no fim do documento. Isso preserva a
+  // qualificação inicial "OUTORGANTE:" presente no corpo da procuração.
+  if (roleIndex === undefined || roleIndex < Math.max(1, paragraphs.length - 8)) return paragraphs;
 
   const result = paragraphs.map((paragraph) => ({ ...paragraph, runs: paragraph.runs.map((run) => ({ ...run })) }));
-  const roleText = paragraphText(result[roleIndex]);
-  const hasInlineRole = /^(OUTORGANTE|CONTRATANTE|DECLARANTE)\s*:/i.exec(roleText);
-  const signatureNameIndex = hasInlineRole ? roleIndex : roleIndex - 1;
+  const signatureNameIndex = roleIndex - 1;
   if (clientName && result[signatureNameIndex]) {
     const existing = result[signatureNameIndex];
     result[signatureNameIndex] = {
       ...existing,
       alignment: 'CENTER',
-      runs: hasInlineRole
-        ? [{ text: `${hasInlineRole[1].toUpperCase()}: `, bold: true, fontFamily: existing.runs[0]?.fontFamily, fontSize: existing.runs[0]?.fontSize }, { text: clientName, bold: true, fontFamily: existing.runs[0]?.fontFamily, fontSize: existing.runs[0]?.fontSize }]
-        : [{ text: clientName, bold: existing.runs.some((run) => run.bold), fontFamily: existing.runs[0]?.fontFamily, fontSize: existing.runs[0]?.fontSize }],
+      runs: [{ text: clientName, bold: existing.runs.some((run) => run.bold), fontFamily: existing.runs[0]?.fontFamily, fontSize: existing.runs[0]?.fontSize }],
     };
   }
 
   const dateIndex = result
-    .slice(0, Math.max(0, roleIndex))
+    .slice(0, Math.max(0, signatureNameIndex))
     .map((paragraph, index) => ({ index, text: paragraphText(paragraph) }))
     .filter(({ text }) => /\d{1,2}\s+de\s+/i.test(text) || /\d{1,2}[/.\-]\d{2,4}/.test(text))
     .map(({ index }) => index)
