@@ -39,7 +39,28 @@ export function replaceTemplateVariables(contentHtml: string, variables: Variabl
     const regex = new RegExp(`{{\\s*${key}\\s*}}`, 'gi');
     compiled = compiled.replace(regex, val || '________________');
   }
-  return compiled.replace(/{{\s*[a-zA-Z0-9_]+\s*}}/g, '________________');
+  compiled = compiled.replace(/{{\s*[a-zA-Z0-9_]+\s*}}/g, '________________');
+
+  // Proteção final para modelos antigos que foram salvos com o nome/cidade de
+  // uma cliente anterior no rodapé. Esta etapa é propositalmente feita após a
+  // troca das variáveis, no último ponto antes da diagramação do PDF.
+  const clientName = String(allVars.cliente_nome || '').trim();
+  const city = String(allVars.cidade || '').trim();
+  const date = String(allVars.data_atual || defaultDate).trim();
+  if (city && date) {
+    compiled = compiled.replace(/>[^<]{2,120},\s*\d{1,2}\s+de\s+[^\s<]+\s+de\s+\d{4}\.?\s*(?=<\/(?:p|div)>)/gi, `>${city}, ${date}.`);
+  }
+  if (clientName) {
+    compiled = compiled.replace(
+      />[^<]{2,120}(?=<\/(?:p|div)>\s*<(?:p|div)[^>]*>\s*(?:Outorgante|Contratante|Declarante)\b)/gi,
+      `>${clientName}`,
+    );
+    compiled = compiled.replace(
+      />[^<]{2,120}(?=\s*<br\s*\/?\s*>\s*(?:Outorgante|Contratante|Declarante)\b)/gi,
+      `>${clientName}`,
+    );
+  }
+  return compiled;
 }
 
 type ParagraphKind = 'BODY' | 'H1' | 'H2' | 'LIST';
