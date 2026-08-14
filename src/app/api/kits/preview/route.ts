@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { compileTemplatePreviewToPdf } from '@/lib/templateCompiler';
 import { getFileBuffer } from '@/lib/storage';
+import { ensureClientQualificationTokens } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,7 +76,8 @@ export async function POST(req: Request) {
       ...(customVariables || {}),
       cidade: client.city || '—',
     };
-    const clientContentHtml = ensureClientRepresentativeQualification(contentHtml, title || '', Boolean(client.legalRepresentative));
+    const normalizedClientContent = ensureClientQualificationTokens(contentHtml, title || '');
+    const clientContentHtml = ensureClientRepresentativeQualification(normalizedClientContent, title || '', Boolean(client.legalRepresentative));
     const finalContentHtml = ensureJointAttorneyQualification(clientContentHtml, title || '');
     const rendered = await compileTemplatePreviewToPdf({ title: title || 'Documento', contentHtml: finalContentHtml, variables, officeName: office.tradeName || office.name, version: 1, letterheadBuffer });
     return new NextResponse(rendered.pdfBuffer, { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="minuta.pdf"' } });

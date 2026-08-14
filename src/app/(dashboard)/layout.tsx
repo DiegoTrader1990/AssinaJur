@@ -99,7 +99,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       group: 'GESTÃO DO ESCRITÓRIO',
       items: [
         { label: 'Clientes', href: '/clientes', icon: Users },
-        { label: 'Central de Entrada', href: '/entrada', icon: FolderArchive, badge: 'Drive' },
+        { label: 'Caixa de Entrada', href: '/entrada', icon: FolderArchive, badge: 'Drive' },
         { label: 'Processos', href: '/processos', icon: FolderArchive },
         { label: 'Equipe', href: '/equipe', icon: UserCheck },
         { label: 'Relatórios', href: '/relatorios', icon: BarChart3 },

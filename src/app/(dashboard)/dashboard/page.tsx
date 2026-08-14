@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import {
   FileUp,
-  FileText,
   Layers,
   UserPlus,
   Send,
@@ -26,34 +25,17 @@ import {
   Bell,
   RefreshCw,
   Scale,
-  FileCheck2,
-  CheckCheck,
-  AlertTriangle,
-  ExternalLink,
   ChevronRight,
-  Plus,
   Briefcase,
   Bot,
-  ArrowRight,
-  TrendingUp,
-  FolderKanban,
-  FileSearch,
   Activity,
-  Calendar,
-  AlertCircle,
-  Eye,
-  Smartphone,
-  CheckCircle,
-  HelpCircle,
-  History,
-  Workflow,
-  Sparkle,
+  AlertTriangle,
   FolderPlus,
   Edit3,
 } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  FORMATADORES & VALIDAÇÕES                                  */
+/*  FORMATADORES & MÁSCARAS                                    */
 /* ═══════════════════════════════════════════════════════════ */
 const formatCpf = (v: string) =>
   v.replace(/\D/g, '').slice(0, 11)
@@ -72,23 +54,8 @@ const formatRg = (v: string) =>
     .replace(/(\d{3})(\d)/, '$1.$2')
     .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
 
-const isValidCpf = (cpf: string) => {
-  const n = cpf.replace(/\D/g, '');
-  if (n.length !== 11 || /^(\d)\1+$/.test(n)) return false;
-  let s = 0;
-  for (let i = 0; i < 9; i++) s += parseInt(n[i]) * (10 - i);
-  let c = 11 - (s % 11);
-  if (c >= 10) c = 0;
-  if (parseInt(n[9]) !== c) return false;
-  s = 0;
-  for (let i = 0; i < 10; i++) s += parseInt(n[i]) * (11 - i);
-  c = 11 - (s % 11);
-  if (c >= 10) c = 0;
-  return parseInt(n[10]) === c;
-};
-
 /* ═══════════════════════════════════════════════════════════ */
-/*  SELETOR DE CLIENTES COM BUSCA INSTANTÂNEA                  */
+/*  SELETOR DE CLIENTE COM AUTOCOMPLETE                        */
 /* ═══════════════════════════════════════════════════════════ */
 function ClientSelector({
   clients,
@@ -240,7 +207,7 @@ function ClientSelector({
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  CENTRAL INTELIGENTE DE OPERAÇÃO JURÍDICA                   */
+/*  DASHBOARD PRINCIPAL — CENTRAL DE OPERAÇÕES JURÍDICAS       */
 /* ═══════════════════════════════════════════════════════════ */
 export default function DashboardPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -251,10 +218,10 @@ export default function DashboardPage() {
   const [kits, setKits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Modais de Ação
+  // Modais da Central de Trabalho
   const [actionModal, setActionModal] = useState<'ATENDIMENTO' | 'ASSINATURA' | 'KIT' | 'PROCESSO' | null>(null);
 
-  // Formulários de Modais
+  // Formulários
   const [formClientId, setFormClientId] = useState('');
   const [formKitId, setFormKitId] = useState('');
   const [formProcessTitle, setFormProcessTitle] = useState('');
@@ -268,7 +235,7 @@ export default function DashboardPage() {
   const [clientRg, setClientRg] = useState('');
   const [clientArea, setClientArea] = useState('Previdenciário');
 
-  // Assinatura Rápida Widget
+  // Assinatura Rápida (PDF Compacto)
   const [fastDocTitle, setFastDocTitle] = useState('');
   const [fastClientId, setFastClientId] = useState('');
   const [dragActive, setDragActive] = useState(false);
@@ -276,16 +243,14 @@ export default function DashboardPage() {
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Resultados e WhatsApp
+  // Resultados
   const [submitting, setSubmitting] = useState(false);
   const [executionResult, setExecutionResult] = useState<any>(null);
   const [whatsappMsg, setWhatsappMsg] = useState('');
-  const [editingMsg, setEditingMsg] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [showQrModal, setShowQrModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Carregamento de dados reais
+  // Carregamento de dados
   const loadData = useCallback(() => {
     Promise.all([
       fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)),
@@ -313,11 +278,8 @@ export default function DashboardPage() {
     loadData();
   }, [loadData]);
 
-  // Métricas Operacionais
-  const completedDocs = useMemo(
-    () => documents.filter((d) => d.status === 'CONCLUIDO'),
-    [documents]
-  );
+  // Métricas
+  const completedDocs = useMemo(() => documents.filter((d) => d.status === 'CONCLUIDO'), [documents]);
   const pendingDocs = useMemo(
     () => documents.filter((d) => !['CONCLUIDO', 'CANCELADO', 'EXPIRADO'].includes(d.status)),
     [documents]
@@ -332,7 +294,6 @@ export default function DashboardPage() {
     return { h: Math.max(1, Math.floor(mins / 60)), m: mins % 60 };
   }, [completedDocs, pendingDocs, processes]);
 
-  // Contagem de pendências detalhada
   const pendingDetails = useMemo(() => {
     const pendingSigns = pendingDocs.length;
     const incompleteClients = clients.filter((c) => !c.cpfCnpj || !c.phone).length;
@@ -341,14 +302,10 @@ export default function DashboardPage() {
       total,
       pendingSigns,
       incompleteClients,
-      text:
-        total > 0
-          ? `${incompleteClients} docs + ${pendingSigns} assinatura(s)`
-          : 'Nenhuma pendência crítica',
+      text: total > 0 ? `${incompleteClients} docs + ${pendingSigns} assinatura(s)` : 'Nenhuma pendência crítica',
     };
   }, [pendingDocs, clients]);
 
-  // Assinaturas aguardando detalhada
   const signWaitDetails = useMemo(() => {
     const overdue = pendingDocs.filter((d) => {
       const diffHours = (Date.now() - new Date(d.createdAt).getTime()) / 36e5;
@@ -361,15 +318,7 @@ export default function DashboardPage() {
     };
   }, [pendingDocs]);
 
-  // Processos com novidades
-  const processDetails = useMemo(() => {
-    return {
-      count: processes.length,
-      recent: Math.min(processes.length, 1),
-    };
-  }, [processes]);
-
-  // Pipeline Jurídico por Cliente (Priorização Inteligente & Stepper Visual)
+  // Pipeline Jurídico dos Fluxos em Andamento
   const clientFlows = useMemo(() => {
     const flows = clients.map((c) => {
       const clientDocs = documents.filter((d) => d.clientId === c.id);
@@ -377,14 +326,13 @@ export default function DashboardPage() {
       const signedDocs = clientDocs.filter((d) => d.status === 'CONCLUIDO');
       const hasPendingSign = clientDocs.some((d) => !['CONCLUIDO', 'CANCELADO'].includes(d.status));
 
-      // Etapas: 1: Entrada, 2: Docs, 3: Preparação, 4: Assinatura, 5: Processo
       let currentStep = 1;
       let stageName = 'Entrada';
       let statusBadge: 'URGENTE' | 'ATENÇÃO' | 'AGUARDANDO' | 'CONCLUÍDO' | 'ATIVO' = 'ATIVO';
       let nextAction = 'Conferir dados do cliente e iniciar documentação';
       let actionLabel = 'Continuar atendimento';
       let actionType: 'SIGN' | 'KIT' | 'PROCESS' | 'VIEW' = 'KIT';
-      let urgencyScore = 10; // Menor score = maior prioridade no topo
+      let urgencyScore = 10;
 
       if (clientProcesses.length > 0) {
         currentStep = 5;
@@ -448,11 +396,10 @@ export default function DashboardPage() {
       };
     });
 
-    // Ordenação Inteligente: 1º Urgentes / Atrasados -> 2º Pendências Docs -> 3º Prontos p/ Protocolo -> 4º Ativos
     return flows.sort((a, b) => a.urgencyScore - b.urgencyScore).slice(0, 6);
   }, [clients, documents, processes]);
 
-  // AssinaJur IA Copilot - Insights Operacionais Reais
+  // AssinaJur IA Copilot Insights
   const aiInsights = useMemo(() => {
     const insights: {
       id: string;
@@ -464,7 +411,6 @@ export default function DashboardPage() {
       phone?: string;
     }[] = [];
 
-    // 1. Assinaturas paradas há mais de 24h
     const overdueDocs = pendingDocs.filter((d) => {
       const diffHours = (Date.now() - new Date(d.createdAt).getTime()) / 36e5;
       return diffHours >= 24;
@@ -483,7 +429,6 @@ export default function DashboardPage() {
       });
     }
 
-    // 2. Clientes prontos para protocolar
     const readyClients = clients.filter((c) => {
       const cd = documents.filter((d) => d.clientId === c.id);
       const cp = processes.filter((p) => p.clientId === c.id);
@@ -501,7 +446,6 @@ export default function DashboardPage() {
       });
     }
 
-    // 3. Cadastros com documentação pendente
     const incompleteClients = clients.filter((c) => !c.cpfCnpj || !c.phone);
     if (incompleteClients.length > 0) {
       insights.push({
@@ -517,7 +461,7 @@ export default function DashboardPage() {
     return insights;
   }, [pendingDocs, clients, documents, processes]);
 
-  // Atenção Prioritária (Cobranças Rápidas)
+  // Urgências
   const urgentActions = useMemo(() => {
     return pendingDocs
       .map((doc) => {
@@ -535,7 +479,7 @@ export default function DashboardPage() {
       .slice(0, 4);
   }, [pendingDocs]);
 
-  // Agora no Escritório (Timeline em Tempo Real)
+  // Timeline
   const officeTimeline = useMemo(() => {
     const list: { time: string; text: string; icon: string; color: string }[] = [];
 
@@ -573,7 +517,7 @@ export default function DashboardPage() {
     return list.slice(0, 5);
   }, [documents, processes]);
 
-  // Saudação Dinâmica e Nome Completo Formatado
+  // Saudação & Nome Completo
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Bom dia';
@@ -590,7 +534,7 @@ export default function DashboardPage() {
     return `Dr. ${clean}`;
   }, [currentUser]);
 
-  // Handlers de Upload Rápido de PDF
+  // Upload rápido
   const handleFastFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) await handleFastFileProcess(e.target.files[0]);
   };
@@ -625,7 +569,6 @@ export default function DashboardPage() {
     [office]
   );
 
-  // Envio de Assinatura Rápida
   const handleFastDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fastClientId) {
@@ -668,7 +611,7 @@ export default function DashboardPage() {
     }
   };
 
-  // Modal 1: Novo Atendimento
+  // Modais de Criação
   const handleCreateClientModal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!clientName.trim()) {
@@ -693,7 +636,6 @@ export default function DashboardPage() {
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Erro ao criar cliente.');
 
-      // Auto-criação do Dossiê do processo
       await fetch('/api/processos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -717,7 +659,6 @@ export default function DashboardPage() {
     }
   };
 
-  // Modal 2: Disparar Kit Jurídico
   const handleCreateKitDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formClientId || !formKitId) {
@@ -760,7 +701,6 @@ export default function DashboardPage() {
     }
   };
 
-  // Modal 3: Novo Processo
   const handleCreateProcess = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formClientId || !formProcessTitle.trim()) {
@@ -822,7 +762,6 @@ export default function DashboardPage() {
 
         {/* VISÃO DO DIA: KPIS OPERACIONAIS INTELIGENTES */}
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {/* TEMPO SALVO */}
           <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 border border-amber-200/90 px-3.5 py-2 rounded-2xl min-w-[130px] shadow-2xs">
             <p className="text-[9px] font-black text-amber-800 uppercase tracking-wider">⏱ Automação</p>
             <p className="text-sm font-black text-amber-700 tabular-nums">
@@ -831,7 +770,6 @@ export default function DashboardPage() {
             <p className="text-[10px] text-amber-800/80 font-semibold">{automatedTasksCount} tarefas automatizadas</p>
           </div>
 
-          {/* PENDÊNCIAS */}
           <div className="bg-white border border-slate-200/90 px-3.5 py-2 rounded-2xl text-left min-w-[110px] shadow-2xs">
             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Pendências</p>
             {pendingDetails.total > 0 ? (
@@ -850,7 +788,6 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* ASSINATURAS */}
           <div className="bg-white border border-slate-200/90 px-3.5 py-2 rounded-2xl text-left min-w-[110px] shadow-2xs">
             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Assinaturas</p>
             {signWaitDetails.count > 0 ? (
@@ -868,7 +805,6 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* CLIENTES ATIVOS */}
           <div className="bg-white border border-slate-200/90 px-3.5 py-2 rounded-2xl text-left min-w-[100px] shadow-2xs">
             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Clientes Ativos</p>
             <p className="text-sm font-black text-[#0B192C] tabular-nums">
@@ -877,7 +813,6 @@ export default function DashboardPage() {
             <p className="text-[10px] text-slate-500">Pipeline ativo</p>
           </div>
 
-          {/* PROCESSOS */}
           <div className="bg-white border border-slate-200/90 px-3.5 py-2 rounded-2xl text-left min-w-[110px] shadow-2xs">
             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Processos</p>
             <p className="text-sm font-black text-blue-700 tabular-nums">
@@ -889,14 +824,14 @@ export default function DashboardPage() {
       </header>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 2. CENTRAL DE TRABALHO (COM HIERARQUIA & DESTAQUE OPERACIONAL) */}
+      {/* 2. CENTRAL DE TRABALHO (COM HIERARQUIA & PORTA DE ENTRADA)    */}
       {/* ───────────────────────────────────────────────────────────── */}
       <section className="space-y-2.5">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-            <Workflow className="w-3.5 h-3.5 text-[#B68B1C]" /> Central de Trabalho • Iniciar Fluxo
+            <Briefcase className="w-3.5 h-3.5 text-[#B68B1C]" /> Central de Trabalho • Iniciar Fluxo
           </h2>
-          <span className="text-[11px] text-slate-400 font-medium">Ações rápidas do escritório</span>
+          <span className="text-[11px] text-slate-400 font-medium">Ações do escritório</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3.5 items-stretch">
@@ -929,7 +864,7 @@ export default function DashboardPage() {
             </button>
           </div>
 
-          {/* ATALHO 1: NOVA ASSINATURA (2.33 COLUNAS) */}
+          {/* ATALHO 1: NOVA ASSINATURA */}
           <div className="lg:col-span-2 sm:col-span-1 bg-white hover:bg-slate-50/80 border-2 border-slate-200/90 hover:border-amber-400 p-4.5 rounded-2xl transition-all shadow-2xs hover:shadow-sm flex flex-col justify-between">
             <div className="space-y-1.5">
               <div className="w-8 h-8 rounded-xl bg-amber-100 text-[#B68B1C] flex items-center justify-center font-bold">
@@ -937,7 +872,7 @@ export default function DashboardPage() {
               </div>
               <h3 className="text-xs font-extrabold text-slate-900">Nova Assinatura</h3>
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                Enviar diretamente um documento para assinatura rápida.
+                Enviar diretamente um documento para assinatura.
               </p>
             </div>
             <button
@@ -952,7 +887,7 @@ export default function DashboardPage() {
             </button>
           </div>
 
-          {/* ATALHO 2: CRIAR KIT JURÍDICO (2.33 COLUNAS) */}
+          {/* ATALHO 2: CRIAR KIT JURÍDICO */}
           <div className="lg:col-span-2 sm:col-span-1 bg-white hover:bg-slate-50/80 border-2 border-slate-200/90 hover:border-blue-400 p-4.5 rounded-2xl transition-all shadow-2xs hover:shadow-sm flex flex-col justify-between">
             <div className="space-y-1.5">
               <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
@@ -972,7 +907,7 @@ export default function DashboardPage() {
             </button>
           </div>
 
-          {/* ATALHO 3: NOVO PROCESSO (2.66 COLUNAS) */}
+          {/* ATALHO 3: NOVO PROCESSO */}
           <div className="lg:col-span-3 sm:col-span-1 bg-white hover:bg-slate-50/80 border-2 border-slate-200/90 hover:border-purple-400 p-4.5 rounded-2xl transition-all shadow-2xs hover:shadow-sm flex flex-col justify-between">
             <div className="space-y-1.5">
               <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
@@ -980,7 +915,7 @@ export default function DashboardPage() {
               </div>
               <h3 className="text-xs font-extrabold text-slate-900">Novo Processo</h3>
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                Crie ou vincule um processo e centralize documentos e clientes no Dossiê Jurídico.
+                Crie ou vincule um processo e centralize documentos no Dossiê Jurídico.
               </p>
             </div>
             <button
@@ -998,13 +933,13 @@ export default function DashboardPage() {
       {/* 3. FLUXOS EM ANDAMENTO (PIPELINE VISUAL) + ASSINAJUR IA       */}
       {/* ───────────────────────────────────────────────────────────── */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* COLUNA ESQUERDA: FLUXOS EM ANDAMENTO (8 COLUNAS ~70%) */}
+        {/* FLUXOS EM ANDAMENTO (8 COLUNAS ~70%) */}
         <div className="lg:col-span-8 bg-white border border-slate-200/90 rounded-[28px] p-6 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 rounded-lg bg-[#0B192C] text-[#D4AF37] flex items-center justify-center text-xs font-bold">
-                  <Workflow className="w-3.5 h-3.5" />
+                  <Briefcase className="w-3.5 h-3.5" />
                 </div>
                 <h2 className="text-sm font-black text-[#0B192C]">Fluxos em Andamento</h2>
               </div>
@@ -1054,7 +989,7 @@ export default function DashboardPage() {
                     </span>
                   </div>
 
-                  {/* LINHA 2: STEPPER VISUAL DO PIPELINE */}
+                  {/* LINHA 2: PIPELINE VISUAL STEPPER */}
                   <div className="bg-white border border-slate-200/80 rounded-xl p-2.5 flex items-center justify-between text-[11px] font-bold text-slate-600 overflow-x-auto gap-1">
                     {[
                       { step: 1, label: 'Entrada' },
@@ -1086,7 +1021,7 @@ export default function DashboardPage() {
                     })}
                   </div>
 
-                  {/* LINHA 3: PRÓXIMA AÇÃO CLARA + CTA */}
+                  {/* LINHA 3: PRÓXIMA AÇÃO CLARA + BOTÃO */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-slate-100 text-xs">
                     <div className="flex items-center gap-1.5 text-slate-700 min-w-0">
                       <span className="text-[10px] font-bold uppercase text-slate-400 shrink-0">
@@ -1140,7 +1075,7 @@ export default function DashboardPage() {
               ))
             ) : (
               <div className="py-10 text-center space-y-2">
-                <Workflow className="w-8 h-8 text-slate-300 mx-auto" />
+                <Briefcase className="w-8 h-8 text-slate-300 mx-auto" />
                 <p className="text-xs font-bold text-slate-700">Nenhum fluxo em andamento.</p>
                 <p className="text-[11px] text-slate-400">
                   Comece seu primeiro atendimento para acompanhar o pipeline.
@@ -1157,9 +1092,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* COLUNA DIREITA: ASSINAJUR IA COPILOT (4 COLUNAS ~30%) */}
+        {/* ASSINAJUR IA COPILOT (4 COLUNAS ~30%) */}
         <div className="lg:col-span-4 bg-white border border-slate-200/90 rounded-[28px] overflow-hidden shadow-sm space-y-3.5">
-          {/* HEADER INTEGRADO COM TOQUE NAVY */}
           <div className="bg-[#0B192C] text-white p-4.5 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-[#D4AF37]/20 border border-[#D4AF37]/40 text-[#D4AF37] flex items-center justify-center">
@@ -1185,7 +1119,7 @@ export default function DashboardPage() {
                 </p>
 
                 <div className="space-y-2.5">
-                  {aiInsights.map((ins, idx) => (
+                  {aiInsights.map((ins) => (
                     <div
                       key={ins.id}
                       className="p-3 rounded-xl bg-slate-50 border border-slate-200/90 space-y-2 transition-all hover:bg-white hover:border-slate-300 shadow-2xs"
@@ -1246,7 +1180,6 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* RESUMO DE AUTOMAÇÃO */}
             <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
               <span>Tarefas automatizadas hoje:</span>
               <strong className="text-slate-800">{automatedTasksCount} ações</strong>
@@ -1527,7 +1460,7 @@ export default function DashboardPage() {
       </section>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* MODAIS OPERACIONAIS DA CENTRAL DE TRABALHO                    */}
+      {/* MODAIS DA CENTRAL DE TRABALHO                                 */}
       {/* ───────────────────────────────────────────────────────────── */}
       {/* MODAL 1: NOVO ATENDIMENTO */}
       {actionModal === 'ATENDIMENTO' && (
