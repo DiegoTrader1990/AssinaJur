@@ -539,8 +539,12 @@ export default function DashboardPage() {
 
   const userFirstName = useMemo(() => {
     if (!currentUser?.name) return 'Dr. Diego';
-    const first = currentUser.name.trim().split(' ')[0];
-    return first.toLowerCase().startsWith('dr') ? first : `Dr. ${first}`;
+    const parts = currentUser.name.trim().split(/\s+/).filter(Boolean);
+    const first = parts[0]?.replace(/\./g, '') || '';
+    if (/^dra?$/i.test(first)) {
+      return parts[1] ? `${/^dra$/i.test(first) ? 'Dra.' : 'Dr.'} ${parts[1]}` : 'Dr. Diego';
+    }
+    return `Dr. ${parts[0] || 'Diego'}`;
   }, [currentUser]);
 
   // Total de situações pendentes
