@@ -430,6 +430,14 @@ export default function DashboardPage() {
     return list.slice(0, 5);
   }, [mappedClients, selectedStageFilter]);
 
+  // CENTRAL DE ACOMPANHAMENTO: casos reais que demandam uma providência do escritório.
+  const followUpCases = useMemo(() => {
+    return [...mappedClients]
+      .sort((a, b) => a.priorityScore - b.priorityScore)
+      .filter((item) => item.stage !== 'PROCESSO' || item.signedDocsCount > 0)
+      .slice(0, 3);
+  }, [mappedClients]);
+
   // COMPONENTE 3: RESUMO DA ASSINAJUR IA (Síntese Operacional)
   const aiSummary = useMemo(() => {
     const items: { text: string; urgent?: boolean }[] = [];
@@ -993,9 +1001,16 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="flex flex-1 flex-col justify-end gap-1.5">
-              <p className="text-[10px] font-bold text-slate-500">Modelos + preenchimento automático</p>
-              <p className="mb-1 text-[10px] font-medium text-slate-400">Procurações · Contratos · Declarações</p>
+            <div className="flex flex-1 flex-col justify-end gap-2">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+                <span className="rounded-md bg-[#071B3A] px-1.5 py-1 text-[9px] text-[#E0BD48]">01</span>
+                Modelos jurídicos prontos
+                <span className="ml-auto rounded-md bg-slate-100 px-1.5 py-1 text-[9px] text-slate-500">02</span>
+                Preenchimento automático
+              </div>
+              <div className="flex items-center gap-1.5 border-y border-slate-100 py-2 text-[10px] font-semibold text-slate-600">
+                <span>Procuração</span><span className="text-[#D4AF37]">•</span><span>Contrato</span><span className="text-[#D4AF37]">•</span><span>Declarações</span>
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -1023,7 +1038,10 @@ export default function DashboardPage() {
             </div>
 
             <div className="mt-auto space-y-3 relative z-10">
-              <p className="text-[10px] font-bold tracking-wide text-slate-500">Cliente <span className="mx-1 text-[#B68B1C]">→</span> Documentos <span className="mx-1 text-[#B68B1C]">→</span> Assinatura <span className="mx-1 text-[#B68B1C]">→</span> Processo</p>
+              <div className="border-y border-slate-100 py-2">
+                <p className="text-[9px] font-black uppercase tracking-[0.13em] text-slate-400">Fluxo completo</p>
+                <p className="mt-1 text-[10px] font-bold tracking-wide text-slate-600">Cliente <span className="mx-1 text-[#B68B1C]">→</span> Documentos <span className="mx-1 text-[#B68B1C]">→</span> Assinatura <span className="mx-1 text-[#B68B1C]">→</span> Processo</p>
+              </div>
               <div className="flex items-center gap-1.5">
               <button
                 type="button"
@@ -1210,8 +1228,47 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* RESUMO DO ASSINAJUR */}
-        <div className="min-h-[264px] bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col justify-between gap-3">
+        {/* CENTRAL DE ACOMPANHAMENTO */}
+        <div className="min-h-[264px] bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col gap-3">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <div className="flex items-center gap-1.5">
+              <div className="w-6 h-6 rounded-lg bg-[#071B3A] text-[#D4AF37] flex items-center justify-center">
+                <Bot className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <h3 className="text-xs font-black uppercase text-[#0B192C] tracking-wide">Central de Acompanhamento</h3>
+                <p className="mt-0.5 text-[9px] font-medium text-slate-400">Casos que exigem providência do escritório</p>
+              </div>
+            </div>
+            <Link href="/clientes" className="text-[10px] font-bold text-[#B68B1C] hover:underline">Ver todos</Link>
+          </div>
+
+          {followUpCases.length > 0 ? (
+            <div className="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">
+              {followUpCases.map((item) => (
+                <div key={item.id} className="py-2 first:pt-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-[11px] font-extrabold text-slate-900">{item.name}</p>
+                    <span className="shrink-0 text-[9px] font-bold text-[#B68B1C]">{item.stageName}</span>
+                  </div>
+                  <p className="mt-0.5 truncate text-[10px] font-medium text-slate-600">{item.statusText}</p>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <p className="min-w-0 truncate text-[9px] text-slate-400">{item.nextActionText}</p>
+                    <Link href={`/clientes?q=${encodeURIComponent(item.name)}`} className="shrink-0 text-[10px] font-bold text-[#071B3A] hover:text-[#B68B1C]">Ver caso</Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center text-center">
+              <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+              <p className="mt-2 text-[11px] font-bold text-emerald-900">Nenhum acompanhamento prioritário.</p>
+              <p className="mt-0.5 text-[10px] text-emerald-700">Os fluxos do escritório estão em dia.</p>
+            </div>
+          )}
+        </div>
+
+        {false && <div className="min-h-[264px] bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col justify-between gap-3">
           <div className="space-y-2">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div className="flex items-center gap-1.5">
@@ -1265,7 +1322,7 @@ export default function DashboardPage() {
           >
             Ver pendências
           </button>
-        </div>
+        </div>}
         <div className="min-h-[264px] bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
             <h3 className="text-xs font-black uppercase text-[#0B192C] tracking-wide flex items-center gap-1.5">
