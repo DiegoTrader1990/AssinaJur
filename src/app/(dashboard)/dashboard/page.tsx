@@ -1091,9 +1091,9 @@ export default function DashboardPage() {
       {/* ───────────────────────────────────────────────────────────── */}
       {/* 2. OPERAÇÃO INTELIGENTE: PRIORIDADE AGORA x RESUMO IA         */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
-        {/* ESQUERDA (8 COLUNAS): SUA PRIORIDADE AGORA */}
-        <div className="lg:col-span-8 min-h-[202px] bg-gradient-to-br from-white via-slate-50/50 to-amber-50/20 border border-amber-200/90 rounded-2xl p-4 shadow-xs flex flex-col justify-between gap-3 relative overflow-hidden">
+      <section className="grid grid-cols-1 gap-3 xl:grid-cols-3 xl:items-stretch">
+        {/* SUA PRIORIDADE AGORA */}
+        <div className="min-h-[264px] bg-gradient-to-br from-white via-slate-50/50 to-amber-50/20 border border-amber-200/90 rounded-2xl p-4 shadow-xs flex flex-col justify-between gap-3 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-28 h-28 bg-[#D4AF37]/10 rounded-full blur-xl pointer-events-none" />
 
           {topPriorityCase ? (
@@ -1211,8 +1211,8 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* DIREITA (4 COLUNAS): RESUMO DO ASSINAJUR (IA COPILOT) */}
-        <div className="lg:col-span-4 min-h-[202px] bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col justify-between gap-3">
+        {/* RESUMO DO ASSINAJUR */}
+        <div className="min-h-[264px] bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col justify-between gap-3">
           <div className="space-y-2">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div className="flex items-center gap-1.5">
@@ -1267,11 +1267,52 @@ export default function DashboardPage() {
             Ver pendências
           </button>
         </div>
+        <div className="min-h-[264px] bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <h3 className="text-xs font-black uppercase text-[#0B192C] tracking-wide flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-amber-500" /> Próximos da Fila
+            </h3>
+            <Link href="/clientes" className="text-[10px] font-bold text-[#B68B1C] hover:underline flex items-center gap-1">
+              Ver todos <ChevronRight className="w-3 h-3" />
+            </Link>
+          </div>
+
+          <div className="mt-1 min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto pr-1">
+            {nextInQueue.length > 0 ? (
+              nextInQueue.slice(0, 4).map((item) => (
+                <div key={item.id} className="py-2.5 flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-extrabold text-slate-900 truncate">{item.name}</p>
+                    <p className="mt-0.5 text-[10px] font-medium text-slate-500 truncate">{item.statusText}</p>
+                  </div>
+                  <div className="shrink-0">
+                    {item.actionType === 'SIGN' && item.phone ? (
+                      <a href={`https://wa.me/55${item.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá, ${item.name}! Passando para lembrar da assinatura dos seus documentos no escritório ${office?.name || 'Rodrigues & Soares'}.`)}`} target="_blank" rel="noreferrer" className="px-2.5 py-1.5 bg-[#25D366] hover:bg-[#1fb855] text-white text-[10px] font-bold rounded-lg transition-all">
+                        {item.actionLabel}
+                      </a>
+                    ) : item.actionType === 'KIT' ? (
+                      <button type="button" onClick={() => { setFormClientId(item.id); setActionModal('KIT'); }} className="px-2.5 py-1.5 bg-[#0B192C] hover:bg-[#152a47] text-white text-[10px] font-bold rounded-lg transition-all">{item.actionLabel}</button>
+                    ) : item.actionType === 'CREATE_PROCESS' ? (
+                      <button type="button" onClick={() => { setFormClientId(item.id); setActionModal('PROCESSO'); }} className="px-2.5 py-1.5 bg-[#0B192C] hover:bg-[#152a47] text-white text-[10px] font-bold rounded-lg transition-all">{item.actionLabel}</button>
+                    ) : item.actionType === 'VIEW_PROCESS' ? (
+                      <Link href={`/processos?clienteId=${item.id}`} className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[10px] font-bold rounded-lg transition-all">{item.actionLabel}</Link>
+                    ) : (
+                      <Link href={`/clientes?q=${encodeURIComponent(item.name)}`} className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[10px] font-bold rounded-lg transition-all">{item.actionLabel}</Link>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="py-8 text-center text-[11px] text-slate-400 font-medium">Nenhum fluxo prioritário no momento.</p>
+            )}
+          </div>
+        </div>
       </section>
 
       {/* ───────────────────────────────────────────────────────────── */}
       {/* 3. CONTROLE DO ESCRITÓRIO: OPERAÇÃO DO ESCRITÓRIO (ETAPAS)    */}
       {/* ───────────────────────────────────────────────────────────── */}
+      {false && <>
       <section className="bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-2xs space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -1438,6 +1479,7 @@ export default function DashboardPage() {
       {/* ───────────────────────────────────────────────────────────── */}
       {/* 5. VISÃO E ESCALA: OPERAÇÃO NACIONAL (MAPA COM DADOS REAIS)   */}
       {/* ───────────────────────────────────────────────────────────── */}
+      </>}
       {false && <section className="relative overflow-hidden rounded-[28px] border border-[#17345D] bg-[#071B3A] px-5 py-6 text-white shadow-[0_28px_80px_-48px_rgba(7,27,58,0.95)] lg:px-7 lg:py-7">
         <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-[#D4AF37]/10 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-32 left-1/3 h-64 w-64 rounded-full bg-blue-500/10 blur-3xl" />
