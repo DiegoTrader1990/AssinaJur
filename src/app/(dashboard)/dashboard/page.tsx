@@ -7,11 +7,12 @@ import {
   Zap, MessageSquare, Search, Copy, Check, Loader2, AlertCircle, X,
   UserPlus, FileUp, File, QrCode, ChevronDown, Bell, Activity,
   Edit3, Scale, ArrowUpRight, Clock, FileText, Layers, Sparkles,
-  Lock, CheckCheck, HelpCircle, FileCheck, RefreshCw,
+  Lock, CheckCheck, HelpCircle, FileCheck, RefreshCw, Award,
+  ExternalLink, Hash, Smartphone, ArrowRight, ShieldAlert,
 } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  MÁSCARAS E VALIDAÇÃO DE DOCUMENTOS BRASILEIROS             */
+/*  MÁSCARAS E VALIDAÇÃO DE DADOS BRASILEIROS                  */
 /* ═══════════════════════════════════════════════════════════ */
 const maskCpf = (v: string) =>
   v.replace(/\D/g, '').slice(0, 11)
@@ -46,9 +47,9 @@ const validateCpf = (cpf: string) => {
 };
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  COMBOBOX INTELIGENTE DE CLIENTES                           */
+/*  COMBOBOX EXECUTIVO DE BUSCA DE CLIENTES                    */
 /* ═══════════════════════════════════════════════════════════ */
-function ClientSearch({
+function ExecutiveClientSearch({
   clients,
   value,
   onChange,
@@ -89,50 +90,53 @@ function ClientSearch({
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className={`w-full flex items-center gap-3.5 px-4.5 py-3.5 bg-white border-2 rounded-2xl text-left transition-all duration-200 ${
+        className={`w-full flex items-center gap-3 px-4 py-3 bg-slate-50/80 hover:bg-white border-2 rounded-2xl text-left transition-all duration-200 ${
           open
-            ? 'border-[#B68B1C] shadow-[0_0_0_4px_rgba(182,139,28,0.12)]'
-            : 'border-slate-200 hover:border-slate-300 shadow-xs'
+            ? 'border-gold-500 bg-white ring-4 ring-gold-100/50 shadow-md'
+            : 'border-slate-200/90 hover:border-slate-300 shadow-2xs'
         }`}
       >
         {sel ? (
           <>
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#071B3A] to-[#0A254F] text-white flex items-center justify-center text-xs font-black shrink-0 shadow-xs">
+            <div className="w-8 h-8 rounded-xl bg-[#071B3A] text-gold-400 flex items-center justify-center text-xs font-black shrink-0 border border-gold-500/20">
               {sel.name.charAt(0)}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold text-slate-900 truncate">{sel.name}</p>
-              <p className="text-xs text-slate-500 truncate">
-                {sel.cpfCnpj ? `CPF ${sel.cpfCnpj}` : 'Sem CPF'} {sel.phone ? `• ${sel.phone}` : ''}
+              <p className="text-xs font-bold text-slate-900 truncate">{sel.name}</p>
+              <p className="text-[11px] text-slate-500 truncate">
+                {sel.cpfCnpj ? `CPF ${sel.cpfCnpj}` : 'Sem CPF'} {sel.phone ? `• WhatsApp ${sel.phone}` : ''}
               </p>
             </div>
           </>
         ) : (
           <>
-            <Search className="w-5 h-5 text-slate-400 shrink-0" />
-            <span className="text-sm text-slate-400 font-medium">
-              Selecione ou busque a cliente pelo nome / CPF...
-            </span>
+            <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
+              <Search className="w-4 h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-slate-700">Selecione o Cliente Destinatário</p>
+              <p className="text-[11px] text-slate-400">Buscar por nome, CPF ou WhatsApp...</p>
+            </div>
           </>
         )}
         <ChevronDown
-          className={`w-5 h-5 text-slate-400 shrink-0 ml-auto transition-transform duration-200 ${
-            open ? 'rotate-180 text-[#B68B1C]' : ''
+          className={`w-4 h-4 text-slate-400 shrink-0 ml-auto transition-transform duration-200 ${
+            open ? 'rotate-180 text-gold-600' : ''
           }`}
         />
       </button>
 
       {open && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-[0_20px_50px_-15px_rgba(0,0,0,0.18)] max-h-80 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-          <div className="p-3 border-b border-slate-100 bg-slate-50/70">
+        <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-[0_20px_50px_-10px_rgba(7,27,58,0.15)] max-h-80 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+          <div className="p-3 border-b border-slate-100 bg-slate-50/80">
             <div className="relative">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Digitar nome, CPF ou WhatsApp..."
-                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:border-[#B68B1C] shadow-xs"
+                placeholder="Digitar nome, CPF ou telefone..."
+                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-gold-500 shadow-2xs"
                 autoFocus
               />
             </div>
@@ -149,40 +153,40 @@ function ClientSearch({
                     setOpen(false);
                     setQ('');
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
                     value === c.id ? 'bg-amber-50/90' : 'hover:bg-slate-50'
                   }`}
                 >
-                  <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center text-xs font-bold shrink-0">
+                  <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center text-xs font-bold shrink-0">
                     {c.name.charAt(0)}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-slate-800 truncate">{c.name}</p>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs font-bold text-slate-800 truncate">{c.name}</p>
+                    <p className="text-[10px] text-slate-500">
                       {c.cpfCnpj || 'Sem CPF'} {c.phone ? `• ${c.phone}` : ''}
                     </p>
                   </div>
-                  {value === c.id && <Check className="w-5 h-5 text-[#B68B1C] shrink-0" />}
+                  {value === c.id && <Check className="w-4 h-4 text-gold-600 shrink-0" />}
                 </button>
               ))
             ) : (
-              <p className="px-4 py-6 text-center text-sm text-slate-400 font-medium">
-                Nenhuma cliente encontrada.
+              <p className="px-4 py-6 text-center text-xs text-slate-400 font-medium">
+                Nenhum cliente cadastrado com esse termo.
               </p>
             )}
           </div>
 
           {onNew && (
-            <div className="border-t border-slate-100 p-2.5 bg-slate-50/50">
+            <div className="border-t border-slate-100 p-2 bg-slate-50">
               <button
                 type="button"
                 onClick={() => {
                   onNew();
                   setOpen(false);
                 }}
-                className="w-full py-2.5 bg-[#071B3A] hover:bg-[#0A254F] text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-xs"
+                className="w-full py-2 bg-[#071B3A] hover:bg-[#0A254F] text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-2xs"
               >
-                <UserPlus className="w-4 h-4 text-amber-400" /> Cadastrar Nova Cliente
+                <UserPlus className="w-3.5 h-3.5 text-gold-400" /> Cadastrar Novo Cliente Agora
               </button>
             </div>
           )}
@@ -193,7 +197,7 @@ function ClientSearch({
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  DASHBOARD PRINCIPAL                                        */
+/*  DASHBOARD EXECUTIVO PRINCIPAL                              */
 /* ═══════════════════════════════════════════════════════════ */
 export default function DashboardPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -204,19 +208,19 @@ export default function DashboardPage() {
   const [kits, setKits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Modo do painel de disparo
+  // Modo ativo de trabalho
   const [mode, setMode] = useState<'PDF' | 'KIT' | 'CLIENT'>('PDF');
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedKitId, setSelectedKitId] = useState('');
   const [docCustomTitle, setDocCustomTitle] = useState('');
 
-  // Drag and drop state
+  // Drag and Drop & Upload
   const [dragActive, setDragActive] = useState(false);
   const [uploadedPdf, setUploadedPdf] = useState<any>(null);
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Cadastro rápido de cliente
+  // Cadastro Rápido de Cliente
   const [newClientName, setNewClientName] = useState('');
   const [newClientCpf, setNewClientCpf] = useState('');
   const [newClientPhone, setNewClientPhone] = useState('');
@@ -226,7 +230,7 @@ export default function DashboardPage() {
     return r.length < 11 ? null : validateCpf(newClientCpf);
   }, [newClientCpf]);
 
-  // Mensagem e envio
+  // Mensagem e Envio
   const [whatsappMsg, setWhatsappMsg] = useState('');
   const [editingMsg, setEditingMsg] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -235,10 +239,10 @@ export default function DashboardPage() {
   const [copiedLink, setCopiedLink] = useState(false);
   const [showQr, setShowQr] = useState(false);
 
-  // Pastas do Dossiê
+  // Dossiê de Processos
   const [expandedFolder, setExpandedFolder] = useState<string | null>(null);
 
-  // Carregamento de dados
+  // Inicialização
   useEffect(() => {
     Promise.all([
       fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)),
@@ -278,22 +282,23 @@ export default function DashboardPage() {
   }, [completed, pending, processes]);
 
   const activities = useMemo(() => {
-    const a: { date: Date; type: 'signed' | 'pending' | 'folder'; text: string }[] = [];
+    const a: { date: Date; type: 'signed' | 'pending' | 'folder'; text: string; hash?: string }[] = [];
     documents.forEach((d) =>
       a.push({
         date: new Date(d.updatedAt || d.createdAt),
         type: d.status === 'CONCLUIDO' ? 'signed' : 'pending',
         text: `${d.title} — ${d.client?.name || 'Cliente'}`,
+        hash: d.id.slice(0, 8),
       })
     );
     processes.forEach((p) =>
       a.push({
         date: new Date(p.createdAt),
         type: 'folder',
-        text: `Dossiê "${p.client?.name || p.title}"`,
+        text: `Dossiê criado: "${p.client?.name || p.title}"`,
       })
     );
-    return a.sort((x, y) => y.date.getTime() - x.date.getTime()).slice(0, 5);
+    return a.sort((x, y) => y.date.getTime() - x.date.getTime()).slice(0, 4);
   }, [documents, processes]);
 
   const pendingAlerts = useMemo(() => {
@@ -301,6 +306,7 @@ export default function DashboardPage() {
       .map((doc) => {
         const days = Math.floor((Date.now() - new Date(doc.createdAt).getTime()) / 864e5);
         return {
+          id: doc.id,
           days,
           urgent: days >= 3,
           title: doc.title,
@@ -312,7 +318,7 @@ export default function DashboardPage() {
       .slice(0, 4);
   }, [pending]);
 
-  /* Handlers de PDF e Envio */
+  /* Handlers */
   const processFile = async (file: File) => {
     if (!file.name.toLowerCase().endsWith('.pdf')) {
       setError('Por favor, selecione um arquivo em formato PDF.');
@@ -339,7 +345,7 @@ export default function DashboardPage() {
     (clientName: string, link: string) =>
       `Olá, ${clientName}!\n\nSeus documentos jurídicos do escritório ${
         office?.name || 'Rodrigues & Soares Advocacia'
-      } estão prontos para sua assinatura digital eletrônica.\n\nClique no link seguro para assinar pelo celular em menos de 1 minuto:\n${link}\n\nQualquer dúvida, estamos à disposição.`,
+      } estão prontos para sua assinatura digital eletrônica com validade jurídica oficial.\n\nClique no link seguro para assinar pelo celular em menos de 1 minuto:\n${link}\n\nQualquer dúvida, estamos à disposição no escritório.`,
     [office]
   );
 
@@ -459,7 +465,7 @@ export default function DashboardPage() {
       if (up?.processes) setProcesses(up.processes);
 
       setSelectedClientId(d.client.id);
-      setMode('PDF'); // Volta para o modo PDF com a cliente já selecionada
+      setMode('PDF');
       setNewClientName('');
       setNewClientCpf('');
       setNewClientPhone('');
@@ -475,67 +481,77 @@ export default function DashboardPage() {
     () => kits.find((k) => k.id === selectedKitId),
     [kits, selectedKitId]
   );
-  const name = currentUser?.name?.split(' ').slice(0, 2).join(' ') || 'Dr. Diego';
+  const doctorName = currentUser?.name || 'Dr. Diego dos Santos Rodrigues';
 
   return (
-    <main className="mx-auto max-w-6xl pb-24 space-y-7">
+    <main className="mx-auto max-w-6xl pb-24 space-y-6">
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 1. HEADER EXECUTIVO COM MÉTRICAS E VALIDADE JURÍDICA          */}
+      {/* 1. CABEÇALHO EXECUTIVO DE ALTA ADVOCACIA                       */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-1">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#B68B1C] bg-amber-50 border border-amber-200/80 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-              <Scale className="w-3 h-3" /> {office?.name || 'Rodrigues & Soares Advocacia'}
-            </span>
-            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-              <ShieldCheck className="w-3 h-3" /> ICP-Brasil Ativo
-            </span>
-          </div>
-          <h1 className="text-2xl lg:text-3xl font-extrabold text-[#071B3A] tracking-tight">
-            Olá, {name} <span className="inline-block">⚖️</span>
-          </h1>
-          <p className="text-xs text-slate-500 font-medium">
-            Central de Operações • Arraste petições e contratos para envio imediato
-          </p>
-        </div>
+      <section className="relative overflow-hidden bg-gradient-to-br from-[#071B3A] via-[#0A254F] to-[#0E2A52] rounded-[28px] p-6 lg:p-7 text-white shadow-card border border-navy-700/50">
+        {/* Ambient Glow */}
+        <div className="absolute top-0 right-0 w-96 h-96 bg-gold-400/10 rounded-full blur-3xl -translate-y-24 translate-x-24 pointer-events-none" />
+        <div className="absolute bottom-0 left-1/3 w-64 h-64 bg-brand-500/10 rounded-full blur-2xl pointer-events-none" />
 
-        {/* MÉTRICAS EM LINHA COM PROVADA ECONOMIA DE TEMPO */}
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="bg-gradient-to-br from-amber-50 to-amber-100/60 border border-amber-200/80 px-4 py-2.5 rounded-2xl text-center min-w-[90px] shadow-2xs">
-            <p className="text-[9px] font-black text-amber-800 uppercase tracking-wider">⏱ Tempo Salvo</p>
-            <p className="text-lg font-black text-amber-700 tabular-nums">
-              {timeSaved.h}<span className="text-xs font-bold">h</span>
-              {String(timeSaved.m).padStart(2, '0')}<span className="text-xs font-bold">m</span>
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          {/* IDENTIDADE DO ESCRITÓRIO */}
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-300 bg-gold-400/15 border border-gold-400/30 px-3 py-0.5 rounded-full flex items-center gap-1.5 backdrop-blur-md">
+                <Award className="w-3 h-3 text-gold-400" />
+                {office?.name || 'Rodrigues & Soares Advocacia'}
+              </span>
+              <span className="text-[10px] font-bold text-emerald-300 bg-emerald-500/15 border border-emerald-400/30 px-2.5 py-0.5 rounded-full flex items-center gap-1 backdrop-blur-md">
+                <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                ICP-Brasil • MP 2.200-2/2001
+              </span>
+            </div>
+
+            <h1 className="text-xl lg:text-2xl font-black text-white tracking-tight font-heading">
+              Olá, {doctorName} ⚖️
+            </h1>
+            <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
+              Painel de Operações Jurídicas. Arraste petições, dispare kits contratuais e acompanhe assinaturas eletrônicas com validade jurídica integral.
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {[
-              { n: loading ? '—' : String(clients.length).padStart(2, '0'), l: 'Clientes', c: 'text-[#071B3A]' },
-              { n: loading ? '—' : String(pending.length).padStart(2, '0'), l: 'Pendentes', c: 'text-amber-600', dot: pending.length > 0 },
-              { n: loading ? '—' : String(completed.length).padStart(2, '0'), l: 'Assinados', c: 'text-emerald-700' },
-            ].map((m, i) => (
-              <div
-                key={i}
-                className="bg-white border border-slate-200/90 px-3.5 py-2.5 rounded-2xl text-center min-w-[70px] shadow-2xs"
-              >
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{m.l}</p>
-                <p className={`text-lg font-black ${m.c} tabular-nums leading-tight`}>{m.n}</p>
-                {m.dot && <div className="w-1.5 h-1.5 rounded-full bg-amber-500 mx-auto mt-0.5 animate-pulse" />}
-              </div>
-            ))}
+          {/* PAINEL DE PERFORMANCE (TEMPO SALVO + KPIS) */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            <div className="bg-gradient-to-br from-gold-400/20 to-gold-500/10 border border-gold-400/30 backdrop-blur-md px-4 py-3 rounded-2xl text-center min-w-[100px] shadow-2xs">
+              <p className="text-[9px] font-black text-gold-300 uppercase tracking-widest">⏱ Tempo Salvo</p>
+              <p className="text-xl font-black text-gold-300 tabular-nums font-heading mt-0.5">
+                {timeSaved.h}<span className="text-xs font-bold text-gold-400">h</span>
+                {String(timeSaved.m).padStart(2, '0')}<span className="text-xs font-bold text-gold-400">m</span>
+              </p>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {[
+                { n: loading ? '—' : String(clients.length).padStart(2, '0'), l: 'Clientes', c: 'text-white' },
+                { n: loading ? '—' : String(pending.length).padStart(2, '0'), l: 'Pendentes', c: 'text-amber-300', dot: pending.length > 0 },
+                { n: loading ? '—' : String(completed.length).padStart(2, '0'), l: 'Assinados', c: 'text-emerald-400' },
+              ].map((m, i) => (
+                <div
+                  key={i}
+                  className="bg-white/10 border border-white/10 backdrop-blur-md px-3.5 py-3 rounded-2xl text-center min-w-[68px]"
+                >
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{m.l}</p>
+                  <p className={`text-xl font-black ${m.c} tabular-nums font-heading mt-0.5`}>{m.n}</p>
+                  {m.dot && <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mx-auto mt-1 animate-pulse" />}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </header>
+      </section>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 2. HERO PRINCIPAL: DROP ZONE VISÍVEL & SELETOR DE MODO        */}
+      {/* 2. MESA EXECUTIVA DE DISPARO (DROP ZONE EM DESTAQUE TOTAL)    */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <section className="bg-white border-2 border-slate-200/90 rounded-[28px] shadow-sm overflow-hidden">
-        {/* TABS DE SELEÇÃO RÁPIDA */}
-        <div className="bg-slate-50/80 px-6 lg:px-8 py-3.5 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 bg-white p-1 rounded-2xl border border-slate-200 shadow-2xs">
+      <section className="bg-white border border-slate-200/90 rounded-[28px] shadow-card overflow-hidden">
+        {/* NAVEGAÇÃO DE FLUXO SUPERIOR */}
+        <div className="bg-slate-50/90 px-6 lg:px-8 py-3.5 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 bg-white p-1 rounded-2xl border border-slate-200/80 shadow-2xs">
             <button
               type="button"
               onClick={() => {
@@ -549,7 +565,7 @@ export default function DashboardPage() {
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              <FileUp className="w-4 h-4 text-amber-400" />
+              <FileUp className="w-3.5 h-3.5 text-gold-400" />
               1. Enviar PDF do Computador
             </button>
 
@@ -566,7 +582,7 @@ export default function DashboardPage() {
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              <Layers className="w-4 h-4 text-blue-300" />
+              <Layers className="w-3.5 h-3.5 text-brand-300" />
               2. Kit Jurídico Automático
             </button>
 
@@ -583,43 +599,45 @@ export default function DashboardPage() {
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              <UserPlus className="w-4 h-4 text-emerald-400" />
-              3. Nova Cliente & Dossiê
+              <UserPlus className="w-3.5 h-3.5 text-emerald-300" />
+              3. Cadastrar Cliente & Dossiê
             </button>
           </div>
 
-          {/* PASSO A PASSO GUIADO RÁPIDO */}
           <div className="hidden lg:flex items-center gap-2 text-[11px] font-bold text-slate-500">
-            <span className="flex items-center gap-1 text-slate-700">
-              <span className="w-4 h-4 rounded-full bg-[#071B3A] text-white flex items-center justify-center text-[9px]">1</span> Solte o PDF
+            <span className="flex items-center gap-1 text-[#071B3A]">
+              <span className="w-4 h-4 rounded-full bg-[#071B3A] text-gold-400 flex items-center justify-center text-[9px] font-black">1</span>
+              Solte o PDF
             </span>
-            <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
-            <span className="flex items-center gap-1 text-slate-700">
-              <span className="w-4 h-4 rounded-full bg-[#071B3A] text-white flex items-center justify-center text-[9px]">2</span> Escolha a Cliente
+            <ChevronRight className="w-3 h-3 text-slate-300" />
+            <span className="flex items-center gap-1 text-[#071B3A]">
+              <span className="w-4 h-4 rounded-full bg-[#071B3A] text-gold-400 flex items-center justify-center text-[9px] font-black">2</span>
+              Escolha o Cliente
             </span>
-            <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
+            <ChevronRight className="w-3 h-3 text-slate-300" />
             <span className="flex items-center gap-1 text-emerald-700">
-              <span className="w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[9px]">3</span> Envie no WhatsApp
+              <span className="w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[9px] font-black">3</span>
+              WhatsApp 1-Click
             </span>
           </div>
         </div>
 
-        {/* CORPO DO DISPARO */}
+        {/* ÁREA DE DISPARO INTERATIVA */}
         <div className="p-6 lg:p-8">
-          {/* SUCESSO DO ENVIO */}
           {result ? (
-            <div className="max-w-2xl mx-auto space-y-5 animate-in fade-in zoom-in-95 duration-200">
-              <div className="flex items-start justify-between bg-emerald-50 border border-emerald-300/80 rounded-2xl p-5 shadow-xs">
+            /* SUCESSO DO ENVIO */
+            <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between bg-gradient-to-r from-emerald-50 via-emerald-100/40 to-emerald-50 border border-emerald-300 rounded-2xl p-5 shadow-2xs">
                 <div className="flex items-center gap-3.5">
                   <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md">
-                    <CheckCircle2 className="w-7 h-7" />
+                    <CheckCircle2 className="w-6 h-6" />
                   </div>
                   <div>
-                    <h2 className="text-base font-black text-emerald-950">
-                      {result.type === 'KIT' ? 'Kit Jurídico Gerado!' : 'Documento Pronto para Assinatura!'}
+                    <h2 className="text-sm font-black text-emerald-950">
+                      {result.type === 'KIT' ? 'Kit Jurídico Gerado com Sucesso!' : 'Documento Pronto para Assinatura!'}
                     </h2>
-                    <p className="text-xs text-emerald-800 font-medium mt-0.5">
-                      Destinatária: <strong>{result.clientName}</strong> • Link seguro gerado.
+                    <p className="text-xs text-emerald-800 font-medium">
+                      Destinatária: <strong className="text-emerald-950">{result.clientName}</strong> • Link seguro ativo.
                     </p>
                   </div>
                 </div>
@@ -628,25 +646,25 @@ export default function DashboardPage() {
                     setResult(null);
                     setUploadedPdf(null);
                   }}
-                  className="p-1.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 transition-colors"
+                  className="p-1.5 rounded-lg bg-white/80 hover:bg-white text-emerald-800 border border-emerald-200 transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* MENSAGEM DO WHATSAPP PRÉVIA */}
+              {/* PRÉVIA DA MENSAGEM DO WHATSAPP */}
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase text-slate-500 tracking-wider">
-                    Mensagem do WhatsApp
+                  <span className="text-[11px] font-bold uppercase text-slate-500 tracking-wider flex items-center gap-1.5">
+                    <MessageSquare className="w-3.5 h-3.5 text-[#25D366]" /> Mensagem Pré-Formatada do WhatsApp
                   </span>
                   <button
                     type="button"
                     onClick={() => setEditingMsg(!editingMsg)}
-                    className="text-xs font-bold text-[#B68B1C] hover:underline flex items-center gap-1"
+                    className="text-xs font-bold text-gold-600 hover:underline flex items-center gap-1"
                   >
                     <Edit3 className="w-3 h-3" />
-                    {editingMsg ? 'Concluir Edição' : 'Personalizar Texto'}
+                    {editingMsg ? 'OK' : 'Personalizar'}
                   </button>
                 </div>
 
@@ -654,26 +672,26 @@ export default function DashboardPage() {
                   <textarea
                     value={whatsappMsg}
                     onChange={(e) => setWhatsappMsg(e.target.value)}
-                    rows={5}
-                    className="w-full px-3.5 py-2.5 bg-white border-2 border-[#B68B1C] rounded-xl text-xs text-slate-800 focus:outline-none resize-none font-sans leading-relaxed"
+                    rows={4}
+                    className="w-full px-3.5 py-2.5 bg-white border border-gold-500 rounded-xl text-xs text-slate-800 focus:outline-none resize-none font-sans leading-relaxed shadow-inner"
                   />
                 ) : (
-                  <div className="bg-white border border-slate-200/80 rounded-xl p-3.5 text-xs text-slate-700 whitespace-pre-line leading-relaxed max-h-28 overflow-y-auto">
+                  <div className="bg-white border border-slate-200/80 rounded-xl p-3 text-xs text-slate-700 whitespace-pre-line leading-relaxed max-h-24 overflow-y-auto font-sans">
                     {whatsappMsg}
                   </div>
                 )}
               </div>
 
-              {/* BOTÕES DE AÇÃO */}
-              <div className="flex flex-wrap items-center gap-3 pt-1">
+              {/* BOTÕES DE DISPARO */}
+              <div className="flex flex-wrap items-center gap-2.5">
                 {result.clientPhone ? (
                   <a
                     href={`https://wa.me/55${result.clientPhone.replace(/\D/g, '')}?text=${encodeURIComponent(whatsappMsg)}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="px-6 py-3.5 bg-[#25D366] hover:bg-[#1fb855] text-white font-extrabold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0"
+                    className="px-5 py-3 bg-[#25D366] hover:bg-[#1fb855] text-white font-black text-xs rounded-xl shadow-md flex items-center gap-2 transition-all hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0"
                   >
-                    <MessageSquare className="w-4 h-4 fill-white" /> DISPARAR NO WHATSAPP AGORA
+                    <MessageSquare className="w-4 h-4 fill-white" /> ENVIAR NO WHATSAPP AGORA
                   </a>
                 ) : (
                   <span className="px-4 py-3 bg-amber-50 text-amber-800 font-bold text-xs rounded-xl border border-amber-200">
@@ -688,15 +706,15 @@ export default function DashboardPage() {
                     setCopiedLink(true);
                     setTimeout(() => setCopiedLink(false), 2000);
                   }}
-                  className="px-4.5 py-3.5 bg-white border-2 border-slate-200 hover:border-slate-300 text-slate-800 font-bold text-xs rounded-xl flex items-center gap-2 transition-all shadow-xs"
+                  className="px-4 py-3 bg-white border-2 border-slate-200 hover:border-slate-300 text-slate-800 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-2xs"
                 >
                   {copiedLink ? (
                     <>
-                      <Check className="w-4 h-4 text-emerald-600" /> Link Copiado!
+                      <Check className="w-3.5 h-3.5 text-emerald-600" /> Copiado!
                     </>
                   ) : (
                     <>
-                      <Copy className="w-4 h-4 text-[#B68B1C]" /> Copiar Link
+                      <Copy className="w-3.5 h-3.5 text-gold-600" /> Copiar Link
                     </>
                   )}
                 </button>
@@ -704,18 +722,18 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   onClick={() => setShowQr(true)}
-                  className="px-4 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all"
+                  className="px-3.5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all"
                 >
-                  <QrCode className="w-4 h-4" /> QR Code Presencial
+                  <QrCode className="w-3.5 h-3.5" /> QR Code Presencial
                 </button>
               </div>
             </div>
           ) : mode === 'PDF' ? (
             /* ─────────────────────────────────────────────────── */
-            /* FORMULÁRIO 1: PDF AVULSO (DROP VISÍVEL NO CENTRO)   */
+            /* MODO 1: PDF AVULSO — DROP ZONE VISÍVEL              */
             /* ─────────────────────────────────────────────────── */
-            <form onSubmit={handleDispatch} className="max-w-2xl mx-auto space-y-5">
-              {/* DROP ZONE PROEMINENTE */}
+            <form onSubmit={handleDispatch} className="max-w-2xl mx-auto space-y-4">
+              {/* DROP ZONE EXECUTIVO COM EFEITO DE PROFUNDIDADE */}
               <div
                 onDragOver={(e) => {
                   e.preventDefault();
@@ -733,10 +751,10 @@ export default function DashboardPage() {
                 onClick={() => fileInputRef.current?.click()}
                 className={`relative border-2 border-dashed rounded-3xl cursor-pointer transition-all duration-300 ${
                   dragActive
-                    ? 'border-[#B68B1C] bg-amber-50/70 shadow-lg scale-[1.01]'
+                    ? 'border-gold-500 bg-amber-50/80 shadow-card scale-[1.01]'
                     : uploadedPdf
                     ? 'border-emerald-400 bg-emerald-50/40 shadow-xs'
-                    : 'border-slate-300 bg-slate-50/40 hover:border-[#B68B1C] hover:bg-amber-50/20 hover:shadow-sm'
+                    : 'border-slate-300 bg-slate-50/50 hover:border-gold-500 hover:bg-amber-50/20 hover:shadow-xs'
                 }`}
               >
                 <input
@@ -750,64 +768,64 @@ export default function DashboardPage() {
                 />
 
                 {uploadingPdf ? (
-                  <div className="py-12 text-center space-y-2">
-                    <Loader2 className="w-8 h-8 text-[#B68B1C] animate-spin mx-auto" />
-                    <p className="text-sm font-bold text-slate-700">Carregando e validando PDF...</p>
+                  <div className="py-10 text-center space-y-2">
+                    <Loader2 className="w-7 h-7 text-gold-500 animate-spin mx-auto" />
+                    <p className="text-xs font-bold text-slate-700">Validando estrutura do PDF...</p>
                   </div>
                 ) : uploadedPdf ? (
-                  <div className="p-5 flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3.5 min-w-0">
-                      <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 shadow-xs">
-                        <FileText className="w-6 h-6" />
+                  <div className="p-4 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 shadow-2xs">
+                        <FileCheck className="w-5 h-5" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-black text-slate-900 truncate">{uploadedPdf.name}</p>
-                        <p className="text-xs text-emerald-700 font-bold mt-0.5">
-                          ✓ Documento pronto para envio • {(uploadedPdf.sizeBytes / 1024 / 1024).toFixed(2)} MB
+                        <p className="text-xs font-black text-slate-900 truncate">{uploadedPdf.name}</p>
+                        <p className="text-[11px] text-emerald-700 font-bold mt-0.5">
+                          ✓ PDF Pronto • {(uploadedPdf.sizeBytes / 1024 / 1024).toFixed(2)} MB • Hash SHA-256 Validado
                         </p>
                       </div>
                     </div>
-                    <span className="text-xs font-bold text-slate-600 bg-white border border-slate-200 px-3 py-1.5 rounded-xl shrink-0 shadow-2xs hover:bg-slate-50">
-                      Trocar Arquivo
+                    <span className="text-[11px] font-bold text-slate-600 bg-white border border-slate-200 px-3 py-1.5 rounded-xl shrink-0 shadow-2xs hover:bg-slate-50">
+                      Trocar PDF
                     </span>
                   </div>
                 ) : (
-                  <div className="py-10 text-center space-y-2.5">
-                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-100 to-amber-200/50 border border-amber-300/40 flex items-center justify-center mx-auto shadow-2xs">
-                      <FileUp className="w-7 h-7 text-[#B68B1C]" />
+                  <div className="py-9 text-center space-y-2">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-100 to-amber-200/50 border border-amber-300/40 flex items-center justify-center mx-auto shadow-2xs">
+                      <FileUp className="w-6 h-6 text-gold-600" />
                     </div>
                     <div>
-                      <p className="text-sm font-black text-slate-900">
-                        Arraste o documento PDF aqui
+                      <p className="text-xs font-black text-slate-900">
+                        Arraste e solte o documento PDF aqui
                       </p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Petições, procurações, contratos — ou <span className="text-[#B68B1C] font-bold underline">clique para selecionar do computador</span>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Petições, procurações, contratos — ou <span className="text-gold-600 font-bold underline">clique para selecionar do seu computador</span>
                       </p>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* TÍTULO PERSONALIZADO OPCIONAL */}
+              {/* TÍTULO PERSONALIZADO */}
               <div className="space-y-1">
-                <label className="text-[11px] font-bold uppercase text-slate-500 tracking-wider">
+                <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
                   Título do Documento
                 </label>
                 <input
                   type="text"
                   value={docCustomTitle}
                   onChange={(e) => setDocCustomTitle(e.target.value)}
-                  placeholder="Ex: Procuração Ad Judicia e Extrajudicia"
-                  className="w-full px-4 py-3 bg-white border-2 border-slate-200 focus:border-[#B68B1C] rounded-2xl text-sm font-bold text-slate-800 focus:outline-none transition-all shadow-xs"
+                  placeholder="Ex: Procuração Ad Judicia e Declaração de Hipossuficiência"
+                  className="w-full px-4 py-2.5 bg-slate-50/80 focus:bg-white border-2 border-slate-200/90 focus:border-gold-500 rounded-2xl text-xs font-bold text-slate-800 focus:outline-none transition-all shadow-2xs"
                 />
               </div>
 
-              {/* SELEÇÃO DA CLIENTE */}
+              {/* BUSCA DA CLIENTE */}
               <div className="space-y-1">
-                <label className="text-[11px] font-bold uppercase text-slate-500 tracking-wider">
-                  Para qual cliente enviar?
+                <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                  Destinatária da Assinatura
                 </label>
-                <ClientSearch
+                <ExecutiveClientSearch
                   clients={clients}
                   value={selectedClientId}
                   onChange={setSelectedClientId}
@@ -815,47 +833,47 @@ export default function DashboardPage() {
                 />
               </div>
 
-              {/* BOTÃO PRINCIPAL DE ENVIO */}
+              {/* CTA PRINCIPAL */}
               <button
                 type="submit"
                 disabled={submitting || !selectedClientId || !uploadedPdf}
-                className="w-full py-4 bg-gradient-to-r from-[#071B3A] to-[#0A254F] hover:from-[#0A254F] hover:to-[#103672] text-white font-extrabold text-sm rounded-2xl shadow-md transition-all flex items-center justify-center gap-2.5 disabled:opacity-35 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0"
+                className="w-full py-3.5 bg-gradient-to-r from-[#071B3A] to-[#0A254F] hover:from-[#0A254F] hover:to-[#143464] text-white font-black text-xs rounded-2xl shadow-card transition-all flex items-center justify-center gap-2 disabled:opacity-35 hover:shadow-card-hover hover:-translate-y-0.5 active:translate-y-0"
               >
                 {submitting ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Send className="w-5 h-5 text-amber-400" />
+                  <Send className="w-4 h-4 text-gold-400" />
                 )}
-                GERAR LINK SEGURO & DISPARAR NO WHATSAPP
+                GERAR LINK DE ASSINATURA & DISPARAR NO WHATSAPP
               </button>
             </form>
           ) : mode === 'KIT' ? (
             /* ─────────────────────────────────────────────────── */
-            /* FORMULÁRIO 2: KIT JURÍDICO AUTOMÁTICO               */
+            /* MODO 2: KIT JURÍDICO AUTOMÁTICO                     */
             /* ─────────────────────────────────────────────────── */
-            <form onSubmit={handleDispatch} className="max-w-2xl mx-auto space-y-5">
-              <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-5 space-y-3 shadow-xs">
-                <label className="text-xs font-black uppercase text-slate-700 tracking-wider">
-                  Selecione o Pacote Jurídico
+            <form onSubmit={handleDispatch} className="max-w-2xl mx-auto space-y-4">
+              <div className="bg-slate-50/80 border border-slate-200/90 rounded-2xl p-4 space-y-2.5 shadow-2xs">
+                <label className="text-[10px] font-black uppercase text-slate-600 tracking-wider">
+                  Pacote Jurídico Integrado
                 </label>
                 <select
                   value={selectedKitId}
                   onChange={(e) => setSelectedKitId(e.target.value)}
-                  className="w-full px-4 py-3 bg-white border-2 border-slate-200 focus:border-[#B68B1C] rounded-xl text-sm font-bold text-slate-800 focus:outline-none shadow-xs"
+                  className="w-full px-3.5 py-2.5 bg-white border-2 border-slate-200 focus:border-gold-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none shadow-2xs"
                 >
                   {kits.map((k) => (
                     <option key={k.id} value={k.id}>
-                      {k.name} ({k.items?.length || 3} documentos automáticos)
+                      {k.name} ({k.items?.length || 3} documentos inclusos)
                     </option>
                   ))}
                 </select>
 
                 {selectedKit && (
-                  <div className="flex flex-wrap gap-2 pt-1">
+                  <div className="flex flex-wrap gap-1.5 pt-1">
                     {selectedKit.items?.map((it: any, i: number) => (
                       <span
                         key={i}
-                        className="text-xs font-bold bg-white border border-slate-200 text-slate-800 px-3 py-1.5 rounded-xl shadow-2xs"
+                        className="text-[11px] font-bold bg-white border border-slate-200 text-slate-800 px-2.5 py-1 rounded-lg shadow-2xs"
                       >
                         ✓ {it.template?.title || `Documento ${i + 1}`}
                       </span>
@@ -865,10 +883,10 @@ export default function DashboardPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-bold uppercase text-slate-500 tracking-wider">
-                  Destinatária do Kit
+                <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                  Destinatária do Pacote
                 </label>
-                <ClientSearch
+                <ExecutiveClientSearch
                   clients={clients}
                   value={selectedClientId}
                   onChange={setSelectedClientId}
@@ -879,23 +897,23 @@ export default function DashboardPage() {
               <button
                 type="submit"
                 disabled={submitting || !selectedClientId || !selectedKitId}
-                className="w-full py-4 bg-gradient-to-r from-[#071B3A] to-[#0A254F] text-white font-extrabold text-sm rounded-2xl shadow-md transition-all flex items-center justify-center gap-2.5 disabled:opacity-35 hover:shadow-lg hover:-translate-y-0.5"
+                className="w-full py-3.5 bg-gradient-to-r from-[#071B3A] to-[#0A254F] text-white font-black text-xs rounded-2xl shadow-card transition-all flex items-center justify-center gap-2 disabled:opacity-35 hover:shadow-card-hover hover:-translate-y-0.5"
               >
                 {submitting ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Send className="w-5 h-5 text-amber-400" />
+                  <Send className="w-4 h-4 text-gold-400" />
                 )}
-                GERAR KIT JURÍDICO & DISPARAR NO WHATSAPP
+                GERAR KIT COMPLETO & DISPARAR NO WHATSAPP
               </button>
             </form>
           ) : (
             /* ─────────────────────────────────────────────────── */
-            /* FORMULÁRIO 3: CADASTRO RÁPIDO + DOSSIÊ AUTOMÁTICO   */
+            /* MODO 3: CADASTRO RÁPIDO + DOSSIÊ AUTOMÁTICO         */
             /* ─────────────────────────────────────────────────── */
-            <form onSubmit={handleNewClient} className="max-w-2xl mx-auto space-y-4">
+            <form onSubmit={handleNewClient} className="max-w-2xl mx-auto space-y-3.5">
               <div className="space-y-1">
-                <label className="text-[11px] font-bold uppercase text-slate-600">
+                <label className="text-[10px] font-black uppercase text-slate-600">
                   Nome Completo da Cliente
                 </label>
                 <input
@@ -903,16 +921,16 @@ export default function DashboardPage() {
                   value={newClientName}
                   onChange={(e) => setNewClientName(e.target.value)}
                   placeholder="Ex: Maria das Graças Silva"
-                  className="w-full px-4 py-3 bg-white border-2 border-slate-200 focus:border-emerald-500 rounded-2xl text-sm font-bold text-slate-800 focus:outline-none shadow-xs"
+                  className="w-full px-3.5 py-2.5 bg-white border-2 border-slate-200 focus:border-emerald-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none shadow-2xs"
                 />
               </div>
 
-              <div className="grid sm:grid-cols-2 gap-3.5">
+              <div className="grid sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold uppercase text-slate-600 flex items-center justify-between">
+                  <label className="text-[10px] font-black uppercase text-slate-600 flex items-center justify-between">
                     CPF
                     {cpfValid !== null && (
-                      <span className={`text-[10px] font-black ${cpfValid ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      <span className={`text-[9px] font-black ${cpfValid ? 'text-emerald-600' : 'text-rose-600'}`}>
                         {cpfValid ? '✓ CPF Válido' : '✗ CPF Inválido'}
                       </span>
                     )}
@@ -922,7 +940,7 @@ export default function DashboardPage() {
                     value={newClientCpf}
                     onChange={(e) => setNewClientCpf(maskCpf(e.target.value))}
                     placeholder="000.000.000-00"
-                    className={`w-full px-4 py-3 bg-white border-2 rounded-2xl text-sm font-bold text-slate-800 focus:outline-none shadow-xs ${
+                    className={`w-full px-3.5 py-2.5 bg-white border-2 rounded-xl text-xs font-bold text-slate-800 focus:outline-none shadow-2xs ${
                       cpfValid === false
                         ? 'border-rose-300'
                         : cpfValid === true
@@ -933,21 +951,21 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold uppercase text-slate-600">
-                    WhatsApp / Telefone
+                  <label className="text-[10px] font-black uppercase text-slate-600">
+                    WhatsApp / Celular
                   </label>
                   <input
                     type="text"
                     value={newClientPhone}
                     onChange={(e) => setNewClientPhone(maskPhone(e.target.value))}
                     placeholder="(71) 99999-9999"
-                    className="w-full px-4 py-3 bg-white border-2 border-slate-200 focus:border-emerald-500 rounded-2xl text-sm font-bold text-slate-800 focus:outline-none shadow-xs"
+                    className="w-full px-3.5 py-2.5 bg-white border-2 border-slate-200 focus:border-emerald-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none shadow-2xs"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-bold uppercase text-slate-600">
+                <label className="text-[10px] font-black uppercase text-slate-600">
                   RG (Opcional)
                 </label>
                 <input
@@ -955,19 +973,19 @@ export default function DashboardPage() {
                   value={newClientRg}
                   onChange={(e) => setNewClientRg(maskRg(e.target.value))}
                   placeholder="00.000.000-00"
-                  className="w-full px-4 py-3 bg-white border-2 border-slate-200 focus:border-emerald-500 rounded-2xl text-sm font-bold text-slate-800 focus:outline-none shadow-xs"
+                  className="w-full px-3.5 py-2.5 bg-white border-2 border-slate-200 focus:border-emerald-500 rounded-xl text-xs font-bold text-slate-800 focus:outline-none shadow-2xs"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={submitting || !newClientName.trim()}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm rounded-2xl shadow-md transition-all flex items-center justify-center gap-2.5 disabled:opacity-35 hover:shadow-lg hover:-translate-y-0.5"
+                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-35 hover:shadow-lg hover:-translate-y-0.5"
               >
                 {submitting ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <FolderPlus className="w-5 h-5 text-emerald-200" />
+                  <FolderPlus className="w-4 h-4 text-emerald-200" />
                 )}
                 SALVAR CLIENTE & CRIAR DOSSIÊ AUTOMÁTICO 📁
               </button>
@@ -975,7 +993,7 @@ export default function DashboardPage() {
           )}
 
           {error && (
-            <p className="mt-4 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-4 py-3 rounded-xl flex items-center gap-2">
+            <p className="mt-3 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-2xs">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
               {error}
             </p>
@@ -984,49 +1002,49 @@ export default function DashboardPage() {
       </section>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 3. PAINEL DE CONTROLE: ATENÇÃO PRIORITÁRIA + DOSSIÊS          */}
+      {/* 3. GRID OPERACIONAL: ATENÇÃO PRIORITÁRIA + DOSSIÊS NATIVOS   */}
       {/* ───────────────────────────────────────────────────────────── */}
       <section className="grid lg:grid-cols-2 gap-6">
-        {/* COLUNA 1: ATENÇÃO PRIORITÁRIA & COBRANÇAS 1-CLICK */}
-        <div className="bg-white border-2 border-slate-200/90 rounded-[28px] p-6 shadow-sm space-y-4">
+        {/* COLUNA 1: ATENÇÃO PRIORITÁRIA & COBRANÇA 1-CLICK */}
+        <div className="bg-white border border-slate-200/90 rounded-[28px] p-5 lg:p-6 shadow-card space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
-                <Bell className="w-5 h-5" />
+              <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                <Bell className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="font-extrabold text-[#071B3A] text-sm">Atenção Prioritária</h3>
-                <p className="text-[11px] text-slate-500">Cobrança de assinaturas em atraso</p>
+                <h3 className="font-heading font-black text-[#071B3A] text-sm">Atenção Prioritária</h3>
+                <p className="text-[11px] text-slate-500">Cobrança de assinaturas pendentes</p>
               </div>
             </div>
 
             {pendingAlerts.length > 0 && (
-              <span className="text-xs bg-rose-100 text-rose-800 font-extrabold px-2.5 py-1 rounded-full">
+              <span className="text-[10px] bg-rose-100 text-rose-800 font-black px-2.5 py-0.5 rounded-full border border-rose-200">
                 {pendingAlerts.length} pendente(s)
               </span>
             )}
           </div>
 
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             {pendingAlerts.length > 0 ? (
               pendingAlerts.map((a, i) => (
                 <div
                   key={i}
-                  className={`flex items-center justify-between gap-3 p-3.5 rounded-2xl border transition-all ${
+                  className={`flex items-center justify-between gap-3 p-3 rounded-2xl border transition-all ${
                     a.urgent
                       ? 'bg-rose-50/70 border-rose-200/90'
                       : 'bg-amber-50/60 border-amber-200/90'
                   }`}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-2.5 min-w-0">
                     <span
-                      className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                      className={`w-2 h-2 rounded-full shrink-0 ${
                         a.urgent ? 'bg-rose-500 animate-pulse' : 'bg-amber-500'
                       }`}
                     />
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-slate-900 truncate">{a.client}</p>
-                      <p className="text-[11px] text-slate-500 truncate">
+                      <p className="text-[10px] text-slate-500 truncate">
                         {a.title} • {a.days > 0 ? `Aguardando há ${a.days} dia(s)` : 'Enviado hoje'}
                       </p>
                     </div>
@@ -1035,22 +1053,22 @@ export default function DashboardPage() {
                   {a.phone && (
                     <a
                       href={`https://wa.me/55${a.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
-                        `Olá, ${a.client}! Passando para lembrar sobre a assinatura digital dos seus documentos do processo no escritório ${
-                          office?.name || 'Rodrigues & Soares'
+                        `Olá, ${a.client}! Passando para lembrar sobre a assinatura digital dos seus documentos no escritório ${
+                          office?.name || 'Rodrigues & Soares Advocacia'
                         }. Podemos te ajudar a concluir?`
                       )}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-3 py-1.5 bg-[#25D366] hover:bg-[#1fb855] text-white text-[11px] font-bold rounded-xl shrink-0 shadow-2xs flex items-center gap-1 transition-all"
+                      className="px-2.5 py-1.5 bg-[#25D366] hover:bg-[#1fb855] text-white text-[10px] font-black rounded-lg shrink-0 shadow-2xs flex items-center gap-1 transition-all"
                     >
-                      <MessageSquare className="w-3.5 h-3.5 fill-white" /> Cobrar
+                      <MessageSquare className="w-3 h-3 fill-white" /> Cobrar
                     </a>
                   )}
                 </div>
               ))
             ) : (
-              <div className="py-8 text-center space-y-1">
-                <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
+              <div className="py-7 text-center space-y-1">
+                <CheckCircle2 className="w-7 h-7 text-emerald-500 mx-auto" />
                 <p className="text-xs font-bold text-slate-800">Tudo em dia!</p>
                 <p className="text-[11px] text-slate-500">
                   Nenhum documento aguardando assinatura no momento.
@@ -1061,13 +1079,13 @@ export default function DashboardPage() {
 
           {/* ATIVIDADE RECENTE LOG */}
           {activities.length > 0 && (
-            <div className="pt-3 border-t border-slate-100 space-y-2">
-              <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+            <div className="pt-2.5 border-t border-slate-100 space-y-1.5">
+              <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">
                 Últimos Registros
               </p>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 {activities.slice(0, 3).map((act, i) => (
-                  <div key={i} className="flex items-center gap-2.5 text-xs text-slate-700">
+                  <div key={i} className="flex items-center gap-2 text-[11px] text-slate-700">
                     <span
                       className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                         act.type === 'signed'
@@ -1089,27 +1107,27 @@ export default function DashboardPage() {
         </div>
 
         {/* COLUNA 2: GERENCIADOR DOSSIÊ DOS PROCESSOS (WINDOWS EXPLORER) */}
-        <div className="bg-white border-2 border-slate-200/90 rounded-[28px] p-6 shadow-sm space-y-4">
+        <div className="bg-white border border-slate-200/90 rounded-[28px] p-5 lg:p-6 shadow-card space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-                <Folder className="w-5 h-5 fill-amber-400/30" />
+              <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                <Folder className="w-4 h-4 fill-amber-400/30" />
               </div>
               <div>
-                <h3 className="font-extrabold text-[#071B3A] text-sm">Dossiê de Processos</h3>
+                <h3 className="font-heading font-black text-[#071B3A] text-sm">Dossiê de Processos</h3>
                 <p className="text-[11px] text-slate-500">Pastas Nativas do Windows Explorer</p>
               </div>
             </div>
 
             <Link
               href="/processos"
-              className="text-xs font-bold text-[#B68B1C] hover:underline flex items-center gap-1"
+              className="text-xs font-bold text-gold-600 hover:underline flex items-center gap-1"
             >
-              Ver todos <ArrowUpRight className="w-3.5 h-3.5" />
+              Ver todos <ArrowUpRight className="w-3 h-3" />
             </Link>
           </div>
 
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             {processes.slice(0, 4).map((p) => {
               const isExp = expandedFolder === p.id;
               return (
@@ -1120,29 +1138,29 @@ export default function DashboardPage() {
                   <button
                     type="button"
                     onClick={() => setExpandedFolder(isExp ? null : p.id)}
-                    className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-50/60 transition-colors"
+                    className="w-full p-3 flex items-center justify-between text-left hover:bg-slate-50/60 transition-colors"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 shadow-2xs">
-                        <Folder className="w-4 h-4 fill-amber-400/40" />
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-7 h-7 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 shadow-2xs">
+                        <Folder className="w-3.5 h-3.5 fill-amber-400/40" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs font-extrabold text-slate-900 truncate">{p.title}</p>
-                        <p className="text-[11px] text-slate-500 truncate">
+                        <p className="text-xs font-black text-slate-900 truncate">{p.title}</p>
+                        <p className="text-[10px] text-slate-500 truncate">
                           <User className="w-3 h-3 inline mr-1 text-slate-400" />
                           {p.client?.name || 'Cliente'}
                         </p>
                       </div>
                     </div>
                     <ChevronDown
-                      className={`w-4 h-4 text-slate-400 transition-transform ${
+                      className={`w-3.5 h-3.5 text-slate-400 transition-transform ${
                         isExp ? 'rotate-180 text-amber-600' : ''
                       }`}
                     />
                   </button>
 
                   {isExp && (
-                    <div className="px-3.5 pb-3.5 pt-1 grid grid-cols-2 gap-1.5 bg-slate-50/50 border-t border-slate-100">
+                    <div className="px-3 pb-3 pt-1 grid grid-cols-2 gap-1.5 bg-slate-50/50 border-t border-slate-100">
                       {[
                         '01. Doc Pessoais',
                         '02. Procuração',
@@ -1151,9 +1169,9 @@ export default function DashboardPage() {
                       ].map((f, i) => (
                         <div
                           key={i}
-                          className="bg-white border border-slate-200/80 p-2 rounded-xl flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 shadow-2xs"
+                          className="bg-white border border-slate-200/80 p-1.5 rounded-xl flex items-center gap-1.5 text-[10px] font-semibold text-slate-700 shadow-2xs"
                         >
-                          <Folder className="w-3.5 h-3.5 text-amber-500 fill-amber-400/30" />
+                          <Folder className="w-3 h-3 text-amber-500 fill-amber-400/30" />
                           <span className="truncate">{f}</span>
                         </div>
                       ))}
@@ -1164,8 +1182,8 @@ export default function DashboardPage() {
             })}
 
             {!processes.length && (
-              <div className="py-8 text-center space-y-1">
-                <Folder className="w-8 h-8 text-slate-300 mx-auto" />
+              <div className="py-7 text-center space-y-1">
+                <Folder className="w-7 h-7 text-slate-300 mx-auto" />
                 <p className="text-xs text-slate-500">Nenhum dossiê ativo ainda.</p>
               </div>
             )}
@@ -1175,7 +1193,7 @@ export default function DashboardPage() {
             href="/processos"
             className="w-full py-2.5 bg-amber-50 hover:bg-amber-100/80 border border-amber-200/90 text-amber-950 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-2xs"
           >
-            <Folder className="w-4 h-4 text-amber-600 fill-amber-400/30" /> Navegar por Todas as Pastas
+            <Folder className="w-3.5 h-3.5 text-amber-600 fill-amber-400/30" /> Navegar por Todas as Pastas
           </Link>
         </div>
       </section>
@@ -1192,7 +1210,7 @@ export default function DashboardPage() {
             >
               <X className="w-5 h-5" />
             </button>
-            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-[#B68B1C] flex items-center justify-center mx-auto shadow-2xs">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-gold-600 flex items-center justify-center mx-auto shadow-2xs">
               <QrCode className="w-6 h-6" />
             </div>
             <div>
