@@ -30,6 +30,21 @@ export function ensureClientQualificationTokens(contentHtml: string, title: stri
 
   // A assinatura final é definida pelo último rótulo. Assim funciona mesmo se
   // o Word salvou linhas vazias, estilos, ou nomes de outra cliente no rodapé.
+  // Declarações de hipossuficiência geralmente começam pela qualificação sem
+  // rótulo: "NOME, brasileira... CPF...". Tornamos apenas esse primeiro bloco
+  // de identificação dinâmico, preservando o restante da declaração.
+  if (isDeclaration) {
+    let declarationQualificationReplaced = false;
+    result = result.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attrs, inner) => {
+      const text = String(inner).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
+      const hasClientToken = /{{\s*cliente_(?:nome|cpf|rg|endereco)\s*}}/i.test(inner);
+      const looksLikeQualification = /(?:CPF(?:\s*\/\s*MF)?|RG\s*(?:n[ºo.]?)?|residente\s+e\s+domiciliad)/i.test(text);
+      if (declarationQualificationReplaced || hasClientToken || !looksLikeQualification) return block;
+      declarationQualificationReplaced = true;
+      return `<${tag}${attrs}><strong>{{cliente_nome}}</strong>, {{cliente_nacionalidade}}, {{cliente_estado_civil}}, {{cliente_profissao}}, inscrito(a) no CPF/MF sob o n.º {{cliente_cpf}}, residente e domiciliado(a) em {{cliente_endereco}}, declara, sob as penas da lei, que não possui condições financeiras de arcar com as custas processuais, despesas cartorárias e honorários advocatícios, sem prejuízo do próprio sustento e de sua família.</${tag}>`;
+    });
+  }
+
   const blocks = [...result.matchAll(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi)];
   const textOf = (block: RegExpMatchArray) => String(block[3]).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
   const roleIndex = blocks.map(textOf).map((text, index) => /^(OUTORGANTE|CONTRATANTE|DECLARANTE)\b/i.test(text) ? index : -1).filter((index) => index >= 0).at(-1);
