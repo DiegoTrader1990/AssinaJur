@@ -113,7 +113,10 @@ export async function ensureProcessDriveFolders(process: { id: string; officeId:
   const existing = await prisma.legalProcess.findUnique({ where: { id: process.id }, select: { driveFolderId: true, driveFolderUrl: true } });
   if (existing?.driveFolderId) return { id: existing.driveFolderId, url: existing.driveFolderUrl || `https://drive.google.com/drive/folders/${existing.driveFolderId}` };
   const root = await ensureDriveRoot(process.officeId); if (!root) return null;
-  const processFolder = await createFolder(access.token, `${process.client.name} — ${process.title}`, root.id);
+  // A raiz fica reservada para áreas de trabalho; processos confirmados não
+  // se misturam com a Entrada inteligente de documentos recém-recebidos.
+  const processesRoot = await findChildFolder(access.token, root.id, 'Processos') || await createFolder(access.token, 'Processos', root.id);
+  const processFolder = await createFolder(access.token, `${process.client.name} — ${process.title}`, processesRoot.id);
   await Promise.all(['Documentos assinados', 'Documentos do escritório', 'Protocolos e comprovantes'].map((name) => createFolder(access.token, name, processFolder.id)));
   const url = processFolder.webViewLink || `https://drive.google.com/drive/folders/${processFolder.id}`;
   await prisma.legalProcess.update({ where: { id: process.id }, data: { driveFolderId: processFolder.id, driveFolderUrl: url } });
