@@ -752,16 +752,16 @@ export default function DashboardPage() {
       {/* ───────────────────────────────────────────────────────────── */}
       {/* 1. CABEÇALHO OPERACIONAL SIMPLES                              */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <header className="relative overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-5 lg:px-7 lg:py-6 shadow-[0_18px_55px_-42px_rgba(11,25,44,0.65)]">
+      <header className="relative overflow-hidden rounded-[22px] border border-slate-200 bg-white px-5 py-4 lg:px-6 lg:py-4 shadow-[0_18px_55px_-42px_rgba(11,25,44,0.5)]">
         <div className="absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b from-[#D4AF37] to-[#9E7515]" />
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="mb-2 flex items-center gap-2">
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#9E7515]">Central do escritório</span>
               <span className="h-1 w-1 rounded-full bg-slate-300" />
               <span className="text-[10px] font-bold text-slate-400">Operação em tempo real</span>
             </div>
-            <h1 className="text-2xl font-black tracking-[-0.03em] text-[#071B3A] lg:text-[30px]">
+            <h1 className="text-xl font-black tracking-[-0.03em] text-[#071B3A] lg:text-[26px]">
               {greeting}, {userFirstName}.
             </h1>
             <div className="mt-2 flex items-center gap-2 text-xs font-semibold">
@@ -781,7 +781,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="hidden flex-col gap-2 sm:flex-row">
             <button
               type="button"
               onClick={() => setActionModal('ATENDIMENTO')}
@@ -808,19 +808,19 @@ export default function DashboardPage() {
           <span className="text-[10px] text-slate-400 font-medium">Ações mais usadas pelo escritório</span>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.7fr_1fr_1fr] lg:items-stretch">
           {/* BLOCO 1 — ENVIAR DOCUMENTO */}
           <div
             id="quick-upload-card"
-            className="lg:col-span-6 bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs flex flex-col gap-3"
+            className="min-h-[286px] bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_16px_34px_-28px_rgba(11,25,44,0.65)] flex flex-col gap-3 lg:min-h-[320px]"
           >
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-slate-100 text-[#0B192C] flex items-center justify-center shrink-0">
-                <FileUp className="w-3.5 h-3.5" />
+              <div className="w-9 h-9 rounded-xl bg-[#071B3A] text-[#E0BD48] flex items-center justify-center shrink-0 shadow-sm">
+                <FileUp className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <h3 className="text-sm font-black text-[#0B192C] leading-tight">Preparar documentos para assinatura</h3>
-                <p className="text-[11px] text-slate-500 leading-tight">Envie vários PDFs, revise cada página e posicione o selo antes de gerar um único link.</p>
+                <h3 className="text-[15px] font-black text-[#0B192C] leading-tight">Preparar documentos para assinatura</h3>
+                <p className="mt-0.5 text-[11px] text-slate-500 leading-tight">Envie um ou vários PDFs de uma só vez. Depois, revise as páginas e posicione o selo.</p>
               </div>
             </div>
 
@@ -887,7 +887,7 @@ export default function DashboardPage() {
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleFastDispatch} className="flex flex-col gap-2">
+              <form onSubmit={handleFastDispatch} className="flex flex-1 flex-col gap-2.5">
                 <div
                   onDragOver={(e) => {
                     e.preventDefault();
@@ -905,7 +905,7 @@ export default function DashboardPage() {
                     }
                   }}
                   onClick={() => fileInputRef.current?.click()}
-                  className={`border border-dashed rounded-2xl px-4 py-4 text-center cursor-pointer transition-all ${
+                  className={`flex min-h-[118px] flex-1 items-center justify-center border border-dashed rounded-2xl px-4 py-4 text-center cursor-pointer transition-all ${
                     dragActive
                       ? 'border-[#B68B1C] bg-amber-50'
                       : uploadedPdfs.length > 0
@@ -952,25 +952,23 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center gap-1.5 py-1">
-                      <FileUp className="w-3.5 h-3.5 text-[#B68B1C]" />
-                      <span className="text-[11px] font-bold text-slate-700">Arraste PDFs ou clique (vários arquivos)</span>
+                    <div className="space-y-1.5">
+                      <span className="mx-auto flex h-9 w-9 items-center justify-center rounded-xl bg-white text-[#B68B1C] shadow-sm"><FileUp className="h-4 w-4" /></span>
+                      <p className="text-xs font-extrabold text-slate-800">Arraste seus PDFs aqui</p>
+                      <p className="text-[10px] font-semibold text-slate-500">ou selecione arquivos do computador</p>
                     </div>
                   )}
                 </div>
 
-                <ClientSelector
-                  clients={clients}
-                  value={fastClientId}
-                  onChange={setFastClientId}
-                  placeholder="Selecionar cliente..."
-                  onNew={() => setActionModal('ATENDIMENTO')}
-                />
+                <div className="space-y-1">
+                  <label className="block text-[9px] font-black uppercase tracking-[0.13em] text-slate-500">Cliente</label>
+                  <ClientSelector clients={clients} value={fastClientId} onChange={setFastClientId} placeholder="Selecionar cliente..." onNew={() => setActionModal('ATENDIMENTO')} />
+                </div>
 
                 <button
                   type="submit"
                   disabled={submitting || !fastClientId || uploadedPdfs.length === 0}
-                  className="w-full py-1.5 bg-[#0B192C] hover:bg-[#152a47] text-white font-bold text-[11px] rounded-lg transition-all disabled:opacity-35 flex items-center justify-center gap-1.5 shadow-2xs"
+                  className="w-full py-2.5 bg-[#071B3A] hover:bg-[#102D55] text-white font-extrabold text-[11px] rounded-xl transition-all disabled:bg-slate-200 disabled:text-slate-400 disabled:opacity-100 flex items-center justify-center gap-1.5 shadow-[0_10px_20px_-14px_rgba(7,27,58,0.9)]"
                 >
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3 text-[#D4AF37]" />}
                   Continuar para revisar páginas e selo
@@ -980,34 +978,31 @@ export default function DashboardPage() {
           </div>
 
           {/* BLOCO 2 — CRIAR KIT JURÍDICO */}
-          <div className="lg:col-span-3 bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-2xs flex flex-col gap-2.5">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
-                <Layers className="w-3.5 h-3.5" />
+          <div className="min-h-[286px] bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_16px_34px_-28px_rgba(11,25,44,0.65)] flex flex-col gap-3 lg:min-h-[320px]">
+            <div className="flex items-start gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-slate-100 text-[#071B3A] flex items-center justify-center shrink-0">
+                <Layers className="w-4 h-4 text-[#B68B1C]" />
               </div>
               <div className="min-w-0">
-                <h3 className="text-xs font-black text-[#0B192C] leading-tight">Criar Kit Jurídico</h3>
-                <p className="text-[10px] text-slate-500 leading-tight">
-                  Gere procuração, contrato e declarações a partir dos modelos.
+                <h3 className="text-[15px] font-black text-[#0B192C] leading-tight">Criar Kit Jurídico</h3>
+                <p className="mt-1 text-[11px] text-slate-500 leading-tight">
+                  Gere procurações, contratos e declarações usando seus modelos.
                 </p>
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 mt-auto">
-              <ClientSelector
-                clients={clients}
-                value={quickKitClientId}
-                onChange={setQuickKitClientId}
-                placeholder="Selecionar cliente..."
-                onNew={() => setActionModal('ATENDIMENTO')}
-              />
+            <div className="flex flex-1 flex-col justify-end gap-2.5">
+              <div className="space-y-1">
+                <label className="block text-[9px] font-black uppercase tracking-[0.13em] text-slate-500">Cliente</label>
+                <ClientSelector clients={clients} value={quickKitClientId} onChange={setQuickKitClientId} placeholder="Selecionar cliente..." onNew={() => setActionModal('ATENDIMENTO')} />
+              </div>
               <button
                 type="button"
                 onClick={() => {
                   if (quickKitClientId) setFormClientId(quickKitClientId);
                   setActionModal('KIT');
                 }}
-                className="w-full py-1.5 bg-[#0B192C] hover:bg-[#152a47] text-white font-bold text-[11px] rounded-lg transition-all flex items-center justify-center gap-1.5 shadow-2xs"
+                className="w-full py-2.5 bg-[#071B3A] hover:bg-[#102D55] text-white font-extrabold text-[11px] rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-[0_10px_20px_-14px_rgba(7,27,58,0.9)]"
               >
                 <Layers className="w-3 h-3 text-[#D4AF37]" /> Gerar Kit
               </button>
@@ -1015,25 +1010,27 @@ export default function DashboardPage() {
           </div>
 
           {/* BLOCO 3 — NOVO ATENDIMENTO (porta de entrada do sistema, leve destaque) */}
-          <div className="lg:col-span-3 bg-gradient-to-br from-[#0B192C] to-[#152a47] text-white rounded-2xl p-3.5 shadow-xs flex flex-col gap-2.5 relative overflow-hidden">
-            <div className="absolute -top-6 -right-6 w-24 h-24 bg-[#D4AF37]/10 rounded-full blur-xl pointer-events-none" />
-            <div className="flex items-center gap-2 relative z-10">
-              <div className="w-7 h-7 rounded-lg bg-[#D4AF37]/15 text-[#D4AF37] flex items-center justify-center shrink-0">
-                <UserPlus className="w-3.5 h-3.5" />
+          <div className="min-h-[286px] border border-[#17345D] bg-[linear-gradient(145deg,#102D55_0%,#071B3A_72%,#0E2645_100%)] text-white rounded-2xl p-5 shadow-[0_16px_34px_-28px_rgba(7,27,58,0.9)] flex flex-col gap-3 relative overflow-hidden lg:min-h-[320px]">
+            <div className="absolute -top-8 -right-8 w-28 h-28 bg-[#D4AF37]/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="flex items-start gap-2.5 relative z-10">
+              <div className="w-9 h-9 rounded-xl bg-white/10 text-[#E0BD48] flex items-center justify-center shrink-0 ring-1 ring-white/10">
+                <UserPlus className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <h3 className="text-xs font-black text-white leading-tight">Novo Atendimento</h3>
-                <p className="text-[10px] text-slate-300 leading-tight">
+                <h3 className="text-[15px] font-black text-white leading-tight">Novo Atendimento</h3>
+                <p className="mt-1 text-[11px] text-slate-300 leading-tight">
                   Cadastre um cliente e inicie o fluxo jurídico completo.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5 mt-auto relative z-10">
+            <div className="mt-auto space-y-3 relative z-10">
+              <p className="text-[10px] font-bold tracking-wide text-slate-300">Cliente <span className="mx-1 text-[#D4AF37]">→</span> Documentos <span className="mx-1 text-[#D4AF37]">→</span> Assinatura <span className="mx-1 text-[#D4AF37]">→</span> Processo</p>
+              <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => setActionModal('ATENDIMENTO')}
-                className="flex-1 py-1.5 bg-gradient-to-r from-[#D4AF37] to-[#B68B1C] hover:from-[#e0bd48] hover:to-[#c59822] text-[#071B3A] font-extrabold text-[11px] rounded-lg shadow-2xs transition-all flex items-center justify-center gap-1.5"
+                className="flex-1 py-2.5 bg-[#D4AF37] hover:bg-[#E0BD48] text-[#071B3A] font-extrabold text-[11px] rounded-xl shadow-[0_10px_20px_-14px_rgba(0,0,0,0.8)] transition-all flex items-center justify-center gap-1.5"
               >
                 <UserPlus className="w-3 h-3" /> Iniciar Atendimento
               </button>
@@ -1088,14 +1085,15 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+      </div>
       </section>
 
       {/* ───────────────────────────────────────────────────────────── */}
       {/* 2. OPERAÇÃO INTELIGENTE: PRIORIDADE AGORA x RESUMO IA         */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+      <section className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
         {/* ESQUERDA (8 COLUNAS): SUA PRIORIDADE AGORA */}
-        <div className="lg:col-span-8 bg-gradient-to-br from-white via-slate-50/50 to-amber-50/20 border-2 border-amber-200/90 rounded-2xl p-4 lg:p-5 shadow-xs flex flex-col justify-between space-y-3 relative overflow-hidden">
+        <div className="lg:col-span-8 min-h-[202px] bg-gradient-to-br from-white via-slate-50/50 to-amber-50/20 border border-amber-200/90 rounded-2xl p-4 shadow-xs flex flex-col justify-between gap-3 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-28 h-28 bg-[#D4AF37]/10 rounded-full blur-xl pointer-events-none" />
 
           {topPriorityCase ? (
@@ -1113,29 +1111,22 @@ export default function DashboardPage() {
                   </span>
                 </div>
 
-                {/* DADOS DO CLIENTE & CONTEXTO HUMANO */}
-                <div className="border-l-4 border-[#0B192C] pl-3 py-0.5 space-y-1">
-                  <h3 className="text-base font-extrabold text-[#0B192C]">
+                <div className="border-l-2 border-[#D4AF37] pl-3 py-0.5 space-y-1">
+                  <h3 className="text-[15px] font-extrabold text-[#0B192C]">
                     {topPriorityCase.name}
                   </h3>
-                  <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <span className="text-emerald-700 font-extrabold">✓</span> {topPriorityCase.statusText}
+                  <p className="text-[11px] font-semibold text-slate-700 leading-snug">
+                    <span className="mr-1.5 text-emerald-700 font-extrabold">✓</span>{topPriorityCase.statusText}
                   </p>
-                </div>
-
-                {/* PRÓXIMO PASSO EXPLICADO */}
-                <div className="bg-white border border-slate-200/90 rounded-xl p-3 space-y-1 shadow-2xs">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
-                    Próximo Passo Recomendado
-                  </span>
-                  <p className="text-xs font-bold text-slate-900 leading-snug">
+                  <p className="text-[11px] font-bold text-slate-900 leading-snug">
+                    <span className="mr-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">Próxima ação</span>
                     {topPriorityCase.nextActionText}
                   </p>
                 </div>
               </div>
 
               {/* BOTÃO DE AÇÃO ÚNICO E COERENTE COM A ETAPA DO CLIENTE */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-200/80">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2.5 border-t border-slate-200/80">
                 <div className="flex items-center gap-2">
                   {topPriorityCase.actionType === 'SIGN' && topPriorityCase.phone && (
                     <a
@@ -1146,7 +1137,7 @@ export default function DashboardPage() {
                       )}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-4 py-2 bg-[#25D366] hover:bg-[#1fb855] text-white text-xs font-extrabold rounded-xl flex items-center gap-1.5 shadow-xs transition-all"
+                      className="px-3 py-2 bg-[#25D366] hover:bg-[#1fb855] text-white text-[11px] font-extrabold rounded-lg flex items-center gap-1.5 shadow-xs transition-all"
                     >
                       <MessageSquare className="w-3.5 h-3.5 fill-white" /> {topPriorityCase.actionLabel}
                     </a>
@@ -1155,7 +1146,7 @@ export default function DashboardPage() {
                   {topPriorityCase.actionType === 'DOCS' && (
                     <Link
                       href={`/clientes?q=${encodeURIComponent(topPriorityCase.name)}`}
-                      className="px-4 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-xs font-extrabold rounded-xl flex items-center gap-1.5 shadow-xs transition-all"
+                      className="px-3 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-[11px] font-extrabold rounded-lg flex items-center gap-1.5 shadow-xs transition-all"
                     >
                       <FolderPlus className="w-3.5 h-3.5 text-[#D4AF37]" /> {topPriorityCase.actionLabel}
                     </Link>
@@ -1168,7 +1159,7 @@ export default function DashboardPage() {
                         setFormClientId(topPriorityCase.id);
                         setActionModal('KIT');
                       }}
-                      className="px-4 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-xs font-extrabold rounded-xl flex items-center gap-1.5 shadow-xs transition-all"
+                      className="px-3 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-[11px] font-extrabold rounded-lg flex items-center gap-1.5 shadow-xs transition-all"
                     >
                       <Layers className="w-3.5 h-3.5 text-[#D4AF37]" /> {topPriorityCase.actionLabel}
                     </button>
@@ -1181,7 +1172,7 @@ export default function DashboardPage() {
                         setFormClientId(topPriorityCase.id);
                         setActionModal('PROCESSO');
                       }}
-                      className="px-4 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-xs font-extrabold rounded-xl flex items-center gap-1.5 shadow-xs transition-all"
+                      className="px-3 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-[11px] font-extrabold rounded-lg flex items-center gap-1.5 shadow-xs transition-all"
                     >
                       <Briefcase className="w-3.5 h-3.5 text-[#D4AF37]" /> {topPriorityCase.actionLabel}
                     </button>
@@ -1190,7 +1181,7 @@ export default function DashboardPage() {
                   {topPriorityCase.actionType === 'VIEW_PROCESS' && (
                     <Link
                       href={`/processos?clienteId=${topPriorityCase.id}`}
-                      className="px-4 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-xs font-extrabold rounded-xl flex items-center gap-1.5 shadow-xs transition-all"
+                      className="px-3 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-[11px] font-extrabold rounded-lg flex items-center gap-1.5 shadow-xs transition-all"
                     >
                       <Briefcase className="w-3.5 h-3.5 text-[#D4AF37]" /> {topPriorityCase.actionLabel}
                     </Link>
@@ -1199,7 +1190,7 @@ export default function DashboardPage() {
                   {topPriorityCase.actionType !== 'VIEW_PROCESS' && (
                     <Link
                       href={`/processos?clienteId=${topPriorityCase.id}`}
-                      className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold rounded-xl transition-all"
+                      className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold rounded-lg transition-all"
                     >
                       Ver Dossiê
                     </Link>
@@ -1212,16 +1203,16 @@ export default function DashboardPage() {
               </div>
             </>
           ) : (
-            <div className="py-8 text-center space-y-1">
-              <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
+            <div className="py-6 text-center space-y-1">
+              <CheckCircle2 className="w-7 h-7 text-emerald-500 mx-auto" />
               <h3 className="text-xs font-extrabold text-slate-800">Nenhuma Ação Crítica Pendente</h3>
-              <p className="text-[11px] text-slate-500">Seu escritório está em dia. 2 fluxos podem avançar hoje.</p>
+              <p className="text-[11px] text-slate-500">Nenhuma pendência crítica identificada.</p>
             </div>
           )}
         </div>
 
         {/* DIREITA (4 COLUNAS): RESUMO DO ASSINAJUR (IA COPILOT) */}
-        <div className="lg:col-span-4 bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col justify-between space-y-3">
+        <div className="lg:col-span-4 min-h-[202px] bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col justify-between gap-3">
           <div className="space-y-2">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div className="flex items-center gap-1.5">
@@ -1232,24 +1223,22 @@ export default function DashboardPage() {
                   Resumo do AssinaJur
                 </h3>
               </div>
-              <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                IA Copilot
-              </span>
+              <span className="text-[9px] font-bold text-slate-400">Atualizado agora</span>
             </div>
 
             {aiSummary.length > 0 ? (
               <div className="space-y-1.5">
-                <p className="text-xs font-bold text-slate-800">
+                <p className="text-[11px] font-bold text-slate-800">
                   {aiSummary.length} ações dependem da sua atenção:
                 </p>
 
                 {aiSummary.map((item, i) => (
                   <div
                     key={i}
-                    className={`p-2 rounded-xl border text-[11px] font-medium leading-snug flex items-start gap-1.5 ${
+                    className={`py-1.5 text-[11px] font-medium leading-snug flex items-start gap-1.5 ${
                       item.urgent
-                        ? 'bg-rose-50/60 border-rose-200 text-rose-900'
-                        : 'bg-slate-50 border-slate-200/80 text-slate-700'
+                        ? 'text-rose-900'
+                        : 'text-slate-700'
                     }`}
                   >
                     <span className={`w-1.5 h-1.5 rounded-full mt-1 shrink-0 ${item.urgent ? 'bg-rose-500 animate-pulse' : 'bg-amber-500'}`} />
@@ -1258,8 +1247,8 @@ export default function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <div className="p-3 bg-emerald-50/60 border border-emerald-200/80 rounded-xl space-y-0.5 text-center">
-                <p className="text-xs font-bold text-emerald-900">✓ Tudo sob controle</p>
+              <div className="py-2 text-center space-y-0.5">
+                <p className="text-[11px] font-bold text-emerald-900">✓ Tudo sob controle</p>
                 <p className="text-[10px] text-emerald-800">Nenhuma pendência crítica identificada.</p>
               </div>
             )}
@@ -1273,9 +1262,9 @@ export default function DashboardPage() {
                 setActionModal('KIT');
               }
             }}
-            className="w-full py-2 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-xl transition-all"
+            className="self-start px-3 py-2 bg-slate-900 hover:bg-black text-white font-bold text-[11px] rounded-lg transition-all"
           >
-            Resolver Pendências
+            Ver pendências
           </button>
         </div>
       </section>
@@ -1304,7 +1293,7 @@ export default function DashboardPage() {
         </div>
 
         {/* FAIXA HORIZONTAL INTEGRADA DE ETAPAS */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs font-bold">
+        <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 sm:grid-cols-5">
           {[
             { key: 'ENTRADA', label: 'Entrada', count: stageCounts.ENTRADA },
             { key: 'DOCUMENTACAO', label: 'Documentação', count: stageCounts.DOCUMENTACAO },
@@ -1318,13 +1307,13 @@ export default function DashboardPage() {
                 key={st.key}
                 type="button"
                 onClick={() => setSelectedStageFilter(isSelected ? null : st.key)}
-                className={`p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col items-center justify-between ${
+                className={`relative min-h-[66px] border-b border-r border-slate-200 px-3 py-2 text-left transition-all cursor-pointer last:border-r-0 sm:border-b-0 flex flex-col justify-center ${
                   isSelected
                     ? 'bg-[#0B192C] text-white border-[#0B192C] shadow-xs'
-                    : 'bg-slate-50/70 hover:bg-white border-slate-200/90 text-slate-800'
+                    : 'bg-slate-50/50 hover:bg-white text-slate-800'
                 }`}
               >
-                <div className="flex items-center justify-between w-full">
+                <div className="flex items-center justify-between gap-2 w-full">
                   <span className={`text-[10px] font-black uppercase tracking-wider ${isSelected ? 'text-slate-300' : 'text-slate-400'}`}>
                     {st.label}
                   </span>
@@ -1335,7 +1324,7 @@ export default function DashboardPage() {
                   )}
                 </div>
 
-                <span className={`text-base font-black tabular-nums mt-1 ${isSelected ? 'text-[#D4AF37]' : 'text-slate-900'}`}>
+                <span className={`text-lg font-black tabular-nums leading-none mt-1 ${isSelected ? 'text-[#D4AF37]' : 'text-slate-900'}`}>
                   {st.count}
                 </span>
               </button>
