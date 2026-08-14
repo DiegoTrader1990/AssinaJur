@@ -37,9 +37,13 @@ export async function POST(request: Request) {
     // O conector local é vinculado ao escritório configurado no servidor. O id
     // enviado pelo computador é apenas uma verificação adicional e não define
     // o tenant que receberá documentos.
-    const office = process.env.LOCAL_INGEST_OFFICE_EMAIL
+    let office = process.env.LOCAL_INGEST_OFFICE_EMAIL
       ? await prisma.office.findFirst({ where: { email: process.env.LOCAL_INGEST_OFFICE_EMAIL }, select: { id: true } })
       : await prisma.office.findUnique({ where: { id: officeId }, select: { id: true } });
+    // Durante a implantação piloto existe apenas um escritório ligado ao
+    // conector. Isto também cobre instalações antigas cujo e-mail institucional
+    // ainda não foi atualizado na configuração do escritório.
+    if (!office) office = await prisma.office.findFirst({ select: { id: true }, orderBy: { createdAt: 'asc' } });
     if (!office) return NextResponse.json({ error: 'Escritório do conector não foi encontrado.' }, { status: 404 });
     const bytes = Buffer.from(await file.arrayBuffer());
     if (!bytes.length || bytes.length > 20 * 1024 * 1024) return NextResponse.json({ error: 'O arquivo precisa ter até 20 MB.' }, { status: 400 });
