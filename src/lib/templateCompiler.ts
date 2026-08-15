@@ -50,16 +50,10 @@ export function replaceTemplateVariables(contentHtml: string, variables: Variabl
   if (city && date) {
     compiled = compiled.replace(/>[^<]{2,120},\s*\d{1,2}\s+de\s+[^\s<]+\s+de\s+\d{4}\.?\s*(?=<\/(?:p|div)>)/gi, `>${city}, ${date}.`);
   }
-  if (clientName) {
-    compiled = compiled.replace(
-      />[^<]{2,120}(?=<\/(?:p|div)>\s*<(?:p|div)[^>]*>\s*(?:Outorgante|Contratante|Declarante)\b)/gi,
-      `>${clientName}`,
-    );
-    compiled = compiled.replace(
-      />[^<]{2,120}(?=\s*<br\s*\/?\s*>\s*(?:Outorgante|Contratante|Declarante)\b)/gi,
-      `>${clientName}`,
-    );
-  }
+  // O rodapé de assinatura é ajustado depois da conversão para parágrafos,
+  // em applyDynamicSignatureFooter. A antiga substituição ampla neste ponto
+  // também alcançava a área logo abaixo do título da procuração e criava um
+  // nome isolado antes de "OUTORGANTE".
   return compiled;
 }
 
