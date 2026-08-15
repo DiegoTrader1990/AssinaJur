@@ -5,7 +5,7 @@ import { logAuditEvent } from '@/lib/audit';
 import { compileTemplateToPdf } from '@/lib/templateCompiler';
 import { getFileBuffer } from '@/lib/storage';
 import { randomUUID } from 'crypto';
-import { ensureClientQualificationTokens, formatCpfCnpj, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
+import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -172,7 +172,7 @@ export async function POST(req: Request) {
       ].filter(Boolean).join(', ') || '—',
       cliente_estado_civil: client.maritalStatus || '—',
       cliente_profissao: client.profession || '—',
-      cliente_nascimento_qualificacao: client.birthDate ? `, nascido(a) em ${client.birthDate}` : '',
+      cliente_nascimento_qualificacao: client.birthDate ? `, nascido(a) em ${formatBirthDate(client.birthDate)}` : '',
       representante_legal: client.legalRepresentative || '',
       representante_cpf: client.representativeCpf || '',
       representante_rg: client.representativeRg || '',

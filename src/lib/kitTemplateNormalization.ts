@@ -5,6 +5,13 @@ export function formatCpfCnpj(value: string | null | undefined): string {
   return String(value || '');
 }
 
+export function formatBirthDate(value: string | Date | null | undefined): string {
+  if (!value) return '';
+  const raw = value instanceof Date ? value.toISOString().slice(0, 10) : String(value).trim();
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return isoMatch ? `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}` : raw;
+}
+
 // Remove o nome isolado que alguns fluxos de revisão herdaram do Word antes da
 // qualificação. Recebe também o nome já renderizado, pois a cópia temporária da
 // revisão pode não conter mais a tag {{cliente_nome}}.
