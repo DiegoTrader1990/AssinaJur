@@ -35,6 +35,20 @@ export function removeStandaloneClientNameBeforeQualification(contentHtml: strin
     const isClientName = normalizedVisible === normalizedName || /^{{\s*cliente_nome\s*}}$/i.test(visibleText);
     return !reachedQualification && isClientName ? '' : `<${tag}${attrs}>${inner}</${tag}>`;
   });
+
+  // A revisão visual pode receber conteúdo vindo do editor com tags adicionais
+  // (por exemplo, <strong> dentro de <p>). Como última proteção, removemos
+  // qualquer bloco que contenha somente o nome antes da qualificação inicial.
+  const outorganteIndex = result.search(/OUTORGANTE\s*:/i);
+  if (outorganteIndex >= 0) {
+    const beforeQualification = result.slice(0, outorganteIndex);
+    const afterQualification = result.slice(outorganteIndex);
+    const standaloneBlock = new RegExp(
+      `<(p|div|h1|h2|h3)([^>]*)>\\s*(?:<(?:strong|b)[^>]*>)?\\s*${namePattern}\\s*(?:<\\/(?:strong|b)>)?\\s*<\\/\\1>`,
+      'i',
+    );
+    result = beforeQualification.replace(standaloneBlock, '') + afterQualification;
+  }
   return result;
 }
 
