@@ -281,7 +281,9 @@ export default function DocumentLabPage() {
           helperText="Mesma superfície, sem sombra sobre o documento."
           onConfirm={handleBackConfirmed}
           onEvent={pushEvent}
-          autoStart={false}
+          // A câmera já foi autorizada na frente: o verso deve seguir sem
+          // exigir um segundo toque para reabrir a câmera.
+          autoStart
         />
       )}
 
