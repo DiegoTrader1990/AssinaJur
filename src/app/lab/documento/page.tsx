@@ -35,6 +35,13 @@ type Step = 'INTRO' | 'FRONT' | 'BACK' | 'RESULT';
 /** Sem leitura automática, o tipo exato não altera nada no processamento. */
 const TIPO_DOCUMENTO = 'Documento com foto (RG ou CNH)';
 
+/**
+ * Marcador de build. Serve para distinguir, no teste, se o aparelho está
+ * mesmo com a versão nova ou com uma cópia em cache. Incrementar a cada
+ * alteração publicada no laboratório.
+ */
+const LAB_VERSION = 'v5 — recorte na moldura + câmera em tela cheia';
+
 interface LabEvent {
   code: string;
   label: string;
@@ -206,6 +213,7 @@ export default function DocumentLabPage() {
               Laboratório AssinaJur
             </p>
             <p className="text-xs font-bold text-[#071B3A]">Teste de captura de documento</p>
+            <p className="mt-0.5 font-mono text-[9px] text-slate-400">{LAB_VERSION}</p>
           </div>
         </div>
       </header>

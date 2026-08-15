@@ -263,135 +263,155 @@ export default function DocumentCapture({
 
   const crop = videoDims ? computeCropRect(videoDims.w, videoDims.h) : null;
 
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="space-y-0.5 text-center">
-        <h2 className="font-heading text-base font-extrabold text-[#071B3A]">{title}</h2>
-        <p className="text-xs text-slate-500">{helperText}</p>
-      </div>
+  // Antes de abrir a camera: cartao compacto no fluxo normal da pagina.
+  if (phase === 'IDLE' || phase === 'STARTING') {
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="space-y-0.5 text-center">
+          <h2 className="font-heading text-base font-extrabold text-[#071B3A]">{title}</h2>
+          <p className="text-xs text-slate-500">{helperText}</p>
+        </div>
 
-      {/* O contêiner abraça o vídeo, então o SVG sobreposto usa exatamente as
-          mesmas coordenadas — a moldura nunca "mente" sobre o recorte. */}
-      <div className="relative mx-auto w-fit overflow-hidden rounded-2xl bg-slate-900">
-        <video
-          ref={videoRef}
-          playsInline
-          muted
-          autoPlay
-          onLoadedMetadata={(e) => {
-            const v = e.currentTarget;
-            if (v.videoWidth) setVideoDims({ w: v.videoWidth, h: v.videoHeight });
-          }}
-          className={`block h-auto max-h-[50dvh] max-w-full ${phase === 'LIVE' ? '' : 'hidden'}`}
-        />
+        <div className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-3 rounded-2xl bg-slate-900 text-center">
+          {phase === 'STARTING' ? (
+            <>
+              <Loader2 className="h-7 w-7 animate-spin text-[#D4AF37]" />
+              <p className="text-xs font-bold text-slate-300">Abrindo a camera...</p>
+            </>
+          ) : (
+            <>
+              <Camera className="h-8 w-8 text-slate-500" />
+              <p className="max-w-xs px-6 text-xs text-slate-400">
+                Use uma superficie bem iluminada e evite reflexos.
+              </p>
+            </>
+          )}
+        </div>
 
-        {phase === 'LIVE' && videoDims && crop && (
-          <svg
-            className="pointer-events-none absolute inset-0 h-full w-full"
-            viewBox={`0 0 ${videoDims.w} ${videoDims.h}`}
-            preserveAspectRatio="none"
-          >
-            {/* Escurece tudo que ficara de fora do recorte */}
-            <path
-              d={`M0,0 H${videoDims.w} V${videoDims.h} H0 Z M${crop.x},${crop.y} V${
-                crop.y + crop.h
-              } H${crop.x + crop.w} V${crop.y} Z`}
-              fill="rgba(0,0,0,0.5)"
-              fillRule="evenodd"
-            />
-            <rect
-              x={crop.x}
-              y={crop.y}
-              width={crop.w}
-              height={crop.h}
-              fill="none"
-              stroke="#D4AF37"
-              strokeWidth={Math.max(2, videoDims.w * 0.004)}
-              strokeDasharray={`${videoDims.w * 0.03} ${videoDims.w * 0.02}`}
-              rx={videoDims.w * 0.012}
-            />
-            <text
-              x={videoDims.w / 2}
-              y={crop.y + crop.h + videoDims.h * 0.075}
-              textAnchor="middle"
-              fill="#FFFFFF"
-              fontSize={videoDims.h * 0.045}
-              fontWeight="bold"
-            >
-              Encaixe {side === 'FRENTE' ? 'a frente' : 'o verso'} na moldura
-            </text>
-          </svg>
-        )}
-
-        {phase === 'REVIEW' && pending && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={pending.dataUrl}
-            alt={`Pré-visualização d${side === 'FRENTE' ? 'a frente' : 'o verso'} do documento`}
-            className="block h-auto max-h-[50dvh] max-w-full"
-          />
-        )}
-
-        {(phase === 'IDLE' || phase === 'STARTING') && (
-          <div className="flex aspect-[4/3] w-[86vw] max-w-md flex-col items-center justify-center gap-3 text-center">
-            {phase === 'STARTING' ? (
-              <>
-                <Loader2 className="h-7 w-7 animate-spin text-[#D4AF37]" />
-                <p className="text-xs font-bold text-slate-300">Abrindo a câmera...</p>
-              </>
-            ) : (
-              <>
-                <Camera className="h-8 w-8 text-slate-500" />
-                <p className="max-w-xs px-6 text-xs text-slate-400">
-                  Use uma superfície bem iluminada e evite reflexos.
-                </p>
-              </>
-            )}
+        {error && (
+          <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <p className="text-xs font-semibold text-amber-900">{error}</p>
           </div>
         )}
+
+        <button
+          type="button"
+          onClick={() => void startCamera()}
+          disabled={phase === 'STARTING'}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#071B3A] py-4 text-sm font-extrabold text-white transition active:scale-[0.99] disabled:opacity-60"
+        >
+          <Camera className="h-4 w-4 text-[#D4AF37]" /> Abrir camera
+        </button>
+      </div>
+    );
+  }
+
+  // Camera aberta ou revisao: ocupa a tela inteira, sem rolagem possivel.
+  // O botao fica ancorado na base, respeitando a area segura do aparelho.
+  const alturaMaximaVideo = { maxHeight: 'calc(100dvh - 230px)' } as const;
+
+  return (
+    <div className="fixed inset-0 z-40 flex flex-col bg-slate-950">
+      <div className="shrink-0 px-4 pb-2 pt-4 text-center">
+        <h2 className="text-sm font-extrabold text-white">{title}</h2>
+        <p className="mt-0.5 text-[11px] text-slate-300">{helperText}</p>
       </div>
 
-      {error && (
-        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-          <p className="text-xs font-semibold text-amber-900">{error}</p>
+      <div className="flex min-h-0 flex-1 items-center justify-center px-2">
+        <div className="relative w-fit overflow-hidden rounded-xl">
+          {phase === 'LIVE' && (
+            <>
+              <video
+                ref={videoRef}
+                playsInline
+                muted
+                autoPlay
+                onLoadedMetadata={(e) => {
+                  const v = e.currentTarget;
+                  if (v.videoWidth) setVideoDims({ w: v.videoWidth, h: v.videoHeight });
+                }}
+                style={alturaMaximaVideo}
+                className="block h-auto max-h-[calc(100vh-230px)] max-w-full"
+              />
+
+              {videoDims && crop && (
+                <svg
+                  className="pointer-events-none absolute inset-0 h-full w-full"
+                  viewBox={`0 0 ${videoDims.w} ${videoDims.h}`}
+                  preserveAspectRatio="none"
+                >
+                  <path
+                    d={`M0,0 H${videoDims.w} V${videoDims.h} H0 Z M${crop.x},${crop.y} V${
+                      crop.y + crop.h
+                    } H${crop.x + crop.w} V${crop.y} Z`}
+                    fill="rgba(0,0,0,0.55)"
+                    fillRule="evenodd"
+                  />
+                  <rect
+                    x={crop.x}
+                    y={crop.y}
+                    width={crop.w}
+                    height={crop.h}
+                    fill="none"
+                    stroke="#D4AF37"
+                    strokeWidth={Math.max(2, videoDims.w * 0.004)}
+                    strokeDasharray={`${videoDims.w * 0.03} ${videoDims.w * 0.02}`}
+                    rx={videoDims.w * 0.012}
+                  />
+                </svg>
+              )}
+            </>
+          )}
+
+          {phase === 'REVIEW' && pending && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={pending.dataUrl}
+              alt={`Pre-visualizacao d${side === 'FRENTE' ? 'a frente' : 'o verso'} do documento`}
+              style={alturaMaximaVideo}
+              className="block h-auto max-h-[calc(100vh-230px)] max-w-full"
+            />
+          )}
         </div>
-      )}
+      </div>
 
-      {/* Área de ação fixa: o botão continua alcançável sem rolar a tela. */}
-      <div className="sticky bottom-2 z-10 rounded-2xl bg-slate-50/95 py-1 backdrop-blur-sm">
-        {phase === 'IDLE' && (
-          <button
-            type="button"
-            onClick={() => void startCamera()}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#071B3A] py-4 text-sm font-extrabold text-white transition active:scale-[0.99]"
-          >
-            <Camera className="h-4 w-4 text-[#D4AF37]" /> Abrir câmera
-          </button>
-        )}
-
-        {phase === 'STARTING' && (
-          <button
-            type="button"
-            disabled
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-300 py-4 text-sm font-extrabold text-white"
-          >
-            <Loader2 className="h-4 w-4 animate-spin" /> Abrindo a câmera...
-          </button>
+      <div
+        className="shrink-0 space-y-2 px-4 pt-2"
+        style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
+      >
+        {error && (
+          <div className="flex items-start gap-2 rounded-xl border border-amber-400/40 bg-amber-500/15 p-2.5">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+            <p className="text-[11px] font-semibold text-amber-100">{error}</p>
+          </div>
         )}
 
         {phase === 'LIVE' && (
-          <button
-            type="button"
-            onClick={takePhoto}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#D4AF37] py-4 text-base font-extrabold text-[#071B3A] shadow-lg transition active:scale-[0.99]"
-          >
-            <Camera className="h-5 w-5" /> Tirar foto
-          </button>
+          <>
+            <p className="text-center text-[11px] text-slate-300">
+              Encaixe {side === 'FRENTE' ? 'a frente' : 'o verso'} do documento na moldura
+            </p>
+            <button
+              type="button"
+              onClick={takePhoto}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#D4AF37] py-4 text-base font-extrabold text-[#071B3A] shadow-lg transition active:scale-[0.99]"
+            >
+              <Camera className="h-5 w-5" /> Tirar foto
+            </button>
+          </>
         )}
 
         {phase === 'REVIEW' && pending && (
-          <div className="space-y-2">
+          <>
+            {pending.quality.issues.some((i) => i.level === 'WARN') && (
+              <p className="text-center text-[11px] text-slate-300">
+                {pending.quality.issues
+                  .filter((i) => i.level === 'WARN')
+                  .map((i) => i.message)
+                  .join(' ')}
+              </p>
+            )}
             <button
               type="button"
               onClick={confirm}
@@ -402,25 +422,13 @@ export default function DocumentCapture({
             <button
               type="button"
               onClick={retake}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white py-3 text-sm font-bold text-slate-700 transition active:scale-[0.99]"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/10 py-3 text-sm font-bold text-white transition active:scale-[0.99]"
             >
               <RefreshCw className="h-4 w-4" /> Tirar novamente
             </button>
-          </div>
+          </>
         )}
       </div>
-
-      {phase === 'REVIEW' &&
-        pending &&
-        pending.quality.issues.some((i) => i.level === 'WARN') && (
-          <p className="text-center text-[11px] text-slate-400">
-            {pending.quality.issues
-              .filter((i) => i.level === 'WARN')
-              .map((i) => i.message)
-              .join(' ')}{' '}
-            Se estiver difícil de ler, prefira refazer.
-          </p>
-        )}
     </div>
   );
 }
