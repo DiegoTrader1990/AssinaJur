@@ -256,7 +256,7 @@ export default function DocumentLabPage() {
           </button>
 
           <p className="text-center text-[11px] text-slate-400">
-            A câmera abre automaticamente no próximo passo.
+            No próximo passo, toque em “Abrir câmera” para iniciar a captura.
           </p>
         </section>
       )}
@@ -269,7 +269,7 @@ export default function DocumentLabPage() {
           helperText="Use uma superfície bem iluminada e evite reflexos."
           onConfirm={handleFrontConfirmed}
           onEvent={pushEvent}
-          autoStart
+          autoStart={false}
         />
       )}
 
@@ -281,7 +281,7 @@ export default function DocumentLabPage() {
           helperText="Mesma superfície, sem sombra sobre o documento."
           onConfirm={handleBackConfirmed}
           onEvent={pushEvent}
-          autoStart
+          autoStart={false}
         />
       )}
 

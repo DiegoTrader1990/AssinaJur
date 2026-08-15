@@ -126,6 +126,11 @@ export default function DocumentCapture({
     setError('');
     setPhase('STARTING');
     try {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        setPhase('IDLE');
+        setError('Este navegador não liberou acesso seguro à câmera. Abra este endereço diretamente no Chrome ou Safari, fora do navegador interno do WhatsApp ou Instagram.');
+        return;
+      }
       stopCamera();
       const stream = await navigator.mediaDevices.getUserMedia({
         // Câmera traseira: a adequada para fotografar documentos.
@@ -156,7 +161,7 @@ export default function DocumentCapture({
       emit('CAMERA_DENIED', 'Permissão da câmera negada ou indisponível');
       if (name === 'NotAllowedError' || name === 'SecurityError') {
         setError(
-          'Precisamos da sua permissão para usar a câmera. Autorize o acesso no navegador e toque em "Abrir câmera".'
+          'A câmera foi bloqueada pelo navegador. Abra este endereço diretamente no Chrome ou Safari, permita a câmera para o AssinaJur e toque novamente em "Abrir câmera".'
         );
       } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
         setError('Nenhuma câmera compatível foi encontrada neste aparelho.');
@@ -282,7 +287,7 @@ export default function DocumentCapture({
             <>
               <Camera className="h-8 w-8 text-slate-500" />
               <p className="max-w-xs px-6 text-xs text-slate-400">
-                Use uma superficie bem iluminada e evite reflexos.
+                Toque em “Abrir câmera” para iniciar a captura.
               </p>
             </>
           )}
@@ -301,7 +306,7 @@ export default function DocumentCapture({
           disabled={phase === 'STARTING'}
           className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#071B3A] py-4 text-sm font-extrabold text-white transition active:scale-[0.99] disabled:opacity-60"
         >
-          <Camera className="h-4 w-4 text-[#D4AF37]" /> Abrir camera
+          <Camera className="h-4 w-4 text-[#D4AF37]" /> Abrir câmera
         </button>
       </div>
     );
