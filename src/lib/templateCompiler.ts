@@ -186,7 +186,8 @@ function parseRichParagraphs(html: string): RichParagraph[] {
   };
   const blockMarker = (kind: ParagraphKind, attributes: string, fallback: TextAlignment) => {
     const spacer = /data-aj-spacer\s*=\s*["']large["']/i.test(attributes) ? 26 : 0;
-    const family = mapPdfFontFamily(cssFontFamily(attributes) || 'Helvetica');
+    const rawFamily = cssFontFamily(attributes);
+    const family = rawFamily ? mapPdfFontFamily(rawFamily) : 'DEFAULT';
     const size = cssFontSizeToPoints(attributes) || 0;
     return `\n[[${kind}:${alignmentFromAttributes(attributes, fallback)}:${spacer}:${family}:${size}]]`;
   };
@@ -217,22 +218,22 @@ function parseRichParagraphs(html: string): RichParagraph[] {
       let kind: ParagraphKind = 'BODY';
       let alignment: TextAlignment = 'JUSTIFY';
       let spacer = 0;
-      const marker = line.match(/^\[\[(BODY|H1|H2|LIST):(LEFT|CENTER|RIGHT|JUSTIFY)(?::(\d+))?(?::(HELVETICA|TIMES|COURIER))?(?::([\d.]+))?\]\]/);
-      let defaultFontFamily: PdfFontFamily = 'HELVETICA';
-      let defaultFontSize = 10;
+      const marker = line.match(/^\[\[(BODY|H1|H2|LIST):(LEFT|CENTER|RIGHT|JUSTIFY)(?::(\d+))?(?::(HELVETICA|TIMES|COURIER|DEFAULT))?(?::([\d.]+))?\]\]/);
+      let defaultFontFamily: PdfFontFamily | undefined;
+      let defaultFontSize: number | undefined;
       if (marker) {
         kind = marker[1] as ParagraphKind;
         alignment = marker[2] as TextAlignment;
         spacer = Number(marker[3] || 0);
-        defaultFontFamily = (marker[4] as PdfFontFamily) || defaultFontFamily;
-        defaultFontSize = Number(marker[5] || defaultFontSize);
+        defaultFontFamily = marker[4] === 'DEFAULT' ? undefined : marker[4] as PdfFontFamily | undefined;
+        defaultFontSize = marker[5] ? Number(marker[5]) : undefined;
         line = line.slice(marker[0].length);
       }
 
       const runs: TextRun[] = [];
       let boldDepth = 0;
-      const fontStack: PdfFontFamily[] = [defaultFontFamily];
-      const sizeStack: number[] = [defaultFontSize];
+      const fontStack: Array<PdfFontFamily | undefined> = [defaultFontFamily];
+      const sizeStack: Array<number | undefined> = [defaultFontSize];
       for (const token of line.match(/<[^>]+>|[^<]+/g) || []) {
         if (/^<\s*(?:strong|b)\b/i.test(token)) { boldDepth += 1; continue; }
         if (/^<\s*\/(?:strong|b)\s*>/i.test(token)) { boldDepth = Math.max(0, boldDepth - 1); continue; }
@@ -241,7 +242,7 @@ function parseRichParagraphs(html: string): RichParagraph[] {
           const size = token.match(/\bsize\s*=\s*["']?([^"'>\s]+)/i)?.[1] || '';
           const exactSize = token.match(/\bdata-aj-size\s*=\s*["']?([\d.]+)/i)?.[1] || '';
           fontStack.push(mapPdfFontFamily(face));
-          sizeStack.push(exactSize ? Number(exactSize) : size ? mapPdfFontSize(size) : sizeStack.at(-1) || 10);
+          sizeStack.push(exactSize ? Number(exactSize) : size ? mapPdfFontSize(size) : sizeStack.at(-1));
           continue;
         }
         if (/^<\s*\/font\s*>/i.test(token)) { if (fontStack.length > 1) fontStack.pop(); if (sizeStack.length > 1) sizeStack.pop(); continue; }
@@ -293,7 +294,28 @@ function parseRichParagraphs(html: string): RichParagraph[] {
     }
   }
 
-  return mergedParagraphs;
+  // Partes geradas automaticamente (qualificação do cliente, patronos e
+  // declaração) não carregam necessariamente uma tag <font>. Elas devem usar a
+  // mesma tipografia predominante do modelo, e não voltar silenciosamente a 10 pt.
+  const bodyRuns = mergedParagraphs
+    .filter((paragraph) => paragraph.kind === 'BODY' || paragraph.kind === 'LIST')
+    .flatMap((paragraph) => paragraph.runs)
+    .filter((run) => run.fontSize || run.fontFamily);
+  const preferredSize = bodyRuns.reduce<Record<string, number>>((counts, run) => {
+    const key = String(run.fontSize || 10);
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {});
+  const baseSize = Number(Object.entries(preferredSize).sort(([, left], [, right]) => right - left)[0]?.[0] || 10);
+  const preferredFamily = bodyRuns.find((run) => run.fontFamily)?.fontFamily || 'HELVETICA';
+  return mergedParagraphs.map((paragraph) => ({
+    ...paragraph,
+    runs: paragraph.runs.map((run) => ({
+      ...run,
+      fontFamily: run.fontFamily || preferredFamily,
+      fontSize: run.fontSize || baseSize,
+    })),
+  }));
 }
 
 function cssFontSizeToPoints(style: string): number | undefined {
