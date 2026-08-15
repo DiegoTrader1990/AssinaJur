@@ -141,7 +141,14 @@ function cleanHtmlForPdf(html: string): string {
   cleaned = cleaned
     // Alguns navegadores representam negrito como span com CSS. Preserve-o antes
     // de remover os estilos de colagens do Word.
-    .replace(/<span\b[^>]*style\s*=\s*["'][^"']*font-weight\s*:\s*(?:bold|[6-9]00)[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi, '<strong>$1</strong>')
+    .replace(/<span\b([^>]*)style\s*=\s*["']([^"']*)["']([^>]*)>([\s\S]*?)<\/span>/gi, (_match, _before, style, _after, inner) => {
+      const family = cssFontFamily(style);
+      const size = cssFontSizeToPoints(style);
+      const bold = /font-weight\s*:\s*(?:bold|[6-9]00)/i.test(style);
+      const content = bold ? `<strong>${inner}</strong>` : inner;
+      if (!family && !size) return content;
+      return `<font${family ? ` face="${family}"` : ''}${size ? ` data-aj-size="${size}"` : ''}>${content}</font>`;
+    })
     .replace(/<\/?span[^>]*>/gi, '')
     .replace(/<?\s*span\s+style\s*=\s*"[\s\S]*?"\s*>/gi, '')
     .replace(/span\s+style\s*=\s*"[^>]*>/gi, '')
@@ -228,8 +235,9 @@ function parseRichParagraphs(html: string): RichParagraph[] {
         if (/^<\s*font\b/i.test(token)) {
           const face = token.match(/\bface\s*=\s*["']?([^"'>\s]+)/i)?.[1] || '';
           const size = token.match(/\bsize\s*=\s*["']?([^"'>\s]+)/i)?.[1] || '';
+          const exactSize = token.match(/\bdata-aj-size\s*=\s*["']?([\d.]+)/i)?.[1] || '';
           fontStack.push(mapPdfFontFamily(face));
-          sizeStack.push(size ? mapPdfFontSize(size) : sizeStack.at(-1) || 10);
+          sizeStack.push(exactSize ? Number(exactSize) : size ? mapPdfFontSize(size) : sizeStack.at(-1) || 10);
           continue;
         }
         if (/^<\s*\/font\s*>/i.test(token)) { if (fontStack.length > 1) fontStack.pop(); if (sizeStack.length > 1) sizeStack.pop(); continue; }
@@ -282,6 +290,20 @@ function parseRichParagraphs(html: string): RichParagraph[] {
   }
 
   return mergedParagraphs;
+}
+
+function cssFontSizeToPoints(style: string): number | undefined {
+  const match = String(style || '').match(/font-size\s*:\s*([\d.]+)\s*(pt|px)?/i);
+  if (!match) return undefined;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value) || value <= 0) return undefined;
+  const points = match[2]?.toLowerCase() === 'px' ? value * 0.75 : value;
+  return Math.max(8, Math.min(32, Math.round(points * 10) / 10));
+}
+
+function cssFontFamily(style: string): string | undefined {
+  const match = String(style || '').match(/font-family\s*:\s*([^;]+)/i);
+  return match?.[1]?.replace(/["']/g, '').split(',')[0]?.trim() || undefined;
 }
 
 // Modelos antigos podem ter chegado do Word com o rodapé já preenchido com uma

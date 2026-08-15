@@ -63,15 +63,13 @@ const AVAILABLE_TAGS = [
 
 const FONT_OPTIONS = [
   { value: 'Helvetica', label: 'Helvetica (padrão PDF)' },
-  { value: 'Arial', label: 'Arial' },
   { value: 'Times New Roman', label: 'Times New Roman' },
-  { value: 'Georgia', label: 'Georgia' },
   { value: 'Courier New', label: 'Courier New' },
 ];
 
 const FONT_SIZE_OPTIONS = [
-  { value: '2', label: '10 pt' },
-  { value: '3', label: '12 pt (padrão)' },
+  { value: '2', label: '10 pt (padrão)' },
+  { value: '3', label: '12 pt' },
   { value: '4', label: '14 pt' },
   { value: '5', label: '18 pt' },
   { value: '6', label: '24 pt' },
@@ -285,7 +283,7 @@ export function DocumentRichEditor({
         <label className="flex items-center gap-1.5 px-2 text-[11px] font-semibold text-slate-600" title="Selecione o texto antes de alterar o tamanho">
           Tamanho
           <select
-            defaultValue="3"
+            defaultValue="2"
             onChange={(event) => executeCommand('fontSize', event.target.value)}
             className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-700 outline-none focus:border-blue-500"
           >
@@ -413,8 +411,8 @@ export function DocumentRichEditor({
         onInput={handleInput}
         onBlur={handleInput}
         onKeyDown={handleEditorKeyDown}
-        className={`min-h-[1123px] w-full max-w-[794px] mx-auto bg-white p-[53px] text-[13.33px] leading-[20px] text-slate-800 shadow-sm focus:outline-none [&_p]:m-0 [&_p]:mb-[7px] [&_div]:mb-[7px] [&_h1]:m-0 [&_h1]:mb-[16px] [&_h1]:text-center [&_h1]:text-[16px] [&_h1]:leading-[22px] [&_h1]:font-bold [&_h2]:m-0 [&_h2]:mb-[8px] [&_h2]:text-[14.4px] [&_h2]:leading-[21px] [&_h2]:font-bold ${plainDocumentMode ? '' : ''} empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none ${contentClassName}`}
-        style={{ fontFamily: 'Helvetica, Arial, sans-serif', boxSizing: 'border-box' }}
+        className={`min-h-[1123px] w-full max-w-[794px] mx-auto bg-white p-[53px] text-slate-800 shadow-sm focus:outline-none [&_p]:m-0 [&_p]:mb-[7px] [&_div]:mb-[7px] [&_h1]:m-0 [&_h1]:mb-[16px] [&_h1]:text-center [&_h1]:text-[16px] [&_h1]:leading-[22px] [&_h1]:font-bold [&_h2]:m-0 [&_h2]:mb-[8px] [&_h2]:text-[14.4px] [&_h2]:leading-[21px] [&_h2]:font-bold ${plainDocumentMode ? '' : ''} empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none ${contentClassName}`}
+        style={{ fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '10pt', lineHeight: '15pt', boxSizing: 'border-box' }}
         data-placeholder={placeholder}
         suppressContentEditableWarning
       />
