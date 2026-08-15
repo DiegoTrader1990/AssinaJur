@@ -117,7 +117,13 @@ export function ensureClientQualificationTokens(contentHtml: string, title: stri
   const replaceBlock = (block: RegExpMatchArray, content: string) => {
     result = result.replace(block[0], `<${block[1]}${block[2]}>${content}</${block[1]}>`);
   };
-  if (roleIndex !== undefined && roleIndex >= Math.max(1, blocks.length - 10)) {
+  // Só reconstituímos o rodapé se houver uma linha de assinatura real. Sem ela,
+  // um OUTORGANTE/CONTRATANTE da qualificação inicial de uma minuta curta pode
+  // ser confundido com o rodapé e gerar um nome duplicado sob o título.
+  const hasSignatureLineBeforeRole = roleIndex !== undefined && blocks
+    .slice(Math.max(0, roleIndex - 3), roleIndex)
+    .some((block) => /^_{5,}/.test(textOf(block)));
+  if (roleIndex !== undefined && roleIndex >= Math.max(1, blocks.length - 10) && hasSignatureLineBeforeRole) {
     if (blocks[roleIndex - 1]) replaceBlock(blocks[roleIndex - 1], '{{cliente_nome}}');
     const dateBlock = blocks.slice(0, Math.max(0, roleIndex - 1)).reverse().find((block) => /\d{1,2}\s+de\s+/i.test(textOf(block)) || /\d{1,2}[\/.\-]\d{2,4}/.test(textOf(block)));
     if (dateBlock) replaceBlock(dateBlock, '{{cidade}}, {{data_atual}}.');
