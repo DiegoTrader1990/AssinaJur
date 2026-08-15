@@ -96,6 +96,7 @@ export default function DocumentCapture({
   const [videoDims, setVideoDims] = useState<{ w: number; h: number } | null>(null);
   const [liveReadiness, setLiveReadiness] = useState<LiveReadiness>('ANALYSING');
   const [liveHint, setLiveHint] = useState('Preparando a validação da imagem...');
+  const [liveCountdown, setLiveCountdown] = useState<number | null>(null);
 
   useEffect(() => {
     emitRef.current = onEvent;
@@ -280,7 +281,7 @@ export default function DocumentCapture({
   }, [emit, side, stopCamera]);
 
   // A análise ocorre na área exata da moldura. A captura automática só é
-  // liberada após quatro leituras boas consecutivas (cerca de 1,2 segundo).
+  // liberada após cerca de três segundos de leituras boas consecutivas.
   // Assim, a câmera não dispara enquanto o usuário ainda está ajustando foco.
   useEffect(() => {
     if (phase !== 'LIVE' || !videoDims) return;
@@ -288,6 +289,7 @@ export default function DocumentCapture({
     stableFramesRef.current = 0;
     setLiveReadiness('ANALYSING');
     setLiveHint('Posicione o documento inteiro dentro da moldura.');
+    setLiveCountdown(null);
 
     const evaluate = () => {
       const video = videoRef.current;
@@ -305,6 +307,7 @@ export default function DocumentCapture({
 
       if (!clearEnough) {
         stableFramesRef.current = 0;
+        setLiveCountdown(null);
         setLiveReadiness('ADJUST');
         setLiveHint(
           meanLuminance < 65
@@ -317,10 +320,11 @@ export default function DocumentCapture({
       }
 
       stableFramesRef.current += 1;
-      const remaining = Math.max(0, 4 - stableFramesRef.current);
+      const remaining = Math.max(0, 10 - stableFramesRef.current);
       setLiveReadiness('READY');
-      setLiveHint(remaining > 0 ? `Imagem legível. Mantenha o celular parado (${remaining})...` : 'Imagem aprovada. Capturando automaticamente...');
-      if (stableFramesRef.current >= 4) {
+      setLiveCountdown(remaining > 0 ? Math.ceil(remaining / 3) : 0);
+      setLiveHint(remaining > 0 ? 'Imagem legível. Mantenha o celular parado.' : 'Imagem aprovada. Capturando automaticamente...');
+      if (stableFramesRef.current >= 10) {
         autoCaptureRef.current = true;
         window.setTimeout(() => takePhoto(), 250);
       }
@@ -450,6 +454,24 @@ export default function DocumentCapture({
                   />
                 </svg>
               )}
+              <div className={`pointer-events-none absolute bottom-3 left-3 right-3 rounded-xl border px-3 py-2.5 text-center text-xs shadow-lg backdrop-blur-sm ${
+                liveReadiness === 'READY'
+                  ? 'border-emerald-300/70 bg-emerald-950/80 text-emerald-50'
+                  : liveReadiness === 'ADJUST'
+                    ? 'border-amber-300/70 bg-amber-950/80 text-amber-50'
+                    : 'border-[#D4AF37]/60 bg-slate-950/80 text-white'
+              }`}>
+                <p className="font-extrabold">
+                  {liveReadiness === 'READY'
+                    ? liveCountdown && liveCountdown > 0
+                      ? `Qualidade aprovada — foto em ${liveCountdown}`
+                      : 'Qualidade aprovada — capturando...'
+                    : liveReadiness === 'ADJUST'
+                      ? 'Ajuste antes de fotografar'
+                      : 'Analisando a imagem'}
+                </p>
+                <p className="mt-0.5 text-[11px] leading-4 opacity-95">{liveHint}</p>
+              </div>
             </>
           )}
 
@@ -478,7 +500,7 @@ export default function DocumentCapture({
 
         {phase === 'LIVE' && (
           <>
-            <div className={`rounded-xl border px-3 py-2.5 text-center text-xs text-white ${
+            <div className={`hidden ${
               liveReadiness === 'READY'
                 ? 'border-emerald-400/60 bg-emerald-500/15'
                 : liveReadiness === 'ADJUST'
