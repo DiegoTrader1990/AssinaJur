@@ -528,7 +528,7 @@ export default function DocumentCapture({
           <>
             {reviewStatus === 'CAUTION' && (
             <div className="rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-2.5 text-center text-xs font-bold text-amber-100">
-              <p>{reviewStatus === 'GOOD' ? '✓ Qualidade aprovada' : '⚠ Confira antes de continuar'}</p>
+              <p>Confira antes de continuar</p>
               <p className="mt-0.5 text-[11px] font-medium opacity-90">{captureQualityMessage(pending.quality)}</p>
             </div>
             )}
