@@ -59,6 +59,7 @@ interface DocumentCaptureProps {
 }
 
 type Phase = 'IDLE' | 'STARTING' | 'LIVE' | 'REVIEW';
+type LiveReadiness = 'ANALYSING' | 'ADJUST' | 'READY';
 
 /**
  * Retângulo de recorte, em pixels do vídeo. É a única fonte de verdade:
@@ -86,11 +87,15 @@ export default function DocumentCapture({
   const streamRef = useRef<MediaStream | null>(null);
   const emitRef = useRef(onEvent);
   const autoStartedRef = useRef<CaptureSide | null>(null);
+  const autoCaptureRef = useRef(false);
+  const stableFramesRef = useRef(0);
 
   const [phase, setPhase] = useState<Phase>('IDLE');
   const [error, setError] = useState('');
   const [pending, setPending] = useState<CaptureResult | null>(null);
   const [videoDims, setVideoDims] = useState<{ w: number; h: number } | null>(null);
+  const [liveReadiness, setLiveReadiness] = useState<LiveReadiness>('ANALYSING');
+  const [liveHint, setLiveHint] = useState('Preparando a validação da imagem...');
 
   useEffect(() => {
     emitRef.current = onEvent;
@@ -274,6 +279,57 @@ export default function DocumentCapture({
     );
   }, [emit, side, stopCamera]);
 
+  // A análise ocorre na área exata da moldura. A captura automática só é
+  // liberada após quatro leituras boas consecutivas (cerca de 1,2 segundo).
+  // Assim, a câmera não dispara enquanto o usuário ainda está ajustando foco.
+  useEffect(() => {
+    if (phase !== 'LIVE' || !videoDims) return;
+    autoCaptureRef.current = false;
+    stableFramesRef.current = 0;
+    setLiveReadiness('ANALYSING');
+    setLiveHint('Posicione o documento inteiro dentro da moldura.');
+
+    const evaluate = () => {
+      const video = videoRef.current;
+      if (!video || !video.videoWidth || !video.videoHeight || autoCaptureRef.current) return;
+      const crop = computeCropRect(video.videoWidth, video.videoHeight);
+      const scale = Math.min(1, 480 / crop.w);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(crop.w * scale);
+      canvas.height = Math.round(crop.h * scale);
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return;
+      ctx.drawImage(video, crop.x, crop.y, crop.w, crop.h, 0, 0, canvas.width, canvas.height);
+      const { meanLuminance, sharpness } = analyseCanvas(canvas);
+      const clearEnough = meanLuminance >= 65 && meanLuminance <= 245 && sharpness >= 90;
+
+      if (!clearEnough) {
+        stableFramesRef.current = 0;
+        setLiveReadiness('ADJUST');
+        setLiveHint(
+          meanLuminance < 65
+            ? 'Aproxime-se de uma luz melhor antes de fotografar.'
+            : sharpness < 90
+              ? 'Aguarde o foco ficar nítido e mantenha o celular parado.'
+              : 'Reduza o reflexo sobre o documento.'
+        );
+        return;
+      }
+
+      stableFramesRef.current += 1;
+      const remaining = Math.max(0, 4 - stableFramesRef.current);
+      setLiveReadiness('READY');
+      setLiveHint(remaining > 0 ? `Imagem legível. Mantenha o celular parado (${remaining})...` : 'Imagem aprovada. Capturando automaticamente...');
+      if (stableFramesRef.current >= 4) {
+        autoCaptureRef.current = true;
+        window.setTimeout(() => takePhoto(), 250);
+      }
+    };
+
+    const interval = window.setInterval(evaluate, 300);
+    return () => window.clearInterval(interval);
+  }, [phase, takePhoto, videoDims]);
+
   const retake = useCallback(() => {
     setPending(null);
     setError('');
@@ -422,8 +478,18 @@ export default function DocumentCapture({
 
         {phase === 'LIVE' && (
           <>
-            <div className="rounded-xl border border-[#D4AF37]/50 bg-[#D4AF37]/10 px-3 py-2.5 text-center text-xs text-white">
-              <p className="font-extrabold text-[#F7D96B]">Antes de fotografar</p>
+            <div className={`rounded-xl border px-3 py-2.5 text-center text-xs text-white ${
+              liveReadiness === 'READY'
+                ? 'border-emerald-400/60 bg-emerald-500/15'
+                : liveReadiness === 'ADJUST'
+                  ? 'border-amber-400/60 bg-amber-500/15'
+                  : 'border-[#D4AF37]/50 bg-[#D4AF37]/10'
+            }`}>
+              <p className={`font-extrabold ${liveReadiness === 'READY' ? 'text-emerald-200' : liveReadiness === 'ADJUST' ? 'text-amber-200' : 'text-[#F7D96B]'}`}>
+                {liveReadiness === 'READY' ? 'Qualidade aprovada' : liveReadiness === 'ADJUST' ? 'Ajuste antes de fotografar' : 'Analisando a imagem'}
+              </p>
+              <p className="mt-1 leading-5 text-slate-100">{liveHint}</p>
+              <p className="mt-0.5 text-[11px] text-slate-300">A foto será tirada sozinha quando estiver boa.</p>
               <p className="mt-1 leading-5 text-slate-100">Deixe o documento inteiro na moldura, com texto legível e sem brilho ou sombra.</p>
             </div>
             <button

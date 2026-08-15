@@ -58,8 +58,10 @@ export const MIN_BYTES = 15_000;
 export const MIN_MEAN_LUMINANCE = 25;
 /** Aviso (não bloqueio) de imagem pouco iluminada. */
 export const LOW_LIGHT_LUMINANCE = 55;
-/** Aviso (não bloqueio) de imagem possivelmente desfocada. */
-export const LOW_SHARPNESS = 45;
+/** Abaixo deste valor, a leitura do documento fica insegura e a foto é recusada. */
+export const MIN_SHARPNESS = 70;
+/** Aviso de imagem que passa, mas merece conferência adicional. */
+export const LOW_SHARPNESS = 115;
 
 /**
  * Calcula luminância média e um proxy de nitidez a partir do canvas capturado.
@@ -181,7 +183,13 @@ export function buildQualityReport(params: {
     });
   }
 
-  if (sharpness > 0 && sharpness < LOW_SHARPNESS) {
+  if (sharpness > 0 && sharpness < MIN_SHARPNESS) {
+    issues.push({
+      code: 'TOO_BLURRY',
+      level: 'BLOCK',
+      message: 'A foto ficou desfocada para leitura segura. Apoie o celular e tente novamente.',
+    });
+  } else if (sharpness > 0 && sharpness < LOW_SHARPNESS) {
     issues.push({
       code: 'POSSIBLY_BLURRY',
       level: 'WARN',
