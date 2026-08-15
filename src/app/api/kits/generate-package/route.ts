@@ -172,6 +172,7 @@ export async function POST(req: Request) {
       ].filter(Boolean).join(', ') || '—',
       cliente_estado_civil: client.maritalStatus || '—',
       cliente_profissao: client.profession || '—',
+      cliente_nascimento_qualificacao: client.birthDate ? `, nascido(a) em ${client.birthDate}` : '',
       representante_legal: client.legalRepresentative || '',
       representante_cpf: client.representativeCpf || '',
       representante_rg: client.representativeRg || '',

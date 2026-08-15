@@ -87,10 +87,12 @@ export function ensureClientQualificationTokens(contentHtml: string, title: stri
       // Não basta existir uma variável em outro trecho da minuta. A qualificação
       // inicial precisa ser dinâmica por si só; caso ainda tenha dados fixos de
       // outra pessoa, ela é reconstruída integralmente.
-      if (replaced || !new RegExp(`^${label}\\s*:`, 'i').test(text) || /{{\s*cliente_(?:nome|cpf|rg|endereco)\s*}}/i.test(inner)) return block;
+      const hasDynamicQualification = /{{\s*cliente_(?:nome|cpf|rg|endereco)\s*}}/i.test(inner);
+      const hasBirthDateToken = /{{\s*cliente_nascimento_qualificacao\s*}}/i.test(inner);
+      if (replaced || !new RegExp(`^${label}\\s*:`, 'i').test(text) || (hasDynamicQualification && hasBirthDateToken)) return block;
       replaced = true;
       const suffix = isContract ? ', doravante denominado(a) CONTRATANTE.' : '.';
-      return `<${tag}${attrs}><strong>${label}:</strong> {{cliente_nome}}, {{cliente_nacionalidade}}, {{cliente_estado_civil}}, {{cliente_profissao}}, portador(a) do RG nº {{cliente_rg}} e inscrito(a) no CPF sob o nº {{cliente_cpf}}, residente e domiciliado(a) em {{cliente_endereco}}${suffix}</${tag}>`;
+      return `<${tag}${attrs}><strong>${label}:</strong> {{cliente_nome}}, {{cliente_nacionalidade}}, {{cliente_estado_civil}}{{cliente_nascimento_qualificacao}}, {{cliente_profissao}}, portador(a) do RG nº {{cliente_rg}} e inscrito(a) no CPF sob o nº {{cliente_cpf}}, residente e domiciliado(a) em {{cliente_endereco}}${suffix}</${tag}>`;
     });
   }
 
