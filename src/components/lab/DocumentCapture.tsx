@@ -45,6 +45,12 @@ interface DocumentCaptureProps {
   helperText: string;
   onConfirm: (result: CaptureResult) => void;
   onEvent?: (code: string, label: string) => void;
+  /**
+   * Abre a câmera assim que o componente monta, poupando um toque do usuário.
+   * Se o navegador recusar (permissão negada, por exemplo), o componente cai
+   * no estado normal e mostra o botão "Abrir câmera" como alternativa.
+   */
+  autoStart?: boolean;
 }
 
 type Phase = 'IDLE' | 'STARTING' | 'LIVE' | 'REVIEW';
@@ -55,10 +61,13 @@ export default function DocumentCapture({
   helperText,
   onConfirm,
   onEvent,
+  autoStart = false,
 }: DocumentCaptureProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const emitRef = useRef(onEvent);
+  // Garante uma unica tentativa automatica por lado do documento
+  const autoStartedRef = useRef<CaptureSide | null>(null);
 
   const [phase, setPhase] = useState<Phase>('IDLE');
   const [error, setError] = useState('');
@@ -206,6 +215,14 @@ export default function DocumentCapture({
       `${side === 'FRENTE' ? 'Frente' : 'Verso'} capturado`
     );
   }, [emit, side, stopCamera]);
+
+  // Abertura automatica da camera, uma vez por lado.
+  useEffect(() => {
+    if (!autoStart) return;
+    if (autoStartedRef.current === side) return;
+    autoStartedRef.current = side;
+    void startCamera();
+  }, [autoStart, side, startCamera]);
 
   const retake = useCallback(() => {
     setPending(null);

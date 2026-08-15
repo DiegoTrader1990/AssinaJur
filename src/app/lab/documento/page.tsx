@@ -19,11 +19,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlaskConical,
-  IdCard,
-  CreditCard,
-  ArrowRight,
+  Camera,
   Loader2,
-  Check,
   RotateCcw,
   X,
   ShieldCheck,
@@ -33,8 +30,10 @@ import DocumentCapture, { type CaptureResult } from '@/components/lab/DocumentCa
 import { formatBrasiliaDateTime, formatBrasiliaTimeOnly } from '@/lib/dateUtils';
 import { buildLabReportPdf, nomeArquivoRelatorio } from '@/lib/lab/labReport';
 
-type Step = 'INTRO' | 'TYPE' | 'FRONT' | 'BACK' | 'RESULT';
-type DocType = 'RG' | 'CNH';
+type Step = 'INTRO' | 'FRONT' | 'BACK' | 'RESULT';
+
+/** Sem leitura automática, o tipo exato não altera nada no processamento. */
+const TIPO_DOCUMENTO = 'Documento com foto (RG ou CNH)';
 
 interface LabEvent {
   code: string;
@@ -64,7 +63,6 @@ function describeDevice(ua: string): string {
 
 export default function DocumentLabPage() {
   const [step, setStep] = useState<Step>('INTRO');
-  const [docType, setDocType] = useState<DocType>('RG');
 
   const [front, setFront] = useState<CaptureResult | null>(null);
   const [back, setBack] = useState<CaptureResult | null>(null);
@@ -160,7 +158,7 @@ export default function DocumentLabPage() {
           telaLargura: typeof window !== 'undefined' ? window.screen.width : 0,
           telaAltura: typeof window !== 'undefined' ? window.screen.height : 0,
         },
-        tipoDocumento: docType,
+        tipoDocumento: TIPO_DOCUMENTO,
         duracaoSegundos,
         imagens: [...paraRelatorio(front, 'FRENTE'), ...paraRelatorio(back, 'VERSO')],
         eventos: events.map((ev) => ({
@@ -184,11 +182,10 @@ export default function DocumentLabPage() {
     } finally {
       setGerandoPdf(false);
     }
-  }, [back, docType, duracaoSegundos, events, front, pushEvent, session]);
+  }, [back, duracaoSegundos, events, front, pushEvent, session]);
 
   const resetTest = useCallback(() => {
     setStep('INTRO');
-    setDocType('RG');
     setFront(null);
     setBack(null);
     setZoomImage(null);
@@ -213,7 +210,7 @@ export default function DocumentLabPage() {
         </div>
       </header>
 
-      {/* ETAPA 1 — APRESENTAÇÃO */}
+      {/* ETAPA 1 — APRESENTAÇÃO (o toque aqui já abre a câmera) */}
       {step === 'INTRO' && (
         <section className="space-y-5">
           <div className="space-y-2">
@@ -221,86 +218,42 @@ export default function DocumentLabPage() {
               Confirme seu documento
             </h1>
             <p className="text-sm leading-6 text-slate-500">
-              Vamos fotografar seu documento de identificação. O processo é rápido e as imagens
-              serão utilizadas apenas neste ambiente de teste.
+              Você vai fotografar um documento de identificação com foto — RG ou CNH. São duas
+              fotos: primeiro a frente, depois o verso. Leva menos de um minuto.
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setStep('TYPE')}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#071B3A] py-4 text-sm font-extrabold text-white transition active:scale-[0.99]"
-          >
-            Começar <ArrowRight className="h-4 w-4 text-[#D4AF37]" />
-          </button>
-        </section>
-      )}
-
-      {/* ETAPA 2 — TIPO DE DOCUMENTO */}
-      {step === 'TYPE' && (
-        <section className="space-y-5">
-          <div className="space-y-1">
-            <h1 className="font-heading text-xl font-extrabold text-[#071B3A]">
-              Qual documento você vai usar?
-            </h1>
-            <p className="text-sm text-slate-500">Escolha o documento que está com você agora.</p>
-          </div>
-
-          <div className="space-y-2.5">
-            {(
-              [
-                { key: 'RG' as DocType, label: 'RG', hint: 'Carteira de identidade', Icon: IdCard },
-                {
-                  key: 'CNH' as DocType,
-                  label: 'CNH',
-                  hint: 'Carteira de motorista',
-                  Icon: CreditCard,
-                },
-              ]
-            ).map(({ key, label, hint, Icon }) => {
-              const selected = docType === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setDocType(key)}
-                  className={`flex w-full items-center gap-3 rounded-2xl border-2 p-4 text-left transition ${
-                    selected
-                      ? 'border-[#071B3A] bg-[#071B3A]/[0.04]'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
-                >
-                  <span
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                      selected ? 'bg-[#071B3A] text-[#D4AF37]' : 'bg-slate-100 text-slate-500'
-                    }`}
-                  >
-                    <Icon className="h-5 w-5" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-extrabold text-[#071B3A]">{label}</span>
-                    <span className="block text-xs text-slate-500">{hint}</span>
-                  </span>
-                  {selected && <Check className="h-4 w-4 shrink-0 text-[#071B3A]" />}
-                </button>
-              );
-            })}
-          </div>
+          <ul className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4">
+            {[
+              'Deixe o documento sobre uma superfície bem iluminada',
+              'Evite reflexos e sombras sobre o documento',
+              'Você poderá conferir cada foto antes de continuar',
+            ].map((dica) => (
+              <li key={dica} className="flex items-start gap-2 text-xs text-slate-600">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#D4AF37]" />
+                <span className="leading-5">{dica}</span>
+              </li>
+            ))}
+          </ul>
 
           <button
             type="button"
             onClick={() => {
-              pushEvent('DOCUMENT_TYPE_SELECTED', `Tipo de documento escolhido: ${docType}`);
+              pushEvent('DOCUMENT_FLOW_STARTED', 'Fluxo de captura iniciado');
               setStep('FRONT');
             }}
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#071B3A] py-4 text-sm font-extrabold text-white transition active:scale-[0.99]"
           >
-            Continuar <ArrowRight className="h-4 w-4 text-[#D4AF37]" />
+            <Camera className="h-4 w-4 text-[#D4AF37]" /> Fotografar documento
           </button>
+
+          <p className="text-center text-[11px] text-slate-400">
+            A câmera abre automaticamente no próximo passo.
+          </p>
         </section>
       )}
 
-      {/* ETAPA 3 — FRENTE */}
+      {/* ETAPA 2 — FRENTE */}
       {step === 'FRONT' && (
         <DocumentCapture
           side="FRENTE"
@@ -308,10 +261,11 @@ export default function DocumentLabPage() {
           helperText="Use uma superfície bem iluminada e evite reflexos."
           onConfirm={handleFrontConfirmed}
           onEvent={pushEvent}
+          autoStart
         />
       )}
 
-      {/* ETAPA 4 — VERSO */}
+      {/* ETAPA 3 — VERSO */}
       {step === 'BACK' && (
         <DocumentCapture
           side="VERSO"
@@ -319,10 +273,11 @@ export default function DocumentLabPage() {
           helperText="Mesma superfície, sem sombra sobre o documento."
           onConfirm={handleBackConfirmed}
           onEvent={pushEvent}
+          autoStart
         />
       )}
 
-      {/* ETAPA 5 — DIAGNÓSTICO */}
+      {/* ETAPA 4 — DIAGNÓSTICO */}
       {step === 'RESULT' && (
         <section className="space-y-4">
           <div className="space-y-1">
@@ -368,7 +323,7 @@ export default function DocumentLabPage() {
               Captura
             </h2>
             <dl className="mt-2 space-y-1.5 text-xs">
-              <Row label="Tipo de documento" value={docType} />
+              <Row label="Tipo de documento" value={TIPO_DOCUMENTO} />
               <Row label="Frente do documento" value={front ? '✓ capturada' : '— não capturada'} />
               <Row label="Verso do documento" value={back ? '✓ capturado' : '— não capturado'} />
               <Row label="Origem" value="câmera do dispositivo" />
