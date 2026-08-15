@@ -422,9 +422,10 @@ export default function DocumentCapture({
 
         {phase === 'LIVE' && (
           <>
-            <p className="text-center text-[11px] text-slate-300">
-              Encaixe {side === 'FRENTE' ? 'a frente' : 'o verso'} inteiro na moldura, sem brilho ou sombra
-            </p>
+            <div className="rounded-xl border border-[#D4AF37]/50 bg-[#D4AF37]/10 px-3 py-2.5 text-center text-xs text-white">
+              <p className="font-extrabold text-[#F7D96B]">Antes de fotografar</p>
+              <p className="mt-1 leading-5 text-slate-100">Deixe o documento inteiro na moldura, com texto legível e sem brilho ou sombra.</p>
+            </div>
             <button
               type="button"
               onClick={takePhoto}
