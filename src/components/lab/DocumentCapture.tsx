@@ -535,14 +535,14 @@ export default function DocumentCapture({
               onClick={confirm}
               className={`flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.99] ${reviewStatus === 'GOOD' ? 'bg-emerald-600' : 'bg-[#071B3A]'}`}
             >
-              <Check className="h-4 w-4" /> {reviewStatus === 'GOOD' ? 'Usar esta foto' : 'Continuar com esta foto'}
+              <Check className="h-4 w-4" /> Continuar
             </button>
             <button
               type="button"
               onClick={retake}
-              className={`flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold transition active:scale-[0.99] ${reviewStatus === 'CAUTION' ? 'bg-[#D4AF37] text-[#071B3A]' : 'border border-white/20 bg-white/10 text-white'}`}
+              className="flex w-full items-center justify-center gap-2 py-2 text-xs font-semibold text-slate-300 transition hover:text-white active:scale-[0.99]"
             >
-              <RefreshCw className="h-4 w-4" /> {reviewStatus === 'CAUTION' ? 'Refazer para melhorar a foto' : 'Tirar novamente'}
+              <RefreshCw className="h-3.5 w-3.5" /> Tirar outra foto
             </button>
           </>
         )}
