@@ -526,14 +526,16 @@ export default function DocumentCapture({
 
         {phase === 'REVIEW' && pending && (
           <>
-            <div className={`rounded-xl border px-3 py-2.5 text-center text-xs font-bold ${reviewStatus === 'GOOD' ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-100' : 'border-amber-400/40 bg-amber-500/15 text-amber-100'}`}>
+            {reviewStatus === 'CAUTION' && (
+            <div className="rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-2.5 text-center text-xs font-bold text-amber-100">
               <p>{reviewStatus === 'GOOD' ? '✓ Qualidade aprovada' : '⚠ Confira antes de continuar'}</p>
               <p className="mt-0.5 text-[11px] font-medium opacity-90">{captureQualityMessage(pending.quality)}</p>
             </div>
+            )}
             <button
               type="button"
               onClick={confirm}
-              className={`flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.99] ${reviewStatus === 'GOOD' ? 'bg-emerald-600' : 'bg-[#071B3A]'}`}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#071B3A] py-4 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.99]"
             >
               <Check className="h-4 w-4" /> Continuar
             </button>
