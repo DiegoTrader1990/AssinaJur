@@ -22,10 +22,12 @@ import {
   RotateCcw,
   X,
   ShieldCheck,
+  Download,
 } from 'lucide-react';
 import DocumentCapture, { type CaptureResult } from '@/components/lab/DocumentCapture';
 import { maskCpfCnpj } from '@/lib/formatters';
 import { formatBrasiliaDateTime, formatBrasiliaTimeOnly } from '@/lib/dateUtils';
+import { buildLabReportPdf, nomeArquivoRelatorio } from '@/lib/lab/labReport';
 
 type Step = 'INTRO' | 'TYPE' | 'FRONT' | 'BACK' | 'ANALYSING' | 'RESULT';
 type DocType = 'RG' | 'CNH';
@@ -111,6 +113,8 @@ export default function DocumentLabPage() {
   const [ocrDiagnostics, setOcrDiagnostics] = useState<OcrDiagnostics | null>(null);
   const [ocrError, setOcrError] = useState('');
   const [zoomImage, setZoomImage] = useState<{ src: string; label: string } | null>(null);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
+  const [erroPdf, setErroPdf] = useState('');
 
   const [session, setSession] = useState<{ device: string; browser: string; startedAt: string }>({
     device: '—',
@@ -204,6 +208,103 @@ export default function DocumentLabPage() {
     return expectedDigits === foundDigits ? 'MATCH' : 'DIVERGENT';
   }, [expectedCpf, extraction.cpf]);
 
+  const rotuloCpf = useMemo(() => {
+    if (cpfMatch === 'MATCH') return 'Compativel — o CPF do documento corresponde ao informado';
+    if (cpfMatch === 'DIVERGENT') return 'Divergente — o CPF do documento nao corresponde ao informado';
+    if (cpfMatch === 'NOT_FOUND') return 'Nao identificado — o CPF nao foi localizado no documento';
+    return 'Nenhum CPF esperado foi informado nesta sessao';
+  }, [cpfMatch]);
+
+  /** Monta o PDF no proprio aparelho e dispara o download local. */
+  const baixarRelatorio = useCallback(async () => {
+    setGerandoPdf(true);
+    setErroPdf('');
+    try {
+      const paraRelatorio = (shot: CaptureResult | null, label: string) =>
+        shot
+          ? [
+              {
+                label,
+                dataUrl: shot.dataUrl,
+                width: shot.width,
+                height: shot.height,
+                bytes: shot.bytes,
+                capturedAt: formatBrasiliaDateTime(shot.capturedAt),
+                meanLuminance: shot.quality.meanLuminance,
+                sharpness: shot.quality.sharpness,
+                issues: shot.quality.issues.map((i) => i.message),
+              },
+            ]
+          : [];
+
+      const blob = await buildLabReportPdf({
+        geradoEm: formatBrasiliaDateTime(new Date().toISOString()),
+        sessao: {
+          dispositivo: session.device,
+          navegador: session.browser,
+          iniciadoEm: session.startedAt ? formatBrasiliaDateTime(session.startedAt) : '-',
+          telaLargura: typeof window !== 'undefined' ? window.screen.width : 0,
+          telaAltura: typeof window !== 'undefined' ? window.screen.height : 0,
+        },
+        tipoInformado: docType,
+        leitura: {
+          tipoIdentificado: extraction.documentType,
+          nome: extraction.name,
+          cpf: extraction.cpf,
+          nascimento: extraction.birthDate,
+          numeroDocumento: extraction.documentNumber,
+          orgaoEmissor: extraction.issuingOrgan,
+          nomeMae: extraction.motherName,
+          nomePai: extraction.fatherName,
+        },
+        ocr: {
+          modelo: ocrDiagnostics?.model || '',
+          tempoMs: ocrDiagnostics?.elapsedMs || 0,
+          imagensEnviadas: ocrDiagnostics?.imagesSent || 0,
+          observacao: ocrDiagnostics?.reason || '',
+          erro: ocrError,
+        },
+        cpf: {
+          informado: expectedCpf,
+          lido: extraction.cpf,
+          resultado: rotuloCpf,
+        },
+        imagens: [...paraRelatorio(front, 'FRENTE'), ...paraRelatorio(back, 'VERSO')],
+        eventos: events.map((ev) => ({
+          hora: formatBrasiliaTimeOnly(ev.at),
+          descricao: ev.label,
+        })),
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = nomeArquivoRelatorio(new Date());
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+      pushEvent('REPORT_DOWNLOADED', 'Relatorio de diagnostico baixado');
+    } catch {
+      setErroPdf('Nao foi possivel gerar o relatorio neste aparelho.');
+    } finally {
+      setGerandoPdf(false);
+    }
+  }, [
+    back,
+    docType,
+    events,
+    expectedCpf,
+    extraction,
+    front,
+    ocrDiagnostics,
+    ocrError,
+    pushEvent,
+    rotuloCpf,
+    session,
+  ]);
+
   const resetTest = useCallback(() => {
     setStep('INTRO');
     setExpectedCpf('');
@@ -214,6 +315,7 @@ export default function DocumentLabPage() {
     setOcrDiagnostics(null);
     setOcrError('');
     setZoomImage(null);
+    setErroPdf('');
     setEvents([{ code: 'SESSION_RESTARTED', label: 'Teste reiniciado', at: new Date().toISOString() }]);
   }, []);
 
@@ -374,6 +476,38 @@ export default function DocumentLabPage() {
           <div className="space-y-1">
             <h1 className="font-heading text-xl font-extrabold text-[#071B3A]">Teste concluído</h1>
             <p className="text-sm text-slate-500">Painel de diagnóstico do laboratório.</p>
+          </div>
+
+          {/* RELATÓRIO EM PDF — gerado no próprio aparelho, nada sobe para o servidor */}
+          <div className="rounded-2xl border border-[#D4AF37]/50 bg-[#FFFBF0] p-3.5 space-y-2">
+            <div className="flex items-start gap-2">
+              <Download className="mt-0.5 h-4 w-4 shrink-0 text-[#B68B1C]" />
+              <div className="min-w-0">
+                <p className="text-xs font-extrabold text-[#071B3A]">Baixar diagnóstico em PDF</p>
+                <p className="text-[11px] leading-4 text-slate-500">
+                  Gera um relatório completo com as fotos, os dados lidos e todos os eventos.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void baixarRelatorio()}
+              disabled={gerandoPdf}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#071B3A] py-3.5 text-sm font-extrabold text-white transition active:scale-[0.99] disabled:opacity-50"
+            >
+              {gerandoPdf ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Gerando relatório...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 text-[#D4AF37]" /> Baixar relatório em PDF
+                </>
+              )}
+            </button>
+
+            {erroPdf && <p className="text-[11px] font-semibold text-rose-700">{erroPdf}</p>}
           </div>
 
           {ocrError && (
