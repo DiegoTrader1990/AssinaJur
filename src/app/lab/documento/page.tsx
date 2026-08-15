@@ -3,11 +3,17 @@
 /**
  * LABORATÓRIO ASSINAJUR — Teste de captura de documento de identificação.
  *
+ * Escopo desta versão: SOMENTE a captura das fotos.
+ * A leitura automática (OCR) foi deliberadamente removida — ela custava mais
+ * tempo que todo o resto do fluxo, dependia de uma API externa no caminho
+ * crítico e podia barrar cliente legítimo por erro de leitura. A conferência
+ * do documento é feita pelo escritório, olhando a foto.
+ *
  * Ambiente isolado e descartável:
  *  - não aparece em menu, dashboard ou qualquer navegação;
  *  - não toca no fluxo de assinatura, selfies, certificados ou clientes;
  *  - nada é gravado em banco, storage ou ficha de cliente;
- *  - as imagens vivem apenas na memória desta aba, enquanto a página estiver aberta.
+ *  - as imagens vivem apenas na memória desta aba.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -18,18 +24,16 @@ import {
   ArrowRight,
   Loader2,
   Check,
-  AlertTriangle,
   RotateCcw,
   X,
   ShieldCheck,
   Download,
 } from 'lucide-react';
 import DocumentCapture, { type CaptureResult } from '@/components/lab/DocumentCapture';
-import { maskCpfCnpj } from '@/lib/formatters';
 import { formatBrasiliaDateTime, formatBrasiliaTimeOnly } from '@/lib/dateUtils';
 import { buildLabReportPdf, nomeArquivoRelatorio } from '@/lib/lab/labReport';
 
-type Step = 'INTRO' | 'TYPE' | 'FRONT' | 'BACK' | 'ANALYSING' | 'RESULT';
+type Step = 'INTRO' | 'TYPE' | 'FRONT' | 'BACK' | 'RESULT';
 type DocType = 'RG' | 'CNH';
 
 interface LabEvent {
@@ -38,42 +42,11 @@ interface LabEvent {
   at: string;
 }
 
-interface Extraction {
-  documentType: string;
-  name: string;
-  cpf: string;
-  birthDate: string;
-  documentNumber: string;
-  issuingOrgan: string;
-  motherName: string;
-  fatherName: string;
-}
-
-interface OcrDiagnostics {
-  model: string | null;
-  elapsedMs: number;
-  imagesSent: number;
-  reason: string | null;
-}
-
-type CpfMatch = 'MATCH' | 'DIVERGENT' | 'NOT_FOUND' | 'NO_EXPECTED';
-
-/** Converte o dataURL da captura em Blob para envio multipart, sem passar por log. */
-function dataUrlToBlob(dataUrl: string): Blob {
-  const [header, base64] = dataUrl.split(',');
-  const mimeMatch = header.match(/data:([^;]+)/);
-  const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: mime });
-}
-
 function describeBrowser(ua: string): string {
   if (/Edg\//.test(ua)) return 'Microsoft Edge';
   if (/OPR\//.test(ua)) return 'Opera';
-  if (/Chrome\//.test(ua) && !/Chromium/.test(ua)) return 'Google Chrome';
   if (/CriOS\//.test(ua)) return 'Chrome (iOS)';
+  if (/Chrome\//.test(ua) && !/Chromium/.test(ua)) return 'Google Chrome';
   if (/Firefox\//.test(ua)) return 'Firefox';
   if (/Safari\//.test(ua)) return 'Safari';
   return 'Navegador não identificado';
@@ -89,29 +62,14 @@ function describeDevice(ua: string): string {
   return 'Dispositivo não identificado';
 }
 
-const EMPTY_EXTRACTION: Extraction = {
-  documentType: '',
-  name: '',
-  cpf: '',
-  birthDate: '',
-  documentNumber: '',
-  issuingOrgan: '',
-  motherName: '',
-  fatherName: '',
-};
-
 export default function DocumentLabPage() {
   const [step, setStep] = useState<Step>('INTRO');
-  const [expectedCpf, setExpectedCpf] = useState('');
   const [docType, setDocType] = useState<DocType>('RG');
 
   const [front, setFront] = useState<CaptureResult | null>(null);
   const [back, setBack] = useState<CaptureResult | null>(null);
 
   const [events, setEvents] = useState<LabEvent[]>([]);
-  const [extraction, setExtraction] = useState<Extraction>(EMPTY_EXTRACTION);
-  const [ocrDiagnostics, setOcrDiagnostics] = useState<OcrDiagnostics | null>(null);
-  const [ocrError, setOcrError] = useState('');
   const [zoomImage, setZoomImage] = useState<{ src: string; label: string } | null>(null);
   const [gerandoPdf, setGerandoPdf] = useState(false);
   const [erroPdf, setErroPdf] = useState('');
@@ -142,80 +100,36 @@ export default function DocumentLabPage() {
     pushEvent('SESSION_STARTED', 'Sessão de teste iniciada');
   }, [pushEvent]);
 
-  const runOcr = useCallback(
-    async (frontShot: CaptureResult, backShot: CaptureResult | null) => {
-      setStep('ANALYSING');
-      setOcrError('');
-      pushEvent('OCR_STARTED', 'Leitura do documento iniciada');
-
-      try {
-        const formData = new FormData();
-        formData.append('front', dataUrlToBlob(frontShot.dataUrl), 'front.jpg');
-        if (backShot) {
-          formData.append('back', dataUrlToBlob(backShot.dataUrl), 'back.jpg');
-        }
-        formData.append('expectedType', docType);
-
-        const res = await fetch('/api/lab/document-ocr', { method: 'POST', body: formData });
-        const data = await res.json();
-
-        if (!res.ok) {
-          setOcrError(data?.error || 'Não foi possível concluir a leitura.');
-          setOcrDiagnostics(null);
-          pushEvent('OCR_FAILED', 'Leitura não concluída');
-        } else {
-          setExtraction(data.extracted || EMPTY_EXTRACTION);
-          setOcrDiagnostics(data.diagnostics || null);
-          if (data.success) {
-            pushEvent('OCR_COMPLETED', 'Leitura concluída');
-          } else {
-            pushEvent('OCR_EMPTY', 'Leitura concluída sem campos identificados');
-          }
-        }
-      } catch {
-        setOcrError('Falha de comunicação ao enviar as imagens para leitura.');
-        pushEvent('OCR_FAILED', 'Leitura não concluída');
-      } finally {
-        pushEvent('CPF_COMPARED', 'Comparação de CPF realizada');
-        pushEvent('TEST_COMPLETED', 'Teste concluído');
-        setStep('RESULT');
-      }
-    },
-    [docType, pushEvent]
-  );
-
-  const handleFrontConfirmed = useCallback(
-    (result: CaptureResult) => {
-      setFront(result);
-      setStep('BACK');
-    },
-    []
-  );
+  const handleFrontConfirmed = useCallback((result: CaptureResult) => {
+    setFront(result);
+    setStep('BACK');
+  }, []);
 
   const handleBackConfirmed = useCallback(
     (result: CaptureResult) => {
       setBack(result);
-      if (front) void runOcr(front, result);
+      pushEvent('TEST_COMPLETED', 'Captura concluída');
+      setStep('RESULT');
     },
-    [front, runOcr]
+    [pushEvent]
   );
 
-  const cpfMatch: CpfMatch = useMemo(() => {
-    const expectedDigits = expectedCpf.replace(/\D/g, '');
-    const foundDigits = extraction.cpf.replace(/\D/g, '');
-    if (!expectedDigits) return 'NO_EXPECTED';
-    if (!foundDigits) return 'NOT_FOUND';
-    return expectedDigits === foundDigits ? 'MATCH' : 'DIVERGENT';
-  }, [expectedCpf, extraction.cpf]);
+  /** Tempo entre o primeiro e o último evento registrado. */
+  const duracaoSegundos = useMemo(() => {
+    if (events.length < 2) return 0;
+    const inicio = new Date(events[0].at).getTime();
+    const fim = new Date(events[events.length - 1].at).getTime();
+    return Math.max(0, Math.round((fim - inicio) / 1000));
+  }, [events]);
 
-  const rotuloCpf = useMemo(() => {
-    if (cpfMatch === 'MATCH') return 'Compativel — o CPF do documento corresponde ao informado';
-    if (cpfMatch === 'DIVERGENT') return 'Divergente — o CPF do documento nao corresponde ao informado';
-    if (cpfMatch === 'NOT_FOUND') return 'Nao identificado — o CPF nao foi localizado no documento';
-    return 'Nenhum CPF esperado foi informado nesta sessao';
-  }, [cpfMatch]);
+  const qualidadeGeral = useMemo(() => {
+    const todas = [front, back].filter(Boolean) as CaptureResult[];
+    if (todas.length === 0) return '—';
+    const comRessalva = todas.some((s) => s.quality.issues.length > 0);
+    return comRessalva ? 'adequada, com ressalvas' : 'adequada';
+  }, [front, back]);
 
-  /** Monta o PDF no proprio aparelho e dispara o download local. */
+  /** Monta o PDF no próprio aparelho e dispara o download local. */
   const baixarRelatorio = useCallback(async () => {
     setGerandoPdf(true);
     setErroPdf('');
@@ -246,29 +160,8 @@ export default function DocumentLabPage() {
           telaLargura: typeof window !== 'undefined' ? window.screen.width : 0,
           telaAltura: typeof window !== 'undefined' ? window.screen.height : 0,
         },
-        tipoInformado: docType,
-        leitura: {
-          tipoIdentificado: extraction.documentType,
-          nome: extraction.name,
-          cpf: extraction.cpf,
-          nascimento: extraction.birthDate,
-          numeroDocumento: extraction.documentNumber,
-          orgaoEmissor: extraction.issuingOrgan,
-          nomeMae: extraction.motherName,
-          nomePai: extraction.fatherName,
-        },
-        ocr: {
-          modelo: ocrDiagnostics?.model || '',
-          tempoMs: ocrDiagnostics?.elapsedMs || 0,
-          imagensEnviadas: ocrDiagnostics?.imagesSent || 0,
-          observacao: ocrDiagnostics?.reason || '',
-          erro: ocrError,
-        },
-        cpf: {
-          informado: expectedCpf,
-          lido: extraction.cpf,
-          resultado: rotuloCpf,
-        },
+        tipoDocumento: docType,
+        duracaoSegundos,
         imagens: [...paraRelatorio(front, 'FRENTE'), ...paraRelatorio(back, 'VERSO')],
         eventos: events.map((ev) => ({
           hora: formatBrasiliaTimeOnly(ev.at),
@@ -285,38 +178,24 @@ export default function DocumentLabPage() {
       document.body.removeChild(link);
       setTimeout(() => URL.revokeObjectURL(url), 5000);
 
-      pushEvent('REPORT_DOWNLOADED', 'Relatorio de diagnostico baixado');
+      pushEvent('REPORT_DOWNLOADED', 'Relatório de diagnóstico baixado');
     } catch {
-      setErroPdf('Nao foi possivel gerar o relatorio neste aparelho.');
+      setErroPdf('Não foi possível gerar o relatório neste aparelho.');
     } finally {
       setGerandoPdf(false);
     }
-  }, [
-    back,
-    docType,
-    events,
-    expectedCpf,
-    extraction,
-    front,
-    ocrDiagnostics,
-    ocrError,
-    pushEvent,
-    rotuloCpf,
-    session,
-  ]);
+  }, [back, docType, duracaoSegundos, events, front, pushEvent, session]);
 
   const resetTest = useCallback(() => {
     setStep('INTRO');
-    setExpectedCpf('');
     setDocType('RG');
     setFront(null);
     setBack(null);
-    setExtraction(EMPTY_EXTRACTION);
-    setOcrDiagnostics(null);
-    setOcrError('');
     setZoomImage(null);
     setErroPdf('');
-    setEvents([{ code: 'SESSION_RESTARTED', label: 'Teste reiniciado', at: new Date().toISOString() }]);
+    setEvents([
+      { code: 'SESSION_RESTARTED', label: 'Teste reiniciado', at: new Date().toISOString() },
+    ]);
   }, []);
 
   return (
@@ -347,27 +226,6 @@ export default function DocumentLabPage() {
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <label
-              htmlFor="expected-cpf"
-              className="block text-[10px] font-black uppercase tracking-wider text-slate-500"
-            >
-              CPF esperado <span className="font-bold normal-case text-slate-400">(apenas para teste)</span>
-            </label>
-            <input
-              id="expected-cpf"
-              type="text"
-              inputMode="numeric"
-              value={expectedCpf}
-              onChange={(e) => setExpectedCpf(maskCpfCnpj(e.target.value))}
-              placeholder="000.000.000-00"
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-base font-bold text-slate-800 outline-none focus:border-[#071B3A]"
-            />
-            <p className="mt-1.5 text-[11px] text-slate-400">
-              Serve só para comparar com o CPF lido no documento. Pode deixar em branco.
-            </p>
-          </div>
-
           <button
             type="button"
             onClick={() => setStep('TYPE')}
@@ -389,10 +247,17 @@ export default function DocumentLabPage() {
           </div>
 
           <div className="space-y-2.5">
-            {([
-              { key: 'RG' as DocType, label: 'RG', hint: 'Carteira de identidade', Icon: IdCard },
-              { key: 'CNH' as DocType, label: 'CNH', hint: 'Carteira de motorista', Icon: CreditCard },
-            ]).map(({ key, label, hint, Icon }) => {
+            {(
+              [
+                { key: 'RG' as DocType, label: 'RG', hint: 'Carteira de identidade', Icon: IdCard },
+                {
+                  key: 'CNH' as DocType,
+                  label: 'CNH',
+                  hint: 'Carteira de motorista',
+                  Icon: CreditCard,
+                },
+              ]
+            ).map(({ key, label, hint, Icon }) => {
               const selected = docType === key;
               return (
                 <button
@@ -457,20 +322,7 @@ export default function DocumentLabPage() {
         />
       )}
 
-      {/* ETAPA 5 — ANÁLISE */}
-      {step === 'ANALYSING' && (
-        <section className="flex flex-col items-center justify-center gap-3 py-20 text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-[#B68B1C]" />
-          <p className="font-heading text-lg font-extrabold text-[#071B3A]">
-            Analisando documento...
-          </p>
-          <p className="max-w-xs text-sm text-slate-500">
-            Estamos conferindo as fotos que você tirou. Leva só alguns segundos.
-          </p>
-        </section>
-      )}
-
-      {/* ETAPA 6 — DIAGNÓSTICO */}
+      {/* ETAPA 5 — DIAGNÓSTICO */}
       {step === 'RESULT' && (
         <section className="space-y-4">
           <div className="space-y-1">
@@ -478,14 +330,14 @@ export default function DocumentLabPage() {
             <p className="text-sm text-slate-500">Painel de diagnóstico do laboratório.</p>
           </div>
 
-          {/* RELATÓRIO EM PDF — gerado no próprio aparelho, nada sobe para o servidor */}
-          <div className="rounded-2xl border border-[#D4AF37]/50 bg-[#FFFBF0] p-3.5 space-y-2">
+          {/* RELATÓRIO EM PDF — gerado no próprio aparelho */}
+          <div className="space-y-2 rounded-2xl border border-[#D4AF37]/50 bg-[#FFFBF0] p-3.5">
             <div className="flex items-start gap-2">
               <Download className="mt-0.5 h-4 w-4 shrink-0 text-[#B68B1C]" />
               <div className="min-w-0">
                 <p className="text-xs font-extrabold text-[#071B3A]">Baixar diagnóstico em PDF</p>
                 <p className="text-[11px] leading-4 text-slate-500">
-                  Gera um relatório completo com as fotos, os dados lidos e todos os eventos.
+                  Relatório completo com as fotos, as medições e todos os eventos.
                 </p>
               </div>
             </div>
@@ -510,102 +362,28 @@ export default function DocumentLabPage() {
             {erroPdf && <p className="text-[11px] font-semibold text-rose-700">{erroPdf}</p>}
           </div>
 
-          {ocrError && (
-            <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3.5">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-              <div>
-                <p className="text-xs font-extrabold text-amber-900">Leitura não concluída</p>
-                <p className="mt-0.5 text-[11px] leading-4 text-amber-800">{ocrError}</p>
-              </div>
-            </div>
-          )}
-
           {/* CAPTURA */}
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <h2 className="text-[10px] font-black uppercase tracking-wider text-slate-400">
               Captura
             </h2>
             <dl className="mt-2 space-y-1.5 text-xs">
+              <Row label="Tipo de documento" value={docType} />
               <Row label="Frente do documento" value={front ? '✓ capturada' : '— não capturada'} />
               <Row label="Verso do documento" value={back ? '✓ capturado' : '— não capturado'} />
               <Row label="Origem" value="câmera do dispositivo" />
+              <Row label="Qualidade" value={qualidadeGeral} />
               <Row
-                label="Qualidade"
-                value={
-                  front?.quality.acceptable && (!back || back.quality.acceptable)
-                    ? 'adequada'
-                    : 'com ressalvas'
-                }
+                label="Duração do fluxo"
+                value={duracaoSegundos > 0 ? `${duracaoSegundos} segundos` : '—'}
               />
               {front && (
-                <Row
-                  label="Frente capturada em"
-                  value={formatBrasiliaDateTime(front.capturedAt)}
-                />
+                <Row label="Frente capturada em" value={formatBrasiliaDateTime(front.capturedAt)} />
               )}
               {back && (
                 <Row label="Verso capturado em" value={formatBrasiliaDateTime(back.capturedAt)} />
               )}
             </dl>
-          </div>
-
-          {/* LEITURA */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <h2 className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-              Leitura
-            </h2>
-            <dl className="mt-2 space-y-1.5 text-xs">
-              <Row label="Tipo informado" value={docType} />
-              <Row label="Tipo identificado" value={extraction.documentType || 'Não identificado'} />
-              <Row label="Nome identificado" value={extraction.name || 'Não identificado'} />
-              <Row label="CPF identificado" value={extraction.cpf || 'Não identificado'} />
-              <Row
-                label="Data de nascimento"
-                value={extraction.birthDate || 'Não identificado'}
-              />
-              <Row
-                label="Número do documento"
-                value={extraction.documentNumber || 'Não identificado'}
-              />
-              <Row label="Órgão emissor" value={extraction.issuingOrgan || 'Não identificado'} />
-              <Row label="Nome da mãe" value={extraction.motherName || 'Não identificado'} />
-              <Row label="Nome do pai" value={extraction.fatherName || 'Não identificado'} />
-            </dl>
-          </div>
-
-          {/* COMPARAÇÃO DE CPF */}
-          <div
-            className={`rounded-2xl border p-4 ${
-              cpfMatch === 'MATCH'
-                ? 'border-emerald-200 bg-emerald-50'
-                : cpfMatch === 'DIVERGENT'
-                ? 'border-rose-200 bg-rose-50'
-                : 'border-slate-200 bg-white'
-            }`}
-          >
-            <h2 className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-              Comparação de CPF
-            </h2>
-            <p
-              className={`mt-1.5 text-xs font-extrabold ${
-                cpfMatch === 'MATCH'
-                  ? 'text-emerald-800'
-                  : cpfMatch === 'DIVERGENT'
-                  ? 'text-rose-800'
-                  : 'text-slate-600'
-              }`}
-            >
-              {cpfMatch === 'MATCH' && '✓ CPF do documento corresponde ao CPF informado'}
-              {cpfMatch === 'DIVERGENT' &&
-                '⚠ O CPF identificado no documento não corresponde ao CPF informado'}
-              {cpfMatch === 'NOT_FOUND' && '⚠ Não foi possível identificar o CPF no documento'}
-              {cpfMatch === 'NO_EXPECTED' && 'Nenhum CPF esperado foi informado nesta sessão'}
-            </p>
-            {expectedCpf && (
-              <p className="mt-1 text-[11px] text-slate-500">
-                Informado: {expectedCpf} · Lido: {extraction.cpf || '—'}
-              </p>
-            )}
           </div>
 
           {/* IMAGENS */}
@@ -615,10 +393,12 @@ export default function DocumentLabPage() {
             </h2>
             <p className="mt-0.5 text-[11px] text-slate-400">Toque na imagem para ampliar.</p>
             <div className="mt-2.5 grid grid-cols-2 gap-2.5">
-              {([
-                { shot: front, label: 'FRENTE' },
-                { shot: back, label: 'VERSO' },
-              ]).map(({ shot, label }) => (
+              {(
+                [
+                  { shot: front, label: 'FRENTE' },
+                  { shot: back, label: 'VERSO' },
+                ]
+              ).map(({ shot, label }) => (
                 <div key={label} className="space-y-1">
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                     {label}
@@ -666,16 +446,6 @@ export default function DocumentLabPage() {
                 label="Início do teste"
                 value={session.startedAt ? formatBrasiliaDateTime(session.startedAt) : '—'}
               />
-              {ocrDiagnostics && (
-                <>
-                  <Row label="Modelo de leitura" value={ocrDiagnostics.model || 'nenhum respondeu'} />
-                  <Row label="Tempo de leitura" value={`${ocrDiagnostics.elapsedMs} ms`} />
-                  <Row label="Imagens enviadas" value={String(ocrDiagnostics.imagesSent)} />
-                  {ocrDiagnostics.reason && (
-                    <Row label="Observação" value={ocrDiagnostics.reason} />
-                  )}
-                </>
-              )}
             </dl>
           </div>
 

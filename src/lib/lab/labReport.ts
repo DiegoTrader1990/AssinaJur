@@ -30,29 +30,8 @@ export interface LabReportData {
     telaLargura: number;
     telaAltura: number;
   };
-  tipoInformado: string;
-  leitura: {
-    tipoIdentificado: string;
-    nome: string;
-    cpf: string;
-    nascimento: string;
-    numeroDocumento: string;
-    orgaoEmissor: string;
-    nomeMae: string;
-    nomePai: string;
-  };
-  ocr: {
-    modelo: string;
-    tempoMs: number;
-    imagensEnviadas: number;
-    observacao: string;
-    erro: string;
-  };
-  cpf: {
-    informado: string;
-    lido: string;
-    resultado: string;
-  };
+  tipoDocumento: string;
+  duracaoSegundos: number;
   imagens: LabReportImage[];
   eventos: { hora: string; descricao: string }[];
 }
@@ -65,7 +44,7 @@ export interface LabReportData {
 function safe(text: string | number | null | undefined): string {
   return String(text ?? '')
     .replace(/✓/g, 'OK')
-    .replace(/[⚠!]/g, '!')
+    .replace(/[⚠]/g, '!')
     .replace(/[✗✕]/g, 'X')
     .replace(/[—–]/g, '-')
     .replace(/[“”]/g, '"')
@@ -135,10 +114,11 @@ export async function buildLabReportPdf(data: LabReportData): Promise<Blob> {
   const linha = (rotulo: string, valor: string) => {
     garantirEspaco(15);
     page.drawText(safe(rotulo), { x: MARGIN, y, size: 9, font: fontRegular, color: CINZA });
+
     const valorTexto = safe(valor) || '-';
     const larguraRotulo = 165;
-    // Quebra o valor em varias linhas quando necessario
     const maxLargura = A4[0] - MARGIN * 2 - larguraRotulo;
+
     const palavras = valorTexto.split(' ');
     let atual = '';
     const linhasValor: string[] = [];
@@ -170,13 +150,7 @@ export async function buildLabReportPdf(data: LabReportData): Promise<Blob> {
   };
 
   // ---------- CABECALHO ----------
-  page.drawText('LABORATORIO ASSINAJUR', {
-    x: MARGIN,
-    y,
-    size: 8,
-    font: fontBold,
-    color: GOLD,
-  });
+  page.drawText('LABORATORIO ASSINAJUR', { x: MARGIN, y, size: 8, font: fontBold, color: GOLD });
   y -= 20;
   page.drawText('Diagnostico de captura de documento', {
     x: MARGIN,
@@ -204,10 +178,17 @@ export async function buildLabReportPdf(data: LabReportData): Promise<Blob> {
 
   // ---------- CAPTURA ----------
   titulo('Captura');
-  linha('Tipo informado', data.tipoInformado);
+  linha('Tipo de documento', data.tipoDocumento);
+  linha('Origem das imagens', 'camera do dispositivo');
+  linha(
+    'Duracao total do fluxo',
+    data.duracaoSegundos > 0 ? `${data.duracaoSegundos} segundos` : '-'
+  );
+
   if (data.imagens.length === 0) {
     linha('Imagens', 'nenhuma imagem capturada');
   }
+
   data.imagens.forEach((img) => {
     linha(
       `${img.label} - resolucao`,
@@ -220,30 +201,6 @@ export async function buildLabReportPdf(data: LabReportData): Promise<Blob> {
         (img.issues.length ? ` - ${img.issues.join('; ')}` : ' - sem ressalvas')
     );
   });
-
-  // ---------- LEITURA ----------
-  titulo('Leitura do documento');
-  linha('Tipo identificado', data.leitura.tipoIdentificado || 'Nao identificado');
-  linha('Nome', data.leitura.nome || 'Nao identificado');
-  linha('CPF', data.leitura.cpf || 'Nao identificado');
-  linha('Data de nascimento', data.leitura.nascimento || 'Nao identificado');
-  linha('Numero do documento', data.leitura.numeroDocumento || 'Nao identificado');
-  linha('Orgao emissor', data.leitura.orgaoEmissor || 'Nao identificado');
-  linha('Nome da mae', data.leitura.nomeMae || 'Nao identificado');
-  linha('Nome do pai', data.leitura.nomePai || 'Nao identificado');
-
-  titulo('Desempenho da leitura');
-  linha('Modelo utilizado', data.ocr.modelo || 'nenhum respondeu');
-  linha('Tempo de resposta', data.ocr.tempoMs ? `${data.ocr.tempoMs} ms` : '-');
-  linha('Imagens enviadas', String(data.ocr.imagensEnviadas));
-  if (data.ocr.observacao) linha('Observacao', data.ocr.observacao);
-  if (data.ocr.erro) linha('Erro', data.ocr.erro);
-
-  // ---------- CPF ----------
-  titulo('Comparacao de CPF');
-  linha('CPF informado', data.cpf.informado || 'nao informado');
-  linha('CPF lido no documento', data.cpf.lido || 'nao identificado');
-  linha('Resultado', data.cpf.resultado);
 
   // ---------- EVENTOS ----------
   titulo('Eventos do laboratorio');
@@ -305,7 +262,7 @@ export async function buildLabReportPdf(data: LabReportData): Promise<Blob> {
     }
   }
 
-  // ---------- RODAPE EM TODAS AS PAGINAS ----------
+  // ---------- RODAPE ----------
   const paginas = doc.getPages();
   paginas.forEach((p, i) => {
     p.drawText(
@@ -317,7 +274,6 @@ export async function buildLabReportPdf(data: LabReportData): Promise<Blob> {
   });
 
   const bytes = await doc.save();
-  // Copia para um ArrayBuffer proprio: evita problemas de tipo com SharedArrayBuffer
   const copia = new Uint8Array(bytes.length);
   copia.set(bytes);
   return new Blob([copia], { type: 'application/pdf' });
