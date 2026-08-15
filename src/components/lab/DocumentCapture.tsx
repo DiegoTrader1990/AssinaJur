@@ -113,6 +113,38 @@ export default function DocumentCapture({
     return () => stopCamera();
   }, [stopCamera]);
 
+  // O vídeo só existe no DOM depois que a fase muda para LIVE. Em celulares,
+  // tentar atribuir o stream antes dessa renderização ativa a câmera (ponto
+  // verde), mas deixa a prévia preta. Fazemos a conexão após o elemento existir.
+  useEffect(() => {
+    if (phase !== 'LIVE') return;
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    if (!video || !stream) return;
+
+    video.srcObject = stream;
+    const connectVideo = async () => {
+      try {
+        await video.play();
+        if (video.videoWidth && video.videoHeight) {
+          setVideoDims({ w: video.videoWidth, h: video.videoHeight });
+        }
+      } catch {
+        setError('A câmera foi ativada, mas a imagem não pôde ser exibida. Feche e abra a câmera novamente.');
+      }
+    };
+    video.onloadedmetadata = () => {
+      if (video.videoWidth && video.videoHeight) {
+        setVideoDims({ w: video.videoWidth, h: video.videoHeight });
+      }
+      void connectVideo();
+    };
+    void connectVideo();
+    return () => {
+      video.onloadedmetadata = null;
+    };
+  }, [phase]);
+
   // Ao trocar de lado, reinicia o componente para o estado inicial.
   useEffect(() => {
     stopCamera();
@@ -142,13 +174,6 @@ export default function DocumentCapture({
         audio: false,
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        if (videoRef.current.videoWidth) {
-          setVideoDims({ w: videoRef.current.videoWidth, h: videoRef.current.videoHeight });
-        }
-      }
       setPhase('LIVE');
       emit('CAMERA_PERMITTED', 'Permissão da câmera concedida');
       emit(
