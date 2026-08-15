@@ -30,6 +30,20 @@ export interface QualityReport {
   issues: QualityIssue[];
 }
 
+export type CaptureQualityStatus = 'GOOD' | 'CAUTION' | 'RETAKE';
+
+export function captureQualityStatus(report: QualityReport): CaptureQualityStatus {
+  if (!report.acceptable) return 'RETAKE';
+  return report.issues.some((issue) => issue.level === 'WARN') ? 'CAUTION' : 'GOOD';
+}
+
+export function captureQualityMessage(report: QualityReport): string {
+  const status = captureQualityStatus(report);
+  if (status === 'GOOD') return 'Foto boa para leitura e conferência do escritório.';
+  if (status === 'CAUTION') return 'Foto aceitável, mas recomendamos conferir a nitidez antes de continuar.';
+  return firstBlockingMessage(report);
+}
+
 /**
  * Resolução mínima aceitável, já considerando que a imagem é RECORTADA na
  * moldura antes de chegar aqui. Um RG tem 85,6 x 54 mm: a 500 px no lado

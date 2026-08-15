@@ -17,6 +17,8 @@ import { Camera, RefreshCw, Check, AlertTriangle, Loader2 } from 'lucide-react';
 import {
   analyseCanvas,
   buildQualityReport,
+  captureQualityMessage,
+  captureQualityStatus,
   firstBlockingMessage,
   type QualityReport,
 } from '@/lib/lab/documentQuality';
@@ -292,6 +294,7 @@ export default function DocumentCapture({
   }, [emit, onConfirm, pending, side]);
 
   const crop = videoDims ? computeCropRect(videoDims.w, videoDims.h) : null;
+  const reviewStatus = pending ? captureQualityStatus(pending.quality) : null;
 
   // Antes de abrir a camera: cartao compacto no fluxo normal da pagina.
   if (phase === 'IDLE' || phase === 'STARTING') {
@@ -420,7 +423,7 @@ export default function DocumentCapture({
         {phase === 'LIVE' && (
           <>
             <p className="text-center text-[11px] text-slate-300">
-              Encaixe {side === 'FRENTE' ? 'a frente' : 'o verso'} do documento na moldura
+              Encaixe {side === 'FRENTE' ? 'a frente' : 'o verso'} inteiro na moldura, sem brilho ou sombra
             </p>
             <button
               type="button"
@@ -434,27 +437,23 @@ export default function DocumentCapture({
 
         {phase === 'REVIEW' && pending && (
           <>
-            {pending.quality.issues.some((i) => i.level === 'WARN') && (
-              <p className="text-center text-[11px] text-slate-300">
-                {pending.quality.issues
-                  .filter((i) => i.level === 'WARN')
-                  .map((i) => i.message)
-                  .join(' ')}
-              </p>
-            )}
+            <div className={`rounded-xl border px-3 py-2.5 text-center text-xs font-bold ${reviewStatus === 'GOOD' ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-100' : 'border-amber-400/40 bg-amber-500/15 text-amber-100'}`}>
+              <p>{reviewStatus === 'GOOD' ? '✓ Qualidade aprovada' : '⚠ Confira antes de continuar'}</p>
+              <p className="mt-0.5 text-[11px] font-medium opacity-90">{captureQualityMessage(pending.quality)}</p>
+            </div>
             <button
               type="button"
               onClick={confirm}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.99]"
+              className={`flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.99] ${reviewStatus === 'GOOD' ? 'bg-emerald-600' : 'bg-[#071B3A]'}`}
             >
-              <Check className="h-4 w-4" /> Usar esta foto
+              <Check className="h-4 w-4" /> {reviewStatus === 'GOOD' ? 'Usar esta foto' : 'Continuar com esta foto'}
             </button>
             <button
               type="button"
               onClick={retake}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/10 py-3 text-sm font-bold text-white transition active:scale-[0.99]"
+              className={`flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold transition active:scale-[0.99] ${reviewStatus === 'CAUTION' ? 'bg-[#D4AF37] text-[#071B3A]' : 'border border-white/20 bg-white/10 text-white'}`}
             >
-              <RefreshCw className="h-4 w-4" /> Tirar novamente
+              <RefreshCw className="h-4 w-4" /> {reviewStatus === 'CAUTION' ? 'Refazer para melhorar a foto' : 'Tirar novamente'}
             </button>
           </>
         )}
