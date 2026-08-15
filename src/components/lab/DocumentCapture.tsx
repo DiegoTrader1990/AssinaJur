@@ -535,7 +535,7 @@ export default function DocumentCapture({
             <button
               type="button"
               onClick={confirm}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#071B3A] py-4 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.99]"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white shadow-lg transition hover:bg-emerald-500 active:scale-[0.99]"
             >
               <Check className="h-4 w-4" /> Continuar
             </button>
