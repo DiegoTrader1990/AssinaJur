@@ -60,6 +60,7 @@ interface DocumentCaptureProps {
 
 type Phase = 'IDLE' | 'STARTING' | 'LIVE' | 'REVIEW';
 type LiveReadiness = 'ANALYSING' | 'ADJUST' | 'READY';
+type VisionCheck = 'IDLE' | 'CHECKING' | 'VALID' | 'REJECTED' | 'ERROR';
 
 /**
  * Retângulo de recorte, em pixels do vídeo. É a única fonte de verdade:
@@ -97,6 +98,9 @@ export default function DocumentCapture({
   const [liveReadiness, setLiveReadiness] = useState<LiveReadiness>('ANALYSING');
   const [liveHint, setLiveHint] = useState('Preparando a validação da imagem...');
   const [liveCountdown, setLiveCountdown] = useState<number | null>(null);
+  const [visionCheck, setVisionCheck] = useState<VisionCheck>('IDLE');
+  const [visionReason, setVisionReason] = useState('');
+  const [validationRetry, setValidationRetry] = useState(0);
 
   useEffect(() => {
     emitRef.current = onEvent;
@@ -160,6 +164,8 @@ export default function DocumentCapture({
     setPending(null);
     setError('');
     setVideoDims(null);
+    setVisionCheck('IDLE');
+    setVisionReason('');
   }, [side, stopCamera]);
 
   const startCamera = useCallback(async () => {
@@ -334,9 +340,58 @@ export default function DocumentCapture({
     return () => window.clearInterval(interval);
   }, [phase, takePhoto, videoDims]);
 
+  // Validação sem armazenamento: a imagem fica apenas na memória do aparelho
+  // e é enviada temporariamente à rota do laboratório para a IA confirmar que
+  // ela realmente parece um RG/CNH, antes de liberar o avanço.
+  useEffect(() => {
+    if (phase !== 'REVIEW' || !pending) return;
+    const controller = new AbortController();
+    let active = true;
+    setVisionCheck('CHECKING');
+    setVisionReason('');
+
+    void fetch('/api/lab/documento/validar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: pending.dataUrl, side }),
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok || !data?.success) throw new Error(data?.error || 'Não foi possível validar a imagem.');
+        return data.validation as { isDocument: boolean; readable: boolean; confidence: number; reason?: string };
+      })
+      .then((validation) => {
+        if (!active) return;
+        const accepted = validation.isDocument && validation.readable && validation.confidence >= 70;
+        setVisionCheck(accepted ? 'VALID' : 'REJECTED');
+        setVisionReason(
+          accepted
+            ? ''
+            : validation.reason || 'Não identificamos um documento de identidade legível nesta imagem.'
+        );
+        emit(
+          accepted ? (side === 'FRENTE' ? 'FRONT_DOCUMENT_VALIDATED' : 'BACK_DOCUMENT_VALIDATED') : (side === 'FRENTE' ? 'FRONT_DOCUMENT_REJECTED' : 'BACK_DOCUMENT_REJECTED'),
+          accepted ? 'Documento identificado pela validação automática' : 'Imagem recusada: documento não identificado'
+        );
+      })
+      .catch((validationError) => {
+        if (!active || validationError?.name === 'AbortError') return;
+        setVisionCheck('ERROR');
+        setVisionReason(validationError instanceof Error ? validationError.message : 'Não foi possível validar a imagem.');
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [emit, pending, phase, side, validationRetry]);
+
   const retake = useCallback(() => {
     setPending(null);
     setError('');
+    setVisionCheck('IDLE');
+    setVisionReason('');
     emit(
       side === 'FRENTE' ? 'FRONT_RETAKE' : 'BACK_RETAKE',
       `Usuário optou por refazer ${side === 'FRENTE' ? 'a frente' : 'o verso'}`
@@ -345,13 +400,13 @@ export default function DocumentCapture({
   }, [emit, side, startCamera]);
 
   const confirm = useCallback(() => {
-    if (!pending) return;
+    if (!pending || visionCheck !== 'VALID') return;
     emit(
       side === 'FRENTE' ? 'FRONT_APPROVED' : 'BACK_APPROVED',
       `${side === 'FRENTE' ? 'Frente' : 'Verso'} aprovado pelo usuário`
     );
     onConfirm(pending);
-  }, [emit, onConfirm, pending, side]);
+  }, [emit, onConfirm, pending, side, visionCheck]);
 
   const crop = videoDims ? computeCropRect(videoDims.w, videoDims.h) : null;
   const reviewStatus = pending ? captureQualityStatus(pending.quality) : null;
@@ -532,17 +587,39 @@ export default function DocumentCapture({
               <p className="mt-0.5 text-[11px] font-medium opacity-90">{captureQualityMessage(pending.quality)}</p>
             </div>
             )}
-            <button
-              type="button"
-              onClick={confirm}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white shadow-lg transition hover:bg-emerald-500 active:scale-[0.99]"
-            >
-              <Check className="h-4 w-4" /> Continuar
-            </button>
+            {visionCheck === 'CHECKING' && (
+              <div className="flex items-center justify-center gap-2 rounded-xl border border-sky-400/40 bg-sky-500/15 px-3 py-3 text-center text-xs font-bold text-sky-100">
+                <Loader2 className="h-4 w-4 animate-spin" /> Confirmando se é um documento...
+              </div>
+            )}
+            {visionCheck === 'REJECTED' && (
+              <div className="rounded-xl border border-rose-400/50 bg-rose-500/15 px-3 py-3 text-center text-xs font-bold text-rose-100">
+                <p>Não identificamos um documento nesta foto.</p>
+                {visionReason && <p className="mt-1 text-[11px] font-medium opacity-90">{visionReason}</p>}
+              </div>
+            )}
+            {visionCheck === 'ERROR' && (
+              <button
+                type="button"
+                onClick={() => setValidationRetry((value) => value + 1)}
+                className="w-full rounded-xl border border-amber-400/50 bg-amber-500/15 px-3 py-3 text-center text-xs font-bold text-amber-100"
+              >
+                Não foi possível validar agora. Toque para tentar novamente.
+              </button>
+            )}
+            {visionCheck === 'VALID' && (
+              <button
+                type="button"
+                onClick={confirm}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white shadow-lg transition hover:bg-emerald-500 active:scale-[0.99]"
+              >
+                <Check className="h-4 w-4" /> Continuar
+              </button>
+            )}
             <button
               type="button"
               onClick={retake}
-              className="flex w-full items-center justify-center gap-2 py-2 text-xs font-semibold text-slate-300 transition hover:text-white active:scale-[0.99]"
+              className={`flex w-full items-center justify-center gap-2 py-2 text-xs font-semibold transition active:scale-[0.99] ${visionCheck === 'REJECTED' ? 'rounded-xl bg-[#D4AF37] py-3 text-[#071B3A]' : 'text-slate-300 hover:text-white'}`}
             >
               <RefreshCw className="h-3.5 w-3.5" /> Tirar outra foto
             </button>
