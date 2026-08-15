@@ -6,11 +6,10 @@
  * Isolado de propósito: NÃO altera nem depende do componente de selfie
  * utilizado no fluxo de assinatura (/assinar/[token]).
  *
- * Responsabilidades separadas internamente:
- *  - controle da câmera (start/stop/permissão)
- *  - captura do quadro preservando proporção real
- *  - validação de qualidade (delegada a lib/lab/documentQuality)
- *  - preview e confirmação pelo usuário
+ * Princípio central: o que o usuário vê dentro da moldura é EXATAMENTE o que
+ * é salvo. A moldura é desenhada em SVG usando as coordenadas reais do vídeo,
+ * e o recorte da captura usa esse mesmo retângulo — sem medição de DOM e sem
+ * divergência entre a prévia e o arquivo final.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -25,6 +24,10 @@ import {
 /** Maior dimensão da imagem final — equilibra legibilidade e peso do upload. */
 const MAX_LONG_SIDE = 2000;
 const JPEG_QUALITY = 0.92;
+/** Proporção aproximada de RG e CNH abertos (padrão ID-2/ID-3). */
+const CROP_ASPECT = 1.586;
+/** Folga entre a moldura e a borda do quadro. */
+const CROP_MARGIN = 0.94;
 
 export type CaptureSide = 'FRENTE' | 'VERSO';
 
@@ -47,13 +50,27 @@ interface DocumentCaptureProps {
   onEvent?: (code: string, label: string) => void;
   /**
    * Abre a câmera assim que o componente monta, poupando um toque do usuário.
-   * Se o navegador recusar (permissão negada, por exemplo), o componente cai
-   * no estado normal e mostra o botão "Abrir câmera" como alternativa.
+   * Se o navegador recusar, o componente cai no estado normal e mostra o botão
+   * "Abrir câmera" como alternativa.
    */
   autoStart?: boolean;
 }
 
 type Phase = 'IDLE' | 'STARTING' | 'LIVE' | 'REVIEW';
+
+/**
+ * Retângulo de recorte, em pixels do vídeo. É a única fonte de verdade:
+ * alimenta tanto o desenho da moldura quanto o recorte da foto.
+ */
+function computeCropRect(vw: number, vh: number) {
+  let w = vw * CROP_MARGIN;
+  let h = w / CROP_ASPECT;
+  if (h > vh * CROP_MARGIN) {
+    h = vh * CROP_MARGIN;
+    w = h * CROP_ASPECT;
+  }
+  return { x: (vw - w) / 2, y: (vh - h) / 2, w, h };
+}
 
 export default function DocumentCapture({
   side,
@@ -66,12 +83,12 @@ export default function DocumentCapture({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const emitRef = useRef(onEvent);
-  // Garante uma unica tentativa automatica por lado do documento
   const autoStartedRef = useRef<CaptureSide | null>(null);
 
   const [phase, setPhase] = useState<Phase>('IDLE');
   const [error, setError] = useState('');
   const [pending, setPending] = useState<CaptureResult | null>(null);
+  const [videoDims, setVideoDims] = useState<{ w: number; h: number } | null>(null);
 
   useEffect(() => {
     emitRef.current = onEvent;
@@ -92,17 +109,17 @@ export default function DocumentCapture({
     }
   }, []);
 
-  // Garante que a câmera seja liberada ao desmontar ou trocar de lado.
   useEffect(() => {
     return () => stopCamera();
   }, [stopCamera]);
 
-  // Ao mudar de frente para verso, reinicia o componente para o estado inicial.
+  // Ao trocar de lado, reinicia o componente para o estado inicial.
   useEffect(() => {
     stopCamera();
     setPhase('IDLE');
     setPending(null);
     setError('');
+    setVideoDims(null);
   }, [side, stopCamera]);
 
   const startCamera = useCallback(async () => {
@@ -111,7 +128,7 @@ export default function DocumentCapture({
     try {
       stopCamera();
       const stream = await navigator.mediaDevices.getUserMedia({
-        // Câmera traseira: é a adequada para fotografar documentos.
+        // Câmera traseira: a adequada para fotografar documentos.
         video: {
           facingMode: { ideal: 'environment' },
           width: { ideal: 1920 },
@@ -123,6 +140,9 @@ export default function DocumentCapture({
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
+        if (videoRef.current.videoWidth) {
+          setVideoDims({ w: videoRef.current.videoWidth, h: videoRef.current.videoHeight });
+        }
       }
       setPhase('LIVE');
       emit('CAMERA_PERMITTED', 'Permissão da câmera concedida');
@@ -136,15 +156,23 @@ export default function DocumentCapture({
       emit('CAMERA_DENIED', 'Permissão da câmera negada ou indisponível');
       if (name === 'NotAllowedError' || name === 'SecurityError') {
         setError(
-          'Precisamos da sua permissão para usar a câmera. Autorize o acesso no navegador e tente de novo.'
+          'Precisamos da sua permissão para usar a câmera. Autorize o acesso no navegador e toque em "Abrir câmera".'
         );
       } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
         setError('Nenhuma câmera compatível foi encontrada neste aparelho.');
       } else {
-        setError('Não foi possível abrir a câmera. Verifique a permissão do navegador.');
+        setError('Não foi possível abrir a câmera. Toque em "Abrir câmera" para tentar de novo.');
       }
     }
   }, [emit, side, stopCamera]);
+
+  // Abertura automática, uma única vez por lado.
+  useEffect(() => {
+    if (!autoStart) return;
+    if (autoStartedRef.current === side) return;
+    autoStartedRef.current = side;
+    void startCamera();
+  }, [autoStart, side, startCamera]);
 
   const takePhoto = useCallback(() => {
     const video = videoRef.current;
@@ -153,15 +181,14 @@ export default function DocumentCapture({
       return;
     }
 
-    // Proporção real do quadro é sempre preservada: o canvas nasce com as
-    // mesmas dimensões do vídeo e só é reduzido de forma proporcional.
     const nativeW = video.videoWidth;
     const nativeH = video.videoHeight;
-    const longSide = Math.max(nativeW, nativeH);
-    const scale = longSide > MAX_LONG_SIDE ? MAX_LONG_SIDE / longSide : 1;
 
-    const targetW = Math.round(nativeW * scale);
-    const targetH = Math.round(nativeH * scale);
+    // Recorta exatamente a área da moldura que o usuário viu.
+    const crop = computeCropRect(nativeW, nativeH);
+    const escala = Math.min(1, MAX_LONG_SIDE / Math.max(crop.w, crop.h));
+    const targetW = Math.round(crop.w * escala);
+    const targetH = Math.round(crop.h * escala);
 
     const canvas = document.createElement('canvas');
     canvas.width = targetW;
@@ -172,10 +199,9 @@ export default function DocumentCapture({
       setError('Não foi possível processar a imagem neste navegador.');
       return;
     }
-    ctx.drawImage(video, 0, 0, targetW, targetH);
+    ctx.drawImage(video, crop.x, crop.y, crop.w, crop.h, 0, 0, targetW, targetH);
 
     const dataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
-    // Tamanho aproximado do binário a partir do comprimento do base64.
     const base64Length = dataUrl.length - (dataUrl.indexOf(',') + 1);
     const bytes = Math.round(base64Length * 0.75);
 
@@ -216,14 +242,6 @@ export default function DocumentCapture({
     );
   }, [emit, side, stopCamera]);
 
-  // Abertura automatica da camera, uma vez por lado.
-  useEffect(() => {
-    if (!autoStart) return;
-    if (autoStartedRef.current === side) return;
-    autoStartedRef.current = side;
-    void startCamera();
-  }, [autoStart, side, startCamera]);
-
   const retake = useCallback(() => {
     setPending(null);
     setError('');
@@ -243,34 +261,66 @@ export default function DocumentCapture({
     onConfirm(pending);
   }, [emit, onConfirm, pending, side]);
 
+  const crop = videoDims ? computeCropRect(videoDims.w, videoDims.h) : null;
+
   return (
-    <div className="space-y-4">
-      <div className="space-y-1 text-center">
-        <h2 className="font-heading text-lg font-extrabold text-[#071B3A]">{title}</h2>
-        <p className="text-sm text-slate-500">{helperText}</p>
+    <div className="flex flex-col gap-3">
+      <div className="space-y-0.5 text-center">
+        <h2 className="font-heading text-base font-extrabold text-[#071B3A]">{title}</h2>
+        <p className="text-xs text-slate-500">{helperText}</p>
       </div>
 
-      {/* Área visual: proporção real preservada (object-contain), o que o
-          usuário vê é exatamente o que será capturado. */}
-      <div className="relative overflow-hidden rounded-2xl bg-slate-900">
+      {/* O contêiner abraça o vídeo, então o SVG sobreposto usa exatamente as
+          mesmas coordenadas — a moldura nunca "mente" sobre o recorte. */}
+      <div className="relative mx-auto w-fit overflow-hidden rounded-2xl bg-slate-900">
         <video
           ref={videoRef}
           playsInline
           muted
           autoPlay
-          className={`block h-auto max-h-[60vh] w-full object-contain ${
-            phase === 'LIVE' ? '' : 'hidden'
-          }`}
+          onLoadedMetadata={(e) => {
+            const v = e.currentTarget;
+            if (v.videoWidth) setVideoDims({ w: v.videoWidth, h: v.videoHeight });
+          }}
+          className={`block h-auto max-h-[50dvh] max-w-full ${phase === 'LIVE' ? '' : 'hidden'}`}
         />
 
-        {phase === 'LIVE' && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4">
-            <div className="flex aspect-[1.586/1] w-full max-w-md items-center justify-center rounded-xl border-2 border-dashed border-[#D4AF37]/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]">
-              <span className="px-3 text-center text-[11px] font-bold uppercase tracking-wider text-white/90">
-                Posicione {side === 'FRENTE' ? 'a frente' : 'o verso'} do documento aqui
-              </span>
-            </div>
-          </div>
+        {phase === 'LIVE' && videoDims && crop && (
+          <svg
+            className="pointer-events-none absolute inset-0 h-full w-full"
+            viewBox={`0 0 ${videoDims.w} ${videoDims.h}`}
+            preserveAspectRatio="none"
+          >
+            {/* Escurece tudo que ficara de fora do recorte */}
+            <path
+              d={`M0,0 H${videoDims.w} V${videoDims.h} H0 Z M${crop.x},${crop.y} V${
+                crop.y + crop.h
+              } H${crop.x + crop.w} V${crop.y} Z`}
+              fill="rgba(0,0,0,0.5)"
+              fillRule="evenodd"
+            />
+            <rect
+              x={crop.x}
+              y={crop.y}
+              width={crop.w}
+              height={crop.h}
+              fill="none"
+              stroke="#D4AF37"
+              strokeWidth={Math.max(2, videoDims.w * 0.004)}
+              strokeDasharray={`${videoDims.w * 0.03} ${videoDims.w * 0.02}`}
+              rx={videoDims.w * 0.012}
+            />
+            <text
+              x={videoDims.w / 2}
+              y={crop.y + crop.h + videoDims.h * 0.075}
+              textAnchor="middle"
+              fill="#FFFFFF"
+              fontSize={videoDims.h * 0.045}
+              fontWeight="bold"
+            >
+              Encaixe {side === 'FRENTE' ? 'a frente' : 'o verso'} na moldura
+            </text>
+          </svg>
         )}
 
         {phase === 'REVIEW' && pending && (
@@ -278,12 +328,12 @@ export default function DocumentCapture({
           <img
             src={pending.dataUrl}
             alt={`Pré-visualização d${side === 'FRENTE' ? 'a frente' : 'o verso'} do documento`}
-            className="block h-auto max-h-[60vh] w-full object-contain"
+            className="block h-auto max-h-[50dvh] max-w-full"
           />
         )}
 
         {(phase === 'IDLE' || phase === 'STARTING') && (
-          <div className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-3 text-center">
+          <div className="flex aspect-[4/3] w-[86vw] max-w-md flex-col items-center justify-center gap-3 text-center">
             {phase === 'STARTING' ? (
               <>
                 <Loader2 className="h-7 w-7 animate-spin text-[#D4AF37]" />
@@ -308,55 +358,69 @@ export default function DocumentCapture({
         </div>
       )}
 
-      {/* Botões grandes, adequados para toque em celular. */}
-      {phase === 'IDLE' && (
-        <button
-          type="button"
-          onClick={() => void startCamera()}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#071B3A] py-4 text-sm font-extrabold text-white transition active:scale-[0.99]"
-        >
-          <Camera className="h-4 w-4 text-[#D4AF37]" /> Abrir câmera
-        </button>
-      )}
-
-      {phase === 'LIVE' && (
-        <button
-          type="button"
-          onClick={takePhoto}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#D4AF37] py-4 text-sm font-extrabold text-[#071B3A] transition active:scale-[0.99]"
-        >
-          <Camera className="h-4 w-4" /> Tirar foto
-        </button>
-      )}
-
-      {phase === 'REVIEW' && pending && (
-        <div className="space-y-2">
+      {/* Área de ação fixa: o botão continua alcançável sem rolar a tela. */}
+      <div className="sticky bottom-2 z-10 rounded-2xl bg-slate-50/95 py-1 backdrop-blur-sm">
+        {phase === 'IDLE' && (
           <button
             type="button"
-            onClick={confirm}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white transition active:scale-[0.99]"
+            onClick={() => void startCamera()}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#071B3A] py-4 text-sm font-extrabold text-white transition active:scale-[0.99]"
           >
-            <Check className="h-4 w-4" /> Usar esta foto
+            <Camera className="h-4 w-4 text-[#D4AF37]" /> Abrir câmera
           </button>
+        )}
+
+        {phase === 'STARTING' && (
           <button
             type="button"
-            onClick={retake}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white py-3.5 text-sm font-bold text-slate-700 transition active:scale-[0.99]"
+            disabled
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-300 py-4 text-sm font-extrabold text-white"
           >
-            <RefreshCw className="h-4 w-4" /> Tirar novamente
+            <Loader2 className="h-4 w-4 animate-spin" /> Abrindo a câmera...
           </button>
+        )}
 
-          {pending.quality.issues.some((i) => i.level === 'WARN') && (
-            <p className="pt-1 text-center text-[11px] text-slate-400">
-              {pending.quality.issues
-                .filter((i) => i.level === 'WARN')
-                .map((i) => i.message)
-                .join(' ')}{' '}
-              Se estiver difícil de ler, prefira refazer.
-            </p>
-          )}
-        </div>
-      )}
+        {phase === 'LIVE' && (
+          <button
+            type="button"
+            onClick={takePhoto}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#D4AF37] py-4 text-base font-extrabold text-[#071B3A] shadow-lg transition active:scale-[0.99]"
+          >
+            <Camera className="h-5 w-5" /> Tirar foto
+          </button>
+        )}
+
+        {phase === 'REVIEW' && pending && (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={confirm}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.99]"
+            >
+              <Check className="h-4 w-4" /> Usar esta foto
+            </button>
+            <button
+              type="button"
+              onClick={retake}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white py-3 text-sm font-bold text-slate-700 transition active:scale-[0.99]"
+            >
+              <RefreshCw className="h-4 w-4" /> Tirar novamente
+            </button>
+          </div>
+        )}
+      </div>
+
+      {phase === 'REVIEW' &&
+        pending &&
+        pending.quality.issues.some((i) => i.level === 'WARN') && (
+          <p className="text-center text-[11px] text-slate-400">
+            {pending.quality.issues
+              .filter((i) => i.level === 'WARN')
+              .map((i) => i.message)
+              .join(' ')}{' '}
+            Se estiver difícil de ler, prefira refazer.
+          </p>
+        )}
     </div>
   );
 }

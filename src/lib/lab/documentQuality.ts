@@ -30,9 +30,14 @@ export interface QualityReport {
   issues: QualityIssue[];
 }
 
-/** Resolução mínima aceitável para leitura de um documento. */
-export const MIN_WIDTH = 640;
-export const MIN_HEIGHT = 480;
+/**
+ * Resolução mínima aceitável, já considerando que a imagem é RECORTADA na
+ * moldura antes de chegar aqui. Um RG tem 85,6 x 54 mm: a 500 px no lado
+ * maior isso dá cerca de 150 DPI, suficiente para leitura humana.
+ * Limites mais altos barrariam câmeras VGA sem necessidade.
+ */
+export const MIN_WIDTH = 500;
+export const MIN_HEIGHT = 300;
 /** Abaixo disso a imagem quase certamente está vazia/corrompida. */
 export const MIN_BYTES = 15_000;
 /** Abaixo disso a foto está praticamente no escuro. */
