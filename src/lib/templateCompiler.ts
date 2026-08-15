@@ -61,7 +61,7 @@ type ParagraphKind = 'BODY' | 'H1' | 'H2' | 'LIST';
 type TextAlignment = 'LEFT' | 'CENTER' | 'RIGHT' | 'JUSTIFY';
 type PdfFontFamily = 'HELVETICA' | 'TIMES' | 'COURIER';
 type TextRun = { text: string; bold: boolean; fontFamily?: PdfFontFamily; fontSize?: number };
-type RichParagraph = { kind: ParagraphKind; alignment: TextAlignment; runs: TextRun[]; spacer?: number };
+type RichParagraph = { kind: ParagraphKind; alignment: TextAlignment; runs: TextRun[]; spacer?: number; defaultFontFamily?: PdfFontFamily; defaultFontSize?: number };
 
 function decodeHtmlText(value: string): string {
   return value
@@ -154,8 +154,6 @@ function cleanHtmlForPdf(html: string): string {
     .replace(/span\s+style\s*=\s*"[^>]*>/gi, '')
     .replace(/span\s+style\s*=\s*'[^>]*>/gi, '')
     .replace(/line-height:[^;>]*;?/gi, '')
-    .replace(/font-family:[^;>]*;?/gi, '')
-    .replace(/font-size:[^;>]*;?/gi, '')
     .replace(/\bsans-serif\b;?/gi, '');
 
   // 3. Line-by-line cleanup
@@ -188,7 +186,9 @@ function parseRichParagraphs(html: string): RichParagraph[] {
   };
   const blockMarker = (kind: ParagraphKind, attributes: string, fallback: TextAlignment) => {
     const spacer = /data-aj-spacer\s*=\s*["']large["']/i.test(attributes) ? 26 : 0;
-    return `\n[[${kind}:${alignmentFromAttributes(attributes, fallback)}:${spacer}]]`;
+    const family = mapPdfFontFamily(cssFontFamily(attributes) || 'Helvetica');
+    const size = cssFontSizeToPoints(attributes) || 0;
+    return `\n[[${kind}:${alignmentFromAttributes(attributes, fallback)}:${spacer}:${family}:${size}]]`;
   };
 
   let normalized = cleanedHtml.replace(/\r/g, '');
@@ -217,18 +217,22 @@ function parseRichParagraphs(html: string): RichParagraph[] {
       let kind: ParagraphKind = 'BODY';
       let alignment: TextAlignment = 'JUSTIFY';
       let spacer = 0;
-      const marker = line.match(/^\[\[(BODY|H1|H2|LIST):(LEFT|CENTER|RIGHT|JUSTIFY)(?::(\d+))?\]\]/);
+      const marker = line.match(/^\[\[(BODY|H1|H2|LIST):(LEFT|CENTER|RIGHT|JUSTIFY)(?::(\d+))?(?::(HELVETICA|TIMES|COURIER))?(?::([\d.]+))?\]\]/);
+      let defaultFontFamily: PdfFontFamily = 'HELVETICA';
+      let defaultFontSize = 10;
       if (marker) {
         kind = marker[1] as ParagraphKind;
         alignment = marker[2] as TextAlignment;
         spacer = Number(marker[3] || 0);
+        defaultFontFamily = (marker[4] as PdfFontFamily) || defaultFontFamily;
+        defaultFontSize = Number(marker[5] || defaultFontSize);
         line = line.slice(marker[0].length);
       }
 
       const runs: TextRun[] = [];
       let boldDepth = 0;
-      const fontStack: PdfFontFamily[] = ['HELVETICA'];
-      const sizeStack: number[] = [10];
+      const fontStack: PdfFontFamily[] = [defaultFontFamily];
+      const sizeStack: number[] = [defaultFontSize];
       for (const token of line.match(/<[^>]+>|[^<]+/g) || []) {
         if (/^<\s*(?:strong|b)\b/i.test(token)) { boldDepth += 1; continue; }
         if (/^<\s*\/(?:strong|b)\s*>/i.test(token)) { boldDepth = Math.max(0, boldDepth - 1); continue; }
@@ -260,7 +264,7 @@ function parseRichParagraphs(html: string): RichParagraph[] {
       }
       // Linhas vazias criadas no editor (Enter em um parágrafo vazio) também são
       // parte da minuta: preservamos a altura para que a emissão respeite o espaçamento.
-      return { kind, alignment, runs, spacer };
+      return { kind, alignment, runs, spacer, defaultFontFamily, defaultFontSize };
     })
     .filter((item): item is RichParagraph => Boolean(item));
 

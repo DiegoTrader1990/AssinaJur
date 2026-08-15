@@ -29,7 +29,9 @@ function ensureJointAttorneyQualification(contentHtml: string, documentType: str
     const visibleText = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
     if (!labelAtStart.test(visibleText)) return block;
     replaced = true;
-    return `<${tag}${attributes}><strong>${replacementLabel}:</strong> {{patronos_qualificacao_conjunta}}.</${tag}>`;
+    const fontOpen = String(innerHtml).match(/<font\b[^>]*>/i)?.[0] || '';
+    const fontClose = fontOpen ? '</font>' : '';
+    return `<${tag}${attributes}>${fontOpen}<strong>${replacementLabel}:</strong> {{patronos_qualificacao_conjunta}}.${fontClose}</${tag}>`;
   });
 
   if (replaced) return withBlockQualification;

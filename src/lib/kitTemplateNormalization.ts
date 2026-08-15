@@ -100,7 +100,9 @@ export function ensureClientQualificationTokens(contentHtml: string, title: stri
       if (replaced || !new RegExp(`^${label}\\s*:`, 'i').test(text) || (hasDynamicQualification && hasBirthDateToken && birthAfterCpf)) return block;
       replaced = true;
       const suffix = isContract ? ', doravante denominado(a) CONTRATANTE.' : '.';
-      return `<${tag}${attrs}><strong>${label}:</strong> {{cliente_nome}}, {{cliente_nacionalidade}}, {{cliente_estado_civil}}, {{cliente_profissao}}, portador(a) do RG nº {{cliente_rg}} e inscrito(a) no CPF sob o nº {{cliente_cpf}}{{cliente_nascimento_qualificacao}}, residente e domiciliado(a) em {{cliente_endereco}}${suffix}</${tag}>`;
+      const fontOpen = String(inner).match(/<font\b[^>]*>/i)?.[0] || '';
+      const fontClose = fontOpen ? '</font>' : '';
+      return `<${tag}${attrs}>${fontOpen}<strong>${label}:</strong> {{cliente_nome}}, {{cliente_nacionalidade}}, {{cliente_estado_civil}}, {{cliente_profissao}}, portador(a) do RG nº {{cliente_rg}} e inscrito(a) no CPF sob o nº {{cliente_cpf}}{{cliente_nascimento_qualificacao}}, residente e domiciliado(a) em {{cliente_endereco}}${suffix}${fontClose}</${tag}>`;
     });
   }
 
