@@ -9,15 +9,33 @@ export function formatCpfCnpj(value: string | null | undefined): string {
 // qualificação. Recebe também o nome já renderizado, pois a cópia temporária da
 // revisão pode não conter mais a tag {{cliente_nome}}.
 export function removeStandaloneClientNameBeforeQualification(contentHtml: string, clientName: string): string {
-  const normalizedName = String(clientName || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('pt-BR');
+  const rawName = String(clientName || '').replace(/\s+/g, ' ').trim();
+  const normalizedName = rawName.toLocaleUpperCase('pt-BR');
   if (!normalizedName) return contentHtml;
+  const namePattern = rawName.split(/\s+/).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
+  const qualificationOffset = contentHtml.search(/OUTORGANTE\s*:/i);
+
+  // Alguns modelos Word deixam o nome dentro do próprio título, após uma quebra
+  // de linha. O nome não é subtítulo da procuração e precisa sair antes do PDF.
+  let result = contentHtml.replace(/<h([1-3])([^>]*)>([\s\S]*?)<\/h\1>/gi, (block, level, attrs, inner, offset) => {
+    if (qualificationOffset >= 0 && offset > qualificationOffset) return block;
+    const text = String(inner).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
+    if (!text.toLocaleUpperCase('pt-BR').endsWith(normalizedName)) return block;
+    const cleaned = String(inner)
+      .replace(new RegExp(`(?:<br\\s*\\/?\\s*>|&nbsp;|\\s)*(?:<strong>|<b>)?${namePattern}(?:<\\/strong>|<\\/b>)?\\s*$`, 'i'), '')
+      .trim();
+    return `<h${level}${attrs}>${cleaned}</h${level}>`;
+  });
+
   let reachedQualification = false;
-  return contentHtml.replace(/<(p|div|h1|h2|h3)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attrs, inner) => {
+  result = result.replace(/<(p|div|h1|h2|h3)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attrs, inner) => {
     const visibleText = String(inner).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
     if (/^OUTORGANTE\s*:/i.test(visibleText)) reachedQualification = true;
-    const isClientName = visibleText.toLocaleUpperCase('pt-BR') === normalizedName || /^{{\s*cliente_nome\s*}}$/i.test(visibleText);
+    const normalizedVisible = visibleText.toLocaleUpperCase('pt-BR');
+    const isClientName = normalizedVisible === normalizedName || /^{{\s*cliente_nome\s*}}$/i.test(visibleText);
     return !reachedQualification && isClientName ? '' : `<${tag}${attrs}>${inner}</${tag}>`;
   });
+  return result;
 }
 
 // Garante que dados pessoais nunca fiquem fixos em modelos usados dentro de um kit.
