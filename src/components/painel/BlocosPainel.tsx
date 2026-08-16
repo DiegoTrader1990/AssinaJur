@@ -475,24 +475,12 @@ export function FluxoRapido({
                   )}
                 </div>
 
-                {clientes.length > VISIVEIS && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBuscaTodos(busca);
-                      setTodosAbertos(true);
-                    }}
-                    className="mt-1 flex items-center justify-center gap-1.5 rounded-lg bg-slate-50 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-100"
-                  >
-                    <Users className="h-3.5 w-3.5 text-slate-500" />
-                    Ver todos os {clientes.length} clientes
-                  </button>
-                )}
               </>
             )}
 
+            {/* Sempre dois botões lado a lado, nunca empilhados. */}
             <div className="mt-auto flex gap-1.5 border-t border-slate-100 pt-2">
-              {clienteEscolhido && (
+              {clienteEscolhido ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -501,16 +489,32 @@ export function FluxoRapido({
                   }}
                   className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-50 py-2 hover:bg-slate-100"
                 >
-                  <Search className="h-3.5 w-3.5 text-slate-500" />
+                  <Search className="h-3.5 w-3.5 shrink-0 text-slate-500" />
                   <span className="text-[11px] font-bold text-slate-600">Trocar cliente</span>
                 </button>
+              ) : (
+                clientes.length > VISIVEIS && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBuscaTodos(busca);
+                      setTodosAbertos(true);
+                    }}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-50 py-2 hover:bg-slate-100"
+                  >
+                    <Users className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                    <span className="text-[11px] font-bold text-slate-600">
+                      Ver todos ({clientes.length})
+                    </span>
+                  </button>
+                )
               )}
               <Link
                 href="/clientes?novo=1"
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#071B3A] py-2 hover:bg-[#122c52]"
               >
-                <Plus className="h-3.5 w-3.5 text-[#D4AF37]" />
-                <span className="text-[11px] font-bold text-white">Cadastrar cliente</span>
+                <Plus className="h-3.5 w-3.5 shrink-0 text-[#D4AF37]" />
+                <span className="text-[11px] font-bold text-white">Cadastrar</span>
               </Link>
             </div>
           </div>
