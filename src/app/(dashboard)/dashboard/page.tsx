@@ -7,7 +7,7 @@ import BrazilOperationsMap from '@/components/BrazilOperationsMap';
 import {
   FluxoRapido,
   IndicadoresEscritorio,
-  CardIntimacoesAssinaturas,
+  CardAssinaturas,
   AvisosAcompanhamentos,
 } from '@/components/painel/BlocosPainel';
 import { montarResumo } from '@/lib/lab/painelData';
@@ -1063,8 +1063,9 @@ export default function DashboardPage() {
             Ver pendências
           </button>
         </div>}
-        {/* INTIMAÇÕES E ASSINATURAS — no lugar de "Próximos da Fila" */}
-        <CardIntimacoesAssinaturas assinaturas={painelAssinaturas} className="min-h-[264px]" />
+        {/* ASSINATURAS — no lugar de "Próximos da Fila". As intimações ficam
+            dentro da Central de Acompanhamento, ao lado. */}
+        <CardAssinaturas assinaturas={painelAssinaturas} className="min-h-[264px]" />
       </section>
 
       {/* ───────────────────────────────────────────────────────────── */}

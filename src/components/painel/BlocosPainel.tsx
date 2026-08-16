@@ -147,8 +147,9 @@ export function FluxoRapido({
 
   const [modo, setModo] = useState<'DOC' | 'KIT'>('DOC');
   const [clienteId, setClienteId] = useState('');
-  const [buscaAberta, setBuscaAberta] = useState(false);
   const [busca, setBusca] = useState('');
+  const [piscarCliente, setPiscarCliente] = useState(false);
+  const buscaRef = useRef<HTMLInputElement>(null);
   const [arquivos, setArquivos] = useState<{ id: string; nome: string }[]>([]);
   const [kitId, setKitId] = useState('');
   const [listaKitAberta, setListaKitAberta] = useState(false);
@@ -170,7 +171,24 @@ export function FluxoRapido({
   );
   const kitEscolhido = useMemo(() => kits.find((k) => k.id === kitId) || null, [kits, kitId]);
 
-  const clientesFiltrados = useMemo(() => {
+  /** Quem o escritório atendeu por último aparece primeiro — é quem ele repete. */
+  const ultimoEnvioPorCliente = useMemo(() => {
+    const ultimo = new Map<string, number>();
+    documentos.forEach((d) => {
+      const id = d.clientId || d.client?.id;
+      if (!id) return;
+      const t = new Date(d.createdAt || 0).getTime();
+      if (!ultimo.has(id) || t > (ultimo.get(id) as number)) ultimo.set(id, t);
+    });
+    return ultimo;
+  }, [documentos]);
+
+  /**
+   * A lista já vem montada e visível: o advogado não precisa clicar para
+   * descobrir que existe uma lista. Recentes no topo, resto em ordem
+   * alfabética, e a busca filtra tudo.
+   */
+  const clientesOrdenados = useMemo(() => {
     const alvo = busca.trim().toLowerCase();
     const base = alvo
       ? clientes.filter(
@@ -180,22 +198,14 @@ export function FluxoRapido({
             soDigitos(c.phone).includes(soDigitos(alvo))
         )
       : clientes;
-    return base.slice(0, 8);
-  }, [clientes, busca]);
 
-  const clientesRecentes = useMemo(() => {
-    const ultimo = new Map<string, number>();
-    documentos.forEach((d) => {
-      const id = d.clientId || d.client?.id;
-      if (!id) return;
-      const t = new Date(d.createdAt || 0).getTime();
-      if (!ultimo.has(id) || t > (ultimo.get(id) as number)) ultimo.set(id, t);
+    return [...base].sort((a, b) => {
+      const ta = ultimoEnvioPorCliente.get(a.id) || 0;
+      const tb = ultimoEnvioPorCliente.get(b.id) || 0;
+      if (ta !== tb) return tb - ta;
+      return String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR');
     });
-    return clientes
-      .filter((c) => ultimo.has(c.id))
-      .sort((a, b) => (ultimo.get(b.id) || 0) - (ultimo.get(a.id) || 0))
-      .slice(0, 3);
-  }, [clientes, documentos]);
+  }, [clientes, busca, ultimoEnvioPorCliente]);
 
   const processoDoCliente = useMemo(() => {
     if (!clienteId) return null;
@@ -243,8 +253,27 @@ export function FluxoRapido({
     }
   }
 
+  /**
+   * O botão fica sempre dourado — é a ação principal da tela e some visualmente
+   * quando apagado. Se faltar alguma peça, em vez de não fazer nada ele leva o
+   * advogado ao passo que falta: foca a busca de cliente, abre o seletor de
+   * arquivos ou a lista de kits.
+   */
   function seguir() {
-    if (!podeEnviar) return;
+    if (!clienteId) {
+      setPiscarCliente(true);
+      buscaRef.current?.focus();
+      window.setTimeout(() => setPiscarCliente(false), 1200);
+      return;
+    }
+    if (modo === 'DOC' && arquivos.length === 0) {
+      inputRef.current?.click();
+      return;
+    }
+    if (modo === 'KIT' && !kitId) {
+      setListaKitAberta(true);
+      return;
+    }
     if (modo === 'KIT') {
       const p = new URLSearchParams({ kitId });
       if (clienteId) p.set('clientId', clienteId);
@@ -285,88 +314,33 @@ export function FluxoRapido({
         {/* 1. Cliente */}
         <div className="col-span-12 flex flex-col lg:col-span-4">
           <PassoRotulo numero={1} texto="Cliente" />
-          <div className="flex flex-1 flex-col rounded-xl bg-white p-2">
-            <button
-              type="button"
-              onClick={() => setBuscaAberta((v) => !v)}
-              className="flex w-full items-center gap-2.5 rounded-lg px-1.5 py-2 text-left hover:bg-slate-50"
-            >
-              {clienteEscolhido ? (
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#071B3A] text-[12px] font-black text-[#D4AF37]">
-                  {iniciaisDe(clienteEscolhido.name || '')}
-                </span>
-              ) : (
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100">
-                  <UserRound className="h-4 w-4 text-slate-400" />
-                </span>
-              )}
-              <span className="min-w-0 flex-1">
-                <span
-                  className={`block truncate text-[13px] ${
-                    clienteEscolhido ? 'font-bold text-[#071B3A]' : 'font-semibold text-slate-400'
-                  }`}
-                >
-                  {clienteEscolhido?.name || 'Selecionar cliente'}
-                </span>
-                <span className="block truncate text-[10.5px] text-slate-500">
-                  {clienteEscolhido
-                    ? [
+          <div
+            className={`flex flex-1 flex-col rounded-xl bg-white p-2 transition ${
+              piscarCliente ? 'ring-2 ring-[#D4AF37]' : ''
+            }`}
+          >
+            {clienteEscolhido ? (
+              <>
+                <div className="flex items-center gap-2.5 rounded-lg px-1.5 py-2">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#071B3A] text-[12px] font-black text-[#D4AF37]">
+                    {iniciaisDe(clienteEscolhido.name || '')}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-bold text-[#071B3A]">
+                      {clienteEscolhido.name}
+                    </span>
+                    <span className="block truncate text-[10.5px] text-slate-500">
+                      {[
                         formatarCpfCnpj(clienteEscolhido.cpfCnpj),
                         formatarTelefone(clienteEscolhido.phone),
                       ]
                         .filter(Boolean)
-                        .join(' · ') || 'sem CPF e telefone cadastrados'
-                    : 'buscar por nome, CPF ou telefone'}
-                </span>
-              </span>
-              <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
-            </button>
-
-            {buscaAberta && (
-              <div className="mt-1.5 rounded-lg border border-slate-200 bg-white p-1.5">
-                <div className="flex items-center gap-2 rounded-md bg-slate-50 px-2 py-1.5">
-                  <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                  <input
-                    autoFocus
-                    value={busca}
-                    onChange={(e) => setBusca(e.target.value)}
-                    placeholder="nome, CPF ou telefone"
-                    className="w-full bg-transparent text-[12px] text-slate-700 outline-none"
-                  />
+                        .join(' · ') || 'sem CPF e telefone cadastrados'}
+                    </span>
+                  </span>
                 </div>
-                <div className="mt-1 max-h-44 overflow-y-auto">
-                  {clientesFiltrados.length === 0 && (
-                    <p className="px-2 py-2 text-[11px] text-slate-400">Nenhum cliente encontrado.</p>
-                  )}
-                  {clientesFiltrados.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => {
-                        setClienteId(c.id);
-                        setBuscaAberta(false);
-                        setBusca('');
-                      }}
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-slate-50"
-                    >
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[9px] font-black text-slate-600">
-                        {iniciaisDe(c.name || '')}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-700">
-                        {c.name}
-                      </span>
-                      <span className="shrink-0 text-[10px] text-slate-400">
-                        {formatarCpfCnpj(c.cpfCnpj)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
 
-            {!buscaAberta && clienteEscolhido && (
-              <>
-                <div className="mt-1.5 flex items-center gap-1.5 px-1.5">
+                <div className="mt-1 flex items-center gap-1.5 px-1.5">
                   {cadastroCompleto ? (
                     <>
                       <CheckCircle2 className="h-3 w-3 shrink-0 text-teal-600" />
@@ -383,6 +357,7 @@ export function FluxoRapido({
                     </>
                   )}
                 </div>
+
                 <div className="mt-1.5 space-y-1 border-t border-slate-100 px-1.5 pt-1.5">
                   {canalCliente && (
                     <div className="flex items-center gap-2">
@@ -403,48 +378,89 @@ export function FluxoRapido({
                   )}
                 </div>
               </>
-            )}
+            ) : (
+              <>
+                <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-2">
+                  <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                  <input
+                    ref={buscaRef}
+                    value={busca}
+                    onChange={(e) => setBusca(e.target.value)}
+                    placeholder="buscar por nome, CPF ou telefone"
+                    className="w-full bg-transparent text-[12px] text-slate-700 outline-none placeholder:text-slate-400"
+                  />
+                  {busca && (
+                    <button type="button" onClick={() => setBusca('')} aria-label="Limpar busca">
+                      <X className="h-3.5 w-3.5 text-slate-400 hover:text-slate-600" />
+                    </button>
+                  )}
+                </div>
 
-            {!buscaAberta && !clienteEscolhido && clientesRecentes.length > 0 && (
-              <div className="mt-2 border-t border-slate-100 pt-2">
-                <p className="mb-1 px-1.5 text-[9.5px] font-black uppercase tracking-[.14em] text-slate-400">
-                  Atendidos recentemente
-                </p>
-                {clientesRecentes.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setClienteId(c.id)}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left hover:bg-slate-50"
-                  >
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-black text-slate-600">
-                      {iniciaisDe(c.name || '')}
-                    </span>
-                    <span className="flex-1 truncate text-[12px] font-semibold text-slate-700">
-                      {c.name}
-                    </span>
-                  </button>
-                ))}
-              </div>
+                <div className="mt-1.5 min-h-0 flex-1 overflow-y-auto pr-0.5">
+                  {clientes.length === 0 ? (
+                    <p className="px-2 py-4 text-center text-[11px] text-slate-400">
+                      Nenhum cliente cadastrado ainda.
+                    </p>
+                  ) : clientesOrdenados.length === 0 ? (
+                    <p className="px-2 py-4 text-center text-[11px] text-slate-400">
+                      Nenhum cliente encontrado para “{busca}”.
+                    </p>
+                  ) : (
+                    clientesOrdenados.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setClienteId(c.id);
+                          setBusca('');
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left hover:bg-slate-50"
+                      >
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-black text-slate-600">
+                          {iniciaisDe(c.name || '')}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[12px] font-semibold text-slate-700">
+                            {c.name}
+                          </span>
+                          {c.cpfCnpj && (
+                            <span className="block truncate text-[10px] text-slate-400">
+                              {formatarCpfCnpj(c.cpfCnpj)}
+                            </span>
+                          )}
+                        </span>
+                        {ultimoEnvioPorCliente.has(c.id) && (
+                          <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">
+                            recente
+                          </span>
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </>
             )}
 
             <div className="mt-auto flex gap-1.5 border-t border-slate-100 pt-2">
-              <button
-                type="button"
-                onClick={() => setBuscaAberta(true)}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-50 py-2 hover:bg-slate-100"
-              >
-                <Search className="h-3.5 w-3.5 text-slate-500" />
-                <span className="text-[11px] font-bold text-slate-600">
-                  {clienteEscolhido ? 'Trocar cliente' : 'Buscar'}
-                </span>
-              </button>
+              {clienteEscolhido && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClienteId('');
+                    setBusca('');
+                  }}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-50 py-2 hover:bg-slate-100"
+                >
+                  <Search className="h-3.5 w-3.5 text-slate-500" />
+                  <span className="text-[11px] font-bold text-slate-600">Trocar cliente</span>
+                </button>
+              )}
               <Link
                 href="/clientes?novo=1"
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#071B3A] py-2 hover:bg-[#122c52]"
               >
                 <Plus className="h-3.5 w-3.5 text-[#D4AF37]" />
-                <span className="text-[11px] font-bold text-white">Cadastrar</span>
+                <span className="text-[11px] font-bold text-white">Cadastrar cliente</span>
               </Link>
             </div>
           </div>
@@ -715,14 +731,18 @@ export function FluxoRapido({
               </p>
             </div>
 
+            {/*
+              Dourado só quando dá para enviar de verdade. Apagado, o botão
+              ainda é clicável de propósito: em vez de não fazer nada, leva o
+              advogado ao passo que falta (ver `seguir`).
+            */}
             <button
               type="button"
               onClick={seguir}
-              disabled={!podeEnviar}
-              className={`flex w-full flex-1 flex-col items-center justify-center gap-1 rounded-xl ${
+              className={`flex w-full flex-1 flex-col items-center justify-center gap-1 rounded-xl transition ${
                 podeEnviar
-                  ? 'bg-gradient-to-br from-[#E0BD48] to-[#B68B1C] text-[#071B3A] shadow-[0_8px_20px_-8px_rgba(212,175,55,.7)]'
-                  : 'cursor-not-allowed border border-white/15 bg-white/10 text-slate-400'
+                  ? 'bg-gradient-to-br from-[#E0BD48] to-[#B68B1C] text-[#071B3A] shadow-[0_8px_20px_-8px_rgba(212,175,55,.7)] hover:from-[#E8C85C]'
+                  : 'border border-white/15 bg-white/10 text-slate-400 hover:bg-white/[.14]'
               }`}
             >
               <Send className={`h-5 w-5 ${podeEnviar ? '' : 'opacity-50'}`} />
@@ -733,7 +753,7 @@ export function FluxoRapido({
                     ? `Enviar ${arquivos.length} ${arquivos.length === 1 ? 'documento' : 'documentos'}`
                     : 'Enviar para assinatura'}
               </span>
-              <span className="text-[10px] font-bold opacity-70">
+              <span className="text-[10px] font-bold opacity-80">
                 {podeEnviar ? 'revisar assinantes' : faltaPara}
               </span>
             </button>
@@ -909,96 +929,42 @@ export function IndicadoresEscritorio({
   );
 }
 
-/* ═════════════════ 3. INTIMAÇÕES / ASSINATURAS (abas) ══════════════════ */
+/* ═════════════════════════ 3. ASSINATURAS ══════════════════════════════ */
 
 /**
  * Uma linha = um ENVIO. Um kit de 3 peças aparece uma vez, não três — a
  * agregação acontece em painelExtra.derivarAssinaturasAndamento.
- *
- * A aba Intimações fica visível mas vazia de propósito: o DJEN ainda não está
- * conectado, e encher a tela com exemplo faria o advogado confiar em dado que
- * não existe.
  */
-export function CardIntimacoesAssinaturas({
+export function CardAssinaturas({
   assinaturas,
   className = '',
 }: {
   assinaturas: AssinaturaAndamento[];
   className?: string;
 }) {
-  const [aba, setAba] = useState<'INT' | 'ASS'>('ASS');
-
   return (
     <Cartao className={`flex flex-col ${className}`}>
-      <div className="border-b border-slate-100 px-4 pt-3">
-        <div className="flex items-end justify-between gap-2">
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => setAba('INT')}
-              className={`flex items-center gap-1.5 border-b-2 px-0.5 pb-2 text-[12px] ${
-                aba === 'INT'
-                  ? 'border-[#B68B1C] font-extrabold text-[#071B3A]'
-                  : 'border-transparent font-bold text-slate-400 hover:text-slate-600'
-              }`}
-            >
-              Intimações
-              <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-slate-500">
-                em breve
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setAba('ASS')}
-              className={`flex items-center gap-1.5 border-b-2 px-0.5 pb-2 text-[12px] ${
-                aba === 'ASS'
-                  ? 'border-[#B68B1C] font-extrabold text-[#071B3A]'
-                  : 'border-transparent font-bold text-slate-400 hover:text-slate-600'
-              }`}
-            >
-              Assinaturas
-              <span
-                className={`rounded-full px-1.5 py-0.5 text-[9px] font-black ${
-                  aba === 'ASS' ? 'bg-[#B68B1C] text-white' : 'bg-slate-100 text-slate-500'
-                }`}
-              >
-                {assinaturas.length}
-              </span>
-            </button>
-          </div>
-          <Link href="/documentos" className="pb-2 text-[10px] font-bold text-[#B68B1C]">
-            Ver todas
-          </Link>
+      <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <h3 className="text-[12px] font-black uppercase tracking-wide text-[#0B192C]">
+            Assinaturas
+          </h3>
+          <span className="rounded-full bg-[#B68B1C] px-1.5 py-0.5 text-[9px] font-black text-white">
+            {assinaturas.length}
+          </span>
         </div>
+        <Link href="/documentos" className="text-[10px] font-bold text-[#B68B1C]">
+          Ver todas
+        </Link>
       </div>
 
-      {aba === 'INT' ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2.5 px-5 py-6 text-center">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
-            <Scale className="h-4 w-4 text-slate-400" />
-          </span>
-          <p className="text-[12px] font-extrabold text-[#071B3A]">
-            Intimações do DJEN ainda não conectadas
+      <div className="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">
+        {assinaturas.length === 0 && (
+          <p className="px-5 py-8 text-center text-[11px] text-slate-400">
+            Nenhum envio em circulação. Use o fluxo rápido acima.
           </p>
-          <p className="max-w-xs text-[10.5px] leading-relaxed text-slate-500">
-            O Diário de Justiça Eletrônico Nacional publica por número de OAB. Informando a OAB do
-            escritório, cada publicação aparece aqui já vinculada ao cliente pelo número do processo.
-          </p>
-          <Link
-            href="/configuracoes"
-            className="rounded-lg bg-[#071B3A] px-3 py-1.5 text-[11px] font-bold text-white"
-          >
-            Informar OAB
-          </Link>
-        </div>
-      ) : (
-        <div className="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">
-          {assinaturas.length === 0 && (
-            <p className="px-5 py-8 text-center text-[11px] text-slate-400">
-              Nenhum envio em circulação. Use o fluxo rápido acima.
-            </p>
-          )}
-          {assinaturas.map((a) => (
+        )}
+        {assinaturas.map((a) => (
             <div key={a.id} className="px-4 py-2.5">
               <div className="flex items-start gap-2.5">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-black text-slate-600">
@@ -1056,18 +1022,22 @@ export function CardIntimacoesAssinaturas({
               </div>
             </div>
           ))}
-        </div>
-      )}
+      </div>
     </Cartao>
   );
 }
 
-/* ═══════════════ 4. AVISOS E ACOMPANHAMENTOS (por caso) ════════════════ */
+/* ═══════════════ 4. CENTRAL DE ACOMPANHAMENTO (por caso) ═══════════════ */
 
 /**
- * Duas origens, marcadas na tela: VOCÊ (escrito à mão, ex. "atualizar o
- * CadÚnico") e SISTEMA (derivado dos dados). O advogado precisa saber quem
- * afirmou o quê antes de agir.
+ * Tudo que precisa de acompanhamento vive aqui, em duas abas:
+ *
+ *  - Avisos: duas origens marcadas na tela — VOCÊ (escrito à mão, ex.
+ *    "atualizar o CadÚnico") e SISTEMA (derivado dos dados). O advogado precisa
+ *    saber quem afirmou o quê antes de agir.
+ *  - Intimações: as publicações do DJEN por número de OAB. Ficam nesta central
+ *    porque são exatamente isso — caso que exige providência —, e não uma
+ *    listagem à parte.
  *
  * Os avisos manuais ficam no navegador. Não é o destino final — quando virar
  * tabela no banco, só a leitura/gravação muda, o bloco continua igual.
@@ -1085,6 +1055,7 @@ export function AvisosAcompanhamentos({
   subtitulo?: string;
   className?: string;
 }) {
+  const [aba, setAba] = useState<'AVISOS' | 'INTIMACOES'>('AVISOS');
   const [avisosManuais, setAvisosManuais] = useState<AvisoManual[]>([]);
   const [form, setForm] = useState(false);
   const [novo, setNovo] = useState({
@@ -1131,27 +1102,85 @@ export function AvisosAcompanhamentos({
 
   return (
     <Cartao className={`flex flex-col ${className}`}>
-      <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
-        <div className="min-w-0">
-          <h3 className="truncate text-[12px] font-black uppercase tracking-wide text-[#0B192C]">
-            {titulo}
-          </h3>
-          <p className="mt-0.5 truncate text-[9.5px] font-medium text-slate-400">
-            {subtitulo}
-            {total > 0 ? ` · ${total}` : ''}
-          </p>
+      <div className="border-b border-slate-100 px-4 pt-2.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="truncate text-[12px] font-black uppercase tracking-wide text-[#0B192C]">
+              {titulo}
+            </h3>
+            <p className="mt-0.5 truncate text-[9.5px] font-medium text-slate-400">{subtitulo}</p>
+          </div>
+          {aba === 'AVISOS' && (
+            <button
+              type="button"
+              onClick={() => setForm((v) => !v)}
+              className="flex shrink-0 items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1.5 text-[10.5px] font-bold text-slate-600 transition hover:bg-[#071B3A] hover:text-white"
+            >
+              <Plus className="h-3 w-3" />
+              Novo aviso
+            </button>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={() => setForm((v) => !v)}
-          className="flex shrink-0 items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1.5 text-[10.5px] font-bold text-slate-600 transition hover:bg-[#071B3A] hover:text-white"
-        >
-          <Plus className="h-3 w-3" />
-          Novo aviso
-        </button>
+
+        <div className="mt-2 flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setAba('AVISOS')}
+            className={`flex items-center gap-1.5 border-b-2 px-0.5 pb-1.5 text-[11.5px] ${
+              aba === 'AVISOS'
+                ? 'border-[#B68B1C] font-extrabold text-[#071B3A]'
+                : 'border-transparent font-bold text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            Avisos
+            <span
+              className={`rounded-full px-1.5 py-0.5 text-[9px] font-black ${
+                aba === 'AVISOS' ? 'bg-[#B68B1C] text-white' : 'bg-slate-100 text-slate-500'
+              }`}
+            >
+              {total}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setAba('INTIMACOES')}
+            className={`flex items-center gap-1.5 border-b-2 px-0.5 pb-1.5 text-[11.5px] ${
+              aba === 'INTIMACOES'
+                ? 'border-[#B68B1C] font-extrabold text-[#071B3A]'
+                : 'border-transparent font-bold text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            Intimações
+            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-slate-500">
+              em breve
+            </span>
+          </button>
+        </div>
       </div>
 
-      {form && (
+      {aba === 'INTIMACOES' && (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2.5 px-5 py-6 text-center">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
+            <Scale className="h-4 w-4 text-slate-400" />
+          </span>
+          <p className="text-[12px] font-extrabold text-[#071B3A]">
+            Intimações do DJEN ainda não conectadas
+          </p>
+          <p className="max-w-xs text-[10.5px] leading-relaxed text-slate-500">
+            O Diário de Justiça Eletrônico Nacional publica por número de OAB. Informando a OAB do
+            escritório, cada publicação aparece aqui já vinculada ao cliente pelo número do processo,
+            com um clique para virar prazo.
+          </p>
+          <Link
+            href="/configuracoes"
+            className="rounded-lg bg-[#071B3A] px-3 py-1.5 text-[11px] font-bold text-white"
+          >
+            Informar OAB
+          </Link>
+        </div>
+      )}
+
+      {aba === 'AVISOS' && form && (
         <div className="space-y-2 border-b border-slate-100 bg-slate-50/70 px-4 py-3">
           <input
             value={novo.titulo}
@@ -1199,7 +1228,11 @@ export function AvisosAcompanhamentos({
         </div>
       )}
 
-      <div className="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">
+      <div
+        className={`min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto ${
+          aba === 'AVISOS' ? '' : 'hidden'
+        }`}
+      >
         {avisosManuais.map((a) => {
           const q = textoAcompanhamento(a.acompanharEm, agora);
           return (

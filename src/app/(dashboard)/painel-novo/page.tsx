@@ -23,7 +23,7 @@ import { Loader2, Scale } from 'lucide-react';
 import BrazilOperationsMap from '@/components/BrazilOperationsMap';
 import {
   AvisosAcompanhamentos,
-  CardIntimacoesAssinaturas,
+  CardAssinaturas,
   FluxoRapido,
   IndicadoresEscritorio,
   KitsMaisUsados,
@@ -244,7 +244,7 @@ export default function PainelNovoPage() {
       />
 
       <div className="grid grid-cols-12 gap-5">
-        <CardIntimacoesAssinaturas
+        <CardAssinaturas
           assinaturas={assinaturas}
           className="col-span-12 lg:col-span-7"
         />
