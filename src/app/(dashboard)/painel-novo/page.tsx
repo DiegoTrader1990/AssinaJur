@@ -58,6 +58,7 @@ import {
   lerAvisosManuais,
   ordenarAvisosManuais,
   textoAcompanhamento,
+  textoDuracao,
   type AssinaturaAndamento,
   type AvisoManual,
   type IndicadoresPainel,
@@ -68,6 +69,30 @@ import {
 const RAMPA_FUNIL = ['#9AAAC4', '#7386A8', '#4D688F', '#28456E', '#0A1F42'];
 
 /* ─────────────────────────── Utilidades de texto ─────────────────────── */
+
+/**
+ * "Dr. Diego dos Santos" -> "Dr. Diego". "Diego dos Santos" -> "Dr. Diego".
+ * Antes o código pegava a primeira palavra: quando o cadastro já trazia o
+ * título, sobrava só "Dr." e a saudação virava "Bom dia, Dr.".
+ */
+function tratamentoENome(nomeCompleto: string): string {
+  const partes = String(nomeCompleto || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (partes.length === 0) return '';
+
+  const titulos = ['dr', 'dr.', 'dra', 'dra.', 'doutor', 'doutora'];
+  const temTitulo = titulos.includes(partes[0].toLowerCase());
+  const tratamento = temTitulo
+    ? partes[0].toLowerCase().startsWith('dra')
+      ? 'Dra.'
+      : 'Dr.'
+    : 'Dr.';
+  const primeiro = temTitulo ? partes[1] : partes[0];
+  if (!primeiro) return tratamento;
+  return `${tratamento} ${primeiro}`;
+}
 
 function saudacao(h: number): string {
   if (h < 12) return 'Bom dia';
@@ -280,8 +305,7 @@ export default function PainelNovoPage() {
         return;
       }
 
-      const primeiro = String(me.user.name || '').trim().split(' ')[0] || '';
-      setNome(primeiro.toLowerCase().startsWith('dr') ? primeiro : primeiro ? `Dr. ${primeiro}` : '');
+      setNome(tratamentoENome(String(me.user.name || '')));
       setEscritorio(esc?.office?.name || '');
 
       const listaClientes: ClienteLista[] = cli?.clients || [];
@@ -327,14 +351,25 @@ export default function PainelNovoPage() {
   );
 
   const assinaturas: AssinaturaAndamento[] = useMemo(
-    () => derivarAssinaturasAndamento(documentos, agora),
-    [documentos, agora]
+    () => derivarAssinaturasAndamento(documentos, agora, { kits: kits as any }),
+    [documentos, agora, kits]
   );
 
   const kitsUsados: KitUsado[] = useMemo(
     () => derivarKitsMaisUsados(kits as any, documentos),
     [kits, documentos]
   );
+
+  /**
+   * Ao entrar no modo Kit, já vem um kit escolhido — o mais usado do escritório.
+   * O advogado troca em um clique, mas não encara uma caixa vazia perguntando
+   * "qual kit?" quando 9 em cada 10 vezes a resposta é sempre a mesma.
+   */
+  useEffect(() => {
+    if (modo !== 'KIT' || kitId) return;
+    const preferido = kitsUsados[0]?.id || kits[0]?.id;
+    if (preferido) setKitId(preferido);
+  }, [modo, kitId, kitsUsados, kits]);
 
   const clienteEscolhido = useMemo(
     () => clientes.find((c) => c.id === clienteId) || null,
@@ -385,7 +420,15 @@ export default function PainelNovoPage() {
     clienteEscolhido?.email ||
     '';
 
-  const podeEnviar = modo === 'DOC' ? Boolean(clienteId && arquivos.length > 0) : Boolean(kitId);
+  // Os dois caminhos exigem cliente: sem ele não há para quem enviar nem como
+  // preencher as peças do kit.
+  const podeEnviar = Boolean(clienteId) && (modo === 'DOC' ? arquivos.length > 0 : Boolean(kitId));
+
+  const faltaPara = !clienteId
+    ? 'escolha o cliente no passo 1'
+    : modo === 'KIT'
+      ? 'escolha o Kit'
+      : 'escolha os documentos';
 
   /* ─────────── ações do fluxo rápido ─────────── */
 
@@ -492,7 +535,9 @@ export default function PainelNovoPage() {
   const mediaSerie = assinaturasPorDia.length
     ? totalSerie / assinaturasPorDia.length
     : 0;
-  const avisosSistema = avisos.slice(0, 5);
+  // Assinatura parada já é a aba "Assinaturas", com barra de progresso e botão
+  // de cobrar. Repetir aqui enchia a coluna com a mesma linha três vezes.
+  const avisosSistema = avisos.filter((a) => !a.id.startsWith('assin-')).slice(0, 5);
   const totalAvisos = avisosManuais.length + avisosSistema.length;
 
   return (
@@ -957,11 +1002,7 @@ export default function PainelNovoPage() {
                       : 'Enviar para assinatura'}
                 </span>
                 <span className="text-[10px] font-bold opacity-70">
-                  {podeEnviar
-                    ? 'revisar assinantes'
-                    : modo === 'KIT'
-                      ? 'escolha o Kit'
-                      : 'escolha cliente e documentos'}
+                  {podeEnviar ? 'revisar assinantes' : faltaPara}
                 </span>
               </button>
 
@@ -989,11 +1030,14 @@ export default function PainelNovoPage() {
             <CheckCircle2 className="h-3 w-3 text-[#D4AF37]" />
             Assinatura a rogo com testemunhas
           </span>
-          {indicadores.taxaConclusao !== null && (
+          {indicadores.tempoMedioMinutos !== null && (
             <span className="ml-auto flex items-center gap-1.5 text-[10.5px] text-slate-400">
-              <TrendingUp className="h-3 w-3" />
-              <strong className="font-black text-white">{indicadores.taxaConclusao}%</strong> dos seus
-              envios são assinados
+              <Clock3 className="h-3 w-3" />
+              seus clientes assinam em{' '}
+              <strong className="font-black text-white">
+                {textoDuracao(indicadores.tempoMedioMinutos)}
+              </strong>{' '}
+              em média
             </span>
           )}
         </div>
@@ -1066,12 +1110,12 @@ export default function PainelNovoPage() {
               vencidos.length + prazosHoje.length > 0 ? 'text-rose-600' : 'text-[#071B3A]'
             }`}
           >
-            {vencidos.length + prazosHoje.length}
+            {resumo.temAlgumPrazoCadastrado ? vencidos.length + prazosHoje.length : '—'}
           </p>
           <p className="mt-1.5 text-[11px] text-slate-400">
             {resumo.temAlgumPrazoCadastrado
               ? `${vencidos.length} vencido${vencidos.length === 1 ? '' : 's'} · ${prazosHoje.length} vence${prazosHoje.length === 1 ? '' : 'm'} hoje`
-              : 'nenhum prazo cadastrado ainda'}
+              : `${resumo.processosSemPrazo} processo(s) ainda sem data`}
           </p>
         </Cartao>
 
@@ -1109,8 +1153,8 @@ export default function PainelNovoPage() {
                   }`}
                 >
                   Intimações
-                  <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9.5px] font-black text-slate-500">
-                    off
+                  <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9.5px] font-black uppercase tracking-wide text-slate-500">
+                    em breve
                   </span>
                 </button>
                 <button
@@ -1192,7 +1236,8 @@ export default function PainelNovoPage() {
                         </span>
                       </div>
                       <p className="mt-0.5 truncate text-[11px] text-slate-500">
-                        {a.titulo} ·{' '}
+                        {a.titulo}
+                        {a.pecas > 1 ? ` · ${a.pecas} peças` : ''} ·{' '}
                         {a.estado === 'CONCLUIDO' ? (
                           'concluído'
                         ) : a.estado === 'PARADO' ? (

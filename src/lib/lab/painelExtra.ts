@@ -29,6 +29,8 @@ export type EstadoAssinatura = 'CONCLUIDO' | 'PARADO' | 'ANDAMENTO' | 'CANCELADO
 export interface AssinaturaAndamento {
   id: string;
   titulo: string;
+  /** Quantos documentos entraram no mesmo envio (kit = várias peças). */
+  pecas: number;
   cliente: string;
   clienteId: string;
   iniciais: string;
@@ -57,6 +59,8 @@ export interface IndicadoresPainel {
   temHistoricoMesAnterior: boolean;
   taxaConclusao: number | null;
   totalAvaliadoTaxa: number;
+  /** Minutos entre o envio e a primeira assinatura. null = base insuficiente. */
+  tempoMedioMinutos: number | null;
 }
 
 /* ─────────────────────────── Utilidades ───────────────────────────────── */
@@ -95,9 +99,12 @@ function normalizar(valor?: string | null): string {
 /* ───────────────────── Acompanhamento de assinatura ───────────────────── */
 
 /**
- * Um documento vira uma linha da aba "Assinaturas". O que importa para o
- * advogado é: quantos já assinaram, há quanto tempo está fora e se as provas
- * (selfie, geolocalização, dispositivo) foram coletadas.
+ * Uma LINHA = um ENVIO, não um documento.
+ *
+ * Isto importa: um Kit Jurídico com 3 peças cria 3 documentos no banco, com o
+ * mesmo `kitBatchId`. Listar documento por documento repetia o mesmo cliente
+ * três vezes na tela e inflava a contagem — o advogado mandou uma coisa só.
+ * Então agrupamos pelo lote e somamos os assinantes das peças.
  *
  * `DIAS_PARADO` = 2. Abaixo disso o cliente ainda está dentro do tempo médio
  * de conclusão observado no próprio sistema; acima, é cobrança.
@@ -107,33 +114,70 @@ export const DIAS_PARADO = 2;
 export function derivarAssinaturasAndamento(
   documentos: DocumentoBruto[],
   agora: Date,
-  limite = 6
+  opcoes: { kits?: KitBruto[]; limite?: number } = {}
 ): AssinaturaAndamento[] {
-  const linhas: AssinaturaAndamento[] = [];
+  const { kits = [], limite = 6 } = opcoes;
+  const nomeDoKit = new Map(kits.map((k) => [k.id, k.name || 'Kit Jurídico']));
+
+  interface Acumulado {
+    documentos: DocumentoBruto[];
+    kitId?: string | null;
+  }
+  const lotes = new Map<string, Acumulado>();
 
   documentos.forEach((d) => {
     const status = normalizar(d.status);
     if (status === 'RASCUNHO') return;
+    if (!Array.isArray(d.signers) || d.signers.length === 0) return;
 
-    const assinantes = Array.isArray(d.signers) ? d.signers : [];
+    const chave = d.kitBatchId || d.id;
+    if (!lotes.has(chave)) lotes.set(chave, { documentos: [], kitId: d.kitId || d.kit?.id });
+    lotes.get(chave)!.documentos.push(d);
+  });
+
+  const linhas: AssinaturaAndamento[] = [];
+
+  lotes.forEach((lote, chave) => {
+    const docs = lote.documentos;
+    const primeiro = docs[0];
+    const assinantes = docs.flatMap((d) => (Array.isArray(d.signers) ? d.signers : []));
     const total = assinantes.length;
     if (total === 0) return;
 
     const assinados = assinantes.filter((s) => normalizar(s?.status) === 'ASSINADO').length;
-    const enviado = dataValida(d.createdAt);
+
+    // O envio só está concluído quando TODAS as peças estão concluídas.
+    const situacoes = docs.map((d) => normalizar(d.status));
+    const todosConcluidos = situacoes.every((s) => s === 'CONCLUIDO');
+    const todosEncerrados = situacoes.every(
+      (s) => s === 'CONCLUIDO' || s === 'CANCELADO' || s === 'EXPIRADO'
+    );
+
+    const enviado = docs
+      .map((d) => dataValida(d.createdAt))
+      .filter((x): x is Date => Boolean(x))
+      .sort((a, b) => a.getTime() - b.getTime())[0];
     const dias = enviado ? diasEntre(enviado, agora) : 0;
 
     let estado: EstadoAssinatura = 'ANDAMENTO';
-    if (status === 'CONCLUIDO') estado = 'CONCLUIDO';
-    else if (status === 'CANCELADO' || status === 'EXPIRADO') estado = 'CANCELADO';
+    if (todosConcluidos) estado = 'CONCLUIDO';
+    else if (todosEncerrados) estado = 'CANCELADO';
     else if (dias >= DIAS_PARADO) estado = 'PARADO';
 
+    const kitId = lote.kitId;
+    const titulo = kitId
+      ? nomeDoKit.get(kitId) || 'Kit Jurídico'
+      : docs.length > 1
+        ? `${docs.length} documentos`
+        : primeiro.title || 'Documento sem título';
+
     linhas.push({
-      id: d.id,
-      titulo: d.title || 'Documento sem título',
-      cliente: d.client?.name || 'Cliente não vinculado',
-      clienteId: d.client?.id || d.clientId || '',
-      iniciais: iniciaisDe(d.client?.name || ''),
+      id: chave,
+      titulo,
+      pecas: docs.length,
+      cliente: primeiro.client?.name || 'Cliente não vinculado',
+      clienteId: primeiro.client?.id || primeiro.clientId || '',
+      iniciais: iniciaisDe(primeiro.client?.name || ''),
       assinados,
       total,
       estado,
@@ -204,10 +248,18 @@ export function derivarIndicadores(documentos: DocumentoBruto[], agora: Date): I
     return s !== 'RASCUNHO' && s !== 'CONCLUIDO' && s !== 'CANCELADO' && s !== 'EXPIRADO';
   });
 
-  const parados = emCirculacao.filter((d) => {
-    const enviado = dataValida(d.createdAt);
-    return enviado ? diasEntre(enviado, agora) >= DIAS_PARADO : false;
-  });
+  // Conta ENVIOS, não peças: um kit de 3 documentos é uma assinatura pendente,
+  // senão o topo diz 6 e a lista logo abaixo mostra 2 — e o número perde a fé.
+  const lotesEmCirculacao = new Set(emCirculacao.map((d) => d.kitBatchId || d.id));
+
+  const parados = new Set(
+    emCirculacao
+      .filter((d) => {
+        const enviado = dataValida(d.createdAt);
+        return enviado ? diasEntre(enviado, agora) >= DIAS_PARADO : false;
+      })
+      .map((d) => d.kitBatchId || d.id)
+  );
 
   const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
   const inicioMesAnterior = new Date(agora.getFullYear(), agora.getMonth() - 1, 1);
@@ -216,34 +268,79 @@ export function derivarIndicadores(documentos: DocumentoBruto[], agora: Date): I
   const dataConclusao = (d: DocumentoBruto) =>
     dataValida(d.completedAt) || dataValida(d.updatedAt) || dataValida(d.createdAt);
 
-  const assinadosNoMes = concluidos.filter((d) => {
-    const q = dataConclusao(d);
-    return q ? q >= inicioMes : false;
-  }).length;
+  const lote = (d: DocumentoBruto) => d.kitBatchId || d.id;
 
-  const assinadosMesAnterior = concluidos.filter((d) => {
-    const q = dataConclusao(d);
-    return q ? q >= inicioMesAnterior && q < inicioMes : false;
-  }).length;
+  const assinadosNoMes = new Set(
+    concluidos
+      .filter((d) => {
+        const q = dataConclusao(d);
+        return q ? q >= inicioMes : false;
+      })
+      .map(lote)
+  ).size;
+
+  const assinadosMesAnterior = new Set(
+    concluidos
+      .filter((d) => {
+        const q = dataConclusao(d);
+        return q ? q >= inicioMesAnterior && q < inicioMes : false;
+      })
+      .map(lote)
+  ).size;
 
   // Taxa de conclusão só faz sentido sobre envios já encerrados.
-  const encerrados = documentos.filter((d) => {
-    const s = normalizar(d.status);
-    return s === 'CONCLUIDO' || s === 'CANCELADO' || s === 'EXPIRADO';
+  const encerrados = new Set(
+    documentos
+      .filter((d) => {
+        const s = normalizar(d.status);
+        return s === 'CONCLUIDO' || s === 'CANCELADO' || s === 'EXPIRADO';
+      })
+      .map(lote)
+  );
+  const concluidosLotes = new Set(concluidos.map(lote));
+
+  // Quanto tempo o cliente leva para assinar depois que recebe o link. É a
+  // métrica que o advogado usa para prometer prazo ao cliente — por isso só
+  // aparece com pelo menos 3 assinaturas medidas.
+  const duracoes: number[] = [];
+  documentos.forEach((d) => {
+    const envio = dataValida(d.createdAt);
+    if (!envio || !Array.isArray(d.signers)) return;
+    d.signers.forEach((s) => {
+      const assinatura = dataValida(s?.signedAt);
+      if (!assinatura) return;
+      const minutos = (assinatura.getTime() - envio.getTime()) / 60_000;
+      if (minutos >= 0 && minutos < 60 * 24 * 30) duracoes.push(minutos);
+    });
   });
+  duracoes.sort((a, b) => a - b);
+  // Mediana, não média: uma assinatura esquecida por 3 dias distorce a média.
+  const tempoMedioMinutos =
+    duracoes.length >= 3 ? Math.round(duracoes[Math.floor(duracoes.length / 2)]) : null;
 
   return {
-    aguardando: emCirculacao.length,
-    aguardandoParados: parados.length,
+    aguardando: lotesEmCirculacao.size,
+    aguardandoParados: parados.size,
     assinadosNoMes,
     variacaoMes: assinadosMesAnterior > 0 ? assinadosNoMes - assinadosMesAnterior : null,
     temHistoricoMesAnterior: assinadosMesAnterior > 0,
     taxaConclusao:
-      encerrados.length >= 5
-        ? Math.round((concluidos.length / encerrados.length) * 100)
-        : null,
-    totalAvaliadoTaxa: encerrados.length,
+      encerrados.size >= 5 ? Math.round((concluidosLotes.size / encerrados.size) * 100) : null,
+    totalAvaliadoTaxa: encerrados.size,
+    tempoMedioMinutos,
   };
+}
+
+/** 47 -> "47 min"; 130 -> "2 h 10 min"; 1500 -> "1 dia". */
+export function textoDuracao(minutos: number): string {
+  if (minutos < 60) return `${minutos} min`;
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24) {
+    const resto = minutos % 60;
+    return resto ? `${horas} h ${resto} min` : `${horas} h`;
+  }
+  const dias = Math.round(horas / 24);
+  return `${dias} dia${dias === 1 ? '' : 's'}`;
 }
 
 /* ─────────────────────── Avisos escritos por você ─────────────────────── */
