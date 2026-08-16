@@ -47,13 +47,16 @@ Responda JSON puro, sem markdown, exatamente neste formato:
 {"isDocument":true,"documentType":"RG","readable":true,"confidence":90,"reason":"..."}
 
 Critérios:
-- isDocument é true APENAS se a imagem mostrar a frente ou verso de um documento brasileiro de identificação com foto (RG/CIN ou CNH), ou uma parte inequivocamente identificável dele.
+- Priorize não rejeitar um documento verdadeiro por enquadramento, rotação, reflexo leve ou leitura parcial. isDocument deve ser true se houver evidência razoável de RG/CIN ou CNH, mesmo sem conseguir ler todos os dados.
+- Considere como evidência: cartão laminado retangular, retrato, brasão, QR code, código de barras, campos estruturados, rótulos como NOME/CPF/RG/CNH, números de documento, assinatura ou diagramação típica de identidade.
+- Um documento pode estar de cabeça para baixo, na vertical, parcialmente cortado ou ocupar apenas parte da moldura.
 - Não aceite mesa, parede, pessoa, paisagem, papel comum, tela de celular ou outro objeto, ainda que nítido.
-- readable é true apenas se houver elementos e texto suficientes para conferência humana posterior.
+- readable é true se existir conteúdo suficiente para conferência humana; não marque isDocument como false apenas porque algum campo está pouco legível.
 - documentType deve ser RG, CNH, OUTRO ou NAO_IDENTIFICADO.
 - confidence vai de 0 a 100.
 - reason deve ser curta, em português, sem repetir dados pessoais que apareçam na foto.`;
 
+    let lastRejection: VisionValidation | null = null;
     for (const model of GEMINI_MODELS) {
       try {
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
@@ -69,10 +72,21 @@ Critérios:
         if (!text) continue;
         const validation = normalizeValidation(JSON.parse(String(text).replace(/```json|```/gi, '').trim()));
         if (!validation) continue;
-        return NextResponse.json({ success: true, validation });
+        // Uma única leitura negativa pode ser um falso negativo de enquadramento.
+        // Pedimos uma segunda opinião aos modelos compatíveis antes de rejeitar.
+        if (validation.isDocument && validation.confidence >= 55) {
+          console.info('LAB_DOCUMENT_VALIDATION', { accepted: true, type: validation.documentType, confidence: validation.confidence });
+          return NextResponse.json({ success: true, validation });
+        }
+        lastRejection = validation;
       } catch {
         // Tenta o próximo modelo compatível sem expor detalhes internos.
       }
+    }
+
+    if (lastRejection) {
+      console.info('LAB_DOCUMENT_VALIDATION', { accepted: false, type: lastRejection.documentType, confidence: lastRejection.confidence });
+      return NextResponse.json({ success: true, validation: lastRejection });
     }
 
     return NextResponse.json({ error: 'A IA não conseguiu validar esta imagem agora.' }, { status: 502 });

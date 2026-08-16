@@ -363,7 +363,9 @@ export default function DocumentCapture({
       })
       .then((validation) => {
         if (!active) return;
-        const accepted = validation.isDocument && validation.readable && validation.confidence >= 70;
+        // A nitidez já foi validada localmente na câmera. Aqui a IA confirma
+        // se há um documento; não exigimos leitura perfeita de todos os campos.
+        const accepted = validation.isDocument && validation.confidence >= 55;
         setVisionCheck(accepted ? 'VALID' : 'REJECTED');
         setVisionReason(
           accepted
