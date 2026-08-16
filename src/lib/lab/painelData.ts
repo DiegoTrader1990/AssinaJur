@@ -90,7 +90,19 @@ export interface EsperaTerceiro {
   atrasado: boolean;
 }
 
+export type NivelAviso = 'CRITICO' | 'ATENCAO' | 'PENDENTE';
+
+export interface Aviso {
+  id: string;
+  nivel: NivelAviso;
+  titulo: string;
+  detalhe: string;
+  acao: string;
+  destino: string;
+}
+
 export interface ResumoPainel {
+  avisos: Aviso[];
   prazos: PrazoItem[];
   vencidos: PrazoItem[];
   hoje: PrazoItem[];
@@ -340,6 +352,88 @@ export function montarFraseEstado(params: {
   return partes.join(' · ');
 }
 
+/**
+ * Central de avisos: consolida tudo que exige ação numa fila só, ordenada por
+ * gravidade. É a lista que o advogado lê de cima para baixo sem precisar
+ * decidir por onde começar.
+ */
+export function derivarAvisos(params: {
+  vencidos: PrazoItem[];
+  hoje: PrazoItem[];
+  esperandoTerceiros: EsperaTerceiro[];
+  pendenciasSuas: PendenciaSua[];
+  parados: CasoParado[];
+}): Aviso[] {
+  const avisos: Aviso[] = [];
+
+  // 1. Prazo vencido: nada é mais grave.
+  params.vencidos.forEach((p) => {
+    avisos.push({
+      id: `venc-${p.id}`,
+      nivel: 'CRITICO',
+      titulo: 'Prazo vencido',
+      detalhe: `${p.cliente} — ${p.titulo}, ${textoPrazo(p.diasRestantes)}`,
+      acao: 'Abrir processo',
+      destino: `/processos?clienteId=${p.clienteId}`,
+    });
+  });
+
+  // 2. Vence hoje: ainda dá tempo, mas só hoje.
+  params.hoje.forEach((p) => {
+    avisos.push({
+      id: `hoje-${p.id}`,
+      nivel: 'CRITICO',
+      titulo: 'Vence hoje',
+      detalhe: `${p.cliente} — ${p.titulo}`,
+      acao: 'Abrir processo',
+      destino: `/processos?clienteId=${p.clienteId}`,
+    });
+  });
+
+  // 3. Assinatura parada: depende de cobrança ao cliente.
+  params.esperandoTerceiros
+    .filter((e) => e.atrasado)
+    .forEach((e) => {
+      avisos.push({
+        id: `assin-${e.id}`,
+        nivel: 'ATENCAO',
+        titulo: 'Assinatura parada',
+        detalhe: `${e.cliente} — ${e.documento}, há ${e.diasEsperando} dia(s)`,
+        acao: 'Ver documento',
+        destino: '/documentos',
+      });
+    });
+
+  // 4. Caso sem movimento há muito tempo.
+  params.parados
+    .filter((c) => c.diasSemMovimento >= 30)
+    .forEach((c) => {
+      avisos.push({
+        id: `parado-${c.id}`,
+        nivel: 'ATENCAO',
+        titulo: 'Caso sem movimento',
+        detalhe: `${c.cliente} — ${c.titulo}, ${c.diasSemMovimento} dias parado`,
+        acao: 'Retomar',
+        destino: `/processos?clienteId=${c.clienteId}`,
+      });
+    });
+
+  // 5. Trabalho do escritório represado.
+  params.pendenciasSuas.forEach((p) => {
+    avisos.push({
+      id: `pend-${p.id}`,
+      nivel: 'PENDENTE',
+      titulo: p.acao,
+      detalhe: `${p.cliente} — ${p.motivo}`,
+      acao: p.acao,
+      destino: p.destino,
+    });
+  });
+
+  const ordem: Record<NivelAviso, number> = { CRITICO: 0, ATENCAO: 1, PENDENTE: 2 };
+  return avisos.sort((a, b) => ordem[a.nivel] - ordem[b.nivel]);
+}
+
 /** Ponto de entrada único usado pela tela. */
 export function montarResumo(
   entrada: { processos: ProcessoBruto[]; clientes: ClienteBruto[]; documentos: DocumentoBruto[] },
@@ -359,6 +453,7 @@ export function montarResumo(
   const esperandoTerceiros = derivarEsperandoTerceiros(entrada.documentos, agora);
 
   return {
+    avisos: derivarAvisos({ vencidos, hoje, esperandoTerceiros, pendenciasSuas, parados }),
     prazos,
     vencidos,
     hoje,
