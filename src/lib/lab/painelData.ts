@@ -35,6 +35,17 @@ export interface ClienteBruto {
   createdAt?: string | null;
 }
 
+export interface AssinanteBruto {
+  id?: string;
+  name?: string | null;
+  status?: string | null;
+  signedAt?: string | null;
+  selfieCenterImage?: string | null;
+  geoLat?: number | null;
+  geoLng?: number | null;
+  ipAddress?: string | null;
+}
+
 export interface DocumentoBruto {
   id: string;
   title?: string | null;
@@ -42,6 +53,11 @@ export interface DocumentoBruto {
   clientId?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+  completedAt?: string | null;
+  kitId?: string | null;
+  kitBatchId?: string | null;
+  kit?: { id?: string; name?: string | null } | null;
+  signers?: AssinanteBruto[] | null;
   client?: { id?: string; name?: string | null } | null;
 }
 
@@ -95,6 +111,8 @@ export type NivelAviso = 'CRITICO' | 'ATENCAO' | 'PENDENTE';
 export interface Aviso {
   id: string;
   nivel: NivelAviso;
+  /** Todo aviso derivado de dados nasce como SISTEMA; VOCE vem do painelExtra. */
+  origem?: 'SISTEMA' | 'VOCE';
   titulo: string;
   detalhe: string;
   acao: string;

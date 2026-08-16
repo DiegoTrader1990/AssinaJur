@@ -4,65 +4,75 @@
  * PROPOSTA DE PAINEL — rota paralela para avaliação.
  *
  * Fica dentro do grupo (dashboard) apenas para herdar o menu lateral real.
- * NÃO altera nenhum arquivo existente e NÃO aparece no menu: só é alcançável
- * por /painel-novo. A Home real (/dashboard) continua intacta.
+ * NÃO altera a Home: /dashboard continua exatamente como está. Esta tela só é
+ * alcançável por /painel-novo.
+ *
+ * Hierarquia desenhada e aprovada na rodada de protótipo:
+ *   saudação → fluxo rápido → indicadores → intimações/assinaturas + avisos
+ *   → prazos + mapa → funil → ritmo + kits → rodapé
  *
  * Paleta dos gráficos validada por script (skill dataviz):
  *  - funil: rampa sequencial de uma hue só, L monotônica, ponta clara > 2:1
  *  - estados: crítico/atenção/bom aprovados em separação para daltonismo
  *  - teal no lugar de verde: verde x vermelho reprovava para deutan
+ *
+ * Regra de dado: nada é inventado. Onde a base ainda não existe (intimações do
+ * DJEN), a tela diz o que falta em vez de mostrar exemplo.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  Bell,
-  Clock3,
-  ArrowRight,
-  UserRound,
-  MessageSquare,
-  PauseCircle,
+  AlertTriangle,
   CheckCircle2,
-  Loader2,
-  Info,
+  ChevronDown,
+  Clock3,
+  FileText,
   FileUp,
   Layers,
-  X,
-  Search,
-  ChevronDown,
-  Send,
-  AlertOctagon,
-  AlertTriangle,
-  CircleDot,
+  Loader2,
+  MessageSquare,
+  Plus,
+  QrCode,
   Scale,
-  Users,
-  FileSignature,
-  CalendarClock,
+  Search,
+  Send,
+  Shield,
+  TrendingUp,
+  UserRound,
+  X,
 } from 'lucide-react';
 import BrazilOperationsMap from '@/components/BrazilOperationsMap';
 import {
   montarResumo,
   textoPrazo,
   type ResumoPainel,
-  type NivelAviso,
 } from '@/lib/lab/painelData';
+import {
+  derivarAssinaturasAndamento,
+  derivarIndicadores,
+  derivarKitsMaisUsados,
+  gravarAvisosManuais,
+  iniciaisDe,
+  lerAvisosManuais,
+  ordenarAvisosManuais,
+  textoAcompanhamento,
+  type AssinaturaAndamento,
+  type AvisoManual,
+  type IndicadoresPainel,
+  type KitUsado,
+} from '@/lib/lab/painelExtra';
 
-/* Paleta validada — ver cabeçalho */
+/* ─────────────────── Paleta validada — ver cabeçalho ─────────────────── */
 const RAMPA_FUNIL = ['#9AAAC4', '#7386A8', '#4D688F', '#28456E', '#0A1F42'];
-const OURO = '#B68B1C';
-const COR_CRITICO = '#E11D48';
-const COR_ATENCAO = '#D97706';
-const COR_BOM = '#0D9488';
+
+/* ─────────────────────────── Utilidades de texto ─────────────────────── */
 
 function saudacao(h: number): string {
   if (h < 12) return 'Bom dia';
   if (h < 18) return 'Boa tarde';
   return 'Boa noite';
-}
-
-function dataCurta(d: Date): string {
-  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(d);
 }
 
 function dataExtensa(d: Date): string {
@@ -74,256 +84,143 @@ function dataExtensa(d: Date): string {
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
-/* ─────────────────────────── Peças ─────────────────────────── */
-
-function Secao({
-  titulo,
-  descricao,
-  acao,
-  children,
-}: {
-  titulo: string;
-  descricao?: string;
-  acao?: { texto: string; href: string };
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="space-y-3">
-      <div className="flex items-end justify-between gap-3">
-        <div>
-          <h2 className="text-[11px] font-black uppercase tracking-[.14em] text-slate-500">
-            {titulo}
-          </h2>
-          {descricao && <p className="mt-0.5 text-xs text-slate-500">{descricao}</p>}
-        </div>
-        {acao && (
-          <Link
-            href={acao.href}
-            className="shrink-0 text-[11px] font-bold text-[#B68B1C] hover:underline"
-          >
-            {acao.texto}
-          </Link>
-        )}
-      </div>
-      {children}
-    </section>
-  );
+function soDigitos(v?: string | null): string {
+  return String(v || '').replace(/\D/g, '');
 }
 
-/** Superfície padrão: sombra suave em vez de borda dura. */
-function Painel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+function formatarCpfCnpj(v?: string | null): string {
+  const d = soDigitos(v);
+  if (d.length === 11) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+  if (d.length === 14)
+    return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+  return String(v || '');
+}
+
+function formatarTelefone(v?: string | null): string {
+  const d = soDigitos(v);
+  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return String(v || '');
+}
+
+function hoje(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate()
+  ).padStart(2, '0')}`;
+}
+
+/* ─────────────────────────── Peças visuais ───────────────────────────── */
+
+function Cartao({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
     <div
-      className={`rounded-2xl border border-slate-200/60 bg-white shadow-[0_1px_2px_rgba(7,27,58,.04),0_8px_24px_-12px_rgba(7,27,58,.14)] ${className}`}
+      className={`rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_3px_rgba(7,27,58,.05)] ${className}`}
     >
       {children}
     </div>
   );
 }
 
-function Vazio({
-  icone,
-  titulo,
-  texto,
-}: {
-  icone: React.ReactNode;
-  titulo: string;
-  texto?: string;
-}) {
+function PassoRotulo({ numero, texto }: { numero: number; texto: string }) {
   return (
-    <Painel>
-      <div className="flex items-start gap-3 px-4 py-5">
-        <span className="mt-0.5 shrink-0 text-slate-300">{icone}</span>
-        <div>
-          <p className="text-sm font-bold text-slate-700">{titulo}</p>
-          {texto && <p className="mt-0.5 text-xs leading-5 text-slate-500">{texto}</p>}
-        </div>
-      </div>
-    </Painel>
-  );
-}
-
-/** Indicador: rótulo, valor grande (figuras proporcionais) e contexto. */
-function Indicador({
-  rotulo,
-  valor,
-  contexto,
-  icone,
-  href,
-  destaque,
-}: {
-  rotulo: string;
-  valor: number;
-  contexto: string;
-  icone: React.ReactNode;
-  href: string;
-  destaque?: string;
-}) {
-  return (
-    <Link href={href} className="group block">
-      <Painel className="h-full px-4 py-4 transition group-hover:border-slate-300 group-hover:shadow-[0_2px_4px_rgba(7,27,58,.06),0_12px_28px_-12px_rgba(7,27,58,.2)]">
-        <div className="flex items-start justify-between gap-2">
-          <p className="text-[11px] font-bold text-slate-500">{rotulo}</p>
-          <span className="shrink-0 text-slate-300 transition group-hover:text-[#B68B1C]">
-            {icone}
-          </span>
-        </div>
-        <p
-          className="mt-2 text-3xl font-black leading-none"
-          style={{ color: destaque || '#071B3A' }}
-        >
-          {valor}
-        </p>
-        <p className="mt-1.5 text-[11px] text-slate-400">{contexto}</p>
-      </Painel>
-    </Link>
-  );
-}
-
-function SeletorCliente({
-  clientes,
-  valor,
-  aoMudar,
-}: {
-  clientes: any[];
-  valor: string;
-  aoMudar: (id: string) => void;
-}) {
-  const [aberto, setAberto] = useState(false);
-  const [busca, setBusca] = useState('');
-  const caixaRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const fora = (e: MouseEvent) => {
-      if (caixaRef.current && !caixaRef.current.contains(e.target as Node)) setAberto(false);
-    };
-    document.addEventListener('mousedown', fora);
-    return () => document.removeEventListener('mousedown', fora);
-  }, []);
-
-  const filtrados = useMemo(() => {
-    const q = busca.trim().toLowerCase();
-    if (!q) return clientes.slice(0, 40);
-    return clientes
-      .filter(
-        (c) =>
-          String(c.name || '').toLowerCase().includes(q) ||
-          String(c.cpfCnpj || '').includes(q) ||
-          String(c.phone || '').includes(q)
-      )
-      .slice(0, 40);
-  }, [clientes, busca]);
-
-  const selecionado = clientes.find((c) => c.id === valor);
-
-  return (
-    <div ref={caixaRef} className="relative">
-      <button
-        type="button"
-        onClick={() => setAberto((v) => !v)}
-        className={`flex w-full items-center justify-between gap-2 rounded-xl border bg-white px-3 py-2.5 text-left transition ${
-          aberto ? 'border-[#071B3A] ring-2 ring-[#071B3A]/10' : 'border-slate-200 hover:border-slate-300'
-        }`}
-      >
-        {selecionado ? (
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#071B3A] text-[11px] font-black text-[#D4AF37]">
-              {String(selecionado.name || '?').charAt(0)}
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-bold text-[#071B3A]">
-                {selecionado.name}
-              </span>
-              <span className="block truncate text-[11px] text-slate-500">
-                {selecionado.cpfCnpj || 'sem CPF'}
-              </span>
-            </span>
-          </span>
-        ) : (
-          <span className="flex items-center gap-2 text-slate-400">
-            <Search className="h-3.5 w-3.5" />
-            <span className="text-sm font-medium">Selecionar cliente</span>
-          </span>
-        )}
-        <ChevronDown
-          className={`h-4 w-4 shrink-0 text-slate-400 transition ${aberto ? 'rotate-180' : ''}`}
-        />
-      </button>
-
-      {aberto && (
-        <div className="absolute z-40 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
-          <div className="border-b border-slate-100 p-2">
-            <input
-              autoFocus
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar por nome, CPF ou telefone"
-              className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs outline-none focus:border-[#071B3A]"
-            />
-          </div>
-          <div className="max-h-56 overflow-y-auto">
-            {filtrados.length === 0 ? (
-              <p className="px-3 py-4 text-center text-xs text-slate-400">
-                Nenhum cliente encontrado.
-              </p>
-            ) : (
-              filtrados.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => {
-                    aoMudar(c.id);
-                    setAberto(false);
-                    setBusca('');
-                  }}
-                  className={`flex w-full items-center gap-2 px-3 py-2 text-left transition hover:bg-slate-50 ${
-                    valor === c.id ? 'bg-amber-50/60' : ''
-                  }`}
-                >
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-black text-slate-600">
-                    {String(c.name || '?').charAt(0)}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-xs font-bold text-[#071B3A]">{c.name}</span>
-                    <span className="block truncate text-[10px] text-slate-500">
-                      {c.cpfCnpj || 'sem CPF'}
-                    </span>
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+    <div className="mb-1.5 flex items-center gap-2">
+      <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[#D4AF37] text-[10px] font-black text-[#071B3A]">
+        {numero}
+      </span>
+      <span className="text-[10px] font-black uppercase tracking-[.14em] text-slate-300">
+        {texto}
+      </span>
     </div>
   );
 }
 
-const ESTILO_AVISO: Record<
-  NivelAviso,
-  { cor: string; icone: React.ReactNode; rotulo: string; fundo: string }
-> = {
-  CRITICO: {
-    cor: COR_CRITICO,
-    icone: <AlertOctagon className="h-3.5 w-3.5" />,
-    rotulo: 'Crítico',
-    fundo: 'bg-rose-50',
-  },
-  ATENCAO: {
-    cor: COR_ATENCAO,
-    icone: <AlertTriangle className="h-3.5 w-3.5" />,
-    rotulo: 'Atenção',
-    fundo: 'bg-amber-50',
-  },
-  PENDENTE: {
-    cor: '#64748B',
-    icone: <CircleDot className="h-3.5 w-3.5" />,
-    rotulo: 'A fazer',
-    fundo: 'bg-slate-100',
-  },
-};
+/** As duas formas de trabalhar, lado a lado e sempre visíveis. */
+function EscolhaModo({
+  ativo,
+  aoTrocar,
+}: {
+  ativo: 'DOC' | 'KIT';
+  aoTrocar: (m: 'DOC' | 'KIT') => void;
+}) {
+  const opcoes = [
+    { chave: 'DOC' as const, Icone: FileUp, titulo: 'Meus documentos', sub: 'PDFs do meu computador' },
+    { chave: 'KIT' as const, Icone: Shield, titulo: 'Kit Jurídico', sub: 'peças já preenchidas' },
+  ];
 
-/* ───────────────────────────── Página ───────────────────────────── */
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-2">
+        {opcoes.map(({ chave, Icone, titulo, sub }) => {
+          const sel = ativo === chave;
+          return (
+            <button
+              key={chave}
+              type="button"
+              onClick={() => aoTrocar(chave)}
+              aria-pressed={sel}
+              className={`relative flex items-center gap-2.5 rounded-xl px-3 py-2 text-left transition ${
+                sel
+                  ? 'border-2 border-[#071B3A] bg-white shadow-[0_2px_8px_-2px_rgba(7,27,58,.18)]'
+                  : 'border border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white'
+              }`}
+            >
+              <span
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                  sel
+                    ? 'bg-[#071B3A] text-[#D4AF37]'
+                    : 'border border-slate-200 bg-white text-slate-400'
+                }`}
+              >
+                <Icone className="h-[18px] w-[18px]" />
+              </span>
+              <span className="min-w-0">
+                <span
+                  className={`block text-[12.5px] leading-tight ${
+                    sel ? 'font-extrabold text-[#071B3A]' : 'font-bold text-slate-600'
+                  }`}
+                >
+                  {titulo}
+                </span>
+                <span
+                  className={`mt-0.5 block text-[10.5px] leading-tight ${
+                    sel ? 'text-slate-500' : 'text-slate-400'
+                  }`}
+                >
+                  {sub}
+                </span>
+              </span>
+              {sel && (
+                <span className="absolute -right-2 -top-2 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[#071B3A] text-[#D4AF37] ring-2 ring-white">
+                  <CheckCircle2 className="h-3 w-3" />
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <div className="my-2 h-px bg-slate-100" />
+    </>
+  );
+}
+
+/* ─────────────────────────── Tela ────────────────────────────────────── */
+
+interface ClienteLista {
+  id: string;
+  name?: string | null;
+  cpfCnpj?: string | null;
+  phone?: string | null;
+  whatsapp?: string | null;
+  email?: string | null;
+}
+
+interface KitLista {
+  id: string;
+  name?: string | null;
+  category?: string | null;
+  items?: { id: string; template?: { title?: string | null } | null }[] | null;
+}
 
 export default function PainelNovoPage() {
   const router = useRouter();
@@ -332,28 +229,50 @@ export default function PainelNovoPage() {
   const [erro, setErro] = useState('');
   const [nome, setNome] = useState('');
   const [escritorio, setEscritorio] = useState('');
-  const [clientes, setClientes] = useState<any[]>([]);
+
+  const [clientes, setClientes] = useState<ClienteLista[]>([]);
+  const [kits, setKits] = useState<KitLista[]>([]);
+  const [documentos, setDocumentos] = useState<any[]>([]);
+  const [processos, setProcessos] = useState<any[]>([]);
   const [resumo, setResumo] = useState<ResumoPainel | null>(null);
 
-  const [clienteEnvio, setClienteEnvio] = useState('');
+  /* fluxo rápido */
+  const [modo, setModo] = useState<'DOC' | 'KIT'>('DOC');
+  const [clienteId, setClienteId] = useState('');
+  const [buscaAberta, setBuscaAberta] = useState(false);
+  const [busca, setBusca] = useState('');
   const [arquivos, setArquivos] = useState<{ id: string; nome: string }[]>([]);
+  const [kitId, setKitId] = useState('');
+  const [listaKitAberta, setListaKitAberta] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [erroEnvio, setErroEnvio] = useState('');
   const [arrastando, setArrastando] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const [colunaAtiva, setColunaAtiva] = useState<number | null>(null);
+  /* card com abas */
+  const [aba, setAba] = useState<'INT' | 'ASS'>('ASS');
+
+  /* avisos escritos pelo advogado */
+  const [avisosManuais, setAvisosManuais] = useState<AvisoManual[]>([]);
+  const [formAviso, setFormAviso] = useState(false);
+  const [novoAviso, setNovoAviso] = useState({
+    titulo: '',
+    clienteId: '',
+    detalhe: '',
+    acompanharEm: hoje(),
+  });
 
   const carregar = useCallback(async () => {
     setCarregando(true);
     setErro('');
     try {
-      const [me, esc, cli, doc, pro] = await Promise.all([
+      const [me, esc, cli, doc, pro, kit] = await Promise.all([
         fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)),
         fetch('/api/office').then((r) => (r.ok ? r.json() : null)),
         fetch('/api/clients').then((r) => (r.ok ? r.json() : null)),
         fetch('/api/documents').then((r) => (r.ok ? r.json() : null)),
         fetch('/api/processos').then((r) => (r.ok ? r.json() : null)),
+        fetch('/api/kits').then((r) => (r.ok ? r.json() : null)),
       ]);
 
       if (!me?.user) {
@@ -365,14 +284,20 @@ export default function PainelNovoPage() {
       setNome(primeiro.toLowerCase().startsWith('dr') ? primeiro : primeiro ? `Dr. ${primeiro}` : '');
       setEscritorio(esc?.office?.name || '');
 
-      const listaClientes = cli?.clients || [];
+      const listaClientes: ClienteLista[] = cli?.clients || [];
+      const listaDocumentos: any[] = doc?.documents || [];
+      const listaProcessos: any[] = pro?.processes || [];
+
       setClientes(listaClientes);
+      setDocumentos(listaDocumentos);
+      setProcessos(listaProcessos);
+      setKits(kit?.kits || []);
       setResumo(
         montarResumo(
           {
-            clientes: listaClientes,
-            documentos: doc?.documents || [],
-            processos: pro?.processes || [],
+            clientes: listaClientes as any,
+            documentos: listaDocumentos,
+            processos: listaProcessos,
           },
           new Date()
         )
@@ -388,7 +313,81 @@ export default function PainelNovoPage() {
     void carregar();
   }, [carregar]);
 
+  useEffect(() => {
+    setAvisosManuais(ordenarAvisosManuais(lerAvisosManuais()));
+  }, []);
+
   const agora = useMemo(() => new Date(), []);
+
+  /* ─────────── derivações ─────────── */
+
+  const indicadores: IndicadoresPainel = useMemo(
+    () => derivarIndicadores(documentos, agora),
+    [documentos, agora]
+  );
+
+  const assinaturas: AssinaturaAndamento[] = useMemo(
+    () => derivarAssinaturasAndamento(documentos, agora),
+    [documentos, agora]
+  );
+
+  const kitsUsados: KitUsado[] = useMemo(
+    () => derivarKitsMaisUsados(kits as any, documentos),
+    [kits, documentos]
+  );
+
+  const clienteEscolhido = useMemo(
+    () => clientes.find((c) => c.id === clienteId) || null,
+    [clientes, clienteId]
+  );
+
+  const kitEscolhido = useMemo(() => kits.find((k) => k.id === kitId) || null, [kits, kitId]);
+
+  const clientesFiltrados = useMemo(() => {
+    const alvo = busca.trim().toLowerCase();
+    const base = alvo
+      ? clientes.filter(
+          (c) =>
+            String(c.name || '').toLowerCase().includes(alvo) ||
+            soDigitos(c.cpfCnpj).includes(soDigitos(alvo)) ||
+            soDigitos(c.phone).includes(soDigitos(alvo))
+        )
+      : clientes;
+    return base.slice(0, 8);
+  }, [clientes, busca]);
+
+  /** Clientes com documento mais recente primeiro — atalho do estado inicial. */
+  const clientesRecentes = useMemo(() => {
+    const ultimo = new Map<string, number>();
+    documentos.forEach((d) => {
+      const id = d.clientId || d.client?.id;
+      if (!id) return;
+      const t = new Date(d.createdAt || 0).getTime();
+      if (!ultimo.has(id) || t > (ultimo.get(id) as number)) ultimo.set(id, t);
+    });
+    return clientes
+      .filter((c) => ultimo.has(c.id))
+      .sort((a, b) => (ultimo.get(b.id) || 0) - (ultimo.get(a.id) || 0))
+      .slice(0, 3);
+  }, [clientes, documentos]);
+
+  const processoDoCliente = useMemo(() => {
+    if (!clienteId) return null;
+    return processos.find((p) => p.client?.id === clienteId || p.clientId === clienteId) || null;
+  }, [processos, clienteId]);
+
+  const cadastroCompleto = Boolean(
+    clienteEscolhido?.cpfCnpj && (clienteEscolhido?.phone || clienteEscolhido?.whatsapp)
+  );
+
+  const canalCliente =
+    formatarTelefone(clienteEscolhido?.whatsapp || clienteEscolhido?.phone) ||
+    clienteEscolhido?.email ||
+    '';
+
+  const podeEnviar = modo === 'DOC' ? Boolean(clienteId && arquivos.length > 0) : Boolean(kitId);
+
+  /* ─────────── ações do fluxo rápido ─────────── */
 
   const subirArquivos = useCallback(async (lista: FileList) => {
     setErroEnvio('');
@@ -416,15 +415,55 @@ export default function PainelNovoPage() {
     }
   }, []);
 
-  const prosseguirEnvio = useCallback(() => {
+  const seguir = useCallback(() => {
+    if (modo === 'KIT') {
+      if (!kitId) return;
+      const p = new URLSearchParams({ kitId });
+      if (clienteId) p.set('clientId', clienteId);
+      router.push(`/kits/enviar?${p.toString()}`);
+      return;
+    }
     if (arquivos.length === 0) return;
-    const params = new URLSearchParams({
+    const p = new URLSearchParams({
       files: arquivos.map((a) => a.id).join(','),
       source: 'dashboard',
     });
-    if (clienteEnvio) params.set('clientId', clienteEnvio);
-    router.push(`/documentos/novo?${params.toString()}`);
-  }, [arquivos, clienteEnvio, router]);
+    if (clienteId) p.set('clientId', clienteId);
+    router.push(`/documentos/novo?${p.toString()}`);
+  }, [modo, kitId, arquivos, clienteId, router]);
+
+  /* ─────────── avisos manuais ─────────── */
+
+  const salvarAviso = useCallback(() => {
+    const titulo = novoAviso.titulo.trim();
+    if (!titulo) return;
+    const cli = clientes.find((c) => c.id === novoAviso.clienteId);
+    const item: AvisoManual = {
+      id: `m-${Date.now()}`,
+      titulo,
+      cliente: cli?.name || '',
+      clienteId: novoAviso.clienteId,
+      detalhe: novoAviso.detalhe.trim(),
+      acompanharEm: novoAviso.acompanharEm,
+      criadoEm: new Date().toISOString(),
+    };
+    const lista = ordenarAvisosManuais([...avisosManuais, item]);
+    setAvisosManuais(lista);
+    gravarAvisosManuais(lista);
+    setNovoAviso({ titulo: '', clienteId: '', detalhe: '', acompanharEm: hoje() });
+    setFormAviso(false);
+  }, [novoAviso, clientes, avisosManuais]);
+
+  const removerAviso = useCallback(
+    (id: string) => {
+      const lista = avisosManuais.filter((a) => a.id !== id);
+      setAvisosManuais(lista);
+      gravarAvisosManuais(lista);
+    },
+    [avisosManuais]
+  );
+
+  /* ─────────── carregando / erro ─────────── */
 
   if (carregando) {
     return (
@@ -445,605 +484,1172 @@ export default function PainelNovoPage() {
     );
   }
 
-  const { avisos, funil, assinaturasPorDia, vencidos, hoje, semana, parados, pendenciasSuas, esperandoTerceiros } =
-    resumo;
-  const prazosVisiveis = [...vencidos, ...hoje, ...semana];
-  const criticos = avisos.filter((a) => a.nivel === 'CRITICO').length;
-
+  const { avisos, funil, assinaturasPorDia, vencidos, hoje: prazosHoje, semana } = resumo;
+  const prazosVisiveis = [...vencidos, ...prazosHoje, ...semana].slice(0, 5);
   const totalFunil = funil.reduce((a, f) => a + f.quantidade, 0);
   const maxSerie = Math.max(1, ...assinaturasPorDia.map((p) => p.quantidade));
   const totalSerie = assinaturasPorDia.reduce((a, p) => a + p.quantidade, 0);
-  const indiceMax = assinaturasPorDia.findIndex((p) => p.quantidade === maxSerie);
+  const mediaSerie = assinaturasPorDia.length
+    ? totalSerie / assinaturasPorDia.length
+    : 0;
+  const avisosSistema = avisos.slice(0, 5);
+  const totalAvisos = avisosManuais.length + avisosSistema.length;
 
   return (
-    <div className="space-y-8 pb-10">
-      {/* ───────── FAIXA DE DESTAQUE ───────── */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#071B3A] via-[#0B2247] to-[#123061] px-6 py-6 shadow-[0_10px_40px_-16px_rgba(7,27,58,.6)] lg:px-8 lg:py-7">
-        <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-[#D4AF37]/10 blur-3xl" />
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#D4AF37]/50 to-transparent" />
+    <div className="space-y-5 pb-8">
+      {/* ───────────────────────── SAUDAÇÃO ───────────────────────── */}
+      <div className="flex items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="font-heading text-2xl font-extrabold leading-none tracking-tight text-[#071B3A]">
+            {saudacao(agora.getHours())}
+            {nome ? `, ${nome}` : ''}
+          </h1>
+          <p className="mt-2 text-[13px] text-slate-500">
+            {dataExtensa(agora)}
+            {vencidos.length + prazosHoje.length > 0 && (
+              <>
+                {' · '}
+                <span className="font-bold text-rose-600">
+                  {vencidos.length + prazosHoje.length}{' '}
+                  {vencidos.length + prazosHoje.length === 1 ? 'prazo exige' : 'prazos exigem'} sua
+                  atenção hoje
+                </span>
+              </>
+            )}
+            {indicadores.aguardandoParados > 0 && (
+              <> · {indicadores.aguardandoParados} assinaturas paradas</>
+            )}
+            {vencidos.length + prazosHoje.length === 0 && indicadores.aguardandoParados === 0 && (
+              <> · {resumo.fraseEstado}</>
+            )}
+          </p>
+        </div>
+        {escritorio && (
+          <div className="flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 shadow-[0_1px_2px_rgba(7,27,58,.05)]">
+            <Scale className="h-3.5 w-3.5 text-[#B68B1C]" />
+            <span className="text-[11.5px] text-slate-600">{escritorio}</span>
+          </div>
+        )}
+      </div>
 
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+      {/* ───────────────────────── FLUXO RÁPIDO ───────────────────────── */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#071B3A] via-[#0B2247] to-[#16386E] px-5 py-4 shadow-[0_14px_44px_-18px_rgba(7,27,58,.6)] lg:px-6">
+        <div className="pointer-events-none absolute -right-24 -top-28 h-80 w-80 rounded-full bg-[#D4AF37]/10 blur-3xl" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#D4AF37]/40 to-transparent" />
+
+        <div className="relative flex items-center justify-between gap-6">
           <div className="min-w-0">
             <p className="text-[10px] font-black uppercase tracking-[.2em] text-[#D4AF37]">
-              {escritorio || 'Painel do escritório'}
+              Fluxo rápido
             </p>
-            <h1 className="mt-1.5 font-heading text-2xl font-extrabold tracking-tight text-white lg:text-[27px]">
-              {saudacao(agora.getHours())}
-              {nome ? `, ${nome}` : ''}
-            </h1>
-            <p className="mt-1 text-xs text-slate-300">{dataExtensa(agora)}</p>
-
-            {/* Figura principal — única da tela */}
-            <div className="mt-5 flex items-end gap-4">
-              <p className="text-[56px] font-black leading-[0.85] text-white">{avisos.length}</p>
-              <div className="pb-1.5">
-                <p className="text-sm font-bold text-white">
-                  {avisos.length === 0
-                    ? 'nada exige ação'
-                    : `${avisos.length === 1 ? 'item exige' : 'itens exigem'} sua ação`}
-                </p>
-                {criticos > 0 && (
-                  <p
-                    className="mt-0.5 flex items-center gap-1.5 text-xs font-bold"
-                    style={{ color: '#FDA4AF' }}
-                  >
-                    <AlertOctagon className="h-3.5 w-3.5" /> {criticos} crítico
-                    {criticos > 1 ? 's' : ''}
-                  </p>
-                )}
-              </div>
-            </div>
+            <h2 className="mt-1 text-[19px] font-extrabold tracking-tight text-white">
+              Enviar para assinatura
+            </h2>
           </div>
-
-          <div className="flex shrink-0 flex-wrap gap-2">
-            <Link
-              href="/clientes?novo=true"
-              className="rounded-xl bg-gradient-to-r from-[#D4AF37] to-[#B68B1C] px-4 py-2.5 text-xs font-extrabold text-[#071B3A] shadow-lg transition hover:brightness-105"
-            >
-              Novo atendimento
-            </Link>
-            <Link
-              href="/kits/enviar"
-              className="rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-xs font-bold text-white backdrop-blur-sm transition hover:bg-white/20"
-            >
-              Enviar Kit
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      {/* ───────── INDICADORES ───────── */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Indicador
-          rotulo="Clientes"
-          valor={resumo.totalClientes}
-          contexto="cadastrados no escritório"
-          icone={<Users className="h-4 w-4" />}
-          href="/clientes"
-        />
-        <Indicador
-          rotulo="Processos"
-          valor={resumo.totalProcessos}
-          contexto="em acompanhamento"
-          icone={<Scale className="h-4 w-4" />}
-          href="/processos"
-        />
-        <Indicador
-          rotulo="Em assinatura"
-          valor={esperandoTerceiros.length}
-          contexto={`${esperandoTerceiros.filter((e) => e.atrasado).length} parada(s)`}
-          icone={<FileSignature className="h-4 w-4" />}
-          href="/documentos"
-          destaque={esperandoTerceiros.some((e) => e.atrasado) ? COR_ATENCAO : undefined}
-        />
-        <Indicador
-          rotulo="Prazos críticos"
-          valor={vencidos.length + hoje.length}
-          contexto="vencidos ou vencendo hoje"
-          icone={<CalendarClock className="h-4 w-4" />}
-          href="/processos"
-          destaque={vencidos.length + hoje.length > 0 ? COR_CRITICO : undefined}
-        />
-      </div>
-
-      {/* ───────── AVISOS + PRAZOS ───────── */}
-      <div className="grid gap-6 lg:grid-cols-12">
-        <div className="lg:col-span-5">
-          <Secao titulo="Central de avisos" descricao="Do mais grave ao menos grave.">
-            {avisos.length === 0 ? (
-              <Vazio
-                icone={<CheckCircle2 className="h-5 w-5" style={{ color: COR_BOM }} />}
-                titulo="Nenhum aviso"
-                texto="Nada exige sua atenção neste momento."
-              />
-            ) : (
-              <Painel className="overflow-hidden">
-                <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5">
-                  <Bell className="h-3.5 w-3.5 text-slate-400" />
-                  <span className="text-[11px] font-bold text-slate-500">
-                    {avisos.length} aviso{avisos.length > 1 ? 's' : ''}
-                  </span>
-                </div>
-                <ul className="max-h-[24rem] divide-y divide-slate-100 overflow-y-auto">
-                  {avisos.slice(0, 12).map((a) => {
-                    const e = ESTILO_AVISO[a.nivel];
-                    return (
-                      <li key={a.id}>
-                        <Link
-                          href={a.destino}
-                          className="flex items-start gap-3 px-4 py-3 transition hover:bg-slate-50/80"
-                        >
-                          <span
-                            className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${e.fundo}`}
-                            style={{ color: e.cor }}
-                          >
-                            {e.icone}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="flex items-center gap-2">
-                              <span className="text-xs font-extrabold text-[#071B3A]">
-                                {a.titulo}
-                              </span>
-                              <span
-                                className="rounded-full px-1.5 py-px text-[9px] font-black uppercase tracking-wide"
-                                style={{ color: e.cor, backgroundColor: `${e.cor}14` }}
-                              >
-                                {e.rotulo}
-                              </span>
-                            </span>
-                            <span className="mt-0.5 block truncate text-xs text-slate-500">
-                              {a.detalhe}
-                            </span>
-                          </span>
-                          <ArrowRight className="mt-1.5 h-3.5 w-3.5 shrink-0 text-slate-300" />
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </Painel>
-            )}
-          </Secao>
+          <p className="shrink-0 text-[11px] text-slate-300">3 passos · leva menos de 1 minuto</p>
         </div>
 
-        <div className="lg:col-span-7">
-          <Secao
-            titulo="Prazos"
-            descricao="O que pode gerar perda de direito."
-            acao={{ texto: 'Ver processos', href: '/processos' }}
-          >
-            {!resumo.temAlgumPrazoCadastrado ? (
-              <Vazio
-                icone={<Info className="h-5 w-5" />}
-                titulo="Nenhum processo tem prazo cadastrado"
-                texto={`O campo existe, mas ${resumo.processosSemPrazo} processo(s) estão sem data. Sem prazo preenchido, este bloco não tem como avisar de nada.`}
-              />
-            ) : prazosVisiveis.length === 0 ? (
-              <Vazio
-                icone={<CheckCircle2 className="h-5 w-5" style={{ color: COR_BOM }} />}
-                titulo="Nenhum prazo nos próximos 7 dias"
-                texto="Há prazos cadastrados, mas todos com folga."
-              />
-            ) : (
-              <Painel className="overflow-hidden">
-                <div className="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100">
-                  {[
-                    { n: vencidos.length, r: 'Vencidos', cor: COR_CRITICO },
-                    { n: hoje.length, r: 'Vencem hoje', cor: COR_ATENCAO },
-                    { n: semana.length, r: 'Próximos 7 dias', cor: '#071B3A' },
-                  ].map((c) => (
-                    <div key={c.r} className="px-4 py-4 text-center">
-                      <p className="text-3xl font-black leading-none" style={{ color: c.cor }}>
-                        {c.n}
-                      </p>
-                      <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                        {c.r}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-                <ul className="divide-y divide-slate-100">
-                  {prazosVisiveis.slice(0, 5).map((p) => (
-                    <li key={p.id}>
-                      <Link
-                        href={`/processos?clienteId=${p.clienteId}`}
-                        className="flex items-center gap-3 px-4 py-3 transition hover:bg-slate-50/80"
-                      >
-                        <span
-                          className="h-9 w-1 shrink-0 rounded-full"
-                          style={{
-                            backgroundColor:
-                              p.urgencia === 'VENCIDO'
-                                ? COR_CRITICO
-                                : p.urgencia === 'HOJE'
-                                ? COR_ATENCAO
-                                : '#CBD5E1',
-                          }}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-bold text-[#071B3A]">{p.cliente}</p>
-                          <p className="truncate text-xs text-slate-500">{p.titulo}</p>
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <p
-                            className="text-xs font-extrabold"
-                            style={{
-                              color:
-                                p.urgencia === 'VENCIDO'
-                                  ? COR_CRITICO
-                                  : p.urgencia === 'HOJE'
-                                  ? COR_ATENCAO
-                                  : '#475569',
-                            }}
-                          >
-                            {textoPrazo(p.diasRestantes)}
-                          </p>
-                          <p className="text-[10px] tabular-nums text-slate-400">
-                            {dataCurta(p.data)}
-                          </p>
-                        </div>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </Painel>
-            )}
-          </Secao>
-        </div>
-      </div>
-
-      {/* ───────── FUNIL + SÉRIE ───────── */}
-      <div className="grid gap-6 lg:grid-cols-12">
-        {/* Funil: barra empilhada, rampa sequencial, folga de 2px entre segmentos */}
-        <div className="lg:col-span-7">
-          <Secao titulo="Funil do escritório" descricao="Onde cada cliente está no fluxo.">
-            <Painel className="px-4 py-4 lg:px-5">
-              {totalFunil === 0 ? (
-                <p className="py-6 text-center text-xs text-slate-400">
-                  Nenhum cliente cadastrado ainda.
-                </p>
-              ) : (
-                <>
-                  <div className="flex h-6 w-full gap-[2px] overflow-hidden rounded-md">
-                    {funil.map((f, i) =>
-                      f.quantidade === 0 ? null : (
-                        <div
-                          key={f.chave}
-                          title={`${f.rotulo}: ${f.quantidade}`}
-                          style={{
-                            width: `${(f.quantidade / totalFunil) * 100}%`,
-                            backgroundColor: RAMPA_FUNIL[i],
-                          }}
-                          className="flex items-center justify-center"
-                        >
-                          {/* Rótulo interno apenas quando cabe com folga */}
-                          {(f.quantidade / totalFunil) * 100 >= 12 && (
-                            <span
-                              className="text-[10px] font-black"
-                              style={{ color: i >= 3 ? '#FFFFFF' : '#071B3A' }}
-                            >
-                              {f.quantidade}
-                            </span>
-                          )}
-                        </div>
-                      )
-                    )}
-                  </div>
-
-                  {/* Legenda: identidade nunca só pela cor */}
-                  <ul className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
-                    {funil.map((f, i) => (
-                      <li key={f.chave} className="flex items-center gap-2">
-                        <span
-                          className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                          style={{ backgroundColor: RAMPA_FUNIL[i] }}
-                        />
-                        <span className="min-w-0 flex-1 truncate text-[11px] text-slate-600">
-                          {f.rotulo}
-                        </span>
-                        <span className="shrink-0 text-[11px] font-black tabular-nums text-[#071B3A]">
-                          {f.quantidade}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </Painel>
-          </Secao>
-        </div>
-
-        {/* Série: colunas, hue única, rótulo só no pico */}
-        <div className="lg:col-span-5">
-          <Secao titulo="Assinaturas concluídas" descricao="Últimos 14 dias.">
-            <Painel className="px-4 py-4 lg:px-5">
-              <div className="flex items-baseline gap-2">
-                <p className="text-3xl font-black leading-none text-[#071B3A]">{totalSerie}</p>
-                <p className="text-[11px] text-slate-500">no período</p>
-              </div>
-
-              <div className="relative mt-4 h-24">
-                {/* Linha de base — fio de 1px, recessiva */}
-                <div className="absolute inset-x-0 bottom-0 h-px bg-slate-200" />
-                <div className="flex h-full items-end gap-[3px]">
-                  {assinaturasPorDia.map((p, i) => (
-                    <div
-                      key={p.rotulo}
-                      className="group relative flex h-full flex-1 items-end"
-                      onMouseEnter={() => setColunaAtiva(i)}
-                      onMouseLeave={() => setColunaAtiva(null)}
-                    >
-                      <div
-                        className="w-full rounded-t transition-opacity"
-                        style={{
-                          height: `${Math.max(p.quantidade === 0 ? 2 : 8, (p.quantidade / maxSerie) * 100)}%`,
-                          backgroundColor: p.quantidade === 0 ? '#E2E8F0' : OURO,
-                          opacity: colunaAtiva === null || colunaAtiva === i ? 1 : 0.45,
-                          maxWidth: '24px',
-                          marginInline: 'auto',
-                        }}
-                      />
-                      {/* Rótulo direto apenas no pico */}
-                      {i === indiceMax && maxSerie > 0 && (
-                        <span className="pointer-events-none absolute -top-4 left-1/2 -translate-x-1/2 text-[10px] font-black text-slate-600">
-                          {maxSerie}
-                        </span>
-                      )}
-                      {colunaAtiva === i && (
-                        <span className="pointer-events-none absolute -top-9 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-lg bg-[#071B3A] px-2 py-1 text-[10px] font-bold text-white shadow-lg">
-                          {p.rotulo}: {p.quantidade}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-1.5 flex justify-between text-[10px] tabular-nums text-slate-400">
-                <span>{assinaturasPorDia[0]?.rotulo}</span>
-                <span>{assinaturasPorDia[assinaturasPorDia.length - 1]?.rotulo}</span>
-              </div>
-            </Painel>
-          </Secao>
-        </div>
-      </div>
-
-      {/* ───────── ENVIAR PARA ASSINATURA ───────── */}
-      <Secao
-        titulo="Enviar para assinatura"
-        descricao="Um ou vários documentos de uma vez, ou um Kit Jurídico completo."
-      >
-        <Painel className="p-4 lg:p-5">
-          <div className="grid gap-4 lg:grid-cols-12">
-            <div className="lg:col-span-3">
-              <label className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-slate-500">
-                Cliente
-              </label>
-              <SeletorCliente clientes={clientes} valor={clienteEnvio} aoMudar={setClienteEnvio} />
-            </div>
-
-            <div className="lg:col-span-6">
-              <label className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-slate-500">
-                Documentos
-              </label>
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setArrastando(true);
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault();
-                  setArrastando(false);
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setArrastando(false);
-                  if (e.dataTransfer.files?.length) void subirArquivos(e.dataTransfer.files);
-                }}
-                onClick={() => inputRef.current?.click()}
-                className={`cursor-pointer rounded-xl border border-dashed px-3 py-3.5 text-center transition ${
-                  arrastando
-                    ? 'border-[#B68B1C] bg-amber-50'
-                    : arquivos.length > 0
-                    ? 'border-teal-300 bg-teal-50/40'
-                    : 'border-slate-300 bg-slate-50/70 hover:border-[#B68B1C] hover:bg-amber-50/40'
-                }`}
+        <div className="relative mt-3.5 grid grid-cols-12 items-stretch gap-3">
+          {/* ── 1. Cliente ── */}
+          <div className="col-span-12 flex flex-col lg:col-span-4">
+            <PassoRotulo numero={1} texto="Cliente" />
+            <div className="flex flex-1 flex-col rounded-xl bg-white p-2">
+              <button
+                type="button"
+                onClick={() => setBuscaAberta((v) => !v)}
+                className="flex w-full items-center gap-2.5 rounded-lg px-1.5 py-2 text-left hover:bg-slate-50"
               >
-                <input
-                  ref={inputRef}
-                  type="file"
-                  accept=".pdf"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files?.length) void subirArquivos(e.target.files);
-                  }}
-                />
-                {enviando ? (
-                  <span className="flex items-center justify-center gap-2 text-xs font-bold text-slate-600">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Enviando arquivos...
+                {clienteEscolhido ? (
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#071B3A] text-[12px] font-black text-[#D4AF37]">
+                    {iniciaisDe(clienteEscolhido.name || '')}
                   </span>
                 ) : (
-                  <span className="flex items-center justify-center gap-2 text-xs font-bold text-slate-600">
-                    <FileUp className="h-3.5 w-3.5 text-[#B68B1C]" />
-                    Arraste PDFs aqui ou clique para selecionar
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100">
+                    <UserRound className="h-4 w-4 text-slate-400" />
                   </span>
                 )}
-              </div>
+                <span className="min-w-0 flex-1">
+                  <span
+                    className={`block truncate text-[13px] ${
+                      clienteEscolhido ? 'font-bold text-[#071B3A]' : 'font-semibold text-slate-400'
+                    }`}
+                  >
+                    {clienteEscolhido?.name || 'Selecionar cliente'}
+                  </span>
+                  <span className="block truncate text-[10.5px] text-slate-500">
+                    {clienteEscolhido
+                      ? [formatarCpfCnpj(clienteEscolhido.cpfCnpj), formatarTelefone(clienteEscolhido.phone)]
+                          .filter(Boolean)
+                          .join(' · ') || 'sem CPF e telefone cadastrados'
+                      : 'buscar por nome, CPF ou telefone'}
+                  </span>
+                </span>
+                <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+              </button>
 
-              {arquivos.length > 0 && (
-                <ul className="mt-2 space-y-1">
-                  {arquivos.map((a, i) => (
-                    <li
-                      key={a.id}
-                      className="flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5"
+              {buscaAberta && (
+                <div className="mt-1.5 rounded-lg border border-slate-200 bg-white p-1.5">
+                  <div className="flex items-center gap-2 rounded-md bg-slate-50 px-2 py-1.5">
+                    <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                    <input
+                      autoFocus
+                      value={busca}
+                      onChange={(e) => setBusca(e.target.value)}
+                      placeholder="nome, CPF ou telefone"
+                      className="w-full bg-transparent text-[12px] text-slate-700 outline-none"
+                    />
+                  </div>
+                  <div className="mt-1 max-h-44 overflow-y-auto">
+                    {clientesFiltrados.length === 0 && (
+                      <p className="px-2 py-2 text-[11px] text-slate-400">
+                        Nenhum cliente encontrado.
+                      </p>
+                    )}
+                    {clientesFiltrados.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setClienteId(c.id);
+                          setBuscaAberta(false);
+                          setBusca('');
+                        }}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-slate-50"
+                      >
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[9px] font-black text-slate-600">
+                          {iniciaisDe(c.name || '')}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-700">
+                          {c.name}
+                        </span>
+                        <span className="shrink-0 text-[10px] text-slate-400">
+                          {formatarCpfCnpj(c.cpfCnpj)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!buscaAberta && clienteEscolhido && (
+                <>
+                  <div className="mt-1.5 flex items-center gap-1.5 px-1.5">
+                    {cadastroCompleto ? (
+                      <>
+                        <CheckCircle2 className="h-3 w-3 shrink-0 text-teal-600" />
+                        <span className="text-[10.5px] text-slate-500">
+                          Cadastro completo · pronto para assinar
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle className="h-3 w-3 shrink-0 text-amber-600" />
+                        <span className="text-[10.5px] text-amber-700">
+                          Falta {clienteEscolhido.cpfCnpj ? 'telefone' : 'CPF'} no cadastro
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  <div className="mt-1.5 space-y-1 border-t border-slate-100 px-1.5 pt-1.5">
+                    {canalCliente && (
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="h-3.5 w-3.5 shrink-0 text-teal-600" />
+                        <span className="truncate text-[11px] text-slate-600">
+                          Recebe em {canalCliente}
+                        </span>
+                      </div>
+                    )}
+                    {processoDoCliente && (
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                        <span className="truncate text-[11px] text-slate-600">
+                          {processoDoCliente.title || 'Processo'}
+                          {processoDoCliente.processNumber
+                            ? ` · ${processoDoCliente.processNumber}`
+                            : ''}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {!buscaAberta && !clienteEscolhido && clientesRecentes.length > 0 && (
+                <div className="mt-2 border-t border-slate-100 pt-2">
+                  <p className="mb-1 px-1.5 text-[9.5px] font-black uppercase tracking-[.14em] text-slate-400">
+                    Atendidos recentemente
+                  </p>
+                  {clientesRecentes.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setClienteId(c.id)}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left hover:bg-slate-50"
                     >
-                      <span className="text-[10px] font-black tabular-nums text-slate-400">
-                        {i + 1}
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-black text-slate-600">
+                        {iniciaisDe(c.name || '')}
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-slate-700">
+                      <span className="flex-1 truncate text-[12px] font-semibold text-slate-700">
+                        {c.name}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-auto flex gap-1.5 border-t border-slate-100 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setBuscaAberta(true)}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-50 py-2 hover:bg-slate-100"
+                >
+                  <Search className="h-3.5 w-3.5 text-slate-500" />
+                  <span className="text-[11px] font-bold text-slate-600">
+                    {clienteEscolhido ? 'Trocar cliente' : 'Buscar'}
+                  </span>
+                </button>
+                <Link
+                  href="/clientes?novo=1"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#071B3A] py-2 hover:bg-[#122c52]"
+                >
+                  <Plus className="h-3.5 w-3.5 text-[#D4AF37]" />
+                  <span className="text-[11px] font-bold text-white">Cadastrar</span>
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          {/* ── 2. O que vai ser assinado ── */}
+          <div className="col-span-12 flex flex-col lg:col-span-5">
+            <PassoRotulo numero={2} texto="O que vai ser assinado" />
+            <div className="flex flex-1 flex-col rounded-xl bg-white p-2">
+              <EscolhaModo ativo={modo} aoTrocar={setModo} />
+
+              {modo === 'DOC' ? (
+                <div className="flex flex-1 flex-col gap-1.5">
+                  {arquivos.map((a) => (
+                    <div
+                      key={a.id}
+                      className="flex items-center gap-2.5 rounded-lg bg-slate-50 px-2.5 py-1.5"
+                    >
+                      <FileText className="h-4 w-4 shrink-0 text-rose-500" />
+                      <span className="flex-1 truncate text-[12px] font-semibold text-slate-700">
                         {a.nome}
                       </span>
                       <button
                         type="button"
-                        onClick={() => setArquivos((prev) => prev.filter((x) => x.id !== a.id))}
-                        className="shrink-0 text-slate-400 hover:text-rose-600"
+                        onClick={() => setArquivos((p) => p.filter((x) => x.id !== a.id))}
                         aria-label={`Remover ${a.nome}`}
                       >
-                        <X className="h-3.5 w-3.5" />
+                        <X className="h-3.5 w-3.5 shrink-0 text-slate-300 hover:text-slate-500" />
                       </button>
-                    </li>
+                    </div>
                   ))}
-                </ul>
-              )}
 
-              {erroEnvio && (
-                <p className="mt-1.5 text-[11px] font-semibold text-rose-700">{erroEnvio}</p>
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setArrastando(true);
+                    }}
+                    onDragLeave={() => setArrastando(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setArrastando(false);
+                      if (e.dataTransfer.files?.length) void subirArquivos(e.dataTransfer.files);
+                    }}
+                    className={`flex flex-1 flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-4 py-3 transition ${
+                      arrastando ? 'border-[#B68B1C] bg-amber-50/60' : 'border-slate-300 bg-slate-50/60'
+                    } ${arquivos.length > 0 ? 'py-2' : ''}`}
+                  >
+                    {arquivos.length === 0 ? (
+                      <>
+                        <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white">
+                          <FileUp className="h-5 w-5 text-[#B68B1C]" />
+                        </span>
+                        <p className="text-[13px] font-bold text-[#071B3A]">Arraste os PDFs para cá</p>
+                        <button
+                          type="button"
+                          onClick={() => inputRef.current?.click()}
+                          disabled={enviando}
+                          className="flex items-center gap-1.5 rounded-lg bg-[#071B3A] px-3.5 py-2 text-[11.5px] font-bold text-white disabled:opacity-60"
+                        >
+                          {enviando ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-[#D4AF37]" />
+                          ) : (
+                            <FileUp className="h-3.5 w-3.5 text-[#D4AF37]" />
+                          )}
+                          Procurar no computador
+                        </button>
+                        <p className="text-[10.5px] text-slate-400">
+                          PDF · vários arquivos de uma vez
+                        </p>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => inputRef.current?.click()}
+                        disabled={enviando}
+                        className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 disabled:opacity-60"
+                      >
+                        {enviando ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <FileUp className="h-3.5 w-3.5" />
+                        )}
+                        arraste mais PDFs ou procure no computador
+                      </button>
+                    )}
+                  </div>
+
+                  <input
+                    ref={inputRef}
+                    type="file"
+                    accept="application/pdf"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files?.length) void subirArquivos(e.target.files);
+                      e.target.value = '';
+                    }}
+                  />
+                  {erroEnvio && <p className="text-[10.5px] font-bold text-rose-600">{erroEnvio}</p>}
+                </div>
+              ) : (
+                <div className="flex flex-1 flex-col gap-1.5">
+                  {kits.length === 0 ? (
+                    <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50/60 px-4 py-4 text-center">
+                      <Layers className="h-5 w-5 text-slate-400" />
+                      <p className="text-[12px] font-bold text-[#071B3A]">
+                        Você ainda não montou um Kit
+                      </p>
+                      <Link
+                        href="/kits"
+                        className="rounded-lg bg-[#071B3A] px-3 py-1.5 text-[11px] font-bold text-white"
+                      >
+                        Criar meu primeiro Kit
+                      </Link>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setListaKitAberta((v) => !v)}
+                        className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left ${
+                          kitEscolhido
+                            ? 'border-2 border-[#D4AF37] bg-amber-50/50'
+                            : 'border border-slate-200 bg-slate-50'
+                        }`}
+                      >
+                        <Shield
+                          className={`h-4 w-4 shrink-0 ${
+                            kitEscolhido ? 'text-[#B68B1C]' : 'text-slate-400'
+                          }`}
+                        />
+                        <span
+                          className={`flex-1 truncate text-[12px] ${
+                            kitEscolhido ? 'font-bold text-[#071B3A]' : 'font-semibold text-slate-500'
+                          }`}
+                        >
+                          {kitEscolhido?.name || 'Escolher um Kit Jurídico'}
+                        </span>
+                        {kitEscolhido ? (
+                          <CheckCircle2 className="h-4 w-4 shrink-0 text-[#B68B1C]" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                        )}
+                      </button>
+
+                      {listaKitAberta && (
+                        <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 p-1">
+                          {kits.map((k) => (
+                            <button
+                              key={k.id}
+                              type="button"
+                              onClick={() => {
+                                setKitId(k.id);
+                                setListaKitAberta(false);
+                              }}
+                              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-slate-50"
+                            >
+                              <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-700">
+                                {k.name}
+                              </span>
+                              <span className="shrink-0 text-[10px] text-slate-400">
+                                {(k.items?.length ?? 0)} peças
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {kitEscolhido && !listaKitAberta && (
+                        <div className="space-y-1 px-2.5">
+                          {(kitEscolhido.items || []).map((it) => (
+                            <div key={it.id} className="flex items-center gap-2">
+                              <span className="h-1 w-1 shrink-0 rounded-full bg-slate-300" />
+                              <span className="truncate text-[11px] text-slate-600">
+                                {it.template?.title || 'Peça do kit'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {kitEscolhido && !listaKitAberta && (
+                        <button
+                          type="button"
+                          onClick={() => setListaKitAberta(true)}
+                          className="mt-auto flex items-center justify-center gap-1.5 rounded-lg bg-slate-50 py-2"
+                        >
+                          <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                          <span className="text-[11px] font-bold text-slate-500">trocar de Kit</span>
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               )}
             </div>
+          </div>
 
-            <div className="flex flex-col justify-end gap-2 lg:col-span-3">
+          {/* ── 3. Envio ── */}
+          <div className="col-span-12 flex flex-col lg:col-span-3">
+            <PassoRotulo numero={3} texto="Envio" />
+            <div className="flex flex-1 flex-col gap-2">
+              <div
+                className={`space-y-0.5 rounded-xl px-3 py-2 ${
+                  clienteEscolhido
+                    ? 'border border-white/15 bg-white/[.08]'
+                    : 'border border-white/10 bg-white/5'
+                }`}
+              >
+                <p className="text-[10px] font-black uppercase tracking-[.14em] text-slate-400">
+                  Vai para
+                </p>
+                <p
+                  className={`truncate text-[12px] font-bold ${
+                    clienteEscolhido ? 'text-white' : 'text-slate-400'
+                  }`}
+                >
+                  {clienteEscolhido?.name || 'nenhum cliente escolhido'}
+                </p>
+                <p className="truncate text-[10.5px] text-slate-300">
+                  {clienteEscolhido ? canalCliente || 'sem canal cadastrado' : 'escolha no passo 1'}
+                </p>
+              </div>
+
               <button
                 type="button"
-                onClick={prosseguirEnvio}
-                disabled={arquivos.length === 0 || enviando}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#071B3A] py-2.5 text-xs font-extrabold text-white shadow-sm transition hover:bg-[#152a47] disabled:opacity-40"
+                onClick={seguir}
+                disabled={!podeEnviar}
+                className={`flex w-full flex-1 flex-col items-center justify-center gap-1 rounded-xl ${
+                  podeEnviar
+                    ? 'bg-gradient-to-br from-[#E0BD48] to-[#B68B1C] text-[#071B3A] shadow-[0_8px_20px_-8px_rgba(212,175,55,.7)]'
+                    : 'cursor-not-allowed border border-white/15 bg-white/10 text-slate-400'
+                }`}
               >
-                <Send className="h-3.5 w-3.5 text-[#D4AF37]" />
-                {arquivos.length > 1 ? `Preparar ${arquivos.length} documentos` : 'Preparar envio'}
+                <Send className={`h-5 w-5 ${podeEnviar ? '' : 'opacity-50'}`} />
+                <span className="text-[13px] font-extrabold leading-none">
+                  {modo === 'KIT'
+                    ? 'Gerar e enviar Kit'
+                    : arquivos.length > 0
+                      ? `Enviar ${arquivos.length} ${arquivos.length === 1 ? 'documento' : 'documentos'}`
+                      : 'Enviar para assinatura'}
+                </span>
+                <span className="text-[10px] font-bold opacity-70">
+                  {podeEnviar
+                    ? 'revisar assinantes'
+                    : modo === 'KIT'
+                      ? 'escolha o Kit'
+                      : 'escolha cliente e documentos'}
+                </span>
               </button>
+
               <Link
-                href="/kits/enviar"
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 py-2.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                href="/documentos"
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/20 bg-white/10 py-2 text-[11.5px] font-bold text-white"
               >
-                <Layers className="h-3.5 w-3.5 text-[#B68B1C]" /> Enviar Kit Jurídico
+                <QrCode className="h-3.5 w-3.5" />
+                Assinar aqui por QR
               </Link>
-              <p className="text-center text-[10px] leading-4 text-slate-400">
-                A conferência de signatários acontece na próxima tela.
+            </div>
+          </div>
+        </div>
+
+        <div className="relative mt-3 flex flex-wrap items-center gap-4 border-t border-white/10 pt-2.5">
+          <span className="flex items-center gap-1.5 text-[10.5px] text-slate-300">
+            <Shield className="h-3 w-3 text-[#D4AF37]" />
+            Certificado de evidências
+          </span>
+          <span className="flex items-center gap-1.5 text-[10.5px] text-slate-300">
+            <UserRound className="h-3 w-3 text-[#D4AF37]" />
+            Selfie e prova de presença
+          </span>
+          <span className="flex items-center gap-1.5 text-[10.5px] text-slate-300">
+            <CheckCircle2 className="h-3 w-3 text-[#D4AF37]" />
+            Assinatura a rogo com testemunhas
+          </span>
+          {indicadores.taxaConclusao !== null && (
+            <span className="ml-auto flex items-center gap-1.5 text-[10.5px] text-slate-400">
+              <TrendingUp className="h-3 w-3" />
+              <strong className="font-black text-white">{indicadores.taxaConclusao}%</strong> dos seus
+              envios são assinados
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ───────────────────────── INDICADORES ───────────────────────── */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Cartao className="p-4">
+          <div className="flex items-start justify-between">
+            <p className="text-[11px] font-bold text-slate-500">Aguardando assinatura</p>
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50">
+              <Clock3 className="h-3.5 w-3.5 text-amber-600" />
+            </span>
+          </div>
+          <p className="mt-2.5 text-[32px] font-black leading-none text-[#071B3A]">
+            {indicadores.aguardando}
+          </p>
+          <p className="mt-1.5 text-[11px]">
+            {indicadores.aguardandoParados > 0 ? (
+              <>
+                <span className="font-bold text-amber-600">
+                  {indicadores.aguardandoParados} paradas
+                </span>{' '}
+                <span className="text-slate-400">há mais de 2 dias</span>
+              </>
+            ) : (
+              <span className="text-slate-400">nenhuma parada</span>
+            )}
+          </p>
+        </Cartao>
+
+        <Cartao className="p-4">
+          <div className="flex items-start justify-between">
+            <p className="text-[11px] font-bold text-slate-500">Assinados no mês</p>
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-50">
+              <CheckCircle2 className="h-3.5 w-3.5 text-teal-600" />
+            </span>
+          </div>
+          <p className="mt-2.5 text-[32px] font-black leading-none text-[#071B3A]">
+            {indicadores.assinadosNoMes}
+          </p>
+          <p className="mt-1.5 text-[11px]">
+            {indicadores.variacaoMes !== null ? (
+              <>
+                <span
+                  className={`font-bold ${
+                    indicadores.variacaoMes >= 0 ? 'text-teal-600' : 'text-amber-600'
+                  }`}
+                >
+                  {indicadores.variacaoMes >= 0 ? '+' : ''}
+                  {indicadores.variacaoMes}
+                </span>{' '}
+                <span className="text-slate-400">vs. mês anterior</span>
+              </>
+            ) : (
+              <span className="text-slate-400">primeiro mês de histórico</span>
+            )}
+          </p>
+        </Cartao>
+
+        <Cartao className="p-4">
+          <div className="flex items-start justify-between">
+            <p className="text-[11px] font-bold text-slate-500">Prazos críticos</p>
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50">
+              <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
+            </span>
+          </div>
+          <p
+            className={`mt-2.5 text-[32px] font-black leading-none ${
+              vencidos.length + prazosHoje.length > 0 ? 'text-rose-600' : 'text-[#071B3A]'
+            }`}
+          >
+            {vencidos.length + prazosHoje.length}
+          </p>
+          <p className="mt-1.5 text-[11px] text-slate-400">
+            {resumo.temAlgumPrazoCadastrado
+              ? `${vencidos.length} vencido${vencidos.length === 1 ? '' : 's'} · ${prazosHoje.length} vence${prazosHoje.length === 1 ? '' : 'm'} hoje`
+              : 'nenhum prazo cadastrado ainda'}
+          </p>
+        </Cartao>
+
+        <Cartao className="p-4">
+          <div className="flex items-start justify-between">
+            <p className="text-[11px] font-bold text-slate-500">Taxa de conclusão</p>
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100">
+              <TrendingUp className="h-3.5 w-3.5 text-slate-500" />
+            </span>
+          </div>
+          <p className="mt-2.5 text-[32px] font-black leading-none text-[#071B3A]">
+            {indicadores.taxaConclusao !== null ? `${indicadores.taxaConclusao}%` : '—'}
+          </p>
+          <p className="mt-1.5 text-[11px] text-slate-400">
+            {indicadores.taxaConclusao !== null
+              ? 'dos envios são assinados'
+              : `precisa de 5 envios encerrados (tem ${indicadores.totalAvaliadoTaxa})`}
+          </p>
+        </Cartao>
+      </div>
+
+      {/* ─────────── INTIMAÇÕES / ASSINATURAS + AVISOS ─────────── */}
+      <div className="grid grid-cols-12 gap-5">
+        <Cartao className="col-span-12 flex flex-col lg:col-span-7">
+          <div className="border-b border-slate-100 px-5 pt-3.5">
+            <div className="flex items-end justify-between">
+              <div className="flex items-center gap-5">
+                <button
+                  type="button"
+                  onClick={() => setAba('INT')}
+                  className={`flex items-center gap-1.5 border-b-2 px-1 pb-2.5 text-[12.5px] ${
+                    aba === 'INT'
+                      ? 'border-[#B68B1C] font-extrabold text-[#071B3A]'
+                      : 'border-transparent font-bold text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  Intimações
+                  <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9.5px] font-black text-slate-500">
+                    off
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAba('ASS')}
+                  className={`flex items-center gap-1.5 border-b-2 px-1 pb-2.5 text-[12.5px] ${
+                    aba === 'ASS'
+                      ? 'border-[#B68B1C] font-extrabold text-[#071B3A]'
+                      : 'border-transparent font-bold text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  Assinaturas
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[9.5px] font-black ${
+                      aba === 'ASS' ? 'bg-[#B68B1C] text-white' : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {assinaturas.length}
+                  </span>
+                </button>
+              </div>
+              <Link href="/documentos" className="pb-2.5 text-[11px] font-bold text-[#B68B1C]">
+                Ver todas →
+              </Link>
+            </div>
+          </div>
+
+          {aba === 'INT' ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 py-10 text-center">
+              <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100">
+                <Scale className="h-5 w-5 text-slate-400" />
+              </span>
+              <div>
+                <p className="text-[13px] font-extrabold text-[#071B3A]">
+                  Intimações do DJEN ainda não conectadas
+                </p>
+                <p className="mx-auto mt-1.5 max-w-md text-[11.5px] leading-relaxed text-slate-500">
+                  O Diário de Justiça Eletrônico Nacional publica as intimações por número de OAB. Ao
+                  informar a OAB do escritório, esta aba passa a mostrar cada publicação já vinculada
+                  ao cliente pelo número do processo, com um clique para virar prazo.
+                </p>
+              </div>
+              <Link
+                href="/configuracoes"
+                className="rounded-lg bg-[#071B3A] px-3.5 py-2 text-[11.5px] font-bold text-white"
+              >
+                Informar OAB nas configurações
+              </Link>
+              <p className="text-[10.5px] text-slate-400">
+                integração em desenvolvimento · nenhum dado de exemplo é exibido aqui
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {assinaturas.length === 0 && (
+                <p className="px-5 py-8 text-center text-[12px] text-slate-400">
+                  Nenhum documento em circulação. Use o fluxo rápido acima para enviar o primeiro.
+                </p>
+              )}
+              {assinaturas.map((a) => (
+                <div key={a.id} className="px-5 py-3.5">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-black text-slate-600">
+                      {a.iniciais}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-[13px] font-bold text-[#071B3A]">{a.cliente}</p>
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[9px] font-black uppercase ${
+                            a.estado === 'CONCLUIDO'
+                              ? 'bg-teal-50 text-teal-700'
+                              : a.estado === 'PARADO'
+                                ? 'bg-rose-50 text-rose-700'
+                                : 'bg-amber-50 text-amber-700'
+                          }`}
+                        >
+                          {a.assinados} de {a.total}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 truncate text-[11px] text-slate-500">
+                        {a.titulo} ·{' '}
+                        {a.estado === 'CONCLUIDO' ? (
+                          'concluído'
+                        ) : a.estado === 'PARADO' ? (
+                          <span className="font-bold text-rose-600">
+                            parada há {a.diasDesdeEnvio} dias
+                          </span>
+                        ) : (
+                          `enviado há ${a.diasDesdeEnvio} dia(s)`
+                        )}
+                      </p>
+                      <div className="mt-2 flex gap-[3px]">
+                        {Array.from({ length: a.total }).map((_, i) => (
+                          <span
+                            key={i}
+                            className={`h-1.5 flex-1 rounded-full ${
+                              i < a.assinados ? 'bg-teal-500' : 'bg-slate-200'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      {(a.temSelfie || a.temGeo || a.temDispositivo) && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2.5">
+                          {a.temSelfie && (
+                            <span className="flex items-center gap-1 text-[10px] text-slate-500">
+                              <CheckCircle2 className="h-3 w-3 text-teal-600" />
+                              Selfie
+                            </span>
+                          )}
+                          {a.temGeo && (
+                            <span className="flex items-center gap-1 text-[10px] text-slate-500">
+                              <CheckCircle2 className="h-3 w-3 text-teal-600" />
+                              Geolocalização
+                            </span>
+                          )}
+                          {a.temDispositivo && (
+                            <span className="flex items-center gap-1 text-[10px] text-slate-500">
+                              <CheckCircle2 className="h-3 w-3 text-teal-600" />
+                              IP e dispositivo
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <Link
+                      href="/documentos"
+                      className={`shrink-0 rounded-lg px-3 py-1.5 text-[11px] font-bold ${
+                        a.estado === 'CONCLUIDO'
+                          ? 'border border-slate-200 text-slate-700'
+                          : 'bg-teal-600 text-white'
+                      }`}
+                    >
+                      {a.estado === 'CONCLUIDO' ? 'Baixar' : 'Cobrar'}
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Cartao>
+
+        {/* ── Avisos e acompanhamentos ── */}
+        <Cartao className="col-span-12 flex flex-col lg:col-span-5">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+            <div>
+              <h2 className="text-[13px] font-extrabold text-[#071B3A]">
+                Avisos e acompanhamentos
+              </h2>
+              <p className="mt-0.5 text-[10.5px] text-slate-500">
+                O que você anotou e o que o sistema achou
+                {totalAvisos > 0 ? ` · ${totalAvisos}` : ''}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFormAviso((v) => !v)}
+              className="flex shrink-0 items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-bold text-slate-600 transition hover:bg-[#071B3A] hover:text-white"
+            >
+              <Plus className="h-3 w-3" />
+              Novo aviso
+            </button>
+          </div>
+
+          {formAviso && (
+            <div className="space-y-2 border-b border-slate-100 bg-slate-50/70 px-5 py-3">
+              <input
+                value={novoAviso.titulo}
+                onChange={(e) => setNovoAviso({ ...novoAviso, titulo: e.target.value })}
+                placeholder="Ex.: atualizar o CadÚnico"
+                className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#B68B1C]"
+              />
+              <div className="flex gap-2">
+                <select
+                  value={novoAviso.clienteId}
+                  onChange={(e) => setNovoAviso({ ...novoAviso, clienteId: e.target.value })}
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#B68B1C]"
+                >
+                  <option value="">Cliente (opcional)</option>
+                  {clientes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="date"
+                  value={novoAviso.acompanharEm}
+                  onChange={(e) => setNovoAviso({ ...novoAviso, acompanharEm: e.target.value })}
+                  className="shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#B68B1C]"
+                />
+              </div>
+              <input
+                value={novoAviso.detalhe}
+                onChange={(e) => setNovoAviso({ ...novoAviso, detalhe: e.target.value })}
+                placeholder="Detalhe (opcional)"
+                className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#B68B1C]"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFormAviso(false)}
+                  className="px-2.5 py-1.5 text-[11px] font-bold text-slate-500"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={salvarAviso}
+                  disabled={!novoAviso.titulo.trim()}
+                  className="rounded-lg bg-[#071B3A] px-3 py-1.5 text-[11px] font-bold text-white disabled:opacity-40"
+                >
+                  Salvar aviso
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex-1 divide-y divide-slate-100">
+            {avisosManuais.map((a) => {
+              const q = textoAcompanhamento(a.acompanharEm, agora);
+              return (
+                <div key={a.id} className="group flex items-start gap-2.5 px-5 py-2.5 hover:bg-slate-50/70">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="shrink-0 rounded bg-[#071B3A] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-[#D4AF37]">
+                        você
+                      </span>
+                      <p className="truncate text-[12.5px] font-bold text-[#071B3A]">{a.titulo}</p>
+                    </div>
+                    <p className="mt-0.5 truncate text-[11px] text-slate-500">
+                      {[a.cliente, a.detalhe].filter(Boolean).join(' · ') || 'sem cliente vinculado'}
+                    </p>
+                    <p
+                      className={`mt-1 text-[10.5px] font-bold ${
+                        q.atrasado ? 'text-rose-600' : 'text-slate-500'
+                      }`}
+                    >
+                      {q.texto}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removerAviso(a.id)}
+                    className="mt-1 shrink-0 text-[11px] font-extrabold text-slate-300 hover:text-rose-600"
+                    aria-label={`Concluir aviso ${a.titulo}`}
+                  >
+                    Concluir
+                  </button>
+                </div>
+              );
+            })}
+
+            {avisosSistema.map((a) => (
+              <div key={a.id} className="flex items-start gap-2.5 px-5 py-2.5 hover:bg-slate-50/70">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-slate-500">
+                      sistema
+                    </span>
+                    <p className="truncate text-[12.5px] font-bold text-[#071B3A]">{a.titulo}</p>
+                  </div>
+                  <p className="mt-0.5 truncate text-[11px] text-slate-500">{a.detalhe}</p>
+                  <p
+                    className={`mt-1 text-[10.5px] font-bold ${
+                      a.nivel === 'CRITICO'
+                        ? 'text-rose-600'
+                        : a.nivel === 'ATENCAO'
+                          ? 'text-amber-600'
+                          : 'text-slate-500'
+                    }`}
+                  >
+                    {a.nivel === 'CRITICO'
+                      ? 'resolver hoje'
+                      : a.nivel === 'ATENCAO'
+                        ? 'acompanhar'
+                        : 'pendente'}
+                  </p>
+                </div>
+                <Link
+                  href={a.destino}
+                  className="mt-1 shrink-0 text-[11px] font-extrabold text-[#B68B1C]"
+                >
+                  {a.acao}
+                </Link>
+              </div>
+            ))}
+
+            {totalAvisos === 0 && (
+              <p className="px-5 py-8 text-center text-[12px] text-slate-400">
+                Nada pendente. Use “Novo aviso” para anotar o que precisa acompanhar.
+              </p>
+            )}
+          </div>
+        </Cartao>
+      </div>
+
+      {/* ───────────────── PRAZOS + OPERAÇÃO NACIONAL ───────────────── */}
+      <div className="grid grid-cols-12 gap-5">
+        <Cartao className="col-span-12 flex flex-col lg:col-span-5">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
+            <h2 className="text-[13px] font-extrabold text-[#071B3A]">Prazos processuais</h2>
+            <Link href="/processos" className="text-[11px] font-bold text-[#B68B1C]">
+              Agenda →
+            </Link>
+          </div>
+          <div className="flex-1 divide-y divide-slate-100">
+            {prazosVisiveis.length === 0 && (
+              <p className="px-5 py-8 text-center text-[12px] text-slate-400">
+                {resumo.temAlgumPrazoCadastrado
+                  ? 'Nenhum prazo nos próximos 7 dias.'
+                  : `Nenhum prazo cadastrado — ${resumo.processosSemPrazo} processo(s) sem data.`}
+              </p>
+            )}
+            {prazosVisiveis.map((p) => (
+              <div key={p.id} className="flex items-center gap-3 px-5 py-3">
+                <span
+                  className={`h-8 w-1 shrink-0 rounded-full ${
+                    p.urgencia === 'VENCIDO'
+                      ? 'bg-rose-500'
+                      : p.urgencia === 'HOJE'
+                        ? 'bg-amber-500'
+                        : 'bg-slate-200'
+                  }`}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[12.5px] font-bold text-[#071B3A]">{p.cliente}</p>
+                  <p className="truncate text-[11px] text-slate-500">
+                    {p.titulo} · {p.area}
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 text-[11px] font-bold ${
+                    p.urgencia === 'VENCIDO'
+                      ? 'text-rose-600'
+                      : p.urgencia === 'HOJE'
+                        ? 'text-amber-600'
+                        : 'text-slate-500'
+                  }`}
+                >
+                  {textoPrazo(p.diasRestantes)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Cartao>
+
+        <div className="col-span-12 lg:col-span-7">
+          <BrazilOperationsMap />
+        </div>
+      </div>
+
+      {/* ───────────────────────── FUNIL ───────────────────────── */}
+      <Cartao className="p-5">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-[13px] font-extrabold text-[#071B3A]">Funil do escritório</h2>
+            <p className="mt-0.5 text-[10.5px] text-slate-500">
+              Em que etapa está cada um dos {totalFunil} clientes
+            </p>
+          </div>
+          <Link href="/clientes" className="text-[11px] font-bold text-[#B68B1C]">
+            Ver clientes →
+          </Link>
+        </div>
+        {totalFunil === 0 ? (
+          <p className="py-6 text-center text-[12px] text-slate-400">
+            Cadastre o primeiro cliente para ver o funil.
+          </p>
+        ) : (
+          <>
+            <div className="mt-3 flex h-7 gap-[2px] overflow-hidden rounded-lg">
+              {funil.map((f, i) => {
+                const largura = (f.quantidade / totalFunil) * 100;
+                if (largura === 0) return null;
+                return (
+                  <div
+                    key={f.chave}
+                    style={{ width: `${largura}%`, background: RAMPA_FUNIL[i] }}
+                    className="flex items-center justify-center"
+                    title={`${f.rotulo}: ${f.quantidade}`}
+                  >
+                    <span
+                      className={`text-[11px] font-black ${i === 0 ? 'text-[#071B3A]' : 'text-white'}`}
+                    >
+                      {f.quantidade}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-5">
+              {funil.map((f, i) => (
+                <div key={f.chave} className="flex items-center gap-2">
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                    style={{ background: RAMPA_FUNIL[i] }}
+                  />
+                  <span className="text-[11.5px] text-slate-600">{f.rotulo}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </Cartao>
+
+      {/* ───────────────── RITMO + KITS MAIS USADOS ───────────────── */}
+      <div className="grid grid-cols-12 gap-5">
+        <Cartao className="col-span-12 flex flex-col p-5 lg:col-span-7">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-[13px] font-extrabold text-[#071B3A]">
+                Assinaturas concluídas por dia
+              </h2>
+              <p className="mt-0.5 text-[10.5px] text-slate-500">
+                Últimos {assinaturasPorDia.length} dias · {totalSerie} no total
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-[11px] text-slate-500">média diária</p>
+              <p className="text-[18px] font-black leading-tight text-[#071B3A]">
+                {mediaSerie.toFixed(1).replace('.', ',')}
               </p>
             </div>
           </div>
-        </Painel>
-      </Secao>
-
-      {/* ───────── DEPENDE DE VOCÊ x TERCEIROS ───────── */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Secao titulo="Depende de você" descricao="Só anda se o escritório agir.">
-          {pendenciasSuas.length === 0 ? (
-            <Vazio
-              icone={<CheckCircle2 className="h-5 w-5" style={{ color: COR_BOM }} />}
-              titulo="Nada parado do seu lado"
-            />
-          ) : (
-            <Painel className="overflow-hidden">
-              <ul className="divide-y divide-slate-100">
-                {pendenciasSuas.slice(0, 5).map((p) => (
-                  <li key={p.id}>
-                    <Link
-                      href={p.destino}
-                      className="flex items-center gap-3 px-4 py-3 transition hover:bg-slate-50/80"
-                    >
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500">
-                        <UserRound className="h-4 w-4" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-bold text-[#071B3A]">{p.cliente}</p>
-                        <p className="truncate text-xs text-slate-500">{p.motivo}</p>
-                      </div>
-                      <span className="shrink-0 text-[11px] font-extrabold text-[#B68B1C]">
-                        {p.acao}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </Painel>
-          )}
-        </Secao>
-
-        <Secao titulo="Aguardando terceiros" descricao="Depende do cliente responder.">
-          {esperandoTerceiros.length === 0 ? (
-            <Vazio
-              icone={<CheckCircle2 className="h-5 w-5" style={{ color: COR_BOM }} />}
-              titulo="Nenhuma assinatura em aberto"
-            />
-          ) : (
-            <Painel className="overflow-hidden">
-              <ul className="divide-y divide-slate-100">
-                {esperandoTerceiros.slice(0, 5).map((e) => (
-                  <li key={e.id} className="flex items-center gap-3 px-4 py-3">
-                    <span
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-                      style={{
-                        backgroundColor: e.atrasado ? '#FEF3C7' : '#F1F5F9',
-                        color: e.atrasado ? COR_ATENCAO : '#94A3B8',
-                      }}
-                    >
-                      <Clock3 className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold text-[#071B3A]">{e.cliente}</p>
-                      <p className="truncate text-xs text-slate-500">
-                        {e.documento} ·{' '}
-                        {e.diasEsperando === 0 ? 'enviado hoje' : `há ${e.diasEsperando} dia(s)`}
-                      </p>
-                    </div>
-                    {e.atrasado && (
-                      <span
-                        className="flex shrink-0 items-center gap-1 text-[11px] font-extrabold"
-                        style={{ color: COR_BOM }}
-                      >
-                        <MessageSquare className="h-3.5 w-3.5" /> Cobrar
+          <div className="mt-6 flex min-h-[150px] flex-1 items-stretch gap-1.5">
+            {assinaturasPorDia.map((p, i) => {
+              const ultimo = i === assinaturasPorDia.length - 1;
+              const destacar = p.quantidade === maxSerie && maxSerie > 0;
+              return (
+                <div
+                  key={p.rotulo}
+                  className="group flex flex-1 flex-col items-center justify-end gap-1.5"
+                  title={`${p.rotulo}: ${p.quantidade}`}
+                >
+                  <div className="relative flex w-full flex-1 items-end">
+                    {(destacar || ultimo) && p.quantidade > 0 && (
+                      <span className="absolute -top-4 left-1/2 -translate-x-1/2 text-[10px] font-black text-[#071B3A]">
+                        {p.quantidade}
                       </span>
                     )}
-                  </li>
-                ))}
-              </ul>
-            </Painel>
-          )}
-        </Secao>
+                    <div
+                      className="w-full rounded-t-[4px] transition-all group-hover:opacity-80"
+                      style={{
+                        height: `${(p.quantidade / maxSerie) * 100}%`,
+                        background: ultimo ? RAMPA_FUNIL[4] : RAMPA_FUNIL[2],
+                        minHeight: p.quantidade > 0 ? 3 : 0,
+                      }}
+                    />
+                  </div>
+                  <span
+                    className={`text-[9.5px] ${
+                      ultimo ? 'font-black text-[#071B3A]' : 'text-slate-400'
+                    }`}
+                  >
+                    {p.rotulo.slice(0, 2)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </Cartao>
+
+        <Cartao className="col-span-12 flex flex-col lg:col-span-5">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
+            <div>
+              <h2 className="text-[13px] font-extrabold text-[#071B3A]">Seus Kits mais usados</h2>
+              <p className="mt-0.5 text-[10.5px] text-slate-500">Envie em um clique</p>
+            </div>
+            <Link href="/kits" className="text-[11px] font-bold text-[#B68B1C]">
+              Todos →
+            </Link>
+          </div>
+          <div className="flex-1 divide-y divide-slate-100">
+            {kitsUsados.length === 0 && (
+              <p className="px-5 py-8 text-center text-[12px] text-slate-400">
+                Nenhum kit montado ainda.
+              </p>
+            )}
+            {kitsUsados.map((k) => {
+              const maxEnvios = Math.max(1, ...kitsUsados.map((x) => x.envios));
+              return (
+                <div key={k.id} className="group flex items-center gap-3 px-5 py-2.5 hover:bg-slate-50">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12.5px] font-bold text-[#071B3A]">{k.nome}</p>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${(k.envios / maxEnvios) * 100}%`,
+                            background: RAMPA_FUNIL[3],
+                          }}
+                        />
+                      </div>
+                      <span className="shrink-0 text-[10.5px] text-slate-500">
+                        {k.envios} envio{k.envios === 1 ? '' : 's'} · {k.pecas} peças
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModo('KIT');
+                      setKitId(k.id);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="shrink-0 rounded-lg bg-slate-100 px-3 py-1.5 text-[11px] font-bold text-slate-600 transition group-hover:bg-[#071B3A] group-hover:text-white"
+                  >
+                    Usar
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <div className="border-t border-slate-100 px-5 py-3">
+            <Link
+              href="/kits"
+              className="block w-full rounded-lg border border-dashed border-slate-300 py-2.5 text-center text-[11.5px] font-bold text-slate-500 transition hover:border-[#B68B1C] hover:text-[#B68B1C]"
+            >
+              + Criar novo Kit
+            </Link>
+          </div>
+        </Cartao>
       </div>
 
-      {/* ───────── SEM MOVIMENTAÇÃO ───────── */}
-      <Secao titulo="Sem movimentação" descricao="Casos fora do radar há mais de 15 dias.">
-        {parados.length === 0 ? (
-          <Vazio
-            icone={<CheckCircle2 className="h-5 w-5" style={{ color: COR_BOM }} />}
-            titulo="Todos os casos tiveram movimento recente"
-          />
-        ) : (
-          <Painel className="overflow-hidden">
-            <ul className="divide-y divide-slate-100">
-              {parados.slice(0, 5).map((c) => (
-                <li key={c.id}>
-                  <Link
-                    href={`/processos?clienteId=${c.clienteId}`}
-                    className="flex items-center gap-3 px-4 py-3 transition hover:bg-slate-50/80"
-                  >
-                    <PauseCircle className="h-4 w-4 shrink-0 text-slate-300" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold text-[#071B3A]">{c.cliente}</p>
-                      <p className="truncate text-xs text-slate-500">{c.titulo}</p>
-                    </div>
-                    <span className="shrink-0 text-xs font-bold tabular-nums text-slate-400">
-                      {c.diasSemMovimento} dias
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </Painel>
-        )}
-      </Secao>
-
-      {/* ───────── TERRITÓRIO ───────── */}
-      <Secao titulo="Território" descricao="Onde estão seus clientes e processos.">
-        <BrazilOperationsMap />
-      </Secao>
-
-      <p className="text-center text-[11px] text-slate-400">
-        Proposta em avaliação · a Home atual segue intacta em /dashboard
-      </p>
+      {/* ───────────────────────── RODAPÉ ───────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-1 pt-1">
+        <p className="text-[10.5px] text-slate-400">
+          AssinaJur{escritorio ? ` · ${escritorio}` : ''} · assinaturas com certificado de evidências
+          e validade jurídica (MP 2.200-2/2001)
+        </p>
+        <p className="text-[10.5px] text-slate-400">
+          Proposta em avaliação · a Home atual segue intacta em{' '}
+          <Link href="/dashboard" className="font-bold text-[#B68B1C]">
+            /dashboard
+          </Link>
+        </p>
+      </div>
     </div>
   );
 }

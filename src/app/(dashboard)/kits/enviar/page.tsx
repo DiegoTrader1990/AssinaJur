@@ -48,7 +48,7 @@ export default function DispatchKitPage() {
   const [kits, setKits] = useState<LegalKit[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [selectedClientId, setSelectedClientId] = useState('');
+  const [selectedClientId, setSelectedClientId] = useState(searchParams.get('clientId') || '');
   const [selectedKitId, setSelectedKitId] = useState(searchParams.get('kitId') || '');
   const [variables, setVariables] = useState({
     valor_honorarios: 'R$ 3.000,00',
