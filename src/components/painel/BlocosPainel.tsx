@@ -37,6 +37,7 @@ import {
   Shield,
   TrendingUp,
   UserRound,
+  Users,
   X,
 } from 'lucide-react';
 import { type Aviso } from '@/lib/lab/painelData';
@@ -149,7 +150,19 @@ export function FluxoRapido({
   const [clienteId, setClienteId] = useState('');
   const [busca, setBusca] = useState('');
   const [piscarCliente, setPiscarCliente] = useState(false);
+  const [todosAbertos, setTodosAbertos] = useState(false);
+  const [buscaTodos, setBuscaTodos] = useState('');
   const buscaRef = useRef<HTMLInputElement>(null);
+
+  /** Esc fecha a lista completa sem tirar o advogado da página. */
+  useEffect(() => {
+    if (!todosAbertos) return;
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setTodosAbertos(false);
+    };
+    document.addEventListener('keydown', aoTeclar);
+    return () => document.removeEventListener('keydown', aoTeclar);
+  }, [todosAbertos]);
   const [arquivos, setArquivos] = useState<{ id: string; nome: string }[]>([]);
   const [kitId, setKitId] = useState('');
   const [listaKitAberta, setListaKitAberta] = useState(false);
@@ -206,6 +219,32 @@ export function FluxoRapido({
       return String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR');
     });
   }, [clientes, busca, ultimoEnvioPorCliente]);
+
+  /**
+   * O passo 1 mostra só os três últimos atendidos. A lista inteira só rola numa
+   * caixa por cima da página — despejar 40 clientes aqui empurrava os passos 2
+   * e 3 para fora da primeira tela.
+   */
+  const VISIVEIS = 3;
+  const clientesVisiveis = clientesOrdenados.slice(0, VISIVEIS);
+
+  const clientesModal = useMemo(() => {
+    const alvo = buscaTodos.trim().toLowerCase();
+    if (!alvo) return clientesOrdenados;
+    return clientesOrdenados.filter(
+      (c) =>
+        String(c.name || '').toLowerCase().includes(alvo) ||
+        soDigitos(c.cpfCnpj).includes(soDigitos(alvo)) ||
+        soDigitos(c.phone).includes(soDigitos(alvo))
+    );
+  }, [clientesOrdenados, buscaTodos]);
+
+  function escolher(id: string) {
+    setClienteId(id);
+    setBusca('');
+    setBuscaTodos('');
+    setTodosAbertos(false);
+  }
 
   const processoDoCliente = useMemo(() => {
     if (!clienteId) return null;
@@ -396,48 +435,59 @@ export function FluxoRapido({
                   )}
                 </div>
 
-                <div className="mt-1.5 min-h-0 flex-1 overflow-y-auto pr-0.5">
+                <div className="mt-1.5 flex-1">
                   {clientes.length === 0 ? (
                     <p className="px-2 py-4 text-center text-[11px] text-slate-400">
                       Nenhum cliente cadastrado ainda.
                     </p>
-                  ) : clientesOrdenados.length === 0 ? (
+                  ) : clientesVisiveis.length === 0 ? (
                     <p className="px-2 py-4 text-center text-[11px] text-slate-400">
                       Nenhum cliente encontrado para “{busca}”.
                     </p>
                   ) : (
-                    clientesOrdenados.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => {
-                          setClienteId(c.id);
-                          setBusca('');
-                        }}
-                        className="flex w-full items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left hover:bg-slate-50"
-                      >
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-black text-slate-600">
-                          {iniciaisDe(c.name || '')}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[12px] font-semibold text-slate-700">
-                            {c.name}
+                    <>
+                      <p className="mb-0.5 px-1.5 text-[9.5px] font-black uppercase tracking-[.14em] text-slate-400">
+                        {busca ? 'Resultados' : 'Atendidos recentemente'}
+                      </p>
+                      {clientesVisiveis.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => escolher(c.id)}
+                          className="flex w-full items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left hover:bg-slate-50"
+                        >
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-black text-slate-600">
+                            {iniciaisDe(c.name || '')}
                           </span>
-                          {c.cpfCnpj && (
-                            <span className="block truncate text-[10px] text-slate-400">
-                              {formatarCpfCnpj(c.cpfCnpj)}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[12px] font-semibold text-slate-700">
+                              {c.name}
                             </span>
-                          )}
-                        </span>
-                        {ultimoEnvioPorCliente.has(c.id) && (
-                          <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">
-                            recente
+                            {c.cpfCnpj && (
+                              <span className="block truncate text-[10px] text-slate-400">
+                                {formatarCpfCnpj(c.cpfCnpj)}
+                              </span>
+                            )}
                           </span>
-                        )}
-                      </button>
-                    ))
+                        </button>
+                      ))}
+                    </>
                   )}
                 </div>
+
+                {clientes.length > VISIVEIS && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBuscaTodos(busca);
+                      setTodosAbertos(true);
+                    }}
+                    className="mt-1 flex items-center justify-center gap-1.5 rounded-lg bg-slate-50 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-100"
+                  >
+                    <Users className="h-3.5 w-3.5 text-slate-500" />
+                    Ver todos os {clientes.length} clientes
+                  </button>
+                )}
               </>
             )}
 
@@ -464,6 +514,103 @@ export function FluxoRapido({
               </Link>
             </div>
           </div>
+
+          {/* Lista completa por cima da página — sem trocar de tela. */}
+          {todosAbertos && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-[#071B3A]/50 p-4 backdrop-blur-[2px]"
+              onClick={() => setTodosAbertos(false)}
+              role="presentation"
+            >
+              <div
+                className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Todos os clientes"
+              >
+                <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+                  <div>
+                    <h3 className="text-[13px] font-extrabold text-[#071B3A]">Todos os clientes</h3>
+                    <p className="mt-0.5 text-[10.5px] text-slate-500">
+                      {clientesModal.length} de {clientes.length}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTodosAbertos(false)}
+                    className="rounded-lg p-1.5 hover:bg-slate-100"
+                    aria-label="Fechar"
+                  >
+                    <X className="h-4 w-4 text-slate-500" />
+                  </button>
+                </div>
+
+                <div className="border-b border-slate-100 px-4 py-2.5">
+                  <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-2">
+                    <Search className="h-4 w-4 shrink-0 text-slate-400" />
+                    <input
+                      autoFocus
+                      value={buscaTodos}
+                      onChange={(e) => setBuscaTodos(e.target.value)}
+                      placeholder="buscar por nome, CPF ou telefone"
+                      className="w-full bg-transparent text-[13px] text-slate-700 outline-none placeholder:text-slate-400"
+                    />
+                    {buscaTodos && (
+                      <button type="button" onClick={() => setBuscaTodos('')} aria-label="Limpar">
+                        <X className="h-3.5 w-3.5 text-slate-400 hover:text-slate-600" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">
+                  {clientesModal.length === 0 && (
+                    <p className="px-4 py-10 text-center text-[12px] text-slate-400">
+                      Nenhum cliente encontrado.
+                    </p>
+                  )}
+                  {clientesModal.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => escolher(c.id)}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50"
+                    >
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-black text-slate-600">
+                        {iniciaisDe(c.name || '')}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-bold text-[#071B3A]">
+                          {c.name}
+                        </span>
+                        <span className="block truncate text-[10.5px] text-slate-500">
+                          {[formatarCpfCnpj(c.cpfCnpj), formatarTelefone(c.phone)]
+                            .filter(Boolean)
+                            .join(' · ') || 'sem CPF e telefone cadastrados'}
+                        </span>
+                      </span>
+                      {ultimoEnvioPorCliente.has(c.id) && (
+                        <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">
+                          recente
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="border-t border-slate-100 px-4 py-2.5">
+                  <Link
+                    href="/clientes?novo=1"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#071B3A] py-2.5 text-[12px] font-bold text-white hover:bg-[#122c52]"
+                  >
+                    <Plus className="h-3.5 w-3.5 text-[#D4AF37]" />
+                    Cadastrar novo cliente
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 2. O que vai ser assinado */}
