@@ -5,6 +5,18 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import BrazilOperationsMap from '@/components/BrazilOperationsMap';
 import {
+  FluxoRapido,
+  IndicadoresEscritorio,
+  CardIntimacoesAssinaturas,
+  AvisosAcompanhamentos,
+} from '@/components/painel/BlocosPainel';
+import { montarResumo } from '@/lib/lab/painelData';
+import {
+  derivarAssinaturasAndamento,
+  derivarIndicadores,
+  derivarKitsMaisUsados,
+} from '@/lib/lab/painelExtra';
+import {
   FileUp,
   Layers,
   UserPlus,
@@ -273,6 +285,43 @@ export default function DashboardPage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  /* ── Derivações do painel (mesmas funções puras de /painel-novo) ── */
+  const painelAgora = useMemo(() => new Date(), []);
+
+  const painelResumo = useMemo(
+    () =>
+      montarResumo(
+        { clientes: clients as any, documentos: documents as any, processos: processes as any },
+        painelAgora
+      ),
+    [clients, documents, processes, painelAgora]
+  );
+
+  const painelIndicadores = useMemo(
+    () => derivarIndicadores(documents as any, painelAgora),
+    [documents, painelAgora]
+  );
+
+  const painelAssinaturas = useMemo(
+    () => derivarAssinaturasAndamento(documents as any, painelAgora, { kits: kits as any }),
+    [documents, kits, painelAgora]
+  );
+
+  /** Kit sugerido no fluxo rápido: o mais enviado pelo escritório. */
+  const painelKitPreferido = useMemo(
+    () => derivarKitsMaisUsados(kits as any, documents as any)[0]?.id,
+    [kits, documents]
+  );
+
+  /**
+   * "Assinatura parada" já é a aba Assinaturas, com barra e botão de cobrar.
+   * Repetir no bloco de avisos enchia a coluna com a mesma linha.
+   */
+  const painelAvisosSistema = useMemo(
+    () => painelResumo.avisos.filter((a) => !a.id.startsWith('assin-')).slice(0, 6),
+    [painelResumo]
+  );
 
   // Carregamento de dados
   const loadData = useCallback(() => {
@@ -810,300 +859,22 @@ export default function DashboardPage() {
       {/* ───────────────────────────────────────────────────────────── */}
       {/* 1.5 FLUXO RÁPIDO — a porta de entrada para o trabalho          */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <section className="space-y-2">
-        <div className="flex items-center gap-2 px-0.5">
-          <h2 className="text-[11px] font-black uppercase tracking-wider text-slate-500">Atalhos operacionais</h2>
-          <span className="text-[10px] text-slate-400 font-medium">Ações mais usadas pelo escritório</span>
-        </div>
+      <FluxoRapido
+        clientes={clients}
+        kits={kits}
+        processos={processes}
+        documentos={documents}
+        kitPreferidoId={painelKitPreferido}
+        tempoMedioMinutos={painelIndicadores.tempoMedioMinutos}
+      />
 
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] lg:items-stretch">
-          {/* BLOCO 1 — ENVIAR DOCUMENTO */}
-          <div
-            id="quick-upload-card"
-            className="min-h-[330px] bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_16px_34px_-28px_rgba(11,25,44,0.65)] flex flex-col gap-3 lg:min-h-[362px]"
-          >
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-xl bg-[#071B3A] text-[#E0BD48] flex items-center justify-center shrink-0 shadow-sm">
-                <FileUp className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-[15px] font-black text-[#0B192C] leading-tight">Preparar documentos para assinatura</h3>
-                <p className="mt-0.5 text-[11px] text-slate-500 leading-tight">Envie um ou vários PDFs de uma só vez. Depois, revise as páginas e posicione o selo.</p>
-              </div>
-            </div>
-
-            {executionResult ? (
-              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <p className="font-extrabold text-emerald-950 text-[11px]">
-                    ✓ {executionResult.docsCount || 1} documento(s) gerado(s) para {executionResult.clientName}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setExecutionResult(null);
-                      setUploadedPdfs([]);
-                      setFastClientId('');
-                    }}
-                    className="p-1 text-slate-400 hover:text-slate-600"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
-                  {executionResult.documents?.map((doc: any, idx: number) => (
-                    <div key={doc.id || idx} className="flex items-center justify-between px-2 py-1 bg-white border border-emerald-200/80 rounded-lg text-[10px]">
-                      <span className="font-semibold text-slate-800 truncate">{idx + 1}. {doc.title}</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(doc.link);
-                          setCopiedLink(true);
-                          setTimeout(() => setCopiedLink(false), 2000);
-                        }}
-                        className="text-[#0B192C] font-bold underline hover:text-amber-700 ml-2 shrink-0"
-                      >
-                        Copiar link
-                      </button>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex items-center gap-1.5 pt-1 border-t border-emerald-200/60">
-                  {executionResult.clientPhone && (
-                    <a
-                      href={`https://wa.me/55${executionResult.clientPhone.replace(/\D/g, '')}?text=${encodeURIComponent(whatsappMsg)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex-1 py-1.5 bg-[#25D366] hover:bg-[#1fb855] text-white font-bold rounded-lg text-[10px] flex items-center justify-center gap-1 shadow-2xs"
-                    >
-                      <MessageSquare className="w-3 h-3 fill-white" /> WhatsApp ({executionResult.docsCount || 1})
-                    </a>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(whatsappMsg);
-                      setCopiedLink(true);
-                      setTimeout(() => setCopiedLink(false), 2000);
-                    }}
-                    className="px-2.5 py-1.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-lg text-[10px] shrink-0"
-                  >
-                    {copiedLink ? 'Copiado!' : 'Copiar Todos'}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <form onSubmit={handleFastDispatch} className="flex flex-1 flex-col gap-2.5">
-                <div
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragActive(true);
-                  }}
-                  onDragLeave={(e) => {
-                    e.preventDefault();
-                    setDragActive(false);
-                  }}
-                  onDrop={async (e) => {
-                    e.preventDefault();
-                    setDragActive(false);
-                    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                      await handleFastFileProcess(Array.from(e.dataTransfer.files));
-                    }
-                  }}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`flex min-h-[150px] flex-1 items-center justify-center border border-dashed rounded-2xl px-5 py-5 text-center cursor-pointer transition-all ${
-                    dragActive
-                      ? 'border-[#B68B1C] bg-amber-50'
-                      : uploadedPdfs.length > 0
-                      ? 'border-emerald-400 bg-emerald-50/40'
-                      : 'border-slate-300 bg-slate-50/50 hover:border-[#B68B1C] hover:bg-amber-50/40'
-                  }`}
-                >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".pdf"
-                    multiple
-                    onChange={handleFastFileSelect}
-                    className="hidden"
-                  />
-
-                  {uploadingPdf ? (
-                    <div className="flex items-center justify-center gap-1.5 text-xs text-[#B68B1C] font-bold py-1">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando arquivo(s)...
-                    </div>
-                  ) : uploadedPdfs.length > 0 ? (
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-[11px] font-extrabold text-slate-800 border-b border-slate-200/60 pb-1">
-                        <span>{uploadedPdfs.length} PDF(s) selecionado(s)</span>
-                        <span className="text-[9px] text-[#B68B1C] font-black underline">+ Adicionar outro PDF</span>
-                      </div>
-                      <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
-                        {uploadedPdfs.map((f, idx) => (
-                          <div
-                            key={f.id || idx}
-                            onClick={(e) => e.stopPropagation()}
-                            className="flex items-center justify-between px-2 py-0.5 bg-white border border-slate-200 rounded-md text-[10px]"
-                          >
-                            <span className="font-bold text-slate-900 truncate">{idx + 1}. {f.name}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveUploadedFile(idx)}
-                              className="text-slate-400 hover:text-rose-600 ml-1 shrink-0 p-0.5"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      <span className="mx-auto flex h-9 w-9 items-center justify-center rounded-xl bg-white text-[#B68B1C] shadow-sm"><FileUp className="h-4 w-4" /></span>
-                      <p className="text-xs font-extrabold text-slate-800">Arraste seus PDFs aqui</p>
-                      <p className="text-[10px] font-semibold text-slate-500">ou selecione arquivos do computador</p>
-                      <p className="text-[10px] text-slate-400">Você pode enviar vários documentos de uma só vez.</p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-[9px] font-black uppercase tracking-[0.13em] text-slate-500">Cliente</label>
-                  <ClientSelector clients={clients} value={fastClientId} onChange={setFastClientId} placeholder="Selecionar cliente..." onNew={() => setActionModal('ATENDIMENTO')} />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={submitting || !fastClientId || uploadedPdfs.length === 0}
-                  className="w-full py-2.5 bg-[#071B3A] hover:bg-[#102D55] text-white font-extrabold text-[11px] rounded-xl transition-all disabled:bg-slate-200 disabled:text-slate-400 disabled:opacity-100 flex items-center justify-center gap-1.5 shadow-[0_10px_20px_-14px_rgba(7,27,58,0.9)]"
-                >
-                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3 text-[#D4AF37]" />}
-                  Continuar para revisar páginas e selo
-                </button>
-              </form>
-            )}
-          </div>
-
-          <div className="grid min-h-[330px] grid-rows-2 gap-3 lg:min-h-[362px]">
-          {/* BLOCO 2 — CRIAR KIT JURÍDICO */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_16px_34px_-28px_rgba(11,25,44,0.65)] flex flex-col gap-3">
-            <div className="flex items-start gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-slate-100 text-[#071B3A] flex items-center justify-center shrink-0">
-                <Layers className="w-4 h-4 text-[#B68B1C]" />
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-[15px] font-black text-[#0B192C] leading-tight">Criar Kit Jurídico</h3>
-                <p className="mt-1 text-[11px] text-slate-500 leading-tight">
-                  Gere procurações, contratos e declarações usando seus modelos.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-1 flex-col justify-end gap-2">
-              <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
-                <span className="rounded-md bg-[#071B3A] px-1.5 py-1 text-[9px] text-[#E0BD48]">01</span>
-                Modelos jurídicos prontos
-                <span className="ml-auto rounded-md bg-slate-100 px-1.5 py-1 text-[9px] text-slate-500">02</span>
-                Preenchimento automático
-              </div>
-              <div className="flex items-center gap-1.5 border-y border-slate-100 py-2 text-[10px] font-semibold text-slate-600">
-                <span>Procuração</span><span className="text-[#D4AF37]">•</span><span>Contrato</span><span className="text-[#D4AF37]">•</span><span>Declarações</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setActionModal('KIT');
-                }}
-                className="w-full py-2.5 bg-[#071B3A] hover:bg-[#102D55] text-white font-extrabold text-[11px] rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-[0_10px_20px_-14px_rgba(7,27,58,0.9)]"
-              >
-                <Layers className="w-3 h-3 text-[#D4AF37]" /> Criar Kit
-              </button>
-            </div>
-          </div>
-
-          {/* BLOCO 3 — NOVO ATENDIMENTO (porta de entrada do sistema, leve destaque) */}
-          <div className="bg-white border border-slate-200/90 text-[#0B192C] rounded-2xl p-5 shadow-[0_16px_34px_-28px_rgba(11,25,44,0.65)] flex flex-col gap-3 relative overflow-hidden">
-            <div className="flex items-start gap-2.5 relative z-10">
-              <div className="w-9 h-9 rounded-xl bg-slate-100 text-[#071B3A] flex items-center justify-center shrink-0">
-                <UserPlus className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-[15px] font-black text-[#0B192C] leading-tight">Novo Atendimento</h3>
-                <p className="mt-1 text-[11px] text-slate-500 leading-tight">
-                  Cadastre um cliente e inicie o fluxo jurídico completo.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-auto space-y-3 relative z-10">
-              <div className="border-y border-slate-100 py-2">
-                <p className="text-[9px] font-black uppercase tracking-[0.13em] text-slate-400">Fluxo completo</p>
-                <p className="mt-1 text-[10px] font-bold tracking-wide text-slate-600">Cliente <span className="mx-1 text-[#B68B1C]">→</span> Documentos <span className="mx-1 text-[#B68B1C]">→</span> Assinatura <span className="mx-1 text-[#B68B1C]">→</span> Processo</p>
-              </div>
-              <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setActionModal('ATENDIMENTO')}
-                className="flex-1 py-2.5 bg-[#071B3A] hover:bg-[#102D55] text-white font-extrabold text-[11px] rounded-xl shadow-[0_10px_20px_-14px_rgba(7,27,58,0.75)] transition-all flex items-center justify-center gap-1.5"
-              >
-                <UserPlus className="w-3 h-3 text-[#D4AF37]" /> Novo Atendimento
-              </button>
-
-              {/* MENU "OUTRAS AÇÕES" — absorve o antigo botão [+ Criar] */}
-              <div ref={createMenuRef} className="relative shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setCreateMenuOpen(!createMenuOpen)}
-                  aria-label="Outras ações"
-                  className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-all"
-                >
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${createMenuOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                {createMenuOpen && (
-                  <div className="absolute right-0 bottom-full mb-1.5 w-44 bg-white border border-slate-200 rounded-xl shadow-lg z-50 py-1 divide-y divide-slate-100 text-xs font-bold animate-in fade-in duration-100">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCreateMenuOpen(false);
-                        const el = document.getElementById('quick-upload-card');
-                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center gap-2"
-                    >
-                      <FileUp className="w-3.5 h-3.5 text-amber-600" /> Nova Assinatura
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCreateMenuOpen(false);
-                        setActionModal('KIT');
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center gap-2"
-                    >
-                      <Layers className="w-3.5 h-3.5 text-blue-600" /> Gerar Kit Jurídico
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCreateMenuOpen(false);
-                        setActionModal('PROCESSO');
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-800 flex items-center gap-2"
-                    >
-                      <Briefcase className="w-3.5 h-3.5 text-purple-600" /> Novo Processo
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      </div>
-      </section>
+      <IndicadoresEscritorio
+        indicadores={painelIndicadores}
+        vencidos={painelResumo.vencidos.length}
+        prazosHoje={painelResumo.hoje.length}
+        temAlgumPrazoCadastrado={painelResumo.temAlgumPrazoCadastrado}
+        processosSemPrazo={painelResumo.processosSemPrazo}
+      />
 
       {/* ───────────────────────────────────────────────────────────── */}
       {/* 2. OPERAÇÃO INTELIGENTE: PRIORIDADE AGORA x RESUMO IA         */}
@@ -1228,45 +999,14 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* CENTRAL DE ACOMPANHAMENTO */}
-        <div className="min-h-[264px] bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col gap-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <div className="flex items-center gap-1.5">
-              <div className="w-6 h-6 rounded-lg bg-[#071B3A] text-[#D4AF37] flex items-center justify-center">
-                <Bot className="w-3.5 h-3.5" />
-              </div>
-              <div>
-                <h3 className="text-xs font-black uppercase text-[#0B192C] tracking-wide">Central de Acompanhamento</h3>
-                <p className="mt-0.5 text-[9px] font-medium text-slate-400">Casos que exigem providência do escritório</p>
-              </div>
-            </div>
-            <Link href="/clientes" className="text-[10px] font-bold text-[#B68B1C] hover:underline">Ver todos</Link>
-          </div>
-
-          {followUpCases.length > 0 ? (
-            <div className="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">
-              {followUpCases.map((item) => (
-                <div key={item.id} className="py-2 first:pt-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-[11px] font-extrabold text-slate-900">{item.name}</p>
-                    <span className="shrink-0 text-[9px] font-bold text-[#B68B1C]">{item.stageName}</span>
-                  </div>
-                  <p className="mt-0.5 truncate text-[10px] font-medium text-slate-600">{item.statusText}</p>
-                  <div className="mt-1 flex items-center justify-between gap-2">
-                    <p className="min-w-0 truncate text-[9px] text-slate-400">{item.nextActionText}</p>
-                    <Link href={`/clientes?q=${encodeURIComponent(item.name)}`} className="shrink-0 text-[10px] font-bold text-[#071B3A] hover:text-[#B68B1C]">Ver caso</Link>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-1 flex-col items-center justify-center text-center">
-              <CheckCircle2 className="h-6 w-6 text-emerald-500" />
-              <p className="mt-2 text-[11px] font-bold text-emerald-900">Nenhum acompanhamento prioritário.</p>
-              <p className="mt-0.5 text-[10px] text-emerald-700">Os fluxos do escritório estão em dia.</p>
-            </div>
-          )}
-        </div>
+        {/* CENTRAL DE ACOMPANHAMENTO — avisos seus + os derivados pelo sistema */}
+        <AvisosAcompanhamentos
+          avisosSistema={painelAvisosSistema}
+          clientes={clients}
+          titulo="Central de Acompanhamento"
+          subtitulo="O que você anotou e o que o sistema achou"
+          className="min-h-[264px]"
+        />
 
         {false && <div className="min-h-[264px] bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col justify-between gap-3">
           <div className="space-y-2">
@@ -1323,46 +1063,8 @@ export default function DashboardPage() {
             Ver pendências
           </button>
         </div>}
-        <div className="min-h-[264px] bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h3 className="text-xs font-black uppercase text-[#0B192C] tracking-wide flex items-center gap-1.5">
-              <Zap className="w-3.5 h-3.5 text-amber-500" /> Próximos da Fila
-            </h3>
-            <Link href="/clientes" className="text-[10px] font-bold text-[#B68B1C] hover:underline flex items-center gap-1">
-              Ver todos <ChevronRight className="w-3 h-3" />
-            </Link>
-          </div>
-
-          <div className="mt-1 min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto pr-1">
-            {nextInQueue.length > 0 ? (
-              nextInQueue.slice(0, 4).map((item) => (
-                <div key={item.id} className="py-2.5 flex items-center justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-extrabold text-slate-900 truncate">{item.name}</p>
-                    <p className="mt-0.5 text-[10px] font-medium text-slate-500 truncate">{item.statusText}</p>
-                  </div>
-                  <div className="shrink-0">
-                    {item.actionType === 'SIGN' && item.phone ? (
-                      <a href={`https://wa.me/55${item.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá, ${item.name}! Passando para lembrar da assinatura dos seus documentos no escritório ${office?.name || 'Rodrigues & Soares'}.`)}`} target="_blank" rel="noreferrer" className="px-2.5 py-1.5 bg-[#25D366] hover:bg-[#1fb855] text-white text-[10px] font-bold rounded-lg transition-all">
-                        {item.actionLabel}
-                      </a>
-                    ) : item.actionType === 'KIT' ? (
-                      <button type="button" onClick={() => { setFormClientId(item.id); setActionModal('KIT'); }} className="px-2.5 py-1.5 bg-[#0B192C] hover:bg-[#152a47] text-white text-[10px] font-bold rounded-lg transition-all">{item.actionLabel}</button>
-                    ) : item.actionType === 'CREATE_PROCESS' ? (
-                      <button type="button" onClick={() => { setFormClientId(item.id); setActionModal('PROCESSO'); }} className="px-2.5 py-1.5 bg-[#0B192C] hover:bg-[#152a47] text-white text-[10px] font-bold rounded-lg transition-all">{item.actionLabel}</button>
-                    ) : item.actionType === 'VIEW_PROCESS' ? (
-                      <Link href={`/processos?clienteId=${item.id}`} className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[10px] font-bold rounded-lg transition-all">{item.actionLabel}</Link>
-                    ) : (
-                      <Link href={`/clientes?q=${encodeURIComponent(item.name)}`} className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[10px] font-bold rounded-lg transition-all">{item.actionLabel}</Link>
-                    )}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="py-8 text-center text-[11px] text-slate-400 font-medium">Nenhum fluxo prioritário no momento.</p>
-            )}
-          </div>
-        </div>
+        {/* INTIMAÇÕES E ASSINATURAS — no lugar de "Próximos da Fila" */}
+        <CardIntimacoesAssinaturas assinaturas={painelAssinaturas} className="min-h-[264px]" />
       </section>
 
       {/* ───────────────────────────────────────────────────────────── */}
