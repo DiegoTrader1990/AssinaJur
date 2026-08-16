@@ -101,8 +101,22 @@ export interface Aviso {
   destino: string;
 }
 
+export interface FunilEtapa {
+  chave: string;
+  rotulo: string;
+  quantidade: number;
+}
+
+export interface PontoSerie {
+  data: Date;
+  rotulo: string;
+  quantidade: number;
+}
+
 export interface ResumoPainel {
   avisos: Aviso[];
+  funil: FunilEtapa[];
+  assinaturasPorDia: PontoSerie[];
   prazos: PrazoItem[];
   vencidos: PrazoItem[];
   hoje: PrazoItem[];
@@ -434,6 +448,77 @@ export function derivarAvisos(params: {
   return avisos.sort((a, b) => ordem[a.nivel] - ordem[b.nivel]);
 }
 
+/**
+ * Funil do escritório: cada cliente ocupa UMA etapa, a mais avançada que
+ * alcançou. Escala ordenada (entrada -> processo), por isso a tela usa uma
+ * rampa sequencial de uma cor só, e não cores categóricas.
+ */
+export function derivarFunil(
+  clientes: ClienteBruto[],
+  documentos: DocumentoBruto[],
+  processos: ProcessoBruto[]
+): FunilEtapa[] {
+  const contagem: Record<string, number> = {
+    ENTRADA: 0,
+    DOCUMENTACAO: 0,
+    PREPARACAO: 0,
+    ASSINATURA: 0,
+    PROCESSO: 0,
+  };
+
+  clientes.forEach((c) => {
+    const docs = documentos.filter((d) => d.clientId === c.id || d.client?.id === c.id);
+    const temProcesso = processos.some((p) => p.client?.id === c.id);
+    const emCirculacao = docs.some((d) => aguardandoAssinatura(d.status));
+
+    if (temProcesso) contagem.PROCESSO += 1;
+    else if (emCirculacao) contagem.ASSINATURA += 1;
+    else if (docs.length > 0) contagem.PREPARACAO += 1;
+    else if (!c.cpfCnpj || (!c.phone && !c.whatsapp)) contagem.DOCUMENTACAO += 1;
+    else contagem.ENTRADA += 1;
+  });
+
+  return [
+    { chave: 'ENTRADA', rotulo: 'Entrada', quantidade: contagem.ENTRADA },
+    { chave: 'DOCUMENTACAO', rotulo: 'Documentação', quantidade: contagem.DOCUMENTACAO },
+    { chave: 'PREPARACAO', rotulo: 'Preparação', quantidade: contagem.PREPARACAO },
+    { chave: 'ASSINATURA', rotulo: 'Assinatura', quantidade: contagem.ASSINATURA },
+    { chave: 'PROCESSO', rotulo: 'Processo', quantidade: contagem.PROCESSO },
+  ];
+}
+
+/** Assinaturas concluídas por dia, para a série temporal. */
+export function derivarAssinaturasPorDia(
+  documentos: DocumentoBruto[],
+  agora: Date,
+  dias = 14
+): PontoSerie[] {
+  const base = inicioDoDia(agora);
+  const serie: PontoSerie[] = [];
+
+  for (let i = dias - 1; i >= 0; i -= 1) {
+    const dia = new Date(base.getTime() - i * DIA_MS);
+    serie.push({
+      data: dia,
+      rotulo: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(dia),
+      quantidade: 0,
+    });
+  }
+
+  documentos.forEach((d) => {
+    if (String(d.status || '').toUpperCase() !== 'CONCLUIDO') return;
+    const concluido = dataValida(d.updatedAt) || dataValida(d.createdAt);
+    if (!concluido) return;
+
+    const indice = serie.findIndex(
+      (p) => p.data.getTime() === inicioDoDia(concluido).getTime()
+    );
+    if (indice >= 0) serie[indice].quantidade += 1;
+  });
+
+  return serie;
+}
+
 /** Ponto de entrada único usado pela tela. */
 export function montarResumo(
   entrada: { processos: ProcessoBruto[]; clientes: ClienteBruto[]; documentos: DocumentoBruto[] },
@@ -454,6 +539,8 @@ export function montarResumo(
 
   return {
     avisos: derivarAvisos({ vencidos, hoje, esperandoTerceiros, pendenciasSuas, parados }),
+    funil: derivarFunil(entrada.clientes, entrada.documentos, entrada.processos),
+    assinaturasPorDia: derivarAssinaturasPorDia(entrada.documentos, agora),
     prazos,
     vencidos,
     hoje,
