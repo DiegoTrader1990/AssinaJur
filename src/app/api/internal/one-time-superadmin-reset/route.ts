@@ -22,10 +22,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
   }
 
-  const user = await prisma.platformUser.findUnique({ where: { email: SUPERADMIN_EMAIL } });
-  if (!user) return NextResponse.json({ error: 'Superadmin não localizado.' }, { status: 404 });
-
   const passwordHash = await bcrypt.hash(NEW_PASSWORD, 10);
-  await prisma.platformUser.update({ where: { id: user.id }, data: { passwordHash } });
+  await prisma.platformUser.upsert({
+    where: { email: SUPERADMIN_EMAIL },
+    update: { passwordHash },
+    create: {
+      name: 'Diego - Super Admin AssinaJur',
+      email: SUPERADMIN_EMAIL,
+      passwordHash,
+    },
+  });
   return NextResponse.json({ success: true });
 }
