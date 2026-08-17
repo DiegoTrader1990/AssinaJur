@@ -976,8 +976,8 @@ export default function DashboardPage() {
           <div className="absolute top-0 right-0 w-28 h-28 bg-[#D4AF37]/10 rounded-full blur-xl pointer-events-none" />
 
           {openPendencies.length > 0 ? (
-            <>
-              <div className="flex items-center justify-between relative z-10">
+            <div className="space-y-3 relative z-10">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
                   <h2 className="text-xs font-black uppercase tracking-wider text-rose-800">
@@ -994,7 +994,7 @@ export default function DashboardPage() {
               </div>
 
               {pendenciaFormOpen && (
-                <div className="rounded-lg border border-slate-200 bg-white/80 p-2.5 space-y-1.5 relative z-10">
+                <div className="rounded-lg border border-slate-200 bg-white/80 p-2.5 space-y-1.5">
                   <select
                     value={pendenciaClientId}
                     onChange={(e) => setPendenciaClientId(e.target.value)}
@@ -1033,25 +1033,30 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              <div className="space-y-1.5 relative z-10 overflow-y-auto max-h-[170px] pr-1">
-                {openPendencies.map((p) => (
+              <div className="space-y-2 max-h-[176px] overflow-y-auto pr-1 -mr-1">
+                {openPendencies.map((p, idx) => (
                   <div
                     key={p.id}
-                    className="flex items-center justify-between gap-2 border-l-2 border-[#D4AF37] pl-3 py-1.5 bg-white/70 rounded-r-lg"
+                    className="flex items-center justify-between gap-2.5 rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
                   >
-                    <div className="min-w-0">
-                      <p className="text-[12.5px] font-extrabold text-[#0B192C] truncate">
-                        {p.client?.name || 'Cliente'}
-                      </p>
-                      <p className="text-[11px] font-semibold text-slate-700 leading-snug truncate">
-                        {p.description}
-                      </p>
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="shrink-0 w-5 h-5 rounded-full bg-[#D4AF37]/15 text-[#8a6a14] text-[10px] font-black flex items-center justify-center">
+                        {idx + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-[12.5px] font-extrabold text-[#0B192C] truncate">
+                          {p.client?.name || 'Cliente'}
+                        </p>
+                        <p className="text-[11px] font-semibold text-slate-500 leading-snug truncate">
+                          {p.description}
+                        </p>
+                      </div>
                     </div>
                     <button
                       type="button"
                       disabled={resolvingPendenciaId === p.id}
                       onClick={() => resolverPendencia(p.id)}
-                      className="shrink-0 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10.5px] font-extrabold rounded-lg flex items-center gap-1 disabled:opacity-50"
+                      className="shrink-0 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10.5px] font-extrabold rounded-lg flex items-center gap-1 disabled:opacity-50 transition-colors"
                     >
                       <CheckCircle2 className="w-3 h-3" />
                       {resolvingPendenciaId === p.id ? 'Marcando...' : 'Resolver'}
@@ -1059,7 +1064,7 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
-            </>
+            </div>
           ) : topPriorityCase ? (
             <>
               <div className="space-y-2 relative z-10">
