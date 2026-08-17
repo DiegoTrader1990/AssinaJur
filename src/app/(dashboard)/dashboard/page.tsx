@@ -882,6 +882,11 @@ export default function DashboardPage() {
         documentos={documents}
         kitPreferidoId={painelKitPreferido}
         tempoMedioMinutos={painelIndicadores.tempoMedioMinutos}
+        onClientCreated={(client) => {
+          // Cadastro feito pela caixa rapida do Fluxo Rapido - atualiza a lista
+          // aqui na Home sem precisar recarregar a pagina.
+          setClients((prev) => [client, ...prev.filter((c) => c.id !== client.id)]);
+        }}
       />
 
       <IndicadoresEscritorio

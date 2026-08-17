@@ -18,6 +18,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import NovoClienteModal from '@/components/clientes/NovoClienteModal';
 import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
@@ -136,6 +137,7 @@ export function FluxoRapido({
   documentos,
   kitPreferidoId,
   tempoMedioMinutos,
+  onClientCreated,
 }: {
   clientes: ClientePainel[];
   kits: KitPainel[];
@@ -143,6 +145,8 @@ export function FluxoRapido({
   documentos: any[];
   kitPreferidoId?: string;
   tempoMedioMinutos: number | null;
+  /** Chamado apos cadastrar um cliente pela caixa rapida, para o pai atualizar sua lista. */
+  onClientCreated?: (client: any) => void;
 }) {
   const router = useRouter();
 
@@ -152,7 +156,18 @@ export function FluxoRapido({
   const [piscarCliente, setPiscarCliente] = useState(false);
   const [todosAbertos, setTodosAbertos] = useState(false);
   const [buscaTodos, setBuscaTodos] = useState('');
+  const [novoClienteAberto, setNovoClienteAberto] = useState(false);
   const buscaRef = useRef<HTMLInputElement>(null);
+
+  /** Depois de cadastrar pela caixa rapida, o cliente ja fica selecionado no passo 1 —
+   * e o ponto todo de nao levar o advogado pra outra tela: cadastrou, ja pode continuar
+   * escolhendo o que vai ser assinado, sem precisar buscar o cliente que acabou de criar. */
+  const aoCadastrarCliente = (client: any) => {
+    setNovoClienteAberto(false);
+    onClientCreated?.(client);
+    if (client?.id) setClienteId(client.id);
+    setTodosAbertos(false);
+  };
 
   /** Esc fecha a lista completa sem tirar o advogado da página. */
   useEffect(() => {
@@ -509,13 +524,14 @@ export function FluxoRapido({
                   </button>
                 )
               )}
-              <Link
-                href="/clientes?novo=1"
+              <button
+                type="button"
+                onClick={() => setNovoClienteAberto(true)}
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#071B3A] py-2 hover:bg-[#122c52]"
               >
                 <Plus className="h-3.5 w-3.5 shrink-0 text-[#D4AF37]" />
                 <span className="text-[11px] font-bold text-white">Cadastrar</span>
-              </Link>
+              </button>
             </div>
           </div>
 
@@ -604,13 +620,14 @@ export function FluxoRapido({
                 </div>
 
                 <div className="border-t border-slate-100 px-4 py-2.5">
-                  <Link
-                    href="/clientes?novo=1"
+                  <button
+                    type="button"
+                    onClick={() => setNovoClienteAberto(true)}
                     className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#071B3A] py-2.5 text-[12px] font-bold text-white hover:bg-[#122c52]"
                   >
                     <Plus className="h-3.5 w-3.5 text-[#D4AF37]" />
                     Cadastrar novo cliente
-                  </Link>
+                  </button>
                 </div>
               </div>
             </div>
@@ -942,6 +959,13 @@ export function FluxoRapido({
           </span>
         )}
       </div>
+
+      <NovoClienteModal
+        open={novoClienteAberto}
+        editingClient={null}
+        onClose={() => setNovoClienteAberto(false)}
+        onSaved={aoCadastrarCliente}
+      />
     </div>
   );
 }
