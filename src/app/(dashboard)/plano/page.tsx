@@ -90,9 +90,15 @@ export default function PlanPage() {
               <Users className="w-5 h-5 text-gold-500" />
               <span>Membros da Equipe</span>
             </div>
-            <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold text-xs">
-              Ativo
-            </span>
+            {planInfo.activeUsersCount > planInfo.maxUsersLimit ? (
+              <span className="px-2.5 py-1 rounded-full bg-red-50 text-red-700 font-bold text-xs">
+                Limite excedido
+              </span>
+            ) : (
+              <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold text-xs">
+                Ativo
+              </span>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -103,14 +109,24 @@ export default function PlanPage() {
 
             <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
               <div
-                className="h-full bg-emerald-500 transition-all duration-500"
+                className={`h-full transition-all duration-500 ${planInfo.activeUsersCount > planInfo.maxUsersLimit ? 'bg-red-500' : 'bg-emerald-500'}`}
                 style={{ width: `${Math.min((planInfo.activeUsersCount / planInfo.maxUsersLimit) * 100, 100)}%` }}
               />
             </div>
 
-            <p className="text-xs text-slate-500">
-              Sua equipe possui vaga para mais {Math.max(planInfo.maxUsersLimit - planInfo.activeUsersCount, 0)} advogado(s).
-            </p>
+            {planInfo.activeUsersCount > planInfo.maxUsersLimit ? (
+              // Hoje o cadastro não bloqueia quem passa do limite do plano contratado —
+              // este aviso é o que faz o escritório perceber e regularizar (removendo
+              // membros ou fazendo upgrade), em vez da barra aparecer verde e cheia como
+              // se estivesse tudo certo mesmo estourando a cota.
+              <p className="text-xs font-bold text-red-600">
+                Sua equipe tem {planInfo.activeUsersCount - planInfo.maxUsersLimit} usuário(s) a mais do que o plano permite. Remova membros da equipe ou faça upgrade de plano para regularizar.
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500">
+                Sua equipe possui vaga para mais {Math.max(planInfo.maxUsersLimit - planInfo.activeUsersCount, 0)} advogado(s).
+              </p>
+            )}
           </div>
         </div>
       </div>

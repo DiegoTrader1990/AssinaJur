@@ -680,7 +680,9 @@ export async function compileTemplateToPdf({
     officeId,
     uploadedBy,
     fileBuffer: rendered.pdfBuffer,
-    originalName: `${title.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`,
+    // Preserva acentuação e nomes reais no arquivo baixado pelo cliente — trocar tudo
+    // por "_" deixava "Procuração-Jose.pdf" virar "Procura__o_Jose.pdf".
+    originalName: `${title.trim().replace(/[\/\\?%*:|"<>]/g, '').replace(/\s+/g, ' ')}.pdf`,
     mimeType: 'application/pdf',
   });
   const detectedPlacement = rendered.signaturePlacement as { page: number; x: number; y: number; width: number; height: number } | null;

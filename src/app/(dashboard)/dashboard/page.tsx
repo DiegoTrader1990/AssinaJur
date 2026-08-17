@@ -354,7 +354,9 @@ export default function DashboardPage() {
   // Métricas de Documentos
   const completedDocs = useMemo(() => documents.filter((d) => d.status === 'CONCLUIDO'), [documents]);
   const pendingDocs = useMemo(
-    () => documents.filter((d) => !['CONCLUIDO', 'CANCELADO', 'EXPIRADO'].includes(d.status)),
+    // RASCUNHO (kit gerado mas nunca enviado) não conta como "assinatura atrasada" —
+    // só documento que já foi enviado ao cliente pode estar "parado" esperando ele.
+    () => documents.filter((d) => !['RASCUNHO', 'CONCLUIDO', 'CANCELADO', 'EXPIRADO'].includes(d.status)),
     [documents]
   );
 
@@ -364,7 +366,12 @@ export default function DashboardPage() {
       const clientDocs = documents.filter((d) => d.clientId === c.id);
       const clientProcesses = processes.filter((p) => p.clientId === c.id);
       const signedDocs = clientDocs.filter((d) => d.status === 'CONCLUIDO');
-      const hasPendingSign = clientDocs.some((d) => !['CONCLUIDO', 'CANCELADO'].includes(d.status));
+      // Só conta como "aguardando assinatura" documento que já foi de fato enviado ao
+      // cliente. Um RASCUNHO pronto mas nunca enviado não pode virar "cobrar cliente".
+      const hasUnsentDraft = clientDocs.some((d) => d.status === 'RASCUNHO');
+      const hasPendingSign = clientDocs.some(
+        (d) => d.status !== 'RASCUNHO' && !['CONCLUIDO', 'CANCELADO', 'EXPIRADO'].includes(d.status)
+      );
 
       let stage: 'ENTRADA' | 'DOCUMENTACAO' | 'PREPARACAO' | 'ASSINATURA' | 'PROCESSO' = 'ENTRADA';
       let stageName = 'Entrada';
@@ -404,6 +411,14 @@ export default function DashboardPage() {
         actionLabel = isOverdue ? 'Enviar lembrete' : 'Reenviar link';
         actionType = 'SIGN';
         priorityScore = isOverdue ? 1 : 5;
+      } else if (hasUnsentDraft) {
+        stage = 'PREPARACAO';
+        stageName = 'Pronto para Envio';
+        statusText = 'Kit de documentos pronto, ainda não enviado ao cliente';
+        nextActionText = 'Enviar o kit para assinatura do cliente';
+        actionLabel = 'Enviar para assinatura';
+        actionType = 'SIGN';
+        priorityScore = 6;
       } else if (!c.cpfCnpj || !c.phone) {
         stage = 'DOCUMENTACAO';
         stageName = 'Documentação';

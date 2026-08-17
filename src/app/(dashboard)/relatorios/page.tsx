@@ -10,7 +10,7 @@ export default function RelatoriosPage() {
     totalDocs: 0,
     pendingDocs: 0,
     completedDocs: 0,
-    completionRate: 0,
+    completionRate: 0 as number | null,
   });
 
   const [monthlyBreakdown, setMonthlyBreakdown] = useState<any[]>([]);
@@ -38,7 +38,14 @@ export default function RelatoriosPage() {
 
         const pending = docs.filter((d: any) => !['CONCLUIDO', 'CANCELADO', 'EXPIRADO'].includes(d.status)).length;
         const completed = docs.filter((d: any) => d.status === 'CONCLUIDO').length;
-        const rate = docs.length > 0 ? Math.round((completed / docs.length) * 100) : 0;
+        // Mesma definicao da tela Inicio: a taxa de conclusao so e calculada sobre
+        // envios ja encerrados (concluidos, cancelados ou expirados). Um RASCUNHO
+        // nunca enviado, ou um envio ainda em andamento, nao e "perda" nem "sucesso"
+        // - inclui-los no total inflava/distorcia o percentual e fazia o numero daqui
+        // divergir do card "Taxa de conclusao" do Inicio.
+        const closedDocs = docs.filter((d: any) => ['CONCLUIDO', 'CANCELADO', 'EXPIRADO'].includes(d.status));
+        const hasEnoughDataForRate = closedDocs.length >= 5;
+        const rate = hasEnoughDataForRate ? Math.round((completed / closedDocs.length) * 100) : null;
 
         setStats({
           totalClients: clients.length,
@@ -137,7 +144,7 @@ export default function RelatoriosPage() {
         <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Taxa de Conclusão</span>
-            <div className="text-3xl font-black text-gold-600 mt-1">{stats.completionRate}%</div>
+            <div className="text-3xl font-black text-gold-600 mt-1">{stats.completionRate !== null ? `${stats.completionRate}%` : '—'}</div>
           </div>
           <div className="w-12 h-12 rounded-xl bg-gold-50 text-gold-600 flex items-center justify-center font-bold">
             <TrendingUp className="w-6 h-6" />
