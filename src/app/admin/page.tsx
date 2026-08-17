@@ -116,6 +116,13 @@ export default function SuperAdminDashboardPage() {
   const totalOffices = offices.length;
   const activeOffices = offices.filter((o) => o.planStatus === 'ACTIVE').length;
   const totalMonthDocs = offices.reduce((acc, o) => acc + o.monthDocsCount, 0);
+  // Preco mensal por plano - mesmos valores exibidos em /plano. Mantenha sincronizado
+  // se os precos dos planos mudarem.
+  const PLAN_PRICE: Record<string, number> = { SOLO: 39.9, PROFISSIONAL: 69.9, ESCRITORIO: 99.9 };
+  const mrr = offices
+    .filter((o) => o.planStatus === 'ACTIVE')
+    .reduce((acc, o) => acc + (PLAN_PRICE[o.plan] || 0), 0);
+  const mrrFormatted = mrr.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <div className="min-h-screen bg-[#F7F8FA] text-slate-800 flex flex-col font-sans">
@@ -175,7 +182,7 @@ export default function SuperAdminDashboardPage() {
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">MRR Estimado</span>
-              <div className="text-3xl font-extrabold text-gold-600 mt-1">R$ 1.490</div>
+              <div className="text-3xl font-extrabold text-gold-600 mt-1">R$ {mrrFormatted}</div>
             </div>
             <div className="w-12 h-12 rounded-xl bg-gold-50 text-gold-600 flex items-center justify-center">
               <CreditCard className="w-6 h-6" />
