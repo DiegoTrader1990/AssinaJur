@@ -275,6 +275,16 @@ export default function DashboardPage() {
   const [copiedLink, setCopiedLink] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
+  // Pendências manuais (ex: "Cobrar Carlos a atualização de senha do INSS") - quando
+  // um cliente tem uma pendência aberta, ela substitui o cálculo automático em
+  // "Sua Prioridade Agora".
+  const [pendencies, setPendencies] = useState<any[]>([]);
+  const [pendenciaFormOpen, setPendenciaFormOpen] = useState(false);
+  const [pendenciaClientId, setPendenciaClientId] = useState('');
+  const [pendenciaDescricao, setPendenciaDescricao] = useState('');
+  const [savingPendencia, setSavingPendencia] = useState(false);
+  const [resolvingPendenciaId, setResolvingPendenciaId] = useState('');
+
   // Fechar dropdown de criar ao clicar fora
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -332,8 +342,9 @@ export default function DashboardPage() {
       fetch('/api/documents').then((r) => (r.ok ? r.json() : null)),
       fetch('/api/processos').then((r) => (r.ok ? r.json() : null)),
       fetch('/api/kits').then((r) => (r.ok ? r.json() : null)),
+      fetch('/api/pendencias').then((r) => (r.ok ? r.json() : null)),
     ])
-      .then(([u, o, c, d, p, k]) => {
+      .then(([u, o, c, d, p, k, pend]) => {
         if (u?.user) setCurrentUser(u.user);
         if (o?.office) setOffice(o.office);
         setClients(c?.clients || []);
@@ -342,6 +353,7 @@ export default function DashboardPage() {
         const lk = k?.kits || [];
         setKits(lk);
         if (lk.length > 0 && !formKitId) setFormKitId(lk[0].id);
+        setPendencies(pend?.pendencies || []);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -446,6 +458,16 @@ export default function DashboardPage() {
         priorityScore = 12;
       }
 
+      const pendencia = pendencies.find((p) => p.clientId === c.id && !p.resolvedAt);
+      if (pendencia) {
+        stageName = 'Pendência';
+        statusText = pendencia.description;
+        nextActionText = 'Marcar como resolvida assim que for concluída';
+        actionLabel = 'Marcar como resolvida';
+        actionType = 'PENDENCIA' as any;
+        priorityScore = -1000; // sempre acima de qualquer cálculo automático
+      }
+
       return {
         id: c.id,
         name: c.name,
@@ -461,9 +483,10 @@ export default function DashboardPage() {
         priorityScore,
         docsCount: clientDocs.length,
         signedDocsCount: signedDocs.length,
+        pendenciaId: pendencia?.id || null,
       };
     });
-  }, [clients, documents, processes]);
+  }, [clients, documents, processes, pendencies]);
 
   // Contagem por Etapa da Operação do Escritório (Mapa Operacional)
   const stageCounts = useMemo(() => {
@@ -476,6 +499,49 @@ export default function DashboardPage() {
       overdueSignatures: pendingDocs.filter((d) => (Date.now() - new Date(d.createdAt).getTime()) / 36e5 >= 24).length,
     };
   }, [mappedClients, pendingDocs]);
+
+  const recarregarPendencias = async () => {
+    try {
+      const r = await fetch('/api/pendencias');
+      if (r.ok) {
+        const data = await r.json();
+        setPendencies(data.pendencies || []);
+      }
+    } catch {
+      // Mantém a lista anterior em caso de falha de rede.
+    }
+  };
+
+  const criarPendencia = async () => {
+    if (!pendenciaClientId || !pendenciaDescricao.trim()) return;
+    setSavingPendencia(true);
+    try {
+      const r = await fetch('/api/pendencias', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: pendenciaClientId, description: pendenciaDescricao.trim() }),
+      });
+      if (r.ok) {
+        setPendenciaFormOpen(false);
+        setPendenciaClientId('');
+        setPendenciaDescricao('');
+        await recarregarPendencias();
+      }
+    } finally {
+      setSavingPendencia(false);
+    }
+  };
+
+  const resolverPendencia = async (pendenciaId: string) => {
+    if (!pendenciaId) return;
+    setResolvingPendenciaId(pendenciaId);
+    try {
+      const r = await fetch(`/api/pendencias/${pendenciaId}`, { method: 'PATCH' });
+      if (r.ok) await recarregarPendencias();
+    } finally {
+      setResolvingPendenciaId('');
+    }
+  };
 
   // COMPONENTE 1: SUA PRIORIDADE AGORA (A Situação #1 do Escritório)
   const topPriorityCase = useMemo(() => {
@@ -915,10 +981,59 @@ export default function DashboardPage() {
                       Sua Prioridade Agora
                     </h2>
                   </div>
-                  <span className="text-[10px] font-extrabold text-[#B68B1C] bg-[#B68B1C]/10 border border-[#B68B1C]/20 px-2 py-0.5 rounded-md">
-                    {topPriorityCase.legalArea}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setPendenciaFormOpen((v) => !v)}
+                      className="text-[10px] font-extrabold text-[#0B192C] bg-white border border-slate-200 hover:border-[#D4AF37] px-2 py-0.5 rounded-md transition-all"
+                    >
+                      + Pendência
+                    </button>
+                    <span className="text-[10px] font-extrabold text-[#B68B1C] bg-[#B68B1C]/10 border border-[#B68B1C]/20 px-2 py-0.5 rounded-md">
+                      {topPriorityCase.legalArea}
+                    </span>
+                  </div>
                 </div>
+
+                {pendenciaFormOpen && (
+                  <div className="rounded-lg border border-slate-200 bg-white/80 p-2.5 space-y-1.5">
+                    <select
+                      value={pendenciaClientId}
+                      onChange={(e) => setPendenciaClientId(e.target.value)}
+                      className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700"
+                    >
+                      <option value="">Selecione o cliente...</option>
+                      {clients.map((c: any) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={pendenciaDescricao}
+                      onChange={(e) => setPendenciaDescricao(e.target.value)}
+                      placeholder="Ex: Cobrar atualização da senha do INSS"
+                      className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700"
+                    />
+                    <div className="flex justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setPendenciaFormOpen(false)}
+                        className="px-2.5 py-1 text-[10.5px] font-bold text-slate-500 hover:text-slate-700"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!pendenciaClientId || !pendenciaDescricao.trim() || savingPendencia}
+                        onClick={criarPendencia}
+                        className="px-2.5 py-1 text-[10.5px] font-extrabold text-white bg-[#0B192C] hover:bg-[#152a47] rounded-md disabled:opacity-40"
+                      >
+                        {savingPendencia ? 'Salvando...' : 'Salvar pendência'}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="border-l-2 border-[#D4AF37] pl-3 py-0.5 space-y-1">
                   <h3 className="text-[15px] font-extrabold text-[#0B192C]">
@@ -937,6 +1052,18 @@ export default function DashboardPage() {
               {/* BOTÃO DE AÇÃO ÚNICO E COERENTE COM A ETAPA DO CLIENTE */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2.5 border-t border-slate-200/80">
                 <div className="flex items-center gap-2">
+                  {(topPriorityCase.actionType as any) === 'PENDENCIA' && (
+                    <button
+                      type="button"
+                      disabled={resolvingPendenciaId === topPriorityCase.pendenciaId}
+                      onClick={() => topPriorityCase.pendenciaId && resolverPendencia(topPriorityCase.pendenciaId)}
+                      className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-extrabold rounded-lg flex items-center gap-1.5 shadow-xs transition-all disabled:opacity-50"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      {resolvingPendenciaId === topPriorityCase.pendenciaId ? 'Marcando...' : topPriorityCase.actionLabel}
+                    </button>
+                  )}
+
                   {topPriorityCase.actionType === 'SIGN' && topPriorityCase.phone && (
                     <a
                       href={`https://wa.me/55${topPriorityCase.phone.replace(/\D/g, '')}?text=${encodeURIComponent(

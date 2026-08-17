@@ -62,6 +62,7 @@ model Office {
   whatsAppLogs    WhatsAppLog[]
   googleDrive     GoogleDriveConnection?
   intakeFolders   IntakeFolder[]
+  clientPendencies ClientPendency[]
 }
 
 // Usuário do Escritório
@@ -86,6 +87,8 @@ model User {
   auditLogs   AuditLog[]
   clientsAssigned Client[] @relation("LawyerClients")
   createdDocuments Document[] @relation("UserCreatedDocuments")
+  createdPendencies  ClientPendency[] @relation("PendencyCreatedBy")
+  resolvedPendencies ClientPendency[] @relation("PendencyResolvedBy")
 }
 
 // Permissões Granulares
@@ -143,8 +146,32 @@ model Client {
   documents           Document[]
   processes           LegalProcess[]
   intakeSuggestions   IntakeFolder[]
+  pendencies          ClientPendency[]
 
   @@unique([officeId, cpfCnpj])
+}
+
+// Pendência manual vinculada a um cliente (ex: "Cobrar atualização de senha do INSS").
+// Enquanto estiver aberta (resolvedAt == null), substitui o cálculo automático de
+// prioridade em "Sua Prioridade Agora" na Home - qualquer usuário do escritório vê
+// exatamente o que precisa ser feito.
+model ClientPendency {
+  id            String    @id @default(uuid())
+  officeId      String
+  office        Office    @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  clientId      String
+  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  description   String
+
+  createdById   String?
+  createdBy     User?     @relation("PendencyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  resolvedAt    DateTime?
+  resolvedById  String?
+  resolvedBy    User?     @relation("PendencyResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 // Arquivos em Armazenamento Seguro
