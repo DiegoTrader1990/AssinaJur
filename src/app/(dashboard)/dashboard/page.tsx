@@ -354,9 +354,10 @@ export default function DashboardPage() {
   // Métricas de Documentos
   const completedDocs = useMemo(() => documents.filter((d) => d.status === 'CONCLUIDO'), [documents]);
   const pendingDocs = useMemo(
-    // RASCUNHO (kit gerado mas nunca enviado) não conta como "assinatura atrasada" —
-    // só documento que já foi enviado ao cliente pode estar "parado" esperando ele.
-    () => documents.filter((d) => !['RASCUNHO', 'CONCLUIDO', 'CANCELADO', 'EXPIRADO'].includes(d.status)),
+    // RASCUNHO e PRONTO_PARA_ENVIO (kit gerado mas nunca enviado) nao contam como
+    // "assinatura atrasada" - so documento que ja foi enviado ao cliente pode estar
+    // "parado" esperando ele. RECUSADO tambem e estado final, nao "pendente".
+    () => documents.filter((d) => !['RASCUNHO', 'PRONTO_PARA_ENVIO', 'CONCLUIDO', 'CANCELADO', 'EXPIRADO', 'RECUSADO'].includes(d.status)),
     [documents]
   );
 
@@ -368,9 +369,9 @@ export default function DashboardPage() {
       const signedDocs = clientDocs.filter((d) => d.status === 'CONCLUIDO');
       // Só conta como "aguardando assinatura" documento que já foi de fato enviado ao
       // cliente. Um RASCUNHO pronto mas nunca enviado não pode virar "cobrar cliente".
-      const hasUnsentDraft = clientDocs.some((d) => d.status === 'RASCUNHO');
+      const hasUnsentDraft = clientDocs.some((d) => d.status === 'RASCUNHO' || d.status === 'PRONTO_PARA_ENVIO');
       const hasPendingSign = clientDocs.some(
-        (d) => d.status !== 'RASCUNHO' && !['CONCLUIDO', 'CANCELADO', 'EXPIRADO'].includes(d.status)
+        (d) => !['RASCUNHO', 'PRONTO_PARA_ENVIO', 'CONCLUIDO', 'CANCELADO', 'EXPIRADO', 'RECUSADO'].includes(d.status)
       );
 
       let stage: 'ENTRADA' | 'DOCUMENTACAO' | 'PREPARACAO' | 'ASSINATURA' | 'PROCESSO' = 'ENTRADA';

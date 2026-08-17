@@ -799,7 +799,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const signedStorageFile = await saveFile({
       officeId: doc.officeId,
       fileBuffer: finalBuffer,
-      originalName: `${doc.title.replace(/[^a-zA-Z0-9]/g, '_')}_ASSINADO.pdf`,
+      // Preserva acentuacao no arquivo PDF assinado baixado pelo cliente - mesma
+      // correcao ja aplicada ao PDF nao assinado em templateCompiler.ts.
+      originalName: `${doc.title.trim().replace(/[\/\\?%*:|"<>]/g, '').replace(/\s+/g, ' ')}_ASSINADO.pdf`,
       mimeType: 'application/pdf',
     });
 
@@ -1333,7 +1335,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
   const signedStorageFile = await saveFile({
     officeId: doc.officeId,
     fileBuffer: finalBuffer,
-    originalName: `${doc.title.replace(/[^a-zA-Z0-9]/g, '_')}_ASSINADO.pdf`,
+    // Preserva acentuacao no arquivo PDF assinado baixado pelo cliente - mesma
+    // correcao ja aplicada ao PDF nao assinado em templateCompiler.ts.
+    originalName: `${doc.title.trim().replace(/[\/\\?%*:|"<>]/g, '').replace(/\s+/g, ' ')}_ASSINADO.pdf`,
     mimeType: 'application/pdf',
   });
 
