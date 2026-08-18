@@ -319,6 +319,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
   const paperBg = rgb(0.965, 0.974, 0.988);
   const paleGreen = rgb(0.92, 0.98, 0.95);
 
+  const certDisplayTitle = (String(doc.title || '').replace(/\s*\(kit[^)]*\)\s*$/i, '').trim()) || doc.title;
+
   const PAGE_W = 595.28; // A4 width
   const PAGE_H = 841.89; // A4 height
   const CX = 40;
@@ -538,7 +540,33 @@ export async function generateFinalPdfCertificate(documentId: string) {
   const drawFrame = (p: PDFPage, subtitle: string) => {
     const cleanSubtitle = safeText(subtitle, 120);
     p.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: paperBg });
+
+    // Marca d'agua discreta, estilo papel timbrado de cartorio.
+    p.drawText('ASSINAJUR', {
+      x: PAGE_W / 2 - 148,
+      y: PAGE_H / 2 - 36,
+      size: 60,
+      font: bold,
+      color: navy,
+      opacity: 0.035,
+      rotate: degrees(38),
+    });
+
+    // Moldura dupla dourada/navy, ao estilo de certificado notarial.
+    p.drawRectangle({ x: 15, y: 15, width: PAGE_W - 30, height: PAGE_H - 30, borderWidth: 1.3, borderColor: gold });
     p.drawRectangle({ x: 20, y: 20, width: 555.28, height: 801.89, borderWidth: 1.2, borderColor: panelBorder });
+    p.drawRectangle({ x: 23, y: 23, width: PAGE_W - 46, height: PAGE_H - 46, borderWidth: 0.6, borderColor: gold, opacity: 0.5 });
+
+    // Cantos ornamentados discretos.
+    const cornerTick = (cx: number, cy: number, sx: number, sy: number) => {
+      p.drawLine({ start: { x: cx, y: cy }, end: { x: cx + 13 * sx, y: cy }, thickness: 1.1, color: gold });
+      p.drawLine({ start: { x: cx, y: cy }, end: { x: cx, y: cy + 13 * sy }, thickness: 1.1, color: gold });
+    };
+    cornerTick(15, 15, 1, 1);
+    cornerTick(PAGE_W - 15, 15, -1, 1);
+    cornerTick(15, PAGE_H - 15, 1, -1);
+    cornerTick(PAGE_W - 15, PAGE_H - 15, -1, -1);
+
     p.drawRectangle({ x: 20, y: 760, width: 555.28, height: 61.89, color: navy });
     p.drawRectangle({ x: 20, y: 757, width: 555.28, height: 3, color: gold });
     p.drawText('ASSINAJUR', { x: CX, y: 794, size: 14, font: bold, color: rgb(1, 1, 1) });
@@ -830,7 +858,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
   // SEÇÃO 1: CABEÇALHO DO CERTIFICADO
   drawFrame(page, 'CERTIFICADO DE EVIDENCIAS JURIDICAS - REGISTRO IMUTAVEL');
-  const certificateTitleLines = wrapTextToWidth(doc.title, bold, 11.5, 330);
+  const certificateTitleLines = wrapTextToWidth(certDisplayTitle, bold, 11.5, 330);
   certificateTitleLines.forEach((line, index) => {
     page.drawText(line, { x: CX, y: 736 - index * 13, size: 11.5, font: bold, color: navy });
   });
@@ -987,7 +1015,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       (signer.signatureImage ? 65 : 0);
     const hasDocPhotos = Boolean(signer.documentFrontImage || signer.documentBackImage);
     const photosHeight = hasPhotos ? 155 : 0;
-    const docPhotosHeight = hasDocPhotos ? 155 : 0;
+    const docPhotosHeight = hasDocPhotos ? 236 : 0;
     const panelH = 32 + dataHeight + photosHeight + docPhotosHeight + 8;
     ensureSpace(panelH + 10);
 
@@ -1142,7 +1170,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
     // SEÇÃO 4: EVIDÊNCIA COMPLEMENTAR — DOCUMENTO DE IDENTIFICAÇÃO (FRENTE/VERSO)
     if (hasDocPhotos) {
-      if (hasPhotos) cursor -= 155 + 12;
+      if (hasPhotos) {
+        // Separador visual claro entre o topico "prova de presença" (selfies)
+        // e o topico "documento de identificação" - nunca misturados.
+        cursor -= 155 + 14;
+        page.drawLine({ start: { x: padX, y: cursor + 8 }, end: { x: padX + innerWidth, y: cursor + 8 }, thickness: 0.6, color: panelBorder });
+        cursor -= 8;
+      }
       page.drawText('4. DOCUMENTO DE IDENTIFICAÇÃO (EVIDÊNCIA COMPLEMENTAR)', {
         x: padX,
         y: cursor,
@@ -1152,20 +1186,22 @@ export async function generateFinalPdfCertificate(documentId: string) {
       });
 
       const docPhotoLabels: Array<[string, string | null]> = [
-        ['Frente do documento', signer.documentFrontImage],
-        ['Verso do documento', signer.documentBackImage],
+        ['Frente', signer.documentFrontImage],
+        ['Verso', signer.documentBackImage],
       ].filter(([, img]) => Boolean(img)) as Array<[string, string | null]>;
 
-      const docBoxW = 150;
-      const docBoxH = 118;
-      const docCardH = 138;
+      // Fotos bem maiores e mais legíveis que as selfies, já que o documento
+      // precisa ser conferível a olho nu pelo escritório.
+      const docBoxW = 210;
+      const docBoxH = 170;
+      const docCardH = 192;
       const docGap = 24;
       const docPhotosTotalWidth = docBoxW * docPhotoLabels.length + docGap * Math.max(0, docPhotoLabels.length - 1);
       let docPhotoX = padX + Math.max(0, (innerWidth - docPhotosTotalWidth) / 2);
 
       for (const [label, img] of docPhotoLabels) {
-        const embedded = await embedBase64Image(pdfDoc, img, { width: 900, height: 620 });
-        const cardY = cursor - docCardH - 12;
+        const embedded = await embedBase64Image(pdfDoc, img, { width: 1400, height: 900 });
+        const cardY = cursor - docCardH - 14;
 
         page.drawRectangle({
           x: docPhotoX - 2,
@@ -1177,7 +1213,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
         });
         page.drawRectangle({ x: docPhotoX - 2, y: cardY + docCardH - 2, width: docBoxW + 4, height: 3, color: gold });
         const docImgFrameH = docBoxH - 22;
-        page.drawRectangle({ x: docPhotoX, y: cardY + 40, width: docBoxW, height: docImgFrameH, color: rgb(0.88, 0.92, 0.97) });
+        page.drawRectangle({ x: docPhotoX, y: cardY + 44, width: docBoxW, height: docImgFrameH, color: rgb(0.88, 0.92, 0.97) });
 
         if (embedded) {
           const imgW = embedded.width;
@@ -1187,7 +1223,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
           const drawH = Math.round(imgH * scale);
 
           const offsetX = docPhotoX + (docBoxW - drawW) / 2;
-          const offsetY = cardY + 40 + (docImgFrameH - drawH) / 2;
+          const offsetY = cardY + 44 + (docImgFrameH - drawH) / 2;
 
           page.drawImage(embedded, {
             x: offsetX,
@@ -1198,14 +1234,14 @@ export async function generateFinalPdfCertificate(documentId: string) {
         }
 
         page.drawText(safeText(label, 40).toUpperCase(), {
-          x: docPhotoX + 5,
-          y: cardY + 9,
-          size: 5.8,
+          x: docPhotoX + 8,
+          y: cardY + 12,
+          size: 7,
           font: bold,
           color: rgb(1, 1, 1),
         });
-        page.drawRectangle({ x: docPhotoX + docBoxW - 76, y: cardY + 5, width: 70, height: 12, color: paleGreen });
-        page.drawText('EVIDÊNCIA', { x: docPhotoX + docBoxW - 72, y: cardY + 8, size: 4.8, font: bold, color: green });
+        page.drawRectangle({ x: docPhotoX + docBoxW - 82, y: cardY + 7, width: 74, height: 15, color: paleGreen });
+        page.drawText('EVIDÊNCIA', { x: docPhotoX + docBoxW - 77, y: cardY + 11, size: 5.6, font: bold, color: green });
         docPhotoX += docBoxW + docGap;
       }
     }
@@ -1220,7 +1256,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
   const integY = integTop - integH;
   page.drawRectangle({ x: CX, y: integY, width: CW, height: integH, color: navy, borderWidth: 0.9, borderColor: navy });
   page.drawRectangle({ x: CX, y: integTop - 3, width: CW, height: 3, color: gold });
-  page.drawText('4. REGISTRO DE INTEGRIDADE E HASH SHA-256 COMPLETO', { x: padX, y: integTop - 15, size: 7.5, font: bold, color: rgb(1, 1, 1) });
+  page.drawText('5. REGISTRO DE INTEGRIDADE E HASH SHA-256 COMPLETO', { x: padX, y: integTop - 15, size: 7.5, font: bold, color: rgb(1, 1, 1) });
 
   page.drawText('HASH SHA-256 DO DOCUMENTO ORIGINAL (64 CARACTERES)', { x: padX, y: integTop - 32, size: 6.5, font: bold, color: rgb(0.68, 0.76, 0.88) });
   // Dividir o hash de 64 caracteres em duas linhas monoespaçadas exatas de 32 chars cada
@@ -1250,7 +1286,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
   page.drawRectangle({ x: CX, y: validationY, width: CW, height: validationH, color: rgb(1, 1, 1), borderWidth: 0.9, borderColor: panelBorder });
   page.drawRectangle({ x: CX, y: validationTop - validationHeaderH, width: CW, height: validationHeaderH, color: navy });
   page.drawRectangle({ x: CX, y: validationTop - 3, width: CW, height: 3, color: gold });
-  page.drawText('5. VALIDAÇÃO PÚBLICA E CONFORMIDADE LEGAL', { x: padX, y: validationTop - 17, size: 7.7, font: bold, color: rgb(1, 1, 1) });
+  page.drawText('6. VALIDAÇÃO PÚBLICA E CONFORMIDADE LEGAL', { x: padX, y: validationTop - 17, size: 7.7, font: bold, color: rgb(1, 1, 1) });
   page.drawText('VERIFICAÇÃO INDEPENDENTE', { x: CR - 112, y: validationTop - 17, size: 6.1, font: bold, color: rgb(0.72, 0.79, 0.9) });
   page.drawImage(qrImage, { x: padX, y: qrY, width: qrSize, height: qrSize });
 
@@ -1297,12 +1333,12 @@ export async function generateFinalPdfCertificate(documentId: string) {
       const p = reuseIntegrityPage ? page : pdfDoc.addPage([PAGE_W, PAGE_H]);
       let introY: number;
       if (reuseIntegrityPage) {
-        p.drawText('6. TRILHA CRONOLÓGICA DE EVIDÊNCIAS', { x: CX, y: y - 10, size: 8, font: bold, color: navy });
+        p.drawText('7. TRILHA CRONOLÓGICA DE EVIDÊNCIAS', { x: CX, y: y - 10, size: 8, font: bold, color: navy });
         p.drawLine({ start: { x: CX, y: y - 17 }, end: { x: CR, y: y - 17 }, thickness: 0.8, color: panelBorder });
         introY = y - 34;
       } else {
-        drawFrame(p, `6. TRILHA PÚBLICA DE EVENTOS${timelinePageCount > 1 ? ' - CONTINUAÇÃO' : ''}`);
-        const timelineTitleLines = wrapTextToWidth(doc!.title, bold, 11, CW);
+        drawFrame(p, `7. TRILHA PÚBLICA DE EVENTOS${timelinePageCount > 1 ? ' - CONTINUAÇÃO' : ''}`);
+        const timelineTitleLines = wrapTextToWidth(certDisplayTitle, bold, 11, CW);
         timelineTitleLines.forEach((line, index) => {
           p.drawText(line, { x: CX, y: 736 - index * 12, size: 11, font: bold, color: navy });
         });
