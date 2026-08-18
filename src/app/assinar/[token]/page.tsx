@@ -633,35 +633,22 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     try {
-      // A moldura na tela é mais larga (proporção ~4:3 / 3:4) do que era o
-      // canvas de captura (560x520, quase quadrado). Isso fazia o recorte
-      // horizontal do vídeo (feito abaixo, mantendo a altura e cortando as
-      // laterais) descartar boa parte do enquadramento que a pessoa via ao
-      // vivo, resultando numa foto final "mais de perto" do que a prévia.
-      // Usar 4:3 aqui mantém bem mais do enquadramento original.
-      canvas.width = 640;
-      canvas.height = 480;
+      // A prova de presença deve guardar exatamente o enquadramento recebido
+      // da câmera. Uma proporção fixa (4:3) cortava laterais ou topo de fotos
+      // feitas em aparelhos com câmera 16:9/9:16, aproximando o rosto no
+      // certificado. Mantemos a proporção original, apenas reduzindo o peso.
+      const sourceWidth = video.videoWidth;
+      const sourceHeight = video.videoHeight;
+      const maxSide = 960;
+      const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
+      canvas.width = Math.round(sourceWidth * scale);
+      canvas.height = Math.round(sourceHeight * scale);
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        const sourceWidth = video.videoWidth;
-        const sourceHeight = video.videoHeight;
-        const targetRatio = canvas.width / canvas.height;
-        const sourceRatio = sourceWidth / sourceHeight;
-        let sourceX = 0; let sourceY = 0;
-        let cropWidth = sourceWidth; let cropHeight = sourceHeight;
-
-        if (sourceRatio > targetRatio) {
-          cropWidth = sourceHeight * targetRatio;
-          sourceX = (sourceWidth - cropWidth) / 2;
-        } else if (sourceRatio < targetRatio) {
-          cropHeight = sourceWidth / targetRatio;
-          sourceY = (sourceHeight - cropHeight) / 2;
-        }
-
         ctx.save();
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
-        ctx.drawImage(video, sourceX, sourceY, cropWidth, cropHeight, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(video, 0, 0, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
         ctx.restore();
       }
 

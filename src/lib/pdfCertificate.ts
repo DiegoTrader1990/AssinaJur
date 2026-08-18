@@ -1037,9 +1037,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
       (12 + authenticationLines.length * 9.8 + 5) +
       (signer.signatureImage ? 65 : 0);
     if (hasDocPhotos) docPhotoSigners.push(signer);
-    // Título + folga + cartão de 3:4 + legenda. Mantém o painel seguinte
-    // fora da área das fotos independentemente do tamanho da evidência.
-    const photosHeight = hasPhotos ? 216 : 0;
+    // Título + folga + cartões de retrato 3:4 + legenda. A reserva acompanha
+    // o tamanho real da grade e evita criar uma página intermediária quase
+    // vazia entre os dados do documento e as evidências do signatário.
+    const photosHeight = hasPhotos ? 188 : 0;
     const panelH = 32 + dataHeight + photosHeight + 8;
     ensureSpace(panelH + 10);
 
@@ -1137,10 +1138,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
       // Mantém a proporção de selfie. O corte quadrado aproximava demais o
       // rosto e eliminava partes importantes do enquadramento original.
-      const boxW = 108;
-      const boxH = 144;
-      const cardH = 174;
-      const gap = 22;
+      const boxW = 96;
+      const boxH = 128;
+      const cardH = 156;
+      const gap = 18;
       const photosTotalWidth = boxW * 3 + gap * 2;
       let photoX = padX + Math.max(0, (innerWidth - photosTotalWidth) / 2);
 
