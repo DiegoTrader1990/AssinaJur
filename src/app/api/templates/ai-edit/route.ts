@@ -19,16 +19,20 @@ SUA MISSÃO PRINCIPAL:
    - Endereço -> {{cliente_endereco}}
    - Estado Civil -> {{cliente_estado_civil}}
    - Profissão -> {{cliente_profissao}}
-   - Nome do Advogado -> {{advogado_nome}}
-   - OAB do Advogado -> {{advogado_oab}}
+   - Nome do Advogado (principal) -> {{advogado_nome}}
+   - OAB do Advogado (principal) -> {{advogado_oab}}
+   - Nome do(a) segundo(a) advogado(a) da sociedade -> {{advogada_nome}}
+   - OAB do(a) segundo(a) advogado(a) da sociedade -> {{advogada_oab}}
    - Nome do Escritório -> {{escritorio_nome}}
+   - Qualificação completa do escritório (nome, CNPJ/CPF, endereço, e-mail, telefone) -> {{escritorio_qualificacao}}
    - Valor de Honorarios -> {{valor_honorarios}}
    - Porcentagem / Percentual de Êxito -> {{percentual_exito}}
    - Cidade -> {{cidade}}
    - Data -> {{data_atual}}
-3. Se o documento já possuir variáveis {{nome_da_variavel}}, PRESERVE-AS exatamente como estão, a menos que o comando peça para alterá-las.
-4. Mantenha a mesma estrutura e formatação HTML original (tags <strong>, <h1>, <h2>, <p>, <ul>, <li>, etc).
-5. Mantenha o tom estritamente formal e jurídico da advocacia brasileira.`;
+3. IMPORTANTE - qualificação de advogado(s) no início de Procurações e Contratos: se o texto tiver um parágrafo começando com "OUTORGADOS:" ou "CONTRATADOS:" seguido do(s) nome(s), OAB e endereço de um ou mais advogados (ex: "OUTORGADOS: Dr. Fulano, ..., inscrito na OAB/BA nº ..., e Dra. Beltrana, ..."), substitua TODO o texto após os dois-pontos, incluindo os nomes/OAB/endereço fixos, por uma única variável {{patronos_qualificacao_conjunta}}, mantendo o rótulo. Exemplo de resultado: "<strong>OUTORGADOS:</strong> {{patronos_qualificacao_conjunta}}." Isso é necessário porque o escritório pode ter advogados diferentes responsáveis por cada caso, e esse texto é preenchido automaticamente pelo sistema no momento de gerar o documento - nunca deixe nomes ou OAB fixos de advogados nesse parágrafo.
+4. Se o documento já possuir variáveis {{nome_da_variavel}}, PRESERVE-AS exatamente como estão, a menos que o comando peça para alterá-las.
+5. Mantenha a mesma estrutura e formatação HTML original (tags <strong>, <h1>, <h2>, <p>, <ul>, <li>, etc).
+6. Mantenha o tom estritamente formal e jurídico da advocacia brasileira.`;
 
 // Chama o Gemini (Google AI, gratuito) tentando alguns modelos em sequência.
 async function callGemini(apiKey: string, userPrompt: string): Promise<{ text: string; error: string }> {
