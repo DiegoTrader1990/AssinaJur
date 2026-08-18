@@ -246,6 +246,15 @@ export async function POST(req: Request) {
 
     const mainLawyer = activeLawyers.find(l => l.name.toLowerCase().includes('diego')) || activeLawyers[0] || { name: user.name, oabNumber: 'OAB/BA 51.881' };
     const secondLawyer = activeLawyers.find(l => l.name.toLowerCase().includes('dominick')) || activeLawyers[1] || { name: 'Dra. Dominick Quinto Soares', oabNumber: 'OAB/BA 62.443' };
+    const clientGender = String(client.gender || '').trim().toUpperCase();
+    const clientIsFemale = clientGender === 'FEMININO';
+    const clientIsMale = clientGender === 'MASCULINO';
+    const clientNationality = (!client.nationality || /^brasileir[ao]$/i.test(client.nationality))
+      ? clientIsFemale ? 'Brasileira' : clientIsMale ? 'Brasileiro' : 'Brasileira'
+      : client.nationality;
+    const clientBirthQualification = client.birthDate
+      ? `, ${clientIsFemale ? 'nascida' : clientIsMale ? 'nascido' : 'nascido(a)'} em ${formatBirthDate(client.birthDate)}`
+      : '';
 
     // Montar mapa completo de variáveis para substituição automática
     const variableValues = {
@@ -256,8 +265,8 @@ export async function POST(req: Request) {
       cliente_nome: client.name,
       cliente_cpf: formatCpfCnpj(client.cpfCnpj),
       cliente_rg: client.rg || '—',
-      cliente_nacionalidade: client.nationality || 'Brasileira',
-      cliente_genero: client.gender || '',
+      cliente_nacionalidade: clientNationality,
+      cliente_genero: clientGender,
       cliente_telefone: client.whatsapp || client.phone || '—',
       cliente_endereco: [
         client.address,
@@ -269,7 +278,7 @@ export async function POST(req: Request) {
       ].filter(Boolean).join(', ') || '—',
       cliente_estado_civil: client.maritalStatus || '—',
       cliente_profissao: client.profession || '—',
-      cliente_nascimento_qualificacao: client.birthDate ? `, nascido(a) em ${formatBirthDate(client.birthDate)}` : '',
+      cliente_nascimento_qualificacao: clientBirthQualification,
       representante_legal: client.legalRepresentative || '',
       representante_cpf: client.representativeCpf || '',
       representante_rg: client.representativeRg || '',

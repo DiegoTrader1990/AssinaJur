@@ -280,8 +280,10 @@ function parseRichParagraphs(html: string): RichParagraph[] {
         }
       }
       // Linhas vazias criadas no editor (Enter em um parágrafo vazio) também são
-      // parte da minuta: preservamos a altura para que a emissão respeite o espaçamento.
-      return { kind, alignment, runs, spacer, defaultFontFamily, defaultFontSize };
+      // parte da minuta. Antes elas chegavam aqui sem runs e sem spacer, sendo
+      // descartadas na diagramação — principalmente no rodapé de assinatura.
+      // Cada parágrafo vazio agora reserva uma linha real no PDF.
+      return { kind, alignment, runs, spacer: runs.length === 0 ? Math.max(spacer, kind === 'H1' ? 17 : kind === 'H2' ? 16 : 15) : spacer, defaultFontFamily, defaultFontSize };
     })
     .filter((item): item is RichParagraph => Boolean(item));
 
@@ -323,7 +325,14 @@ function parseRichParagraphs(html: string): RichParagraph[] {
     return counts;
   }, {});
   const baseSize = Number(Object.entries(preferredSize).sort(([, left], [, right]) => right - left)[0]?.[0] || 10);
-  const preferredFamily = bodyRuns.find((run) => run.fontFamily)?.fontFamily || 'HELVETICA';
+  // A primeira run estilizada pode ser apenas um título/qualificação colada
+  // do Word. A fonte predominante do corpo representa melhor o que o advogado
+  // vê no editor e deve ser a base das runs sem estilo explícito.
+  const preferredFamilies = bodyRuns.reduce<Record<PdfFontFamily, number>>((counts, run) => {
+    if (run.fontFamily) counts[run.fontFamily] = (counts[run.fontFamily] || 0) + 1;
+    return counts;
+  }, { HELVETICA: 0, TIMES: 0, COURIER: 0 });
+  const preferredFamily = (Object.entries(preferredFamilies).sort(([, left], [, right]) => right - left)[0]?.[0] as PdfFontFamily | undefined) || 'HELVETICA';
   return mergedParagraphs.map((paragraph) => ({
     ...paragraph,
     runs: paragraph.runs.map((run) => ({

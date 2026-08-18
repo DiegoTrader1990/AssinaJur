@@ -280,13 +280,19 @@ export default function DispatchKitPage() {
         const oab = String(member.oabNumber || '').trim();
         return `${member.name}, ${role} ${/\bOAB\b/i.test(oab) ? `na ${oab}` : oab ? `na OAB/${officeState} sob o nº ${oab}` : 'na Ordem dos Advogados do Brasil'}`;
       }).join(' e ');
+      const clientGender = String(client.gender || '').trim().toUpperCase();
+      const clientIsFemale = clientGender === 'FEMININO';
+      const clientIsMale = clientGender === 'MASCULINO';
+      const clientNationality = (!client.nationality || /^brasileir[ao]$/i.test(client.nationality))
+        ? clientIsFemale ? 'Brasileira' : clientIsMale ? 'Brasileiro' : 'Brasileira'
+        : client.nationality;
       setReviewClientData({
-        cliente_nome: client.name || '', cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '—', cliente_nacionalidade: client.nationality || 'Brasileira',
-        cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—', cliente_nascimento_qualificacao: client.birthDate ? `, nascido(a) em ${formatBirthDate(client.birthDate)}` : '', cliente_endereco: [client.address, client.number, client.complement, client.neighborhood, [client.city, client.state].filter(Boolean).join('/'), client.cep ? `CEP ${client.cep}` : ''].filter(Boolean).join(', ') || '—', cidade: [client.city, client.state].filter(Boolean).join('/') || '—',
+        cliente_nome: client.name || '', cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '—', cliente_nacionalidade: clientNationality,
+        cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—', cliente_nascimento_qualificacao: client.birthDate ? `, ${clientIsFemale ? 'nascida' : clientIsMale ? 'nascido' : 'nascido(a)'} em ${formatBirthDate(client.birthDate)}` : '', cliente_endereco: [client.address, client.number, client.complement, client.neighborhood, [client.city, client.state].filter(Boolean).join('/'), client.cep ? `CEP ${client.cep}` : ''].filter(Boolean).join(', ') || '—', cidade: [client.city, client.state].filter(Boolean).join('/') || '—',
         advogado_nome: lawyer.name || 'Advogado responsável', advogado_oab: lawyer.oabNumber || '—', escritorio_nome: officePayload.office?.tradeName || officePayload.office?.name || '—',
         patronos_qualificacao_conjunta: patronos ? `${patronos}, com escritório profissional na ${officeAddress}` : 'Advogado responsável',
         patronos_nomes: activeLawyers.map((member: any) => member.name).join('|'),
-        cliente_genero: client.gender || '',
+        cliente_genero: clientGender,
         representante_legal: client.legalRepresentative || '', representante_cpf: client.representativeCpf || '', representante_rg: client.representativeRg || '', representante_telefone: client.representativePhone || '',
         representante_qualificacao: [client.representativeRole, client.representativeCpf ? `CPF nº ${client.representativeCpf}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${client.representativePhone}` : ''].filter(Boolean).join(', '),
         cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${[client.representativeRole, client.representativeCpf ? `CPF nº ${client.representativeCpf}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${client.representativePhone}` : ''].filter(Boolean).join(', ')}` : '',
@@ -302,10 +308,27 @@ export default function DispatchKitPage() {
     setReviewItem(null);
   };
 
-  const renderForReview = (html: string) => Object.entries({ ...variables, ...reviewClientData }).reduce(
-    (result, [key, value]) => result.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), String(value || '—')),
-    html,
-  ).replace(/{{\s*[a-zA-Z0-9_]+\s*}}/g, '—');
+  const renderForReview = (html: string) => {
+    const values: Record<string, string> = { ...variables, ...reviewClientData };
+    const rendered = Object.entries(values).reduce(
+      (result, [key, value]) => result.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), String(value || '—')),
+      html,
+    ).replace(/{{\s*[a-zA-Z0-9_]+\s*}}/g, '—');
+    const gender = String(values.cliente_genero || '').trim().toUpperCase();
+    if (!['MASCULINO', 'FEMININO'].includes(gender)) return rendered;
+    const feminine = gender === 'FEMININO';
+    const replacements: Array<[RegExp, string]> = [
+      [/brasileir[ao]\b/gi, feminine ? 'brasileira' : 'brasileiro'], [/solteiro\(a\)|solteir[oa]\b/gi, feminine ? 'solteira' : 'solteiro'],
+      [/portador\(a\)|portador[ao]\b/gi, feminine ? 'portadora' : 'portador'], [/inscrito\(a\)|inscrit[oa]\b/gi, feminine ? 'inscrita' : 'inscrito'],
+      [/nascido\(a\)|nascid[oa]\b/gi, feminine ? 'nascida' : 'nascido'], [/domiciliado\(a\)|domiciliad[oa]\b/gi, feminine ? 'domiciliada' : 'domiciliado'],
+    ];
+    const clientName = String(values.cliente_nome || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return rendered.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, _tag, _attrs, inner) =>
+      clientName && new RegExp(clientName, 'i').test(String(inner).replace(/<[^>]+>/g, ' '))
+        ? replacements.reduce((value, [pattern, replacement]) => value.replace(pattern, replacement), block)
+        : block,
+    );
+  };
 
   const renderEditableReview = (html: string) => {
     let rendered = removeStandaloneClientNameBeforeQualification(
