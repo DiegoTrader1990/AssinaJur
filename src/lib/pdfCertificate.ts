@@ -702,20 +702,20 @@ export async function generateFinalPdfCertificate(documentId: string) {
       ['2  PERFIL ESQUERDO', signer.selfieLeftImage],
       ['3  PERFIL DIREITO', signer.selfieRightImage],
     ];
-    const compactPhotoW = 140;
-    const compactPhotoH = 132;
-    const compactPhotoGap = 27;
+    // Fotos de presença em retrato 3:4: preservam o enquadramento capturado
+    // pela câmera, sem aproximar/cortar o rosto para preencher um quadro largo.
+    const compactPhotoW = 90;
+    const compactPhotoH = 144;
+    const compactPhotoGap = 35;
     let compactPhotoX = CX + (CW - (compactPhotoW * 3 + compactPhotoGap * 2)) / 2;
     for (const [label, imageData] of compactPhotos) {
-      // Alvo de corte alinhado à proporção real do quadro de exibição (140x106)
-      // em vez de um corte mais estreito - evita "zoom" excessivo no rosto,
-      // preservando mais do enquadramento original da selfie.
-      const embedded = await embedBase64Image(pdfDoc, imageData, { width: 560, height: 424 });
-      certificatePage.drawRectangle({ x: compactPhotoX - 2, y: 309, width: compactPhotoW + 4, height: compactPhotoH + 4, color: navy });
-      certificatePage.drawRectangle({ x: compactPhotoX - 2, y: 441, width: compactPhotoW + 4, height: 4, color: gold });
+      const embedded = await embedBase64Image(pdfDoc, imageData, { width: 360, height: 480, fit: 'contain', position: 'centre' });
+      certificatePage.drawRectangle({ x: compactPhotoX - 2, y: 303, width: compactPhotoW + 4, height: compactPhotoH + 4, color: navy });
+      certificatePage.drawRectangle({ x: compactPhotoX - 2, y: 443, width: compactPhotoW + 4, height: 4, color: gold });
 
       const imgFrameH = compactPhotoH - 26;
-      certificatePage.drawRectangle({ x: compactPhotoX, y: 335, width: compactPhotoW, height: imgFrameH, color: rgb(0.96, 0.96, 0.97), opacity: 0.55 });
+      const imgFrameY = 329;
+      certificatePage.drawRectangle({ x: compactPhotoX, y: imgFrameY, width: compactPhotoW, height: imgFrameH, color: rgb(0.96, 0.96, 0.97), opacity: 0.55 });
 
       if (embedded) {
         const imgW = embedded.width;
@@ -724,14 +724,14 @@ export async function generateFinalPdfCertificate(documentId: string) {
         const drawW = Math.round(imgW * scale);
         const drawH = Math.round(imgH * scale);
         const offsetX = compactPhotoX + (compactPhotoW - drawW) / 2;
-        const offsetY = 335 + (imgFrameH - drawH) / 2;
+        const offsetY = imgFrameY + (imgFrameH - drawH) / 2;
 
         certificatePage.drawImage(embedded, { x: offsetX, y: offsetY, width: drawW, height: drawH });
       }
 
-      certificatePage.drawRectangle({ x: compactPhotoX, y: 309, width: compactPhotoW, height: 18, color: navy });
-      certificatePage.drawText(label, { x: compactPhotoX + 7, y: 315, size: 5.8, font: bold, color: rgb(1, 1, 1) });
-      certificatePage.drawText('VALIDADA', { x: compactPhotoX + compactPhotoW - 41, y: 315, size: 4.8, font: bold, color: gold });
+      certificatePage.drawRectangle({ x: compactPhotoX, y: 303, width: compactPhotoW, height: 18, color: navy });
+      certificatePage.drawText(label, { x: compactPhotoX + 5, y: 309, size: 4.3, font: bold, color: rgb(1, 1, 1) });
+      certificatePage.drawText('OK', { x: compactPhotoX + compactPhotoW - 14, y: 309, size: 4.8, font: bold, color: gold });
       compactPhotoX += compactPhotoW + compactPhotoGap;
     }
 
@@ -1042,7 +1042,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       (12 + authenticationLines.length * 9.8 + 5) +
       (signer.signatureImage ? 65 : 0);
     if (hasDocPhotos) docPhotoSigners.push(signer);
-    const photosHeight = hasPhotos ? 197 : 0;
+    const photosHeight = hasPhotos ? 201 : 0;
     const panelH = 32 + dataHeight + photosHeight + 8;
     ensureSpace(panelH + 10);
 
@@ -1140,17 +1140,17 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
       // Mantém a proporção de selfie. O corte quadrado aproximava demais o
       // rosto e eliminava partes importantes do enquadramento original.
-      const boxW = 132;
-      const boxH = 158;
-      const cardH = 180;
-      const gap = 22;
+      const boxW = 120;
+      const boxH = 160;
+      const cardH = 184;
+      const gap = 24;
       const photosTotalWidth = boxW * 3 + gap * 2;
       let photoX = padX + Math.max(0, (innerWidth - photosTotalWidth) / 2);
 
       for (const [label, img] of photoLabels) {
         const embedded = await embedBase64Image(pdfDoc, img, {
-          width: 528,
-          height: 632,
+          width: 480,
+          height: 640,
           fit: 'contain',
           position: 'centre',
         });
