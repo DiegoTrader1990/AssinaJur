@@ -269,6 +269,32 @@ export default function DocumentsPage() {
     } catch (err: any) { alert(err.message); } finally { setDeletingSelected(false); }
   };
 
+  // A exclusão de documentos concluídos só é permitida quando a seleção
+  // representa integralmente um único kit. Isso evita apagar itens de clientes
+  // ou kits diferentes por engano.
+  const selectedCompletedKit = useMemo(() => {
+    const kits = new Map<string, DocumentItem[]>();
+    documents.forEach((document) => {
+      if (!document.kitBatchId) return;
+      const current = kits.get(document.kitBatchId) || [];
+      current.push(document);
+      kits.set(document.kitBatchId, current);
+    });
+
+    const fullySelectedKits = Array.from(kits.values()).filter(
+      (kit) => kit.every((document) => document.status === 'CONCLUIDO' && selectedDocIds.has(document.id))
+    );
+
+    return fullySelectedKits.length === 1 && fullySelectedKits[0].length === selectedDocIds.size
+      ? fullySelectedKits[0]
+      : null;
+  }, [documents, selectedDocIds]);
+
+  const selectedNonConcludedCount = useMemo(
+    () => documents.filter((document) => selectedDocIds.has(document.id) && document.status !== 'CONCLUIDO').length,
+    [documents, selectedDocIds]
+  );
+
   // Estatísticas globais do acervo
   const stats = useMemo(() => {
     const total = documents.length;
@@ -737,7 +763,29 @@ export default function DocumentsPage() {
           {filteredDocuments.length > 0 && filteredDocuments.every((doc) => selectedDocIds.has(doc.id)) ? <CheckSquare className="w-4 h-4 text-blue-600" /> : <Square className="w-4 h-4" />}
           Selecionar todos os resultados ({filteredDocuments.length})
         </button>
-        {selectedDocIds.size > 0 && <div className="flex items-center gap-2"><span className="text-xs font-bold text-slate-600">{selectedDocIds.size} selecionado(s)</span><button type="button" onClick={() => setSelectedDocIds(new Set())} className="px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Limpar</button><button type="button" onClick={handleBulkDelete} disabled={deletingSelected} className="inline-flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl text-xs font-extrabold">{deletingSelected ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Excluir selecionados</button></div>}
+        {selectedDocIds.size > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold text-slate-600">{selectedDocIds.size} selecionado(s)</span>
+            <button type="button" onClick={() => setSelectedDocIds(new Set())} className="px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Limpar</button>
+            {selectedCompletedKit && (
+              <button
+                type="button"
+                onClick={() => handleDeleteCompletedPackage(selectedCompletedKit)}
+                disabled={deletingSelected}
+                className="inline-flex items-center gap-2 px-3 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-xl text-xs font-extrabold"
+              >
+                {deletingSelected ? <Loader2 className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
+                Excluir este kit concluído
+              </button>
+            )}
+            {selectedNonConcludedCount > 0 && (
+              <button type="button" onClick={handleBulkDelete} disabled={deletingSelected} className="inline-flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl text-xs font-extrabold">
+                {deletingSelected ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                Excluir documentos não concluídos
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {loading ? (
