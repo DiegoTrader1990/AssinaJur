@@ -282,6 +282,8 @@ export default function DashboardPage() {
   const [pendenciaFormOpen, setPendenciaFormOpen] = useState(false);
   const [pendenciaClientId, setPendenciaClientId] = useState('');
   const [pendenciaDescricao, setPendenciaDescricao] = useState('');
+  const [pendenciaPriority, setPendenciaPriority] = useState('NORMAL');
+  const [pendenciaDueDate, setPendenciaDueDate] = useState('');
   const [savingPendencia, setSavingPendencia] = useState(false);
   const [resolvingPendenciaId, setResolvingPendenciaId] = useState('');
 
@@ -513,18 +515,25 @@ export default function DashboardPage() {
   };
 
   const criarPendencia = async () => {
-    if (!pendenciaClientId || !pendenciaDescricao.trim()) return;
+    if (!pendenciaDescricao.trim()) return;
     setSavingPendencia(true);
     try {
       const r = await fetch('/api/pendencias', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId: pendenciaClientId, description: pendenciaDescricao.trim() }),
+        body: JSON.stringify({
+          clientId: pendenciaClientId,
+          description: pendenciaDescricao.trim(),
+          priority: pendenciaPriority,
+          dueDate: pendenciaDueDate || null,
+        }),
       });
       if (r.ok) {
         setPendenciaFormOpen(false);
         setPendenciaClientId('');
         setPendenciaDescricao('');
+        setPendenciaPriority('NORMAL');
+        setPendenciaDueDate('');
         await recarregarPendencias();
       }
     } finally {
@@ -556,12 +565,23 @@ export default function DashboardPage() {
 
   // Quanto mais tempo uma pendência está aberta, mais "quente" a cor - dá pra ver de
   // relance o que está esperando há mais tempo, sem precisar ler tudo.
-  const urgenciaPendencia = (createdAt: string) => {
-    const dias = (Date.now() - new Date(createdAt).getTime()) / 864e5;
-    if (dias >= 7) return { texto: `há ${Math.floor(dias)} dias`, cor: 'border-rose-500', chip: 'bg-rose-50 text-rose-700 border-rose-200' };
-    if (dias >= 2) return { texto: `há ${Math.floor(dias)} dias`, cor: 'border-orange-400', chip: 'bg-orange-50 text-orange-700 border-orange-200' };
-    if (dias >= 1) return { texto: 'há 1 dia', cor: 'border-[#D4AF37]', chip: 'bg-[#D4AF37]/10 text-[#8a6a14] border-[#D4AF37]/30' };
-    return { texto: 'hoje', cor: 'border-emerald-400', chip: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+  const urgenciaPendencia = (pendency: any) => {
+    const due = pendency.dueDate ? new Date(pendency.dueDate) : null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (due) {
+      due.setHours(0, 0, 0, 0);
+      const days = Math.round((due.getTime() - today.getTime()) / 864e5);
+      if (days < 0) return { texto: `vencida há ${Math.abs(days)} dia${Math.abs(days) === 1 ? '' : 's'}`, cor: 'border-rose-600', chip: 'bg-rose-50 text-rose-700 border-rose-200' };
+      if (days === 0) return { texto: 'vence hoje', cor: 'border-rose-500', chip: 'bg-rose-50 text-rose-700 border-rose-200' };
+      if (days <= 2) return { texto: `vence em ${days} dia${days === 1 ? '' : 's'}`, cor: 'border-orange-400', chip: 'bg-orange-50 text-orange-700 border-orange-200' };
+    }
+    const levels: Record<string, { texto: string; cor: string; chip: string }> = {
+      URGENTE: { texto: 'urgente', cor: 'border-rose-500', chip: 'bg-rose-50 text-rose-700 border-rose-200' },
+      ALTA: { texto: 'alta', cor: 'border-orange-400', chip: 'bg-orange-50 text-orange-700 border-orange-200' },
+      BAIXA: { texto: 'baixa', cor: 'border-sky-400', chip: 'bg-sky-50 text-sky-700 border-sky-200' },
+    };
+    return levels[pendency.priority] || { texto: 'normal', cor: 'border-[#D4AF37]', chip: 'bg-[#D4AF37]/10 text-[#8a6a14] border-[#D4AF37]/30' };
   };
 
   // COMPONENTE 2: PRÓXIMOS DA FILA (Fila Filtrável de Próximas Ações)
@@ -1005,24 +1025,33 @@ export default function DashboardPage() {
 
               {pendenciaFormOpen && (
                 <div className="rounded-lg border border-slate-200 bg-white/80 p-2.5 space-y-1.5">
-                  <select
-                    value={pendenciaClientId}
-                    onChange={(e) => setPendenciaClientId(e.target.value)}
-                    className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700"
-                  >
-                    <option value="">Selecione o cliente...</option>
+                    <input
+                      value={pendenciaDescricao}
+                      onChange={(e) => setPendenciaDescricao(e.target.value)}
+                      placeholder="O que precisa ser feito?"
+                      className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700"
+                    />
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <select value={pendenciaPriority} onChange={(e) => setPendenciaPriority(e.target.value)} className="rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700">
+                        <option value="URGENTE">🔴 Urgente</option>
+                        <option value="ALTA">🟠 Alta</option>
+                        <option value="NORMAL">🟡 Normal</option>
+                        <option value="BAIXA">🔵 Baixa</option>
+                      </select>
+                      <input type="date" value={pendenciaDueDate} onChange={(e) => setPendenciaDueDate(e.target.value)} className="rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700" aria-label="Prazo" />
+                    </div>
+                    <select
+                      value={pendenciaClientId}
+                      onChange={(e) => setPendenciaClientId(e.target.value)}
+                      className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700"
+                    >
+                      <option value="">Vincular cliente (opcional)...</option>
                     {clients.map((c: any) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
                       </option>
                     ))}
                   </select>
-                  <input
-                    value={pendenciaDescricao}
-                    onChange={(e) => setPendenciaDescricao(e.target.value)}
-                    placeholder="Ex: Cobrar atualização da senha do INSS"
-                    className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700"
-                  />
                   <div className="flex justify-end gap-1.5">
                     <button
                       type="button"
@@ -1033,7 +1062,7 @@ export default function DashboardPage() {
                     </button>
                     <button
                       type="button"
-                      disabled={!pendenciaClientId || !pendenciaDescricao.trim() || savingPendencia}
+                      disabled={!pendenciaDescricao.trim() || savingPendencia}
                       onClick={criarPendencia}
                       className="px-2.5 py-1 text-[10.5px] font-extrabold text-white bg-[#0B192C] hover:bg-[#152a47] rounded-md disabled:opacity-40"
                     >
@@ -1045,7 +1074,7 @@ export default function DashboardPage() {
 
               <div className="mt-3 space-y-2 overflow-y-auto pr-1 -mr-1" style={{ maxHeight: 176 }}>
                 {openPendencies.map((p, idx) => {
-                  const urgencia = urgenciaPendencia(p.createdAt);
+                  const urgencia = urgenciaPendencia(p);
                   return (
                     <div
                       key={p.id}
@@ -1058,7 +1087,7 @@ export default function DashboardPage() {
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
                             <p className="text-[12.5px] font-extrabold text-[#0B192C] truncate">
-                              {p.client?.name || 'Cliente'}
+                              {p.client?.name || 'Tarefa do escritório'}
                             </p>
                             <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-md border ${urgencia.chip}`}>
                               {urgencia.texto}
@@ -1116,24 +1145,33 @@ export default function DashboardPage() {
 
                 {pendenciaFormOpen && (
                   <div className="rounded-lg border border-slate-200 bg-white/80 p-2.5 space-y-1.5">
+                    <input
+                      value={pendenciaDescricao}
+                      onChange={(e) => setPendenciaDescricao(e.target.value)}
+                      placeholder="O que precisa ser feito?"
+                      className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700"
+                    />
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <select value={pendenciaPriority} onChange={(e) => setPendenciaPriority(e.target.value)} className="rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700">
+                        <option value="URGENTE">🔴 Urgente</option>
+                        <option value="ALTA">🟠 Alta</option>
+                        <option value="NORMAL">🟡 Normal</option>
+                        <option value="BAIXA">🔵 Baixa</option>
+                      </select>
+                      <input type="date" value={pendenciaDueDate} onChange={(e) => setPendenciaDueDate(e.target.value)} className="rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700" aria-label="Prazo" />
+                    </div>
                     <select
                       value={pendenciaClientId}
                       onChange={(e) => setPendenciaClientId(e.target.value)}
                       className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700"
                     >
-                      <option value="">Selecione o cliente...</option>
+                      <option value="">Vincular cliente (opcional)...</option>
                       {clients.map((c: any) => (
                         <option key={c.id} value={c.id}>
                           {c.name}
                         </option>
                       ))}
                     </select>
-                    <input
-                      value={pendenciaDescricao}
-                      onChange={(e) => setPendenciaDescricao(e.target.value)}
-                      placeholder="Ex: Cobrar atualização da senha do INSS"
-                      className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700"
-                    />
                     <div className="flex justify-end gap-1.5">
                       <button
                         type="button"
@@ -1144,7 +1182,7 @@ export default function DashboardPage() {
                       </button>
                       <button
                         type="button"
-                        disabled={!pendenciaClientId || !pendenciaDescricao.trim() || savingPendencia}
+                      disabled={!pendenciaDescricao.trim() || savingPendencia}
                         onClick={criarPendencia}
                         className="px-2.5 py-1 text-[10.5px] font-extrabold text-white bg-[#0B192C] hover:bg-[#152a47] rounded-md disabled:opacity-40"
                       >

@@ -50,24 +50,34 @@ export async function POST(req: Request) {
     const body = await req.json();
     const clientId = (body.clientId || '').trim();
     const description = (body.description || '').trim();
+    const priority = ['URGENTE', 'ALTA', 'NORMAL', 'BAIXA'].includes(body.priority) ? body.priority : 'NORMAL';
+    const dueDate = body.dueDate ? new Date(`${body.dueDate}T12:00:00`) : null;
 
-    if (!clientId || !description) {
-      return NextResponse.json({ error: 'Cliente e descrição são obrigatórios.' }, { status: 400 });
+    if (!description) {
+      return NextResponse.json({ error: 'Descreva o que precisa ser feito.' }, { status: 400 });
     }
 
-    const client = await prisma.client.findFirst({
-      where: { id: clientId, officeId: user.officeId },
-      select: { id: true },
-    });
-    if (!client) {
-      return NextResponse.json({ error: 'Cliente não encontrado.' }, { status: 404 });
+    if (dueDate && Number.isNaN(dueDate.getTime())) {
+      return NextResponse.json({ error: 'Prazo inválido.' }, { status: 400 });
+    }
+
+    if (clientId) {
+      const client = await prisma.client.findFirst({
+        where: { id: clientId, officeId: user.officeId },
+        select: { id: true },
+      });
+      if (!client) {
+        return NextResponse.json({ error: 'Cliente não encontrado.' }, { status: 404 });
+      }
     }
 
     const pendency = await prisma.clientPendency.create({
       data: {
         officeId: user.officeId,
-        clientId,
+        ...(clientId ? { clientId } : {}),
         description,
+        priority,
+        dueDate,
         createdById: user.id,
       },
       include: {

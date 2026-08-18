@@ -159,9 +159,11 @@ model ClientPendency {
   id            String    @id @default(uuid())
   officeId      String
   office        Office    @relation(fields: [officeId], references: [id], onDelete: Cascade)
-  clientId      String
-  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId      String?
+  client        Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   description   String
+  priority      String    @default("NORMAL") // URGENTE | ALTA | NORMAL | BAIXA
+  dueDate       DateTime?
 
   createdById   String?
   createdBy     User?     @relation("PendencyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -172,6 +174,8 @@ model ClientPendency {
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  @@index([officeId, resolvedAt, dueDate])
 }
 
 // Arquivos em Armazenamento Seguro
