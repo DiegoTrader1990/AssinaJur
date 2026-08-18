@@ -326,14 +326,9 @@ export default function DocumentCapture({
       }
 
       stableFramesRef.current += 1;
-      const remaining = Math.max(0, 10 - stableFramesRef.current);
       setLiveReadiness('READY');
-      setLiveCountdown(remaining > 0 ? Math.ceil(remaining / 3) : 0);
-      setLiveHint(remaining > 0 ? 'Imagem legível. Mantenha o celular parado.' : 'Imagem aprovada. Capturando automaticamente...');
-      if (stableFramesRef.current >= 10) {
-        autoCaptureRef.current = true;
-        window.setTimeout(() => takePhoto(), 250);
-      }
+      setLiveCountdown(null);
+      setLiveHint('Imagem legível. Toque em "Tirar foto" quando quiser.');
     };
 
     const interval = window.setInterval(evaluate, 300);
@@ -520,9 +515,7 @@ export default function DocumentCapture({
               }`}>
                 <p className="font-extrabold">
                   {liveReadiness === 'READY'
-                    ? liveCountdown && liveCountdown > 0
-                      ? `Qualidade aprovada — foto em ${liveCountdown}`
-                      : 'Qualidade aprovada — capturando...'
+                    ? 'Qualidade aprovada — toque em "Tirar foto"'
                     : liveReadiness === 'ADJUST'
                       ? 'Ajuste antes de fotografar'
                       : 'Analisando a imagem'}
@@ -568,7 +561,7 @@ export default function DocumentCapture({
                 {liveReadiness === 'READY' ? 'Qualidade aprovada' : liveReadiness === 'ADJUST' ? 'Ajuste antes de fotografar' : 'Analisando a imagem'}
               </p>
               <p className="mt-1 leading-5 text-slate-100">{liveHint}</p>
-              <p className="mt-0.5 text-[11px] text-slate-300">A foto será tirada sozinha quando estiver boa.</p>
+              <p className="mt-0.5 text-[11px] text-slate-300">Toque em "Tirar foto" quando o documento estiver nítido e bem posicionado.</p>
               <p className="mt-1 leading-5 text-slate-100">Deixe o documento inteiro na moldura, com texto legível e sem brilho ou sombra.</p>
             </div>
             <button
