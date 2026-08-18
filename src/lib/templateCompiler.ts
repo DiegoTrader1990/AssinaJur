@@ -457,8 +457,12 @@ async function renderTemplatePdf({
   const bottomMarginLimit = embeddedLetterhead ? 85 : 65;
 
   let currentY = height - startTopMargin;
-  const marginX = 40;
-  const maxWidth = width - 80;
+  // Com papel timbrado (moldura decorativa nas laterais), o texto precisa de uma
+  // margem lateral maior para não invadir a borda - antes disso só o topo/rodapé
+  // eram ampliados, e o papel timbrado dos documentos passou a ser usado por
+  // padrão, o que deixou o texto encostando na moldura lateral.
+  const marginX = embeddedLetterhead ? 62 : 40;
+  const maxWidth = width - marginX * 2;
   const paragraphs = applyDynamicSignatureFooter(parseRichParagraphs(presentationHtml), variables);
   let signaturePlacement: { page: number; x: number; y: number; width: number; height: number } | null = null;
   let explicitSignatureLineFound = false;
@@ -517,8 +521,10 @@ async function renderTemplatePdf({
       // Um parágrafo/div totalmente vazio (Enter em uma linha em branco, sem <br>
       // dentro) ainda representa uma linha em branco visível no editor - sem isso,
       // o PDF final "engolia" essas linhas e o espaçamento não coincidia com o
-      // que foi digitado no modelo.
-      if (paragraph.kind === 'BODY' || paragraph.kind === 'LIST') { ensureLineSpace(lineHeight); currentY -= lineHeight; }
+      // que foi digitado no modelo. Somamos também a mesma folga de 5pt que todo
+      // parágrafo normal recebe depois de si (linha 603 abaixo), senão a linha em
+      // branco fica mais "curta" no PDF do que aparece no editor.
+      if (paragraph.kind === 'BODY' || paragraph.kind === 'LIST') { ensureLineSpace(lineHeight + 5); currentY -= lineHeight + 5; }
       continue;
     }
 
