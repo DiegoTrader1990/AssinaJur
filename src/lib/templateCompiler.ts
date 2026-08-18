@@ -456,11 +456,14 @@ async function renderTemplatePdf({
   // Margem superior ampliada para não colidir com papel timbrado/cabeçalho
   const startTopMargin = embeddedLetterhead ? 135 : showSystemHeader === false ? 70 : 115;
   const subsequentTopMargin = embeddedLetterhead ? 125 : showSystemHeader === false ? 60 : 100;
-  const bottomMarginLimit = embeddedLetterhead ? 85 : 65;
+  const bottomMarginLimit = embeddedLetterhead ? 92 : 65;
 
   let currentY = height - startTopMargin;
-  const marginX = 40;
-  const maxWidth = width - 80;
+  // O papel timbrado possui uma moldura interna. Reservamos uma área útil
+  // menor para que texto justificado, títulos e linhas de assinatura nunca
+  // avancem sobre a arte nas laterais ou no rodapé.
+  const marginX = embeddedLetterhead ? 62 : 40;
+  const maxWidth = width - marginX * 2;
   const paragraphs = applyDynamicSignatureFooter(parseRichParagraphs(presentationHtml), variables);
   let signaturePlacement: { page: number; x: number; y: number; width: number; height: number } | null = null;
   let explicitSignatureLineFound = false;
