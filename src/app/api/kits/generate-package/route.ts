@@ -9,6 +9,25 @@ import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, remove
 
 export const dynamic = 'force-dynamic';
 
+function hasValidCpfCnpjCheckDigits(value: string): boolean {
+  const digits = value.replace(/\D/g, '');
+  if (![11, 14].includes(digits.length) || /^(\d)\1+$/.test(digits)) return false;
+  if (digits.length === 11) {
+    const digit = (length: number) => {
+      const sum = digits.slice(0, length).split('').reduce((total, current, index) => total + Number(current) * (length + 1 - index), 0);
+      const remainder = (sum * 10) % 11;
+      return remainder === 10 ? 0 : remainder;
+    };
+    return digit(9) === Number(digits[9]) && digit(10) === Number(digits[10]);
+  }
+  const digit = (length: number) => {
+    const weights = length === 12 ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    const remainder = weights.reduce((total, weight, index) => total + Number(digits[index]) * weight, 0) % 11;
+    return remainder < 2 ? 0 : 11 - remainder;
+  };
+  return digit(12) === Number(digits[12]) && digit(13) === Number(digits[13]);
+}
+
 function ensureJointAttorneyQualification(contentHtml: string, documentType: string, title: string) {
   const isPowerOfAttorney = /PROCUR/i.test(documentType) || /procura[cç][aã]o/i.test(title);
   const isContract = /CONTRAT/i.test(documentType) || /contrato/i.test(title);
@@ -68,13 +87,29 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { clientId, kitId, customVariables, customContents } = body;
+    const {
+      clientId, kitId, customVariables, customContents,
+      signers: extraSignersInput,
+      isIlliterate,
+      rogoName,
+      rogoCpf,
+      rogoRelationship,
+      rogoPhone,
+      rogoEmail,
+      enforceSignatureOrder,
+      witnessSigningMode,
+    } = body;
 
     if (!clientId || !kitId) {
       return NextResponse.json(
         { error: 'Cliente e Kit Jurídico são obrigatórios.' },
         { status: 400 }
       );
+    }
+
+    const extraSigners = Array.isArray(extraSignersInput) ? extraSignersInput : [];
+    if (extraSigners.some((signer: any) => !signer?.name || !hasValidCpfCnpjCheckDigits(String(signer?.cpf || '')))) {
+      return NextResponse.json({ error: 'Todos os signatários adicionais precisam ter nome e CPF/CNPJ válido.' }, { status: 400 });
     }
 
     // Buscar dados do Cliente, Escritório e Kit
@@ -85,6 +120,43 @@ export async function POST(req: Request) {
     if (!client) {
       return NextResponse.json({ error: 'Cliente não encontrado.' }, { status: 404 });
     }
+
+    if (isIlliterate) {
+      if (!rogoName || !hasValidCpfCnpjCheckDigits(String(rogoCpf || ''))) {
+        return NextResponse.json({ error: 'No fluxo a rogo, informe o nome e CPF válido do assinante a rogo.' }, { status: 400 });
+      }
+      const rogoDigits = String(rogoCpf).replace(/\D/g, '');
+      const clientDigits = String(client.cpfCnpj || '').replace(/\D/g, '');
+      if (rogoDigits === clientDigits) {
+        return NextResponse.json({ error: 'O assinante a rogo deve ser uma pessoa diferente da cliente titular.' }, { status: 400 });
+      }
+      const participantCpfs = [clientDigits, rogoDigits, ...extraSigners.map((signer: any) => String(signer.cpf).replace(/\D/g, ''))];
+      if (new Set(participantCpfs).size !== participantCpfs.length) {
+        return NextResponse.json({ error: 'Cliente, assinante a rogo e testemunhas devem ser pessoas distintas, com CPFs diferentes.' }, { status: 400 });
+      }
+    }
+
+    const clientSignerInput = {
+      name: client.name,
+      cpf: client.cpfCnpj,
+      email: client.email || '',
+      phone: client.phone || '',
+      role: 'CLIENTE',
+      signatureOrder: 1,
+    };
+    const rogoWitnesses = isIlliterate ? extraSigners.filter((signer: any) => signer.role === 'TESTEMUNHA') : [];
+    const rogoAdditionalSigners = isIlliterate ? extraSigners.filter((signer: any) => signer.role !== 'TESTEMUNHA') : [];
+    const orderedSignerInputs = isIlliterate
+      ? [
+          clientSignerInput,
+          {
+            name: String(rogoName).trim(), cpf: String(rogoCpf), email: rogoEmail || '', phone: rogoPhone || '',
+            role: 'ASSINANTE_A_ROGO', signatureOrder: 2, authMethod: 'LINK_CPF_PRESENCA',
+          },
+          ...rogoWitnesses.map((signer: any, index: number) => ({ ...signer, role: `TESTEMUNHA_${index + 1}`, signingMode: witnessSigningMode === 'SAME_DEVICE' ? 'SAME_DEVICE' : 'INDIVIDUAL', signatureOrder: index + 3 })),
+          ...rogoAdditionalSigners.map((signer: any, index: number) => ({ ...signer, signatureOrder: index + 3 + rogoWitnesses.length })),
+        ]
+      : [clientSignerInput, ...extraSigners.map((signer: any, index: number) => ({ ...signer, signatureOrder: index + 2 }))];
 
     const office = await prisma.office.findUnique({
       where: { id: user.officeId },
@@ -268,24 +340,36 @@ export async function POST(req: Request) {
           originalHash: compiledResult.hash,
           status: 'ENVIADO',
           createdById: user.id,
+          isIlliterate: !!isIlliterate,
+          rogoName: isIlliterate ? rogoName || null : null,
+          rogoCpf: isIlliterate && rogoCpf ? String(rogoCpf).replace(/\D/g, '') : null,
+          rogoRelationship: isIlliterate ? rogoRelationship || null : null,
         },
       });
 
-      const signer = await prisma.signer.create({
-        data: {
-          documentId: doc.id,
-          name: client.name,
-          cpf: client.cpfCnpj,
-          email: client.email || null,
-          phone: client.phone || null,
-          role: 'CLIENTE',
-          signatureOrder: 1,
-          status: 'PENDENTE',
-        },
-      });
+      const signerRecords = [];
+      for (let i = 0; i < orderedSignerInputs.length; i++) {
+        const signerInput: any = orderedSignerInputs[i];
+        const createdSigner = await prisma.signer.create({
+          data: {
+            documentId: doc.id,
+            name: signerInput.name,
+            cpf: String(signerInput.cpf).replace(/\D/g, ''),
+            email: signerInput.email || null,
+            phone: signerInput.phone || null,
+            role: signerInput.role || 'CLIENTE',
+            signatureOrder: signerInput.signatureOrder || i + 1,
+            signingMode: signerInput.signingMode || (signerInput.role === 'ASSINANTE_A_ROGO' ? 'SAME_DEVICE' : 'INDIVIDUAL'),
+            status: 'PENDENTE',
+            authMethod: signerInput.authMethod || 'EMAIL_OTP_CPF',
+          },
+        });
+        signerRecords.push(createdSigner);
+      }
 
+      const mainSigner = signerRecords[0];
       if (!mainSignerToken) {
-        mainSignerToken = signer.token;
+        mainSignerToken = mainSigner.token;
       }
 
       await prisma.documentEvent.create({
@@ -297,11 +381,33 @@ export async function POST(req: Request) {
         },
       });
 
+      if (enforceSignatureOrder || isIlliterate) {
+        await prisma.documentEvent.create({
+          data: {
+            documentId: doc.id,
+            userId: user.id,
+            eventType: 'SIGNATURE_ORDER_ENFORCED',
+            description: 'Ordem sequencial de participação configurada e protegida pelo sistema.',
+          },
+        });
+      }
+
+      if (isIlliterate) {
+        await prisma.documentEvent.create({
+          data: {
+            documentId: doc.id,
+            userId: user.id,
+            eventType: 'ROGO_FLOW_CONFIGURED',
+            description: `Fluxo a rogo configurado para ${client.name}, com ${rogoName} como assinante a rogo${rogoWitnesses.length ? ` e ${rogoWitnesses.length} testemunha(s) independente(s)` : ''}.`,
+          },
+        });
+      }
+
       createdDocuments.push({
         id: doc.id,
         title: doc.title,
-        signerToken: signer.token,
-        signatureLink: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/assinar/${signer.token}`,
+        signerToken: mainSigner.token,
+        signatureLink: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/assinar/${mainSigner.token}`,
       });
     }
 

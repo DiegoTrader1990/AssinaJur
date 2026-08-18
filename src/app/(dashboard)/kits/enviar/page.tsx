@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { FolderArchive, Send, CheckCircle2, Copy, Check, FileText, ArrowLeft, Loader2, AlertCircle, Sparkles, ChevronDown, Eye, X } from 'lucide-react';
+import { FolderArchive, Send, CheckCircle2, Copy, Check, FileText, ArrowLeft, Loader2, AlertCircle, Sparkles, ChevronDown, Eye, X, Plus, Trash2 } from 'lucide-react';
 import { DocumentRichEditor } from '@/components/DocumentRichEditor';
 import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
+import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
 
 interface Client {
   id: string;
@@ -12,6 +13,19 @@ interface Client {
   cpfCnpj: string;
   phone?: string;
   email?: string;
+  legalRepresentative?: string | null;
+  representativeCpf?: string | null;
+  representativePhone?: string | null;
+  representativeRole?: string | null;
+}
+
+interface SignerInput {
+  name: string;
+  cpf: string;
+  email: string;
+  phone: string;
+  role: string;
+  signatureOrder: number;
 }
 
 interface LegalKit {
@@ -54,6 +68,18 @@ export default function DispatchKitPage() {
     valor_honorarios: 'R$ 3.000,00',
     percentual_exito: '30%',
   });
+
+  // Signatários adicionais (além da cliente principal selecionada acima) e
+  // fluxo de assinatura a rogo/testemunhas - mesma lógica do envio de PDF avulso.
+  const [signers, setSigners] = useState<SignerInput[]>([]);
+  const [isIlliterate, setIsIlliterate] = useState(false);
+  const [rogoName, setRogoName] = useState('');
+  const [rogoCpf, setRogoCpf] = useState('');
+  const [rogoRelationship, setRogoRelationship] = useState('Acompanhante / Familiar');
+  const [rogoPhone, setRogoPhone] = useState('');
+  const [rogoEmail, setRogoEmail] = useState('');
+  const [enforceSignatureOrder, setEnforceSignatureOrder] = useState(false);
+  const [witnessSigningMode, setWitnessSigningMode] = useState<'INDIVIDUAL' | 'SAME_DEVICE'>('INDIVIDUAL');
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -132,6 +158,53 @@ export default function DispatchKitPage() {
   };
 
   const selectedKit = kits.find((k) => k.id === selectedKitId);
+
+  const handleSelectClient = (clientId: string) => {
+    resetReviewForSelection();
+    setSelectedClientId(clientId);
+    const client = clients.find((c) => c.id === clientId);
+    // Um representante já cadastrado é a indicação natural para assinatura a rogo.
+    // O usuário continua podendo desmarcar o fluxo ou editar os dados antes do envio.
+    if (client?.legalRepresentative) {
+      setIsIlliterate(true);
+      setEnforceSignatureOrder(true);
+      setRogoName(client.legalRepresentative);
+      setRogoCpf(maskCpfCnpj(client.representativeCpf || ''));
+      setRogoPhone(maskPhone(client.representativePhone || ''));
+      setRogoRelationship(client.representativeRole || 'Representante cadastrado');
+    } else {
+      setIsIlliterate(false);
+      setRogoName(''); setRogoCpf(''); setRogoPhone(''); setRogoEmail('');
+      setRogoRelationship('Acompanhante / Familiar');
+    }
+    setSigners([]);
+  };
+
+  const handleAddSigner = () => {
+    setSigners([
+      ...signers,
+      { name: '', cpf: '', email: '', phone: '', role: 'TESTEMUNHA', signatureOrder: signers.length + 2 },
+    ]);
+  };
+
+  const handleRemoveSigner = (index: number) => {
+    setSigners(signers.filter((_, i) => i !== index));
+  };
+
+  const handleSignerChange = (index: number, field: keyof SignerInput, value: any) => {
+    let val = value;
+    if (field === 'cpf') val = maskCpfCnpj(val);
+    if (field === 'phone') val = maskPhone(val);
+    const updated = [...signers];
+    updated[index] = { ...updated[index], [field]: val };
+    setSigners(updated);
+  };
+
+  const handleRogoToggle = (enabled: boolean) => {
+    setIsIlliterate(enabled);
+    if (!enabled) return;
+    setEnforceSignatureOrder(true);
+  };
 
   // Uma revisão pertence a uma combinação específica de cliente e kit. Ao trocar
   // qualquer um deles, descartamos a cópia temporária anterior para nunca levar
@@ -304,6 +377,15 @@ export default function DispatchKitPage() {
           kitId: selectedKitId,
           customVariables: variables,
           customContents,
+          signers,
+          isIlliterate,
+          rogoName: isIlliterate ? rogoName : null,
+          rogoCpf: isIlliterate ? rogoCpf : null,
+          rogoRelationship: isIlliterate ? rogoRelationship : null,
+          rogoPhone: isIlliterate ? rogoPhone : null,
+          rogoEmail: isIlliterate ? rogoEmail : null,
+          enforceSignatureOrder,
+          witnessSigningMode,
         }),
       });
 
@@ -400,6 +482,11 @@ export default function DispatchKitPage() {
             onClick={() => {
               setResult(null);
               setSelectedClientId('');
+              setSigners([]);
+              setIsIlliterate(false);
+              setRogoName(''); setRogoCpf(''); setRogoPhone(''); setRogoEmail('');
+              setRogoRelationship('Acompanhante / Familiar');
+              setEnforceSignatureOrder(false);
             }}
             className="px-4 py-2.5 text-slate-600 font-semibold text-xs"
           >
@@ -479,10 +566,7 @@ export default function DispatchKitPage() {
           <select
             required
             value={selectedClientId}
-            onChange={(e) => {
-              resetReviewForSelection();
-              setSelectedClientId(e.target.value);
-            }}
+            onChange={(e) => handleSelectClient(e.target.value)}
             className="w-full p-3 border border-slate-300 rounded-xl text-slate-800 text-sm focus:border-gold-500 focus:outline-none"
           >
             <option value="">Selecione o Cliente Cadastrado...</option>
@@ -563,6 +647,190 @@ export default function DispatchKitPage() {
           </div>
         </div>
 
+        {/* Signatários Adicionais, Assinatura a Rogo e Testemunhas */}
+        {selectedClientId && (
+          <div className="space-y-4 pt-4 border-t border-slate-100">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-[#0B1D3D] uppercase tracking-wider block">
+                4. Assinatura a Rogo e Testemunhas (Opcional)
+              </span>
+              <button
+                type="button"
+                onClick={handleAddSigner}
+                className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+              >
+                <Plus className="w-4 h-4 stroke-[2.5]" /> Adicionar Outro Signatário
+              </button>
+            </div>
+
+            {signers.filter((s) => s.role !== 'TESTEMUNHA').map((s) => {
+              const index = signers.indexOf(s);
+              return (
+              <div key={index} className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3 relative">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700">Signatário adicional</span>
+                  <button type="button" onClick={() => handleRemoveSigner(index)} className="text-slate-400 hover:text-red-500">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Nome Completo *</label>
+                    <input type="text" required value={s.name} onChange={(e) => handleSignerChange(index, 'name', e.target.value)}
+                      placeholder="João da Silva" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">CPF *</label>
+                    <input type="text" required value={s.cpf} onChange={(e) => handleSignerChange(index, 'cpf', e.target.value)}
+                      placeholder="000.000.000-00" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                  </div>
+                </div>
+                <div className="grid md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Papel Jurídico *</label>
+                    <select value={s.role} onChange={(e) => handleSignerChange(index, 'role', e.target.value)}
+                      className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-bold">
+                      <option value="ADVOGADO">Advogado</option>
+                      <option value="CONTRATANTE">Contratante</option>
+                      <option value="CONTRATADO">Contratado</option>
+                      <option value="TESTEMUNHA">Testemunha</option>
+                      <option value="REPRESENTANTE_LEGAL">Representante Legal</option>
+                      <option value="RESPONSAVEL_FINANCEIRO">Responsável Financeiro</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">E-mail</label>
+                    <input type="email" value={s.email} onChange={(e) => handleSignerChange(index, 'email', e.target.value)}
+                      placeholder="email@cliente.com" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Telefone / WhatsApp</label>
+                    <input type="text" value={s.phone} onChange={(e) => handleSignerChange(index, 'phone', e.target.value)}
+                      placeholder="(11) 99999-9999" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                  </div>
+                </div>
+              </div>
+              );
+            })}
+
+            <div className="p-5 bg-gradient-to-r from-blue-50/80 via-white to-blue-50/40 rounded-2xl border border-blue-200 space-y-3">
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input type="checkbox" checked={isIlliterate} onChange={(e) => handleRogoToggle(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
+                <span className="font-extrabold text-xs text-[#071B3A]">Usar assinatura a rogo para esta cliente</span>
+              </label>
+
+              {isIlliterate && (
+                <div className="pt-3 border-t border-blue-100 space-y-3 animate-in fade-in duration-300">
+                  <p className="text-[11px] text-slate-600 font-medium">
+                    {rogoName ? `O representante cadastrado, ${rogoName}, foi incluído como assinante a rogo. Confira os dados abaixo antes de gerar.` : 'Informe quem assinará a rogo pela cliente.'} Você pode adicionar testemunhas instrumentárias, se necessário.
+                  </p>
+
+                  <div className="p-3.5 bg-blue-50/50 rounded-xl border border-blue-200/60 space-y-2">
+                    <label className="block text-[11px] font-extrabold text-[#071B3A] uppercase tracking-wider">
+                      Deseja Adicionar Testemunhas Instrumentárias a este Documento?
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button type="button" onClick={() => setSigners((current) => current.filter((s) => s.role !== 'TESTEMUNHA'))}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${signers.filter((s) => s.role === 'TESTEMUNHA').length === 0 ? 'bg-[#071B3A] text-white shadow-xs' : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'}`}>
+                        Sem Testemunhas (Somente A Rogo)
+                      </button>
+                      <button type="button" onClick={() => setSigners((current) => {
+                          const withoutWitnesses = current.filter((s) => s.role !== 'TESTEMUNHA');
+                          return [...withoutWitnesses, { name: '', cpf: '', email: '', phone: '', role: 'TESTEMUNHA', signatureOrder: withoutWitnesses.length + 2 }];
+                        })}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${signers.filter((s) => s.role === 'TESTEMUNHA').length === 1 ? 'bg-[#071B3A] text-white shadow-xs' : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'}`}>
+                        + 1 Testemunha
+                      </button>
+                      <button type="button" onClick={() => setSigners((current) => {
+                          const withoutWitnesses = current.filter((s) => s.role !== 'TESTEMUNHA');
+                          return [...withoutWitnesses,
+                            { name: '', cpf: '', email: '', phone: '', role: 'TESTEMUNHA', signatureOrder: withoutWitnesses.length + 2 },
+                            { name: '', cpf: '', email: '', phone: '', role: 'TESTEMUNHA', signatureOrder: withoutWitnesses.length + 3 }];
+                        })}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${signers.filter((s) => s.role === 'TESTEMUNHA').length >= 2 ? 'bg-[#071B3A] text-white shadow-xs' : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'}`}>
+                        + 2 Testemunhas (Recomendado)
+                      </button>
+                    </div>
+                  </div>
+
+                  {signers.filter((s) => s.role === 'TESTEMUNHA').map((s) => {
+                    const index = signers.indexOf(s);
+                    const witnessNumber = signers.filter((item) => item.role === 'TESTEMUNHA').indexOf(s) + 1;
+                    return (
+                      <div key={index} className="p-3.5 bg-white rounded-xl border border-slate-200 space-y-2">
+                        <span className="text-[11px] font-bold text-slate-700">Testemunha {witnessNumber}</span>
+                        <div className="grid md:grid-cols-2 gap-3">
+                          <input type="text" required value={s.name} onChange={(e) => handleSignerChange(index, 'name', e.target.value)}
+                            placeholder="Nome completo da testemunha" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                          <input type="text" required value={s.cpf} onChange={(e) => handleSignerChange(index, 'cpf', e.target.value)}
+                            placeholder="000.000.000-00" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                        </div>
+                        <div className="grid md:grid-cols-2 gap-3">
+                          <input type="email" value={s.email} onChange={(e) => handleSignerChange(index, 'email', e.target.value)}
+                            placeholder="email@testemunha.com" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                          <input type="text" value={s.phone} onChange={(e) => handleSignerChange(index, 'phone', e.target.value)}
+                            placeholder="(73) 99999-9999" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <div className="grid md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Nome do Acompanhante a Rogo *</label>
+                      <input type="text" required={isIlliterate} value={rogoName} onChange={(e) => setRogoName(e.target.value)}
+                        placeholder="Ex: Maria da Silva" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">CPF do Acompanhante *</label>
+                      <input type="text" required={isIlliterate} value={rogoCpf} onChange={(e) => setRogoCpf(maskCpfCnpj(e.target.value))}
+                        placeholder="000.000.000-00" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Relação com o Cliente</label>
+                      <input type="text" value={rogoRelationship} onChange={(e) => setRogoRelationship(e.target.value)}
+                        placeholder="Ex: Filha, Cônjuge, Irmão" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                    </div>
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">WhatsApp do Assinante a Rogo *</label>
+                      <input type="text" required={isIlliterate} value={rogoPhone} onChange={(e) => setRogoPhone(maskPhone(e.target.value))}
+                        placeholder="(73) 99999-9999" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">E-mail do Assinante a Rogo</label>
+                      <input type="email" value={rogoEmail} onChange={(e) => setRogoEmail(e.target.value)}
+                        placeholder="email@exemplo.com" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                    </div>
+                  </div>
+                  {signers.some((s) => s.role === 'TESTEMUNHA') && (
+                    <div className="rounded-xl border border-blue-200 bg-white p-3 space-y-2">
+                      <p className="text-[11px] font-extrabold text-[#071B3A]">Como as testemunhas vão assinar?</p>
+                      <label className="flex gap-2 text-xs text-slate-700"><input type="radio" checked={witnessSigningMode === 'INDIVIDUAL'} onChange={() => setWitnessSigningMode('INDIVIDUAL')} /> Cada testemunha no próprio aparelho (recomendado)</label>
+                      <label className="flex gap-2 text-xs text-slate-700"><input type="radio" checked={witnessSigningMode === 'SAME_DEVICE'} onChange={() => setWitnessSigningMode('SAME_DEVICE')} /> Em sequência no mesmo celular da cliente</label>
+                      <p className="text-[10px] text-slate-500">Mesmo celular mantém links individuais e seguros, mas o sistema abre automaticamente a etapa da próxima testemunha naquele aparelho.</p>
+                    </div>
+                  )}
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] font-medium text-amber-900">
+                    Preencha os dados das testemunhas antes de avançar. A ordem protegida será: cliente → assinante a rogo → testemunha 1 → testemunha 2.
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 cursor-pointer">
+              <input type="checkbox" checked={enforceSignatureOrder} disabled={isIlliterate}
+                onChange={(e) => setEnforceSignatureOrder(e.target.checked)} className="mt-0.5 w-4 h-4 text-blue-600 rounded" />
+              <span>
+                <span className="block text-xs font-extrabold text-[#071B3A]">Exigir ordem sequencial de assinatura</span>
+                <span className="block mt-1 text-[11px] text-slate-600 font-medium">O próximo link só será liberado quando o participante anterior concluir. No fluxo a rogo esta proteção é obrigatória.</span>
+              </span>
+            </label>
+          </div>
+        )}
+
         {/* Revisar e Editar Minutas */}
         {selectedClientId && selectedKitId && (
           <div className="pt-4 border-t border-slate-100">
@@ -572,13 +840,13 @@ export default function DispatchKitPage() {
                 onClick={handleReviewStep}
                 className="w-full py-3 border-2 border-dashed border-slate-300 rounded-xl text-slate-600 font-bold hover:bg-slate-50 hover:border-slate-400 hover:text-slate-800 transition-all text-sm"
               >
-                4. Revisar e Editar Minutas (Opcional)
+                5. Revisar e Editar Minutas (Opcional)
               </button>
             ) : (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-[#0B1D3D] uppercase tracking-wider block">
-                    4. Revisar e Editar Minutas
+                    5. Revisar e Editar Minutas
                   </span>
                   <button
                     type="button"
