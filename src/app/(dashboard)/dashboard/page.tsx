@@ -39,7 +39,6 @@ import {
   ChevronRight,
   Briefcase,
   Bot,
-  Activity,
   AlertTriangle,
   FolderPlus,
   CheckCircle,
@@ -631,79 +630,6 @@ export default function DashboardPage() {
 
     return items;
   }, [stageCounts, mappedClients]);
-
-  // PROVA DE AUTOMAÇÃO (HOJE O ASSINAJUR TRABALHOU POR VOCÊ)
-  const automationMetrics = useMemo(() => {
-    const docsOrganized = completedDocs.length * 2 + documents.length;
-    const validationsDone = completedDocs.length;
-    const signaturesProcessed = completedDocs.length;
-    const dossiersUpdated = processes.length;
-    return {
-      docsOrganized,
-      validationsDone,
-      signaturesProcessed,
-      dossiersUpdated,
-    };
-  }, [completedDocs, documents, processes]);
-
-  // ÚLTIMAS ATIVIDADES — agrupadas por cliente/minuto para nunca repetir o mesmo evento
-  const recentActivities = useMemo(() => {
-    type Ev = { ts: number; time: string; text: string };
-
-    const groups = new Map<
-      string,
-      { ts: number; clientName: string; count: number; kind: 'signed' | 'sent'; sample: string }
-    >();
-
-    documents.forEach((d) => {
-      const dt = new Date(d.updatedAt || d.createdAt);
-      const kind: 'signed' | 'sent' = d.status === 'CONCLUIDO' ? 'signed' : 'sent';
-      const key = `${d.clientId}-${kind}-${Math.floor(dt.getTime() / 60000)}`;
-      const clientName = d.client?.name || 'Cliente';
-      const existing = groups.get(key);
-      if (existing) {
-        existing.count += 1;
-        if (dt.getTime() > existing.ts) existing.ts = dt.getTime();
-      } else {
-        groups.set(key, { ts: dt.getTime(), clientName, count: 1, kind, sample: d.title || 'documento' });
-      }
-    });
-
-    const docEvents: Ev[] = Array.from(groups.values()).map((g) => {
-      const dt = new Date(g.ts);
-      const time = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      const text =
-        g.kind === 'signed'
-          ? g.count > 1
-            ? `${g.clientName} assinou ${g.count} documentos`
-            : `${g.clientName} assinou "${g.sample}"`
-          : g.count > 1
-          ? `${g.count} documentos enviados para ${g.clientName}`
-          : `"${g.sample}" enviado para ${g.clientName}`;
-      return { ts: g.ts, time, text };
-    });
-
-    const processEvents: Ev[] = processes.map((p) => {
-      const dt = new Date(p.createdAt);
-      return {
-        ts: dt.getTime(),
-        time: dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-        text: `Dossiê criado para "${p.client?.name || p.title}"`,
-      };
-    });
-
-    const all = [...docEvents, ...processEvents].sort((a, b) => b.ts - a.ts);
-
-    // Segurança extra: nunca mostrar a mesma linha duas vezes seguidas
-    const deduped: Ev[] = [];
-    for (const ev of all) {
-      if (deduped.length === 0 || deduped[deduped.length - 1].text !== ev.text) {
-        deduped.push(ev);
-      }
-    }
-
-    return deduped.slice(0, 4);
-  }, [documents, processes]);
 
   // Saudação Curta
   const greeting = useMemo(() => {
@@ -1634,62 +1560,6 @@ export default function DashboardPage() {
       </section>}
 
       <BrazilOperationsMap />
-
-      {/* HOJE O ASSINAJUR TRABALHOU POR VOCÊ — acabamento premium, sem faixa escura pesada */}
-      <section className="bg-white border border-slate-200/90 rounded-2xl p-4 lg:p-5 shadow-2xs">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
-          <h2 className="text-[11px] font-black uppercase tracking-wider text-[#0B192C] flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5 text-[#B68B1C]" /> Hoje o AssinaJur trabalhou por você
-          </h2>
-          <span className="text-[10px] font-bold text-slate-400">Automação contínua</span>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3 text-center">
-            <p className="text-lg font-black text-[#0B192C]">{automationMetrics.docsOrganized}</p>
-            <p className="text-[10px] text-slate-500 font-semibold mt-0.5 leading-tight">documentos organizados</p>
-          </div>
-          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3 text-center">
-            <p className="text-lg font-black text-emerald-600">{automationMetrics.validationsDone}</p>
-            <p className="text-[10px] text-slate-500 font-semibold mt-0.5 leading-tight">validações concluídas</p>
-          </div>
-          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3 text-center">
-            <p className="text-lg font-black text-[#B68B1C]">{automationMetrics.signaturesProcessed}</p>
-            <p className="text-[10px] text-slate-500 font-semibold mt-0.5 leading-tight">assinaturas processadas</p>
-          </div>
-          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3 text-center">
-            <p className="text-lg font-black text-blue-600">{automationMetrics.dossiersUpdated}</p>
-            <p className="text-[10px] text-slate-500 font-semibold mt-0.5 leading-tight">Dossiês atualizados</p>
-          </div>
-        </div>
-      </section>
-
-      {/* ───────────────────────────────────────────────────────────── */}
-      {/* 6. APOIO: ÚLTIMAS ATIVIDADES                                  */}
-      {/* ───────────────────────────────────────────────────────────── */}
-      <section className="bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-2xs space-y-2">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
-          <h3 className="text-[11px] font-black uppercase text-[#0B192C] tracking-wide flex items-center gap-1.5">
-            <Activity className="w-3 h-3 text-slate-500" /> Últimas Atividades
-          </h3>
-          <Link href="/relatorios" className="text-[10px] font-bold text-[#B68B1C] hover:underline">
-            Histórico
-          </Link>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
-          {recentActivities.length > 0 ? (
-            recentActivities.map((ev, idx) => (
-              <div key={idx} className="flex items-center gap-2 text-[10px] py-0.5">
-                <span className="font-mono text-slate-400 w-8 shrink-0">{ev.time}</span>
-                <p className="text-slate-700 font-medium truncate flex-1 leading-tight">{ev.text}</p>
-              </div>
-            ))
-          ) : (
-            <p className="text-[10px] text-slate-400 py-2 text-center sm:col-span-2">Nenhum evento recente.</p>
-          )}
-        </div>
-      </section>
 
       {/* ───────────────────────────────────────────────────────────── */}
       {/* MODAIS DA CENTRAL DE TRABALHO                                 */}
