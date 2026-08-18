@@ -1084,6 +1084,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               title={documentSide === 'FRENTE' ? 'Frente do documento' : 'Verso do documento'}
               helperText="Posicione o documento dentro da moldura, com boa iluminação."
               onConfirm={handleDocumentConfirm}
+              onEvent={(code) => recordEvidence(code)}
               autoStart
             />
 
