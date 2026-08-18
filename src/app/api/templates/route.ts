@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 import { ensureDefaultLegalLibrary } from '@/lib/defaultLegalLibrary';
+import { ensureClientQualificationTokens } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,13 +60,14 @@ export async function POST(req: Request) {
       );
     }
 
+    const normalizedContentHtml = ensureClientQualificationTokens(contentHtml, title, documentType || 'CONTRATO');
     const template = await prisma.template.create({
       data: {
         officeId: user.officeId, // INJEÇÃO OBRIGATÓRIA DE TENANT
         title,
         category: category || 'Previdenciário',
         documentType: documentType || 'CONTRATO',
-        contentHtml,
+        contentHtml: normalizedContentHtml,
         description: description || null,
       },
     });

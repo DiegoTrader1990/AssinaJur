@@ -4,37 +4,15 @@ import { useState, useEffect } from 'react';
 import { FileText, Plus, Search, Edit3, Copy, X, CheckCircle, AlertCircle, Loader2, Eye, Upload, FileType2, Download } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { DocumentRichEditor } from '@/components/DocumentRichEditor';
+import { ensureClientQualificationTokens } from '@/lib/kitTemplateNormalization';
 
 const WordTemplateEditor = dynamic(() => import('@/components/WordTemplateEditor').then(mod => mod.WordTemplateEditor), { ssr: false });
 
-const SAMPLE_VALUES: Record<string, string> = { cliente_nome: 'MARIA APARECIDA DA SILVA', cliente_cpf: '123.456.789-09', cliente_rg: '12.345.678-9', cliente_nacionalidade: 'brasileira', cliente_estado_civil: 'solteira', cliente_profissao: 'aposentada', cliente_endereco: 'Rua das Acácias, nº 120, Centro, Porto Seguro/BA, CEP 45810-000', advogado_nome: 'DR. DIEGO DOS SANTOS RODRIGUES', advogado_oab: 'OAB/BA nº 51.881', advogada_nome: 'DRA. DOMINICK QUINTO SOARES', advogada_oab: 'OAB/BA nº 62.443', escritorio_nome: 'Rodrigues & Soares - Advogados', valor_honorarios: 'R$ 3.000,00', percentual_exito: '30%', cidade: 'Porto Seguro', data_atual: '12 de agosto de 2026' };
-const showSamples = (html: string) => Object.entries(SAMPLE_VALUES).reduce((text, [key, value]) => text.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), value), html);
-const restoreVariables = (html: string) => Object.entries(SAMPLE_VALUES).reduce((text, [key, value]) => text.replace(new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), `{{${key}}}`), html);
-
-const showEditorPreview = (html: string, documentType: string, values: Record<string, string>) => {
-  const samples = { ...SAMPLE_VALUES, ...values };
-  const label = /PROCUR/i.test(documentType) ? 'OUTORGADOS' : 'CONTRATADOS';
-  const withPatronos = /PROCUR|CONTRAT/i.test(documentType) && samples.patronos_qualificacao_conjunta
-    ? html.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
-        const text = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
-        return new RegExp(`^${label}?S?\\s*:`, 'i').test(text) ? `<${tag}${attributes}><strong>${label}:</strong> ${samples.patronos_qualificacao_conjunta}.</${tag}>` : block;
-      })
-    : html;
-  const withValues = Object.entries(samples).reduce((text, [key, value]) => text.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), value), withPatronos);
-  // Antes negritávamos os nomes de amostra aqui só para deixar a prévia mais
-  // bonita - mas isso quebrava o "{{cliente_nome}}" ao envolver o texto do
-  // valor de amostra com <strong>, tornando o trecho contínuo esperado por
-  // restoreEditorPreview() incompleto. Resultado: ao salvar, o nome de
-  // amostra ficava gravado como texto fixo no modelo, em vez de voltar a ser
-  // a variável {{cliente_nome}} - exatamente o "o código some ao salvar"
-  // relatado. O PDF final já negrita os nomes por conta própria (na geração
-  // real, via emphasizeDocumentNames), então esse negrito aqui era só
-  // cosmético e arriscado - removido.
-  return withValues;
-};
-const restoreEditorPreview = (html: string, values: Record<string, string>) => Object.entries({ ...SAMPLE_VALUES, ...values })
-  .sort(([, left], [, right]) => right.length - left.length)
-  .reduce((text, [key, value]) => value ? text.replace(new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), `{{${key}}}`) : text, html);
+// O editor trabalha diretamente com as variáveis {{...}}. Mostrar nomes de
+// exemplo e tentar revertê-los na hora de salvar era frágil: uma edição ou um
+// negrito podia gravar o nome da cliente anterior no modelo.
+const prepareModelForEditor = (html: string, title: string, documentType: string) =>
+  ensureClientQualificationTokens(html || '', title || '', documentType || '');
 
 interface Template {
   id: string;
@@ -72,11 +50,8 @@ export default function TemplatesPage() {
   const [error, setError] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
-  const [sampleValues, setSampleValues] = useState<Record<string, string>>({});
-
   useEffect(() => {
     fetchTemplates();
-    fetch('/api/templates/preview').then((response) => response.ok ? response.json() : null).then((data) => { if (data?.variables) setSampleValues(data.variables); }).catch(() => undefined);
   }, []);
 
   const fetchTemplates = async () => {
@@ -95,26 +70,8 @@ export default function TemplatesPage() {
     }
   };
 
-  // Rede de segurança: se por qualquer motivo um valor de amostra (ex.: o
-  // nome "MARIA APARECIDA DA SILVA" usado só para a prévia) ainda estiver
-  // gravado como texto fixo no conteúdo na hora de salvar - em vez de ter
-  // voltado a ser a variável {{...}} -, avisamos antes de gravar, para nunca
-  // salvar silenciosamente um modelo com dados de amostra fixos no lugar da
-  // variável dinâmica.
-  const findLeftoverSampleValues = (html: string, values: Record<string, string>) =>
-    Object.entries({ ...SAMPLE_VALUES, ...values })
-      .filter(([, value]) => value && value.trim().length >= 6)
-      .filter(([, value]) => html.includes(value))
-      .map(([key]) => key);
-
   const handleCreateTemplate = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    const leftover = findLeftoverSampleValues(formData.contentHtml, sampleValues);
-    if (leftover.length > 0) {
-      setError(`Não foi possível salvar: o texto de amostra da prévia ficou gravado no lugar da(s) variável(is) ${leftover.join(', ')}. Volte ao trecho afetado, apague o texto fixo e reinsira a tag {{${leftover[0]}}} antes de salvar.`);
-      return;
-    }
 
     setSaving(true);
     setError('');
@@ -252,7 +209,7 @@ export default function TemplatesPage() {
                           title: tpl.title,
                           category: tpl.category,
                           documentType: tpl.documentType,
-                          contentHtml: tpl.contentHtml,
+                          contentHtml: prepareModelForEditor(tpl.contentHtml, tpl.title, tpl.documentType),
                           description: tpl.description || '',
                         });
                         setEditingTemplate(tpl);
@@ -268,7 +225,7 @@ export default function TemplatesPage() {
                           title: `${tpl.title} (Cópia)`,
                           category: tpl.category,
                           documentType: tpl.documentType,
-                          contentHtml: tpl.contentHtml,
+                          contentHtml: prepareModelForEditor(tpl.contentHtml, tpl.title, tpl.documentType),
                           description: tpl.description || '',
                         });
                         setEditingTemplate(null);
@@ -357,9 +314,9 @@ export default function TemplatesPage() {
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Texto do Modelo *</label>
                 <DocumentRichEditor
-                  key={`${editingTemplate?.id || 'novo'}-${showModal}-${sampleValues.patronos_nomes || 'carregando'}`}
-                  value={showEditorPreview(formData.contentHtml, formData.documentType, sampleValues)}
-                  onChange={(html) => setFormData({ ...formData, contentHtml: restoreEditorPreview(html, sampleValues) })}
+                  key={`${editingTemplate?.id || 'novo'}-${showModal}`}
+                  value={formData.contentHtml}
+                  onChange={(html) => setFormData({ ...formData, contentHtml: html })}
                   showTags={false}
                   showAiCopilot={false}
                   placeholder="Redija ou ajuste o documento..."

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { compileTemplatePreviewToPdf } from '@/lib/templateCompiler';
+import { ensureClientQualificationTokens } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -108,7 +109,11 @@ export async function POST(req: Request) {
       patronos_qualificacao_conjunta: jointPatronosQualification,
       patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),
     };
-    const finalContentHtml = ensureJointAttorneyQualification(contentHtml || '', documentType || '', previewTitle);
+    const finalContentHtml = ensureJointAttorneyQualification(
+      ensureClientQualificationTokens(contentHtml || '', previewTitle, documentType || ''),
+      documentType || '',
+      previewTitle,
+    );
     const result = await compileTemplatePreviewToPdf({ title: previewTitle, contentHtml: finalContentHtml, variables, officeName: office.tradeName || office.name, version: 1, showSystemHeader: false });
     return new NextResponse(result.pdfBuffer, { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="previa-modelo.pdf"' } });
   } catch (error) {

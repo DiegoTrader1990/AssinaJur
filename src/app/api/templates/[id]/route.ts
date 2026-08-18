@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
+import { ensureClientQualificationTokens } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,13 +57,19 @@ export async function PUT(
 
     const body = await req.json();
 
+    const nextTitle = body.title ?? existingTemplate.title;
+    const nextDocumentType = body.documentType ?? existingTemplate.documentType;
+    const nextContentHtml = body.contentHtml === undefined
+      ? existingTemplate.contentHtml
+      : ensureClientQualificationTokens(body.contentHtml, nextTitle, nextDocumentType);
+
     const updatedTemplate = await prisma.template.update({
       where: { id: params.id },
       data: {
-        title: body.title ?? existingTemplate.title,
+        title: nextTitle,
         category: body.category ?? existingTemplate.category,
-        documentType: body.documentType ?? existingTemplate.documentType,
-        contentHtml: body.contentHtml ?? existingTemplate.contentHtml,
+        documentType: nextDocumentType,
+        contentHtml: nextContentHtml,
         description: body.description ?? existingTemplate.description,
         version: existingTemplate.version + 1,
       },
