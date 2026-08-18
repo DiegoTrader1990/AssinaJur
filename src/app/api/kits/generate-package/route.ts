@@ -88,13 +88,27 @@ function ensureClientRepresentativeQualification(contentHtml: string, documentTy
   if (!hasRepresentative || (!isPowerOfAttorney && !isContract && !isDeclaration) || /{{\s*cliente_representacao\s*}}/i.test(contentHtml)) return contentHtml;
   const label = isPowerOfAttorney ? 'OUTORGANTE' : isContract ? 'CONTRATANTE' : '';
   let included = false;
-  return contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
+  const withBlockQualification = contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
     const visibleText = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
     const matchesClientQualification = label ? new RegExp(`^${label}\\s*:`, 'i').test(visibleText) : /{{\s*cliente_nome\s*}}/i.test(innerHtml);
     if (included || !matchesClientQualification) return block;
     included = true;
     return `<${tag}${attributes}>${String(innerHtml).replace(/\s*\.?\s*$/, '')}, {{cliente_representacao}}.</${tag}>`;
   });
+
+  if (included) return withBlockQualification;
+
+  // Alguns modelos antigos foram salvos com spans/linhas soltas, sem um
+  // parágrafo que comece pelo rótulo. Neles a representação ainda precisa
+  // constar: usamos o endereço, que integra a qualificação da parte, como
+  // âncora estável em vez de depender da estrutura visual do editor.
+  let addedByToken = false;
+  const withTokenQualification = withBlockQualification.replace(/{{\s*cliente_endereco\s*}}/i, (token) => {
+    if (addedByToken) return token;
+    addedByToken = true;
+    return `${token}, {{cliente_representacao}}`;
+  });
+  return addedByToken ? withTokenQualification : `${withBlockQualification}<p>{{cliente_representacao}}.</p>`;
 }
 
 export async function POST(req: Request) {

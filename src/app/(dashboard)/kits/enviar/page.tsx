@@ -357,6 +357,15 @@ export default function DispatchKitPage() {
         included = true;
         return `<${tag}${attributes}>${String(innerHtml).replace(/\s*\.?\s*$/, '')}, ${reviewClientData.cliente_representacao}.</${tag}>`;
       });
+      if (!included) {
+        let inserted = false;
+        rendered = rendered.replace(/{{\s*cliente_endereco\s*}}/i, (token) => {
+          if (inserted) return token;
+          inserted = true;
+          return `${token}, ${reviewClientData.cliente_representacao}`;
+        });
+        if (!inserted) rendered += `<p>${reviewClientData.cliente_representacao}.</p>`;
+      }
     }
 
     // O PDF destaca automaticamente os nomes envolvidos; a edição deve mostrar o mesmo resultado.

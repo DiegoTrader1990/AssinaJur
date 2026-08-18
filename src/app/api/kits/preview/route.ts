@@ -30,13 +30,21 @@ function ensureClientRepresentativeQualification(contentHtml: string, title: str
   if (!hasRepresentative || (!isPowerOfAttorney && !isContract && !isDeclaration) || /{{\s*cliente_representacao\s*}}/i.test(contentHtml)) return contentHtml;
   const label = isContract ? 'CONTRATANTE' : isPowerOfAttorney ? 'OUTORGANTE' : '';
   let included = false;
-  return contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
+  const withBlockQualification = contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
     const visibleText = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
     const matchesClientQualification = label ? new RegExp(`^${label}\\s*:`, 'i').test(visibleText) : /{{\s*cliente_nome\s*}}/i.test(innerHtml);
     if (included || !matchesClientQualification) return block;
     included = true;
     return `<${tag}${attributes}>${String(innerHtml).replace(/\s*\.?\s*$/, '')}, {{cliente_representacao}}.</${tag}>`;
   });
+  if (included) return withBlockQualification;
+  let addedByToken = false;
+  const withTokenQualification = withBlockQualification.replace(/{{\s*cliente_endereco\s*}}/i, (token) => {
+    if (addedByToken) return token;
+    addedByToken = true;
+    return `${token}, {{cliente_representacao}}`;
+  });
+  return addedByToken ? withTokenQualification : `${withBlockQualification}<p>{{cliente_representacao}}.</p>`;
 }
 
 export async function POST(req: Request) {
