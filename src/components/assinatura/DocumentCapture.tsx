@@ -1,14 +1,15 @@
 'use client';
 
 /**
- * LABORATÓRIO ASSINAJUR — Componente modular de captura de documento.
- *
- * Isolado de propósito: NÃO altera nem depende do componente de selfie
- * utilizado no fluxo de assinatura (/assinar/[token]).
+ * ASSINAJUR — Captura do documento de identificação do cliente (RG/CNH),
+ * usada no fluxo real de assinatura (/assinar/[token]), antes da prova de
+ * presença (selfie). Evidência complementar: nunca bloqueia a assinatura -
+ * se a validação por IA falhar ou não identificar o documento com certeza,
+ * o cliente pode seguir assim mesmo, e o escritório confere a foto depois.
  *
  * Princípio central: o que o usuário vê dentro da moldura é EXATAMENTE o que
- * é salvo. A moldura é desenhada em SVG usando as coordenadas reais do vídeo,
- * e o recorte da captura usa esse mesmo retângulo — sem medição de DOM e sem
+ * é salvo. A moldura ocupa a tela inteira (câmera recortada por CSS), e o
+ * recorte da captura usa esse mesmo retângulo - sem medição de DOM e sem
  * divergência entre a prévia e o arquivo final.
  */
 
@@ -21,7 +22,7 @@ import {
   captureQualityStatus,
   firstBlockingMessage,
   type QualityReport,
-} from '@/lib/lab/documentQuality';
+} from '@/lib/assinatura/documentQuality';
 
 /** Maior dimensão da imagem final — equilibra legibilidade e peso do upload. */
 const MAX_LONG_SIDE = 2000;
@@ -99,7 +100,6 @@ export default function DocumentCapture({
   const [videoDims, setVideoDims] = useState<{ w: number; h: number } | null>(null);
   const [liveReadiness, setLiveReadiness] = useState<LiveReadiness>('ANALYSING');
   const [liveHint, setLiveHint] = useState('Preparando a validação da imagem...');
-  const [liveCountdown, setLiveCountdown] = useState<number | null>(null);
   const [visionCheck, setVisionCheck] = useState<VisionCheck>('IDLE');
   const [visionReason, setVisionReason] = useState('');
   const [validationRetry, setValidationRetry] = useState(0);
@@ -300,16 +300,14 @@ export default function DocumentCapture({
     );
   }, [emit, side, stopCamera]);
 
-  // A análise ocorre na área exata da moldura. A captura automática só é
-  // liberada após cerca de três segundos de leituras boas consecutivas.
-  // Assim, a câmera não dispara enquanto o usuário ainda está ajustando foco.
+  // A análise ocorre na área exata da moldura, só para dar feedback de
+  // qualidade em tempo real - a captura em si é sempre manual (botão).
   useEffect(() => {
     if (phase !== 'LIVE' || !videoDims) return;
     autoCaptureRef.current = false;
     stableFramesRef.current = 0;
     setLiveReadiness('ANALYSING');
     setLiveHint('Posicione o documento inteiro dentro da moldura.');
-    setLiveCountdown(null);
 
     const evaluate = () => {
       const video = videoRef.current;
@@ -327,7 +325,6 @@ export default function DocumentCapture({
 
       if (!clearEnough) {
         stableFramesRef.current = 0;
-        setLiveCountdown(null);
         setLiveReadiness('ADJUST');
         setLiveHint(
           meanLuminance < 65
@@ -341,7 +338,6 @@ export default function DocumentCapture({
 
       stableFramesRef.current += 1;
       setLiveReadiness('READY');
-      setLiveCountdown(null);
       setLiveHint('Imagem legível. Toque em "Tirar foto" quando quiser.');
     };
 
@@ -349,9 +345,9 @@ export default function DocumentCapture({
     return () => window.clearInterval(interval);
   }, [phase, takePhoto, videoDims]);
 
-  // Validação sem armazenamento: a imagem fica apenas na memória do aparelho
-  // e é enviada temporariamente à rota do laboratório para a IA confirmar que
-  // ela realmente parece um RG/CNH, antes de liberar o avanço.
+  // Validação por IA (evidência complementar, nunca bloqueia): confirma se a
+  // foto parece um RG/CNH. Se falhar ou não identificar com certeza, o
+  // cliente ainda pode continuar - o escritório confere a foto depois.
   useEffect(() => {
     if (phase !== 'REVIEW' || !pending) return;
     const controller = new AbortController();
@@ -359,7 +355,7 @@ export default function DocumentCapture({
     setVisionCheck('CHECKING');
     setVisionReason('');
 
-    void fetch('/api/lab/documento/validar', {
+    void fetch('/api/sign/documento/validar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: pending.dataUrl, side }),
@@ -372,8 +368,6 @@ export default function DocumentCapture({
       })
       .then((validation) => {
         if (!active) return;
-        // A nitidez já foi validada localmente na câmera. Aqui a IA confirma
-        // se há um documento; não exigimos leitura perfeita de todos os campos.
         const accepted = validation.isDocument && validation.confidence >= 55;
         setVisionCheck(accepted ? 'VALID' : 'REJECTED');
         setVisionReason(
@@ -383,7 +377,7 @@ export default function DocumentCapture({
         );
         emit(
           accepted ? (side === 'FRENTE' ? 'FRONT_DOCUMENT_VALIDATED' : 'BACK_DOCUMENT_VALIDATED') : (side === 'FRENTE' ? 'FRONT_DOCUMENT_REJECTED' : 'BACK_DOCUMENT_REJECTED'),
-          accepted ? 'Documento identificado pela validação automática' : 'Imagem recusada: documento não identificado'
+          accepted ? 'Documento identificado pela validação automática' : 'Imagem recusada pela validação automática'
         );
       })
       .catch((validationError) => {
@@ -411,13 +405,25 @@ export default function DocumentCapture({
   }, [emit, side, startCamera]);
 
   const confirm = useCallback(() => {
-    if (!pending || visionCheck !== 'VALID') return;
+    if (!pending) return;
     emit(
       side === 'FRENTE' ? 'FRONT_APPROVED' : 'BACK_APPROVED',
-      `${side === 'FRENTE' ? 'Frente' : 'Verso'} aprovado pelo usuário`
+      `${side === 'FRENTE' ? 'Frente' : 'Verso'} aprovado`
     );
     onConfirm(pending);
-  }, [emit, onConfirm, pending, side, visionCheck]);
+  }, [emit, onConfirm, pending, side]);
+
+  // Evidência complementar: nunca trava a assinatura. Se a validação por IA
+  // não confirmar (ou falhar), o cliente ainda pode seguir - o escritório
+  // confere a foto manualmente depois, no dossiê do documento.
+  const continueAnyway = useCallback(() => {
+    if (!pending) return;
+    emit(
+      side === 'FRENTE' ? 'FRONT_CONTINUED_UNVALIDATED' : 'BACK_CONTINUED_UNVALIDATED',
+      `${side === 'FRENTE' ? 'Frente' : 'Verso'} confirmado sem validação automática`
+    );
+    onConfirm(pending);
+  }, [emit, onConfirm, pending, side]);
 
   const crop = videoDims ? computeCropRect(videoDims.w, videoDims.h) : null;
   const reviewStatus = pending ? captureQualityStatus(pending.quality) : null;
@@ -435,7 +441,7 @@ export default function DocumentCapture({
           {phase === 'STARTING' ? (
             <>
               <Loader2 className="h-7 w-7 animate-spin text-[#D4AF37]" />
-              <p className="text-xs font-bold text-slate-300">Abrindo a camera...</p>
+              <p className="text-xs font-bold text-slate-300">Abrindo a câmera...</p>
             </>
           ) : (
             <>
@@ -467,7 +473,6 @@ export default function DocumentCapture({
   }
 
   // Camera aberta ou revisao: ocupa a tela inteira, sem rolagem possivel.
-  // O botao fica ancorado na base, respeitando a area segura do aparelho.
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-slate-950">
@@ -560,19 +565,37 @@ export default function DocumentCapture({
               </div>
             )}
             {visionCheck === 'REJECTED' && (
-              <div className="rounded-xl border border-rose-400/50 bg-rose-500/15 px-3 py-3 text-center text-xs font-bold text-rose-100">
-                <p>Não identificamos um documento nesta foto.</p>
-                {visionReason && <p className="mt-1 text-[11px] font-medium opacity-90">{visionReason}</p>}
+              <div className="space-y-2">
+                <div className="rounded-xl border border-rose-400/50 bg-rose-500/15 px-3 py-3 text-center text-xs font-bold text-rose-100">
+                  <p>Não identificamos um documento nesta foto.</p>
+                  {visionReason && <p className="mt-1 text-[11px] font-medium opacity-90">{visionReason}</p>}
+                </div>
+                <button
+                  type="button"
+                  onClick={continueAnyway}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white shadow-lg transition hover:bg-emerald-500 active:scale-[0.99]"
+                >
+                  <Check className="h-4 w-4" /> Usar esta foto assim mesmo
+                </button>
               </div>
             )}
             {visionCheck === 'ERROR' && (
-              <button
-                type="button"
-                onClick={() => setValidationRetry((value) => value + 1)}
-                className="w-full rounded-xl border border-amber-400/50 bg-amber-500/15 px-3 py-3 text-center text-xs font-bold text-amber-100"
-              >
-                Não foi possível validar agora. Toque para tentar novamente.
-              </button>
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setValidationRetry((value) => value + 1)}
+                  className="w-full rounded-xl border border-amber-400/50 bg-amber-500/15 px-3 py-3 text-center text-xs font-bold text-amber-100"
+                >
+                  Não foi possível validar agora. Toque para tentar novamente.
+                </button>
+                <button
+                  type="button"
+                  onClick={continueAnyway}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white shadow-lg transition hover:bg-emerald-500 active:scale-[0.99]"
+                >
+                  <Check className="h-4 w-4" /> Continuar sem validação automática
+                </button>
+              </div>
             )}
             {visionCheck === 'VALID' && (
               <button
@@ -586,7 +609,7 @@ export default function DocumentCapture({
             <button
               type="button"
               onClick={retake}
-              className={`flex w-full items-center justify-center gap-2 py-2 text-xs font-semibold transition active:scale-[0.99] ${visionCheck === 'REJECTED' ? 'rounded-xl bg-[#D4AF37] py-3 text-[#071B3A]' : 'text-slate-300 hover:text-white'}`}
+              className={`flex w-full items-center justify-center gap-2 py-2 text-xs font-semibold transition active:scale-[0.99] ${visionCheck === 'REJECTED' ? 'rounded-xl bg-white/10 py-3 text-white' : 'text-slate-300 hover:text-white'}`}
             >
               <RefreshCw className="h-3.5 w-3.5" /> Tirar outra foto
             </button>
@@ -604,7 +627,6 @@ export default function DocumentCapture({
             <p className="text-[11px] font-semibold text-amber-100">{error}</p>
           </div>
         )}
-
       </div>
     </div>
   );

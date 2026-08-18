@@ -454,6 +454,11 @@ model Signer {
   selfieLeftImage   String?
   selfieRightImage  String?
 
+  // Documento de identificação fotografado antes da prova de presença -
+  // evidência complementar, nunca bloqueia a assinatura se estiver ausente.
+  documentFrontImage String?
+  documentBackImage  String?
+
   // Geolocalização
   geoLat           Float?
   geoLng           Float?

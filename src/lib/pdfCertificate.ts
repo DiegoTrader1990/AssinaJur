@@ -548,7 +548,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
   };
 
   // ── 2. CERTIFICADO COMPACTO DE 1 PÁGINA (APENAS PARA DOCUMENTOS SIMPLES DE 1 ÚNICO SIGNATÁRIO) ──
-  const compactCertificate = doc.signers.length === 1 && !doc.isIlliterate;
+  const hasAnyDocumentPhotos = doc.signers.some((s) => s.documentFrontImage || s.documentBackImage);
+  const compactCertificate = doc.signers.length === 1 && !doc.isIlliterate && !hasAnyDocumentPhotos;
   if (compactCertificate) {
     const certificatePage = pdfDoc.addPage([PAGE_W, PAGE_H]);
     const signer = doc.signers[0];
@@ -984,8 +985,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
       (12 + locationLines.length * 9.8 + 5) +
       (12 + authenticationLines.length * 9.8 + 5) +
       (signer.signatureImage ? 65 : 0);
+    const hasDocPhotos = Boolean(signer.documentFrontImage || signer.documentBackImage);
     const photosHeight = hasPhotos ? 155 : 0;
-    const panelH = 32 + dataHeight + photosHeight + 8;
+    const docPhotosHeight = hasDocPhotos ? 155 : 0;
+    const panelH = 32 + dataHeight + photosHeight + docPhotosHeight + 8;
     ensureSpace(panelH + 10);
 
     const pTop = y;
@@ -1134,6 +1137,76 @@ export async function generateFinalPdfCertificate(documentId: string) {
         page.drawRectangle({ x: photoX + boxW - 44, y: cardY + 5, width: 38, height: 12, color: paleGreen });
         page.drawText('VALIDADA', { x: photoX + boxW - 40, y: cardY + 8, size: 4.8, font: bold, color: green });
         photoX += boxW + gap;
+      }
+    }
+
+    // SEÇÃO 4: EVIDÊNCIA COMPLEMENTAR — DOCUMENTO DE IDENTIFICAÇÃO (FRENTE/VERSO)
+    if (hasDocPhotos) {
+      if (hasPhotos) cursor -= 155 + 12;
+      page.drawText('4. DOCUMENTO DE IDENTIFICAÇÃO (EVIDÊNCIA COMPLEMENTAR)', {
+        x: padX,
+        y: cursor,
+        size: 7.2,
+        font: bold,
+        color: navy,
+      });
+
+      const docPhotoLabels: Array<[string, string | null]> = [
+        ['Frente do documento', signer.documentFrontImage],
+        ['Verso do documento', signer.documentBackImage],
+      ].filter(([, img]) => Boolean(img)) as Array<[string, string | null]>;
+
+      const docBoxW = 150;
+      const docBoxH = 118;
+      const docCardH = 138;
+      const docGap = 24;
+      const docPhotosTotalWidth = docBoxW * docPhotoLabels.length + docGap * Math.max(0, docPhotoLabels.length - 1);
+      let docPhotoX = padX + Math.max(0, (innerWidth - docPhotosTotalWidth) / 2);
+
+      for (const [label, img] of docPhotoLabels) {
+        const embedded = await embedBase64Image(pdfDoc, img, { width: 900, height: 620 });
+        const cardY = cursor - docCardH - 12;
+
+        page.drawRectangle({
+          x: docPhotoX - 2,
+          y: cardY - 2,
+          width: docBoxW + 4,
+          height: docCardH + 4,
+          borderWidth: 0,
+          color: navy,
+        });
+        page.drawRectangle({ x: docPhotoX - 2, y: cardY + docCardH - 2, width: docBoxW + 4, height: 3, color: gold });
+        const docImgFrameH = docBoxH - 22;
+        page.drawRectangle({ x: docPhotoX, y: cardY + 40, width: docBoxW, height: docImgFrameH, color: rgb(0.88, 0.92, 0.97) });
+
+        if (embedded) {
+          const imgW = embedded.width;
+          const imgH = embedded.height;
+          const scale = Math.min(docBoxW / imgW, docImgFrameH / imgH);
+          const drawW = Math.round(imgW * scale);
+          const drawH = Math.round(imgH * scale);
+
+          const offsetX = docPhotoX + (docBoxW - drawW) / 2;
+          const offsetY = cardY + 40 + (docImgFrameH - drawH) / 2;
+
+          page.drawImage(embedded, {
+            x: offsetX,
+            y: offsetY,
+            width: drawW,
+            height: drawH,
+          });
+        }
+
+        page.drawText(safeText(label, 40).toUpperCase(), {
+          x: docPhotoX + 5,
+          y: cardY + 9,
+          size: 5.8,
+          font: bold,
+          color: rgb(1, 1, 1),
+        });
+        page.drawRectangle({ x: docPhotoX + docBoxW - 76, y: cardY + 5, width: 70, height: 12, color: paleGreen });
+        page.drawText('EVIDÊNCIA', { x: docPhotoX + docBoxW - 72, y: cardY + 8, size: 4.8, font: bold, color: green });
+        docPhotoX += docBoxW + docGap;
       }
     }
 

@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { formatBrasiliaDateTime } from '@/lib/dateUtils';
 import { maskCpfCnpj } from '@/lib/formatters';
+import DocumentCapture, { type CaptureResult } from '@/components/assinatura/DocumentCapture';
 
 function formatFullCpf(cpf: string): string {
   const clean = String(cpf || '').replace(/\D/g, '');
@@ -194,7 +195,7 @@ function playShutterSound(enabled = true) {
 }
 
 export default function MobileSignaturePage({ params }: { params: { token: string } }) {
-  const [step, setStep] = useState<'IDENTIFY' | 'SELFIE' | 'ROGO_TRANSITION' | 'ROGO_SELFIE' | 'SIGN' | 'NEXT_PARTICIPANT' | 'WAITING_ORDER' | 'SUCCESS'>('IDENTIFY');
+  const [step, setStep] = useState<'IDENTIFY' | 'DOCUMENT' | 'SELFIE' | 'ROGO_TRANSITION' | 'ROGO_SELFIE' | 'SIGN' | 'NEXT_PARTICIPANT' | 'WAITING_ORDER' | 'SUCCESS'>('IDENTIFY');
   const [signer, setSigner] = useState<SignerInfo | null>(null);
   const [document, setDocument] = useState<DocumentInfo | null>(null);
   const [kit, setKit] = useState<KitInfo | null>(null);
@@ -226,6 +227,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
+
+  // Documento de identificação (frente/verso) do Cliente Titular - evidência
+  // complementar, coletada antes da prova de presença. Nunca bloqueia a assinatura.
+  const [documentSide, setDocumentSide] = useState<'FRENTE' | 'VERSO'>('FRENTE');
+  const [documentFrontImage, setDocumentFrontImage] = useState<string | null>(null);
+  const [documentBackImage, setDocumentBackImage] = useState<string | null>(null);
 
   // Selfies do Cliente Titular
   const [selfieImages, setSelfieImages] = useState<Record<SelfieKey, string | null>>({ center: null, left: null, right: null });
@@ -429,12 +436,24 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao autenticar CPF.');
-      setStep('SELFIE');
+      setStep('DOCUMENT');
+      setDocumentSide('FRENTE');
       setActivePerson('CLIENT');
     } catch (err: any) {
       setError(err.message);
     } finally {
       setConfirmingCpf(false);
+    }
+  };
+
+  const handleDocumentConfirm = (result: CaptureResult) => {
+    if (documentSide === 'FRENTE') {
+      setDocumentFrontImage(result.dataUrl);
+      setDocumentSide('VERSO');
+    } else {
+      setDocumentBackImage(result.dataUrl);
+      setStep('SELFIE');
+      setActivePerson('CLIENT');
     }
   };
 
@@ -851,6 +870,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         selfieCenterImage: clientCenter,
         selfieLeftImage: clientLeft,
         selfieRightImage: clientRight,
+        documentFrontImage,
+        documentBackImage,
         geoLat: geo.lat,
         geoLng: geo.lng,
         geoAccuracy: geo.accuracy,
@@ -1043,6 +1064,47 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 )}
               </button>
             </form>
+          </div>
+        )}
+
+        {/* ETAPA 1.5: Documento de Identificação do Cliente (evidência complementar) */}
+        {step === 'DOCUMENT' && (
+          <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
+            <div className="text-center space-y-1">
+              <div className="w-10 h-10 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
+                <Camera className="w-5 h-5" />
+              </div>
+              <h2 className="font-heading text-base font-extrabold text-[#071B3A]">
+                🪪 Documento de Identificação ({documentSide === 'FRENTE' ? 'Frente' : 'Verso'})
+              </h2>
+              <p className="text-xs text-slate-500 font-medium leading-snug">
+                Fotografe o RG ou a CNH do cliente titular como evidência complementar. Essa etapa não impede a assinatura.
+              </p>
+            </div>
+
+            <DocumentCapture
+              key={documentSide}
+              side={documentSide}
+              title={documentSide === 'FRENTE' ? 'Frente do documento' : 'Verso do documento'}
+              helperText="Posicione o documento dentro da moldura, com boa iluminação."
+              onConfirm={handleDocumentConfirm}
+              autoStart
+            />
+
+            <button
+              type="button"
+              onClick={() => {
+                if (documentSide === 'FRENTE') {
+                  setDocumentSide('VERSO');
+                } else {
+                  setStep('SELFIE');
+                  setActivePerson('CLIENT');
+                }
+              }}
+              className="w-full py-3 text-slate-500 hover:text-slate-700 font-bold text-xs underline underline-offset-2 transition-colors"
+            >
+              Pular esta etapa por enquanto
+            </button>
           </div>
         )}
 
