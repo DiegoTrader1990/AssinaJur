@@ -1032,7 +1032,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
             <form onSubmit={handleConfirmCpf} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 font-heading">CPF do Cliente Titular *</label>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 font-heading text-center">CPF do Cliente Titular *</label>
                 <input
                   type="text"
                   required
