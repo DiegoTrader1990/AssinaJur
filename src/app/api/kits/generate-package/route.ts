@@ -9,6 +9,24 @@ import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, remove
 
 export const dynamic = 'force-dynamic';
 
+// Aceita a posição de selo escolhida manualmente pelo advogado (arrastando na
+// prévia de cada minuta) em vez da posição detectada automaticamente pelo
+// compilador de template. Mesma validação de faixas usada em /api/documents.
+function normalizeManualStampOverride(value: unknown, pageCount: number): string | null {
+  if (!value || typeof value !== 'object') return null;
+  const { page, x, y, width, height } = value as Record<string, unknown>;
+  const pageNumber = Number(page);
+  const xNumber = Number(x);
+  const yNumber = Number(y);
+  const widthNumber = Number(width);
+  const heightNumber = Number(height);
+  if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > pageCount) return null;
+  if (![xNumber, yNumber, widthNumber, heightNumber].every(Number.isFinite)) return null;
+  if (xNumber < 0 || yNumber < 0 || widthNumber < 0.18 || widthNumber > 0.6 || heightNumber < 0.065 || heightNumber > 0.22) return null;
+  if (xNumber + widthNumber > 1.001 || yNumber + heightNumber > 1.001) return null;
+  return `CUSTOM:${pageNumber}:${xNumber.toFixed(4)}:${yNumber.toFixed(4)}:${widthNumber.toFixed(4)}:${heightNumber.toFixed(4)}`;
+}
+
 function hasValidCpfCnpjCheckDigits(value: string): boolean {
   const digits = value.replace(/\D/g, '');
   if (![11, 14].includes(digits.length) || /^(\d)\1+$/.test(digits)) return false;
@@ -89,6 +107,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const {
       clientId, kitId, customVariables, customContents,
+      stampOverrides,
       signers: extraSignersInput,
       isIlliterate,
       rogoName,
@@ -326,6 +345,13 @@ export async function POST(req: Request) {
         letterheadBuffer,
       });
 
+      // Se o advogado ajustou manualmente a posição do selo para esta minuta
+      // (arrastando na prévia), essa escolha prevalece sobre a posição que o
+      // compilador detectou automaticamente a partir do texto do documento.
+      const manualOverride = stampOverrides && typeof stampOverrides === 'object' ? stampOverrides[template.id] : null;
+      const normalizedOverride = manualOverride ? normalizeManualStampOverride(manualOverride, compiledResult.pageCount) : null;
+      const finalSignaturePosition = normalizedOverride || compiledResult.signaturePosition;
+
       const doc = await prisma.document.create({
         data: {
           officeId: user.officeId,
@@ -335,7 +361,7 @@ export async function POST(req: Request) {
           kitBatchId,
           title: `${template.title} (${kit.name})`,
           documentType: template.documentType,
-          signaturePosition: compiledResult.signaturePosition,
+          signaturePosition: finalSignaturePosition,
           originalFileId: compiledResult.storageRecord.id,
           originalHash: compiledResult.hash,
           status: 'ENVIADO',

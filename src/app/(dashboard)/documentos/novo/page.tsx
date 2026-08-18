@@ -1234,7 +1234,7 @@ export default function NewDocumentPage() {
                   <div
                     role="button"
                     tabIndex={0}
-                    className="absolute rounded-lg border-2 border-[#071B3A] bg-white/98 shadow-2xl cursor-move overflow-hidden group"
+                    className="absolute cursor-move overflow-hidden group"
                     style={{
                       left: `${stampPlacement.x * 100}%`,
                       top: `${stampPlacement.y * 100}%`,
@@ -1251,37 +1251,30 @@ export default function NewDocumentPage() {
                       };
                     }}
                   >
-                    {/* Barra Superior Dourada Luxo */}
-                    <div className="h-1.5 bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-600" />
-                    
-                    <div className="flex h-[calc(100%-6px)] text-[#071B3A] leading-tight">
-                      {/* Bloco Lateral QR Code & Certificação */}
-                      <div className="w-[25%] bg-[#071B3A] text-white flex flex-col items-center justify-center p-1 font-black relative overflow-hidden select-none">
-                        <span className="text-[9px] sm:text-[11px] font-black tracking-widest text-[#D4AF37]">QR</span>
-                        <span className="text-[4.5px] sm:text-[6px] text-slate-300 uppercase font-mono tracking-tighter">AssinaJur</span>
+                    {/* Selo final: sem moldura nem fundo (fica transparente sobre o
+                        papel timbrado), QR centralizado à esquerda e texto empilhado
+                        à direita, com o traço dourado colado logo abaixo do código -
+                        mesmo desenho aplicado no documento assinado de verdade. */}
+                    <div className="flex h-full items-center text-[#071B3A] leading-tight select-none">
+                      <div className="h-full flex items-center shrink-0 pr-1.5">
+                        <div className="aspect-square h-[70%] bg-white border border-slate-300 rounded-[2px] flex items-center justify-center">
+                          <span className="text-[7px] sm:text-[9px] font-black tracking-widest text-[#0B1D3D]">QR</span>
+                        </div>
                       </div>
-                      
-                      {/* Bloco Conteúdo Textual com Nome na Primeira Linha */}
-                      <div className="flex-1 px-2 py-1 min-w-0 flex flex-col justify-between select-none">
-                        <div>
-                          {/* PRIMEIRA LINHA: NOME DO SIGNATÁRIO EM DESTAQUE PROMINENTE */}
-                          <div className="text-[8px] sm:text-[10.5px] font-black text-[#071B3A] truncate font-heading tracking-wide uppercase">
-                            {signers[0]?.name || 'DOMINICK QUINTO SOARES'}
-                          </div>
-                          {/* LINHA DO CPF LOGO ABAIXO DO NOME */}
-                          <div className="text-[6.5px] sm:text-[8.5px] font-bold text-slate-700 font-mono tracking-tight">
-                            CPF: {signers[0]?.cpf ? formatFullCpf(signers[0].cpf) : '000.000.000-00'}
-                          </div>
-                          {/* TERCEIRA LINHA: TIPO DE ASSINATURA */}
-                          <div className="text-[5.5px] sm:text-[7.5px] font-extrabold text-emerald-700 uppercase flex items-center gap-1 mt-0.5">
-                            <span>✓ ASSINATURA ELETRÔNICA QUALIFICADA</span>
-                          </div>
+                      <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
+                        <div className="text-[7px] sm:text-[9.5px] font-black text-[#0B1D3D] truncate font-heading tracking-wide uppercase">
+                          {signers[0]?.name || 'DOMINICK QUINTO SOARES'}
                         </div>
-                        {/* RODAPÉ DE VALIDAÇÃO JURÍDICA */}
-                        <div className="text-[7px] sm:text-[9.5px] font-mono text-slate-700 border-t border-slate-200 pt-0.5 mt-0.5 flex justify-between items-center font-bold">
-                          <span>CÓD: <strong className="text-[#071B3A] font-black text-[8.5px] sm:text-[11px] font-mono">AJ-A1B2-C3D4</strong></span>
-                          <span className="text-[6px] sm:text-[8px] text-slate-600 font-sans font-extrabold">Lei 14.063/20</span>
+                        <div className="text-[6px] sm:text-[8px] font-bold text-slate-700 font-mono tracking-tight">
+                          CPF: {signers[0]?.cpf ? formatFullCpf(signers[0].cpf) : '000.000.000-00'}
                         </div>
+                        <div className="text-[5px] sm:text-[6.8px] font-extrabold text-emerald-700 uppercase">
+                          Assinatura Eletrônica Qualificada
+                        </div>
+                        <div className="text-[6.5px] sm:text-[9px] font-mono font-black text-[#0B1D3D]">
+                          CÓD: AJ-A1B2-C3D4
+                        </div>
+                        <div className="h-[2px] w-[46%] bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-600 rounded-full" />
                       </div>
                     </div>
 

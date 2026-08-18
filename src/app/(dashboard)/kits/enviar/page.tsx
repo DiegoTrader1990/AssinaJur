@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { FolderArchive, Send, CheckCircle2, Copy, Check, FileText, ArrowLeft, Loader2, AlertCircle, Sparkles, ChevronDown, Eye, X, Plus, Trash2 } from 'lucide-react';
+import { FolderArchive, Send, CheckCircle2, Copy, Check, FileText, ArrowLeft, Loader2, AlertCircle, Sparkles, ChevronDown, Eye, X, Plus, Trash2, Move, ChevronLeft, ChevronRight } from 'lucide-react';
 import { DocumentRichEditor } from '@/components/DocumentRichEditor';
 import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
 import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
@@ -98,6 +98,20 @@ export default function DispatchKitPage() {
   const [reviewPdfUrl, setReviewPdfUrl] = useState<string | null>(null);
   const [loadingReviewPdf, setLoadingReviewPdf] = useState(false);
   const [editingReview, setEditingReview] = useState(false);
+
+  // Posição manual do selo de assinatura, ajustável por documento do kit
+  // (chave = template.id), igual ao arrastar-e-soltar do envio de PDF avulso.
+  // Quando ausente para um item, o sistema detecta a posição automaticamente.
+  const [stampOverrides, setStampOverrides] = useState<Record<string, { page: number; x: number; y: number; width: number; height: number }>>({});
+  const [adjustingStamp, setAdjustingStamp] = useState(false);
+  const [stampDraft, setStampDraft] = useState({ page: 1, x: 0.31, y: 0.62, width: 0.38, height: 0.085 });
+  const [stampPageCount, setStampPageCount] = useState(1);
+  const [renderingStampPreview, setRenderingStampPreview] = useState(false);
+  const stampCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const stampContainerRef = useRef<HTMLDivElement | null>(null);
+  const stampDragOffsetRef = useRef<{ x: number; y: number } | null>(null);
+  const stampResizingRef = useRef<boolean>(false);
+  const stampResizeStartRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -214,6 +228,8 @@ export default function DispatchKitPage() {
     setReviewItem(null);
     setReviewClientData({});
     setCustomContents({});
+    setStampOverrides({});
+    setAdjustingStamp(false);
     if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl);
     setReviewPdfUrl(null);
   };
@@ -355,7 +371,111 @@ export default function DispatchKitPage() {
   const openReviewItem = (item: LegalKit['items'][number]) => {
     setReviewItem(item);
     setEditingReview(false);
+    setAdjustingStamp(false);
+    const existingOverride = stampOverrides[item.template.id];
+    setStampDraft(existingOverride || { page: 1, x: 0.31, y: 0.62, width: 0.38, height: 0.085 });
     void generateReviewPdf(item);
+  };
+
+  const handleSaveStampPosition = () => {
+    if (!reviewItem) return;
+    setStampOverrides((current) => ({ ...current, [reviewItem.template.id]: stampDraft }));
+    setAdjustingStamp(false);
+  };
+
+  const handleResetStampPosition = () => {
+    if (!reviewItem) return;
+    setStampOverrides((current) => {
+      const next = { ...current };
+      delete next[reviewItem.template.id];
+      return next;
+    });
+    setStampDraft({ page: 1, x: 0.31, y: 0.62, width: 0.38, height: 0.085 });
+  };
+
+  // Renderiza a página escolhida da prévia final (já compilada com o papel
+  // timbrado e o texto real) para o advogado arrastar o selo por cima dela.
+  useEffect(() => {
+    if (!adjustingStamp || !reviewPdfUrl) return;
+    let cancelled = false;
+    let activeRender: any = null;
+    const renderPage = async () => {
+      setRenderingStampPreview(true);
+      try {
+        const pdfjs = await import('pdfjs-dist');
+        const pdfjsVersion = pdfjs.version || '4.10.38';
+        pdfjs.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
+        const res = await fetch(reviewPdfUrl);
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        if (cancelled) return;
+        const loadingTask = pdfjs.getDocument({
+          data: bytes,
+          cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/cmaps/`,
+          cMapPacked: true,
+          standardFontDataUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/standard_fonts/`,
+        });
+        const pdf = await loadingTask.promise;
+        if (cancelled) return;
+        setStampPageCount(pdf.numPages);
+        const safePage = Math.min(Math.max(1, stampDraft.page), pdf.numPages);
+        if (safePage !== stampDraft.page) setStampDraft((current) => ({ ...current, page: safePage }));
+        const pdfPage = await pdf.getPage(safePage);
+        const viewport = pdfPage.getViewport({ scale: 1.5 });
+        let canvas = stampCanvasRef.current;
+        if (!canvas) {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          canvas = stampCanvasRef.current;
+        }
+        if (!canvas || cancelled) return;
+        const context = canvas.getContext('2d');
+        if (!context) return;
+        canvas.width = Math.round(viewport.width);
+        canvas.height = Math.round(viewport.height);
+        canvas.style.width = '100%';
+        canvas.style.height = 'auto';
+        context.fillStyle = '#FFFFFF';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        activeRender = pdfPage.render({ canvasContext: context, viewport });
+        await activeRender.promise;
+      } catch (stampPreviewError) {
+        if (!cancelled) console.error('Erro ao renderizar prévia do selo:', stampPreviewError);
+      } finally {
+        if (!cancelled) setRenderingStampPreview(false);
+      }
+    };
+    renderPage();
+    return () => {
+      cancelled = true;
+      activeRender?.cancel?.();
+    };
+  }, [adjustingStamp, reviewPdfUrl, stampDraft.page]);
+
+  const moveStampDraft = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!stampContainerRef.current) return;
+    const bounds = stampContainerRef.current.getBoundingClientRect();
+
+    if (stampResizingRef.current && stampResizeStartRef.current) {
+      const deltaX = event.clientX - stampResizeStartRef.current.startX;
+      const newWidthPx = Math.max(110, Math.min(bounds.width * 0.7, stampResizeStartRef.current.startWidth + deltaX));
+      const newWidthRatio = newWidthPx / bounds.width;
+      const newHeightRatio = Math.max(0.075, newWidthRatio * 0.28);
+      setStampDraft((current) => ({
+        ...current,
+        width: newWidthRatio,
+        height: newHeightRatio,
+        x: Math.min(current.x, 1 - newWidthRatio),
+      }));
+      return;
+    }
+
+    if (!stampDragOffsetRef.current) return;
+    const nextX = (event.clientX - bounds.left - stampDragOffsetRef.current.x) / bounds.width;
+    const nextY = (event.clientY - bounds.top - stampDragOffsetRef.current.y) / bounds.height;
+    setStampDraft((current) => ({
+      ...current,
+      x: Math.min(1 - current.width, Math.max(0, nextX)),
+      y: Math.min(1 - current.height, Math.max(0, nextY)),
+    }));
   };
 
   const handleGeneratePackage = async (e: React.FormEvent) => {
@@ -377,6 +497,7 @@ export default function DispatchKitPage() {
           kitId: selectedKitId,
           customVariables: variables,
           customContents,
+          stampOverrides,
           signers,
           isIlliterate,
           rogoName: isIlliterate ? rogoName : null,
@@ -487,6 +608,7 @@ export default function DispatchKitPage() {
               setRogoName(''); setRogoCpf(''); setRogoPhone(''); setRogoEmail('');
               setRogoRelationship('Acompanhante / Familiar');
               setEnforceSignatureOrder(false);
+              setStampOverrides({});
             }}
             className="px-4 py-2.5 text-slate-600 font-semibold text-xs"
           >
@@ -840,13 +962,13 @@ export default function DispatchKitPage() {
                 onClick={handleReviewStep}
                 className="w-full py-3 border-2 border-dashed border-slate-300 rounded-xl text-slate-600 font-bold hover:bg-slate-50 hover:border-slate-400 hover:text-slate-800 transition-all text-sm"
               >
-                5. Revisar e Editar Minutas (Opcional)
+                5. Revisar Minutas e Posição do Selo (Opcional)
               </button>
             ) : (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-[#0B1D3D] uppercase tracking-wider block">
-                    5. Revisar e Editar Minutas
+                    5. Revisar Minutas e Posição do Selo
                   </span>
                   <button
                     type="button"
@@ -856,6 +978,7 @@ export default function DispatchKitPage() {
                     Ocultar Revisão
                   </button>
                 </div>
+                <p className="text-[11px] text-slate-500 -mt-2">Por padrão o selo é posicionado automaticamente. Abra cada minuta para ajustar manualmente, se preferir.</p>
                 <div className="space-y-2">
                   {selectedKit?.items.map((item) => (
                     <div key={item.id} className="border border-slate-200 rounded-xl overflow-hidden">
@@ -867,6 +990,11 @@ export default function DispatchKitPage() {
                         <div className="flex items-center gap-2">
                           <FileText className="w-4 h-4 text-gold-500" />
                           <span className="font-bold text-sm text-[#0B1D3D]">{item.template.title}</span>
+                          {stampOverrides[item.template.id] && (
+                            <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                              <Move className="w-2.5 h-2.5" /> Selo ajustado
+                            </span>
+                          )}
                         </div>
                         <Eye className="w-4 h-4 text-blue-600" />
                       </button>
@@ -911,11 +1039,133 @@ export default function DispatchKitPage() {
           <div className="w-full max-w-6xl h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col">
             <div className="bg-[#071B3A] text-white px-6 py-4 flex items-center justify-between shrink-0"><div><p className="text-[10px] uppercase tracking-widest text-gold-300 font-bold">Revisão da minuta</p><h2 className="text-sm font-extrabold">{reviewItem.template.title}</h2></div><button type="button" onClick={() => setReviewItem(null)} className="p-2 rounded-lg bg-white/10 hover:bg-white/20"><X className="w-5 h-5" /></button></div>
             <div className="flex-1 overflow-auto bg-slate-100 p-4 sm:p-6">
-              {loadingReviewPdf ? <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-600"><Loader2 className="w-8 h-8 animate-spin text-gold-500" /><p className="text-sm font-semibold">Montando a prévia final…</p></div> : editingReview ? <div className="mx-auto max-w-4xl rounded-xl border border-slate-200 bg-white p-4"><DocumentRichEditor key={reviewItem.id} value={renderEditableReview(customContents[reviewItem.template.id] || reviewItem.template.contentHtml)} onChange={(html) => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: html }))} showTags={false} showAiCopilot={false} placeholder="Redija ou ajuste o documento..." /></div> : reviewPdfUrl ? <iframe src={reviewPdfUrl} className="w-full h-full bg-white rounded-xl border border-slate-200" title="Prévia final do documento" /> : <div className="h-full flex items-center justify-center text-sm text-slate-500">Não foi possível carregar a prévia.</div>}
+              {loadingReviewPdf ? (
+                <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-600"><Loader2 className="w-8 h-8 animate-spin text-gold-500" /><p className="text-sm font-semibold">Montando a prévia final…</p></div>
+              ) : editingReview ? (
+                <div className="mx-auto max-w-4xl rounded-xl border border-slate-200 bg-white p-4"><DocumentRichEditor key={reviewItem.id} value={renderEditableReview(customContents[reviewItem.template.id] || reviewItem.template.contentHtml)} onChange={(html) => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: html }))} showTags={false} showAiCopilot={false} placeholder="Redija ou ajuste o documento..." /></div>
+              ) : adjustingStamp ? (
+                <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50/70 via-white to-amber-50/50 p-4 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-extrabold text-[#071B3A] flex items-center gap-2">
+                        <Move className="w-4 h-4 text-blue-600" /> Posicione o selo na página
+                      </h3>
+                      <p className="text-[11px] text-slate-600 mt-1">Arraste o selo sobre a página. Ele será aplicado exatamente neste local após a assinatura.</p>
+                    </div>
+                    <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1.5 shadow-xs">
+                      <button type="button" onClick={() => setStampDraft((c) => ({ ...c, page: Math.max(1, c.page - 1) }))} disabled={stampDraft.page <= 1} className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-30" aria-label="Página anterior">
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <span className="text-[11px] font-extrabold text-[#071B3A] min-w-[82px] text-center">Página {stampDraft.page} de {stampPageCount}</span>
+                      <button type="button" onClick={() => setStampDraft((c) => ({ ...c, page: Math.min(stampPageCount, c.page + 1) }))} disabled={stampDraft.page >= stampPageCount} className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-30" aria-label="Próxima página">
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 rounded-xl bg-white border border-slate-200 px-3 py-2">
+                    <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 whitespace-nowrap">Tamanho do selo</span>
+                    <input type="range" min="22" max="52" value={Math.round(stampDraft.width * 100)}
+                      onChange={(event) => {
+                        const width = Number(event.target.value) / 100;
+                        setStampDraft((current) => ({ ...current, width, height: Math.max(0.075, width * 0.28), x: Math.min(current.x, 1 - width) }));
+                      }}
+                      className="w-full accent-blue-600" />
+                    <span className="text-[11px] font-bold text-slate-700 w-9 text-right">{Math.round(stampDraft.width * 100)}%</span>
+                  </div>
+
+                  <div className="overflow-auto rounded-xl border border-slate-300 bg-slate-200/70 p-3 max-h-[520px]">
+                    <div
+                      ref={stampContainerRef}
+                      className="relative mx-auto w-full max-w-[640px] shadow-2xl bg-white touch-none select-none rounded-xl overflow-hidden"
+                      onPointerMove={moveStampDraft}
+                      onPointerUp={() => { stampDragOffsetRef.current = null; stampResizingRef.current = false; stampResizeStartRef.current = null; }}
+                      onPointerCancel={() => { stampDragOffsetRef.current = null; stampResizingRef.current = false; stampResizeStartRef.current = null; }}
+                    >
+                      <canvas ref={stampCanvasRef} className="block w-full h-auto rounded-xl pointer-events-none min-h-[500px]" />
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        className="absolute cursor-move overflow-hidden group"
+                        style={{ left: `${stampDraft.x * 100}%`, top: `${stampDraft.y * 100}%`, width: `${stampDraft.width * 100}%`, height: `${stampDraft.height * 100}%` }}
+                        onPointerDown={(event) => {
+                          const bounds = stampContainerRef.current?.getBoundingClientRect();
+                          if (!bounds) return;
+                          event.currentTarget.setPointerCapture(event.pointerId);
+                          stampDragOffsetRef.current = { x: event.clientX - bounds.left - stampDraft.x * bounds.width, y: event.clientY - bounds.top - stampDraft.y * bounds.height };
+                        }}
+                      >
+                        <div className="flex h-full items-center text-[#071B3A] leading-tight select-none">
+                          <div className="h-full flex items-center shrink-0 pr-1.5">
+                            <div className="aspect-square h-[70%] bg-white border border-slate-300 rounded-[2px] flex items-center justify-center">
+                              <span className="text-[7px] sm:text-[9px] font-black tracking-widest text-[#0B1D3D]">QR</span>
+                            </div>
+                          </div>
+                          <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
+                            <div className="text-[7px] sm:text-[9.5px] font-black text-[#0B1D3D] truncate uppercase">{reviewClientData.cliente_nome || 'NOME DA CLIENTE'}</div>
+                            <div className="text-[6px] sm:text-[8px] font-bold text-slate-700 font-mono tracking-tight">CPF: {reviewClientData.cliente_cpf || '000.000.000-00'}</div>
+                            <div className="text-[5px] sm:text-[6.8px] font-extrabold text-emerald-700 uppercase">Assinatura Eletrônica Qualificada</div>
+                            <div className="text-[6.5px] sm:text-[9px] font-mono font-black text-[#0B1D3D]">CÓD: AJ-A1B2-C3D4</div>
+                            <div className="h-[2px] w-[46%] bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-600 rounded-full" />
+                          </div>
+                        </div>
+                        <div
+                          onPointerDown={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            const bounds = stampContainerRef.current?.getBoundingClientRect();
+                            if (!bounds) return;
+                            e.currentTarget.setPointerCapture(e.pointerId);
+                            stampResizingRef.current = true;
+                            stampResizeStartRef.current = { startX: e.clientX, startWidth: stampDraft.width * bounds.width };
+                          }}
+                          onPointerUp={(e) => { e.stopPropagation(); stampResizingRef.current = false; stampResizeStartRef.current = null; }}
+                          className="absolute bottom-0 right-0 w-4 h-4 bg-[#D4AF37] hover:bg-amber-400 cursor-se-resize flex items-center justify-center rounded-tl-sm shadow-md z-30 transition-transform active:scale-125"
+                          title="Arraste aqui para redimensionar o selo"
+                        >
+                          <div className="w-1.5 h-1.5 border-r-2 border-b-2 border-[#071B3A]" />
+                        </div>
+                      </div>
+                      {renderingStampPreview && (
+                        <div className="absolute inset-0 bg-white/75 flex items-center justify-center text-xs font-bold text-[#071B3A]">
+                          <Loader2 className="w-5 h-5 animate-spin mr-2 text-blue-600" /> Carregando página…
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : reviewPdfUrl ? (
+                <iframe src={reviewPdfUrl} className="w-full h-full bg-white rounded-xl border border-slate-200" title="Prévia final do documento" />
+              ) : (
+                <div className="h-full flex items-center justify-center text-sm text-slate-500">Não foi possível carregar a prévia.</div>
+              )}
             </div>
             <div className="px-6 py-3 border-t border-slate-200 flex justify-between gap-3">
-              {editingReview ? <button type="button" onClick={() => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: reviewItem.template.contentHtml }))} className="text-xs font-bold text-slate-600">Restaurar modelo</button> : <span className="text-xs text-slate-500 self-center">Prévia com a diagramação final do documento</span>}
-              <div className="flex gap-2"><button type="button" onClick={() => editingReview ? void generateReviewPdf(reviewItem) : setEditingReview(true)} className="px-4 py-2.5 border border-[#071B3A] text-[#071B3A] rounded-lg text-xs font-bold">{editingReview ? 'Atualizar prévia final' : 'Editar conteúdo'}</button><button type="button" onClick={() => { if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl); setReviewPdfUrl(null); setReviewItem(null); }} className="px-5 py-2.5 bg-[#071B3A] text-white rounded-lg text-xs font-bold">Concluir revisão</button></div>
+              {adjustingStamp ? (
+                <>
+                  {stampOverrides[reviewItem.template.id] ? (
+                    <button type="button" onClick={handleResetStampPosition} className="text-xs font-bold text-slate-600">Voltar ao automático</button>
+                  ) : <span className="text-xs text-slate-500 self-center">Posição padrão detectada automaticamente</span>}
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setAdjustingStamp(false)} className="px-4 py-2.5 border border-slate-300 text-slate-600 rounded-lg text-xs font-bold">Cancelar</button>
+                    <button type="button" onClick={handleSaveStampPosition} className="px-5 py-2.5 bg-[#071B3A] text-white rounded-lg text-xs font-bold">Salvar posição</button>
+                  </div>
+                </>
+              ) : editingReview ? (
+                <>
+                  <button type="button" onClick={() => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: reviewItem.template.contentHtml }))} className="text-xs font-bold text-slate-600">Restaurar modelo</button>
+                  <div className="flex gap-2"><button type="button" onClick={() => void generateReviewPdf(reviewItem)} className="px-4 py-2.5 border border-[#071B3A] text-[#071B3A] rounded-lg text-xs font-bold">Atualizar prévia final</button><button type="button" onClick={() => { if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl); setReviewPdfUrl(null); setReviewItem(null); }} className="px-5 py-2.5 bg-[#071B3A] text-white rounded-lg text-xs font-bold">Concluir revisão</button></div>
+                </>
+              ) : (
+                <>
+                  <span className="text-xs text-slate-500 self-center">Prévia com a diagramação final do documento</span>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setAdjustingStamp(true)} className="px-4 py-2.5 border border-blue-600 text-blue-700 rounded-lg text-xs font-bold flex items-center gap-1.5"><Move className="w-3.5 h-3.5" /> Ajustar posição do selo</button>
+                    <button type="button" onClick={() => setEditingReview(true)} className="px-4 py-2.5 border border-[#071B3A] text-[#071B3A] rounded-lg text-xs font-bold">Editar conteúdo</button>
+                    <button type="button" onClick={() => { if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl); setReviewPdfUrl(null); setReviewItem(null); }} className="px-5 py-2.5 bg-[#071B3A] text-white rounded-lg text-xs font-bold">Concluir revisão</button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
