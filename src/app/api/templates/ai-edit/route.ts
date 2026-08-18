@@ -32,7 +32,10 @@ SUA MISSÃO PRINCIPAL:
 
 // Chama o Gemini (Google AI, gratuito) tentando alguns modelos em sequência.
 async function callGemini(apiKey: string, userPrompt: string): Promise<{ text: string; error: string }> {
-  const modelsToTry = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite'];
+  // gemini-2.5-flash foi descontinuado para novas contas (16/08/2026); a própria
+  // API do Google indicou gemini-3.6-flash como substituto. Mantemos gemini-flash-latest
+  // e gemini-2.5-flash-lite como reservas adicionais dentro do próprio Gemini.
+  const modelsToTry = ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-2.5-flash-lite'];
   let lastError = '';
   for (const modelName of modelsToTry) {
     try {
@@ -76,7 +79,9 @@ async function callGroq(apiKey: string, userPrompt: string): Promise<{ text: str
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        // llama-3.3-70b-versatile foi descontinuado pela Groq em 16/08/2026;
+        // openai/gpt-oss-120b é o substituto recomendado pela própria Groq.
+        model: 'openai/gpt-oss-120b',
         temperature: 0.1,
         messages: [
           { role: 'system', content: systemPrompt },
