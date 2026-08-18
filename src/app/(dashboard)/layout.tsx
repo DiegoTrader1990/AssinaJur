@@ -47,17 +47,40 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [activePlan, setActivePlan] = useState('');
 
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.user) {
-          setUser(data.user);
-        } else {
-          router.push('/login');
+    const controller = new AbortController();
+    // Nunca deixamos o advogado em uma tela de carregamento eterna caso uma
+    // conexão móvel interrompa a consulta da sessão no meio do carregamento.
+    const timeout = window.setTimeout(() => controller.abort(), 10_000);
+    let mounted = true;
+
+    const redirectToLogin = () => {
+      // A troca direta de página é mais confiável que uma navegação interna
+      // quando o próprio painel ainda está iniciando seus recursos.
+      window.location.replace('/login');
+    };
+
+    void (async () => {
+      try {
+        const res = await fetch('/api/auth/me', { cache: 'no-store', signal: controller.signal });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.user) {
+          redirectToLogin();
+          return;
         }
-      })
-      .catch(() => router.push('/login'))
-      .finally(() => setLoading(false));
+        if (mounted) setUser(data.user);
+      } catch {
+        redirectToLogin();
+      } finally {
+        window.clearTimeout(timeout);
+        if (mounted) setLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
   }, [router]);
 
   useEffect(() => {
