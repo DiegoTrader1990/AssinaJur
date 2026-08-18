@@ -335,6 +335,9 @@ export async function POST(req: Request) {
         variables: variableValues,
         officeName: office.name,
         letterheadBuffer,
+        // O kit já usa o papel timbrado do escritório. O título técnico do
+        // sistema não deve ser impresso acima da minuta assinada.
+        showSystemHeader: false,
       });
 
       // Se o advogado ajustou manualmente a posição do selo para esta minuta

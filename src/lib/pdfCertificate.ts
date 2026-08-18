@@ -162,7 +162,7 @@ function addLinkAnnotation(
 async function embedBase64Image(
   pdfDoc: PDFDocument,
   base64: string | null | undefined,
-  cover?: { width: number; height: number }
+  cover?: { width: number; height: number; fit?: 'cover' | 'contain'; position?: string }
 ) {
   if (!base64) return null;
   try {
@@ -174,7 +174,11 @@ async function embedBase64Image(
     if (cover) {
       bytes = Buffer.from(await sharp(bytes)
         .rotate()
-        .resize(cover.width, cover.height, { fit: 'cover', position: 'top' })
+        .resize(cover.width, cover.height, {
+          fit: cover.fit || 'cover',
+          position: cover.position || 'top',
+          background: { r: 248, g: 250, b: 252, alpha: 1 },
+        })
         .png({ compressionLevel: 9, adaptiveFiltering: true })
         .toBuffer());
       return await pdfDoc.embedPng(bytes);
@@ -843,9 +847,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
           descY -= 9.5;
         }
 
-        timelinePage.drawLine({ start: { x: eventColX - 4, y: rowY }, end: { x: eventColX - 4, y: rowY + row.height }, thickness: 0.35, color: panelBorder });
-        timelinePage.drawLine({ start: { x: descColX - 4, y: rowY }, end: { x: descColX - 4, y: rowY + row.height }, thickness: 0.35, color: panelBorder });
-        timelinePage.drawLine({ start: { x: CX, y: rowY }, end: { x: CR, y: rowY }, thickness: 0.5, color: panelBorder });
+        // Linhas de grade removidas: as faixas alternadas já separam cada
+        // evento e deixam a trilha mais leve, sem aparência de planilha.
       });
 
       timelinePage.drawRectangle({ x: CX, y: 20, width: CW, height: 34, color: rgb(0.96, 0.97, 0.99), opacity: 0.4 });
@@ -1012,7 +1015,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
           signer.geoAccuracy != null ? ` (precisão: ${Math.round(signer.geoAccuracy)}m)` : ''
         }`
       : 'Não coletada (permissão não concedida)';
-    const authenticationText = 'CPF + Prova de presença ao vivo (3 fotos) + Geolocalização do dispositivo';
+    const hasDocPhotos = Boolean(signer.documentFrontImage || signer.documentBackImage);
+    const authenticationText = hasDocPhotos
+      ? 'CPF + Documento de identificação fotografado no momento da assinatura + Prova de presença ao vivo (3 fotos) + Geolocalização do dispositivo'
+      : 'CPF + Prova de presença ao vivo (3 fotos) + Geolocalização do dispositivo';
     const innerWidth = CW - 28;
     const halfWidth = 226;
     const gapWidth = 34;
@@ -1035,9 +1041,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
       (12 + locationLines.length * 9.8 + 5) +
       (12 + authenticationLines.length * 9.8 + 5) +
       (signer.signatureImage ? 65 : 0);
-    const hasDocPhotos = Boolean(signer.documentFrontImage || signer.documentBackImage);
     if (hasDocPhotos) docPhotoSigners.push(signer);
-    const photosHeight = hasPhotos ? 179 : 0;
+    const photosHeight = hasPhotos ? 197 : 0;
     const panelH = 32 + dataHeight + photosHeight + 8;
     ensureSpace(panelH + 10);
 
@@ -1133,20 +1138,22 @@ export async function generateFinalPdfCertificate(documentId: string) {
         ['3. Perfil Direito', signer.selfieRightImage],
       ];
 
-      // Cartões verticais otimizados em HD para ajuste compacto.
-      const boxW = 140;
-      const boxH = 140;
-      const cardH = 162;
-      const gap = 20;
+      // Mantém a proporção de selfie. O corte quadrado aproximava demais o
+      // rosto e eliminava partes importantes do enquadramento original.
+      const boxW = 132;
+      const boxH = 158;
+      const cardH = 180;
+      const gap = 22;
       const photosTotalWidth = boxW * 3 + gap * 2;
       let photoX = padX + Math.max(0, (innerWidth - photosTotalWidth) / 2);
 
       for (const [label, img] of photoLabels) {
-        // Alvo de corte quadrado, igual ao quadro de exibição (140x140) - o corte
-        // anterior (540x620, retrato) recortava boa parte das laterais da selfie
-        // antes mesmo do encaixe final no quadro, dando a impressão de "zoom"
-        // excessivo no rosto. Agora o corte só remove o estritamente necessário.
-        const embedded = await embedBase64Image(pdfDoc, img, { width: 600, height: 600 });
+        const embedded = await embedBase64Image(pdfDoc, img, {
+          width: 528,
+          height: 632,
+          fit: 'contain',
+          position: 'centre',
+        });
         const cardY = cursor - cardH - 12;
         const imgFrameH = boxH;
         const imgFrameY = cardY + 20;
@@ -1426,10 +1433,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
         descY -= 9.5;
       }
 
-      timelinePage.drawLine({ start: { x: eventColX - 4, y: rowY }, end: { x: eventColX - 4, y: rowY + row.height }, thickness: 0.35, color: panelBorder });
-      timelinePage.drawLine({ start: { x: descColX - 4, y: rowY }, end: { x: descColX - 4, y: rowY + row.height }, thickness: 0.35, color: panelBorder });
-
-      timelinePage.drawLine({ start: { x: CX, y: rowY }, end: { x: CR, y: rowY }, thickness: 0.5, color: panelBorder });
+      // Linhas de grade removidas: as faixas alternadas já separam cada
+      // evento e deixam a trilha mais leve, sem aparência de planilha.
     });
 
     closeTimelinePage(`Trilha de auditoria concluída com ${publicEvents.length} evento(s) registrado(s).`);

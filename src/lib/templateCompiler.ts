@@ -671,6 +671,7 @@ export async function compileTemplateToPdf({
   variables,
   officeName,
   letterheadBuffer,
+  showSystemHeader,
 }: {
   officeId: string;
   uploadedBy?: string;
@@ -679,6 +680,7 @@ export async function compileTemplateToPdf({
   variables: VariableValues;
   officeName: string;
   letterheadBuffer?: Buffer;
+  showSystemHeader?: boolean;
 }) {
   // Auto-limpar ou substituir instruções entre colchetes por textos padrão sem travar a geração
   contentHtml = contentHtml.replace(/\[DESCREVER COM PRECISÃO A DEMANDA[^\]]*\]/gi, 'Ajuizamento de ação e acompanhamento integral da demanda')
@@ -688,7 +690,7 @@ export async function compileTemplateToPdf({
     .replace(/\[DESCREVER A FINALIDADE[^\]]*\]/gi, 'Acompanhamento processual e administrativo completo')
     .replace(/\[PREENCHER, SE APLICÁVEL\]/gi, 'Acompanhamento de processos e requerimentos')
     .replace(/\[(?:INFORMAR|PREENCHER|DESCREVER|DEFINIR|REVISAR|INSERIR)[^\]]*\]/gi, '________________');
-  const rendered = await renderTemplatePdf({ title, contentHtml, variables, officeName, letterheadBuffer });
+  const rendered = await renderTemplatePdf({ title, contentHtml, variables, officeName, letterheadBuffer, showSystemHeader });
   const storageRecord = await saveFile({
     officeId,
     uploadedBy,
