@@ -172,13 +172,18 @@ async function embedBase64Image(
     if (bytes.length === 0) return null;
 
     if (cover) {
-      bytes = Buffer.from(await sharp(bytes)
-        .rotate()
-        .resize(cover.width, cover.height, {
+      // Nas evidências faciais a fotografia precisa permanecer integral. O
+      // tamanho final é decidido pelo quadro do PDF; redimensionar antes com
+      // "cover" ou criar uma tela opaca aqui alterava o enquadramento e podia
+      // aproximar indevidamente o rosto.
+      const pipeline = sharp(bytes).rotate();
+      if (cover.fit !== 'contain') {
+        pipeline.resize(cover.width, cover.height, {
           fit: cover.fit || 'cover',
           position: cover.position || 'top',
-          background: { r: 248, g: 250, b: 252, alpha: 1 },
-        })
+        });
+      }
+      bytes = Buffer.from(await pipeline
         .png({ compressionLevel: 9, adaptiveFiltering: true })
         .toBuffer());
       return await pdfDoc.embedPng(bytes);
@@ -314,7 +319,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
   const qrDataUrl = await QRCode.toDataURL(verificationUrl, {
     margin: 1,
     width: 240,
-    color: { dark: '#0B1D3D', light: '#FFFFFF' },
+    // O QR continua legível, mas sem uma caixa branca atrás do selo.
+    color: { dark: '#0B1D3D', light: '#FFFFFF00' },
   });
   const qrImage = await pdfDoc.embedPng(Buffer.from(qrDataUrl.replace(/^data:image\/png;base64,/, ''), 'base64'));
 
@@ -440,18 +446,6 @@ export async function generateFinalPdfCertificate(documentId: string) {
       const goldLineY = bottomLineY - 6;
       const textTopY = nameTopY + 6;
       const textBottomY = goldLineY;
-
-      // Fundo de proteção leve: opaco o bastante para nunca deixar o
-      // clausulado do contrato "vazar" por trás do texto do selo, mas ainda
-      // discreto (sem borda), preservando o visual clean pedido.
-      p.drawRectangle({
-        x: stampX - 4,
-        y: textBottomY - 5,
-        width: stampW + 8,
-        height: textTopY - textBottomY + 10,
-        color: rgb(1, 1, 1),
-        opacity: 0.9,
-      });
 
       nameLines.forEach((line, lineIndex) => {
         p.drawText(line.toUpperCase(), { x: contentX, y: nameTopY - lineIndex * 8.0, size: 6.8, font: bold, color: navy });
@@ -1042,7 +1036,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
       (12 + authenticationLines.length * 9.8 + 5) +
       (signer.signatureImage ? 65 : 0);
     if (hasDocPhotos) docPhotoSigners.push(signer);
-    const photosHeight = hasPhotos ? 201 : 0;
+    // Título + folga + cartão de 3:4 + legenda. Mantém o painel seguinte
+    // fora da área das fotos independentemente do tamanho da evidência.
+    const photosHeight = hasPhotos ? 216 : 0;
     const panelH = 32 + dataHeight + photosHeight + 8;
     ensureSpace(panelH + 10);
 
@@ -1140,10 +1136,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
       // Mantém a proporção de selfie. O corte quadrado aproximava demais o
       // rosto e eliminava partes importantes do enquadramento original.
-      const boxW = 120;
-      const boxH = 160;
-      const cardH = 184;
-      const gap = 24;
+      const boxW = 108;
+      const boxH = 144;
+      const cardH = 174;
+      const gap = 22;
       const photosTotalWidth = boxW * 3 + gap * 2;
       let photoX = padX + Math.max(0, (innerWidth - photosTotalWidth) / 2);
 
@@ -1154,7 +1150,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
           fit: 'contain',
           position: 'centre',
         });
-        const cardY = cursor - cardH - 12;
+        const cardY = cursor - cardH - 14;
         const imgFrameH = boxH;
         const imgFrameY = cardY + 20;
 
