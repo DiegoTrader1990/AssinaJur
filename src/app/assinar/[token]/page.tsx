@@ -987,7 +987,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         </div>
       </header>
 
-      <main className="max-w-md mx-auto w-full my-auto p-4 sm:p-6 space-y-4">
+      <main className="max-w-md mx-auto w-full mt-4 mb-auto p-4 sm:p-6 space-y-4">
         {error && (
           <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-3 font-medium">
             <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
