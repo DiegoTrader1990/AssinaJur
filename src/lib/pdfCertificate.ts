@@ -319,8 +319,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
   const qrDataUrl = await QRCode.toDataURL(verificationUrl, {
     margin: 1,
     width: 240,
-    // O QR continua legível, mas sem uma caixa branca atrás do selo.
-    color: { dark: '#0B1D3D', light: '#FFFFFF00' },
+    // Apenas o QR preserva fundo branco para leitura confiável. O restante
+    // do selo é transparente e acompanha o documento original.
+    color: { dark: '#0B1D3D', light: '#FFFFFF' },
   });
   const qrImage = await pdfDoc.embedPng(Buffer.from(qrDataUrl.replace(/^data:image\/png;base64,/, ''), 'base64'));
 
