@@ -597,7 +597,10 @@ async function renderTemplatePdf({
     // Reserva real para o selo profissional e assinatura, mesmo quando o editor possui
     // linhas em branco que antes eram descartadas pelo compilador.
     // Títulos principais precisam de uma separação visual clara antes da qualificação inicial.
-    currentY -= isClientSignatureLabel ? 84 : isExplicitSignatureLine ? 8 : isSignatureCaption ? 3 : isFollowedByExplicitSignatureLine ? 42 : paragraph.kind === 'H1' ? 12 : heading ? 6 : 5 + (paragraph.spacer || 0);
+    // Folga um pouco maior antes da área de assinatura: o selo pode precisar de uma
+    // segunda linha de nome (ex.: assinatura a rogo, "CLIENTE * A ROGO: NOME"), e essa
+    // margem extra evita que ele encoste no texto do contrato logo acima dele.
+    currentY -= isClientSignatureLabel ? 92 : isExplicitSignatureLine ? 8 : isSignatureCaption ? 3 : isFollowedByExplicitSignatureLine ? 46 : paragraph.kind === 'H1' ? 12 : heading ? 6 : 5 + (paragraph.spacer || 0);
   }
 
   // Se nenhuma linha de assinatura explícita nem rótulo (CONTRATANTE:/OUTORGANTE:

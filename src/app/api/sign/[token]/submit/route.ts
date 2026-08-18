@@ -152,6 +152,8 @@ export async function POST(
             selfieCenterImage: rogo.selfieCenterImage,
             selfieLeftImage: rogo.selfieLeftImage,
             selfieRightImage: rogo.selfieRightImage,
+            documentFrontImage: rogo.documentFrontImage || null,
+            documentBackImage: rogo.documentBackImage || null,
             geoLat: typeof geoLat === 'number' ? geoLat : null,
             geoLng: typeof geoLng === 'number' ? geoLng : null,
             geoAccuracy: typeof geoAccuracy === 'number' ? geoAccuracy : null,

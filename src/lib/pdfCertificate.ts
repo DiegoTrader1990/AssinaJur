@@ -422,7 +422,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
       // automaticamente (kits) é apenas estimada a partir do texto do modelo
       // e pode, em alguns casos, ficar próxima de outras linhas do contrato -
       // sem um fundo, o texto do selo ficaria ilegível, sobreposto ao clausulado.
-      const nameTopY = stampY + stampH - 13;
+      // Quando o nome do selo ocupa 2 linhas (ex.: "CLIENTE * A ROGO: NOME"),
+      // reservamos o mesmo espaço extra ACIMA do bloco (empurrando o topo do
+      // texto para cima) em vez de deixar o conteúdo "crescer" para baixo -
+      // isso mantém a base do selo (e a distância até o texto do contrato
+      // logo abaixo dele) igual à de um selo de 1 linha, evitando que o nome
+      // e o cargo do signatário fiquem cobertos pelo selo.
+      const nameTopY = stampY + stampH - 13 + Math.max(0, nameLines.length - 1) * 8.0;
       const yAfterName = nameTopY - nameLines.length * 8.0;
       const qualificationY = yAfterName - 5 - cpfLines.length * 6.4;
       let bottomLineY = qualificationY - 9 - 8 - 9;

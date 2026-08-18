@@ -195,7 +195,7 @@ function playShutterSound(enabled = true) {
 }
 
 export default function MobileSignaturePage({ params }: { params: { token: string } }) {
-  const [step, setStep] = useState<'IDENTIFY' | 'DOCUMENT' | 'SELFIE' | 'ROGO_TRANSITION' | 'ROGO_SELFIE' | 'SIGN' | 'NEXT_PARTICIPANT' | 'WAITING_ORDER' | 'SUCCESS'>('IDENTIFY');
+  const [step, setStep] = useState<'IDENTIFY' | 'DOCUMENT' | 'SELFIE' | 'ROGO_TRANSITION' | 'ROGO_DOCUMENT' | 'ROGO_SELFIE' | 'SIGN' | 'NEXT_PARTICIPANT' | 'WAITING_ORDER' | 'SUCCESS'>('IDENTIFY');
   const [signer, setSigner] = useState<SignerInfo | null>(null);
   const [document, setDocument] = useState<DocumentInfo | null>(null);
   const [kit, setKit] = useState<KitInfo | null>(null);
@@ -233,6 +233,13 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [documentSide, setDocumentSide] = useState<'FRENTE' | 'VERSO'>('FRENTE');
   const [documentFrontImage, setDocumentFrontImage] = useState<string | null>(null);
   const [documentBackImage, setDocumentBackImage] = useState<string | null>(null);
+
+  // Documento de identificação (frente/verso) do Assinante a Rogo (mesmo link) -
+  // mesma evidência complementar coletada para o cliente titular, mas para quem
+  // efetivamente assina em nome dele.
+  const [rogoDocumentSide, setRogoDocumentSide] = useState<'FRENTE' | 'VERSO'>('FRENTE');
+  const [rogoDocumentFrontImage, setRogoDocumentFrontImage] = useState<string | null>(null);
+  const [rogoDocumentBackImage, setRogoDocumentBackImage] = useState<string | null>(null);
 
   // Selfies do Cliente Titular
   const [selfieImages, setSelfieImages] = useState<Record<SelfieKey, string | null>>({ center: null, left: null, right: null });
@@ -457,6 +464,19 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
   };
 
+  // Mesma lógica do documento do cliente titular, mas para o Assinante a Rogo -
+  // ao concluir frente/verso, segue para as selfies do acompanhante.
+  const handleRogoDocumentConfirm = (result: CaptureResult) => {
+    if (rogoDocumentSide === 'FRENTE') {
+      setRogoDocumentFrontImage(result.dataUrl);
+      setRogoDocumentSide('VERSO');
+    } else {
+      setRogoDocumentBackImage(result.dataUrl);
+      setStep('ROGO_SELFIE');
+      startSelfieCamera(undefined, false, 'ROGO');
+    }
+  };
+
   const initFaceMesh = async () => {
     if (faceMeshRef.current) return faceMeshRef.current;
     try {
@@ -613,8 +633,14 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     try {
-      canvas.width = 560;
-      canvas.height = 520;
+      // A moldura na tela é mais larga (proporção ~4:3 / 3:4) do que era o
+      // canvas de captura (560x520, quase quadrado). Isso fazia o recorte
+      // horizontal do vídeo (feito abaixo, mantendo a altura e cortando as
+      // laterais) descartar boa parte do enquadramento que a pessoa via ao
+      // vivo, resultando numa foto final "mais de perto" do que a prévia.
+      // Usar 4:3 aqui mantém bem mais do enquadramento original.
+      canvas.width = 640;
+      canvas.height = 480;
       const ctx = canvas.getContext('2d');
       if (ctx) {
         const sourceWidth = video.videoWidth;
@@ -887,6 +913,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           selfieCenterImage: rogoCenter,
           selfieLeftImage: rogoLeft,
           selfieRightImage: rogoRight,
+          documentFrontImage: rogoDocumentFrontImage,
+          documentBackImage: rogoDocumentBackImage,
           signatureType: signatureMode,
           signatureImage,
           signedConsentText: `Assino a rogo pelo cliente ${signer?.name}, autorizando expressamente a assinatura deste documento.`,
@@ -1264,12 +1292,54 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   return;
                 }
                 setError('');
-                setStep('ROGO_SELFIE');
-                startSelfieCamera(undefined, false, 'ROGO');
+                setRogoDocumentSide('FRENTE');
+                setStep('ROGO_DOCUMENT');
               }}
               className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
             >
               Iniciar Fotos do Assinante a Rogo <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+            </button>
+          </div>
+        )}
+
+        {/* ETAPA ROGO 1.5: Documento de Identificação do Assinante a Rogo (evidência complementar) */}
+        {step === 'ROGO_DOCUMENT' && (
+          <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
+            <div className="text-center space-y-1">
+              <div className="w-10 h-10 bg-blue-50 border border-blue-200 text-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
+                <Camera className="w-5 h-5" />
+              </div>
+              <h2 className="font-heading text-base font-extrabold text-[#071B3A]">
+                🪪 Documento de Identificação do Assinante a Rogo ({rogoDocumentSide === 'FRENTE' ? 'Frente' : 'Verso'})
+              </h2>
+              <p className="text-xs text-slate-500 font-medium leading-snug">
+                Fotografe o RG ou a CNH de {rogoName || 'quem assina a rogo'} como evidência complementar. Essa etapa não impede a assinatura.
+              </p>
+            </div>
+
+            <DocumentCapture
+              key={`rogo-${rogoDocumentSide}`}
+              side={rogoDocumentSide}
+              title={rogoDocumentSide === 'FRENTE' ? 'Frente do documento' : 'Verso do documento'}
+              helperText="Posicione o documento dentro da moldura, com boa iluminação."
+              onConfirm={handleRogoDocumentConfirm}
+              onEvent={(code) => recordEvidence(code)}
+              autoStart
+            />
+
+            <button
+              type="button"
+              onClick={() => {
+                if (rogoDocumentSide === 'FRENTE') {
+                  setRogoDocumentSide('VERSO');
+                } else {
+                  setStep('ROGO_SELFIE');
+                  startSelfieCamera(undefined, false, 'ROGO');
+                }
+              }}
+              className="w-full py-3 text-slate-500 hover:text-slate-700 font-bold text-xs underline underline-offset-2 transition-colors"
+            >
+              Pular esta etapa por enquanto
             </button>
           </div>
         )}
