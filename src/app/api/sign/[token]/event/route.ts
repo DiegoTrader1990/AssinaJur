@@ -6,6 +6,17 @@ export const dynamic = 'force-dynamic';
 const EVENT_DESCRIPTIONS: Record<string, string> = {
   DOCUMENT_VIEWED: 'Documento aberto pelo signatário para leitura.',
   CAMERA_PERMITTED: 'Permissão de câmera concedida pelo signatário.',
+  // Etapa de foto do documento de identificação (RG/CNH), que acontece antes da
+  // prova de presença. Esses códigos já eram emitidos pelo componente de captura
+  // (DocumentCapture), mas por não estarem nesta lista o registro era rejeitado
+  // silenciosamente e nunca aparecia na trilha do certificado.
+  CAMERA_FRONT_OPENED: 'Câmera aberta para fotografar a frente do documento.',
+  FRONT_CAPTURED: 'Foto da frente do documento de identificação capturada.',
+  FRONT_CONTINUED_UNVALIDATED: 'Foto da frente do documento aceita mesmo sem validação automática completa.',
+  CAMERA_BACK_OPENED: 'Câmera aberta para fotografar o verso do documento.',
+  BACK_CAPTURED: 'Foto do verso do documento de identificação capturada.',
+  BACK_CONTINUED_UNVALIDATED: 'Foto do verso do documento aceita mesmo sem validação automática completa.',
+  DOCUMENT_COMPLETED: 'Captura do documento de identificação concluída.',
   LIVENESS_STARTED: 'Prova de presença ao vivo iniciada pelo signatário.',
   SELFIE_CENTER_VALIDATED: 'Registro facial frontal capturado durante a prova de presença.',
   SELFIE_LEFT_VALIDATED: 'Registro facial de perfil esquerdo capturado durante a prova de presença.',
