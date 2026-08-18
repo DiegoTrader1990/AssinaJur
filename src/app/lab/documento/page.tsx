@@ -27,10 +27,11 @@ import {
   Download,
 } from 'lucide-react';
 import DocumentCapture, { type CaptureResult } from '@/components/lab/DocumentCapture';
+import SelfieCaptureLab, { type SelfieCaptureResult } from '@/components/lab/SelfieCaptureLab';
 import { formatBrasiliaDateTime, formatBrasiliaTimeOnly } from '@/lib/dateUtils';
 import { buildLabReportPdf, nomeArquivoRelatorio } from '@/lib/lab/labReport';
 
-type Step = 'INTRO' | 'FRONT' | 'BACK' | 'RESULT';
+type Step = 'INTRO' | 'FRONT' | 'BACK' | 'SELFIE' | 'RESULT';
 
 /** Sem leitura automática, o tipo exato não altera nada no processamento. */
 const TIPO_DOCUMENTO = 'Documento com foto (RG ou CNH)';
@@ -40,7 +41,7 @@ const TIPO_DOCUMENTO = 'Documento com foto (RG ou CNH)';
  * mesmo com a versão nova ou com uma cópia em cache. Incrementar a cada
  * alteração publicada no laboratório.
  */
-const LAB_VERSION = 'v5 — recorte na moldura + câmera em tela cheia';
+const LAB_VERSION = 'v6 — sequência documento → foto de perfil, pra validar antes do fluxo real';
 
 interface LabEvent {
   code: string;
@@ -73,6 +74,7 @@ export default function DocumentLabPage() {
 
   const [front, setFront] = useState<CaptureResult | null>(null);
   const [back, setBack] = useState<CaptureResult | null>(null);
+  const [selfie, setSelfie] = useState<SelfieCaptureResult | null>(null);
 
   const [events, setEvents] = useState<LabEvent[]>([]);
   const [zoomImage, setZoomImage] = useState<{ src: string; label: string } | null>(null);
@@ -113,7 +115,16 @@ export default function DocumentLabPage() {
   const handleBackConfirmed = useCallback(
     (result: CaptureResult) => {
       setBack(result);
-      pushEvent('TEST_COMPLETED', 'Captura concluída');
+      pushEvent('DOCUMENT_CAPTURED', 'Documento capturado - avançando para foto de perfil');
+      setStep('SELFIE');
+    },
+    [pushEvent]
+  );
+
+  const handleSelfieConfirmed = useCallback(
+    (result: SelfieCaptureResult) => {
+      setSelfie(result);
+      pushEvent('TEST_COMPLETED', 'Sequência documento + perfil concluída');
       setStep('RESULT');
     },
     [pushEvent]
@@ -195,6 +206,7 @@ export default function DocumentLabPage() {
     setStep('INTRO');
     setFront(null);
     setBack(null);
+    setSelfie(null);
     setZoomImage(null);
     setErroPdf('');
     setEvents([
@@ -226,8 +238,9 @@ export default function DocumentLabPage() {
               Confirme seu documento
             </h1>
             <p className="text-sm leading-6 text-slate-500">
-              Você vai fotografar um documento de identificação com foto — RG ou CNH. São duas
-              fotos: primeiro a frente, depois o verso. Leva menos de um minuto.
+              Você vai fotografar um documento de identificação com foto — RG ou CNH (frente e
+              verso) — e depois uma foto do seu rosto. É essa sequência, documento e depois
+              perfil, que dá mais força de prova à assinatura. Leva menos de um minuto.
             </p>
           </div>
 
@@ -287,7 +300,10 @@ export default function DocumentLabPage() {
         />
       )}
 
-      {/* ETAPA 4 — DIAGNÓSTICO */}
+      {/* ETAPA 4 — FOTO DE PERFIL (depois do documento, na mesma sessão) */}
+      {step === 'SELFIE' && <SelfieCaptureLab onConfirm={handleSelfieConfirmed} onEvent={pushEvent} />}
+
+      {/* ETAPA 5 — DIAGNÓSTICO */}
       {step === 'RESULT' && (
         <section className="space-y-4">
           <div className="space-y-1">
@@ -336,6 +352,7 @@ export default function DocumentLabPage() {
               <Row label="Tipo de documento" value={TIPO_DOCUMENTO} />
               <Row label="Frente do documento" value={front ? '✓ capturada' : '— não capturada'} />
               <Row label="Verso do documento" value={back ? '✓ capturado' : '— não capturado'} />
+              <Row label="Foto de perfil" value={selfie ? '✓ capturada' : '— não capturada'} />
               <Row label="Origem" value="câmera do dispositivo" />
               <Row label="Qualidade" value={qualidadeGeral} />
               <Row
@@ -396,6 +413,35 @@ export default function DocumentLabPage() {
                   )}
                 </div>
               ))}
+
+              <div className="space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  PERFIL
+                </span>
+                {selfie ? (
+                  <button
+                    type="button"
+                    onClick={() => setZoomImage({ src: selfie.dataUrl, label: 'PERFIL' })}
+                    className="block w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-900"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={selfie.dataUrl}
+                      alt="Foto de perfil"
+                      className="block h-auto w-full object-contain"
+                    />
+                  </button>
+                ) : (
+                  <div className="flex h-24 items-center justify-center rounded-xl border border-dashed border-slate-200 text-[11px] text-slate-400">
+                    não capturada
+                  </div>
+                )}
+                {selfie && (
+                  <p className="text-[10px] leading-tight text-slate-400">
+                    {selfie.width}×{selfie.height}px
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
