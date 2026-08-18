@@ -100,10 +100,26 @@ function emphasizeDocumentNames(html: string, variables: VariableValues): string
 }
 
 function applyClientGenderToQualification(html: string, variables: VariableValues): string {
-  const gender = String(variables.cliente_genero || '').toUpperCase();
-  if (gender !== 'MASCULINO' && gender !== 'FEMININO') return html;
-  const feminine = gender === 'FEMININO';
+  const gender = String(variables.cliente_genero || '').trim().toUpperCase();
+  // Aceita também cadastros antigos que possam ter vindo como M/F ou por extenso.
+  const feminine = ['FEMININO', 'F', 'FEMININA', 'MULHER'].includes(gender);
+  const masculine = ['MASCULINO', 'M', 'MASCULINA', 'HOMEM'].includes(gender);
+  if (!feminine && !masculine) return html;
   const replacements: Array<[RegExp, string]> = [
+    // Alguns modelos antigos foram salvos já no feminino ("Brasileira") em
+    // vez de "brasileiro(a)". Normalizamos ambos os formatos pelo sexo do
+    // cliente selecionado, sempre dentro da qualificação dele.
+    [/brasileir[ao]\b/gi, feminine ? 'brasileira' : 'brasileiro'],
+    [/solteir[oa]\b/gi, feminine ? 'solteira' : 'solteiro'],
+    [/casad[oa]\b/gi, feminine ? 'casada' : 'casado'],
+    [/divorciad[oa]\b/gi, feminine ? 'divorciada' : 'divorciado'],
+    [/viúv[oa]\b/gi, feminine ? 'viúva' : 'viúvo'],
+    [/portador[ao]\b/gi, feminine ? 'portadora' : 'portador'],
+    [/inscrit[oa]\b/gi, feminine ? 'inscrita' : 'inscrito'],
+    [/nascid[oa]\b/gi, feminine ? 'nascida' : 'nascido'],
+    [/domiciliad[oa]\b/gi, feminine ? 'domiciliada' : 'domiciliado'],
+    [/denominad[oa]\b/gi, feminine ? 'denominada' : 'denominado'],
+    [/representad[oa]\b/gi, feminine ? 'representada' : 'representado'],
     [/brasileiro\(a\)/gi, feminine ? 'brasileira' : 'brasileiro'],
     [/solteiro\(a\)/gi, feminine ? 'solteira' : 'solteiro'],
     [/casado\(a\)/gi, feminine ? 'casada' : 'casado'],
