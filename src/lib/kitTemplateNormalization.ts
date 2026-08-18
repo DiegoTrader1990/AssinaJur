@@ -5,6 +5,16 @@ export function formatCpfCnpj(value: string | null | undefined): string {
   return String(value || '');
 }
 
+// Formata telefones salvos apenas com dígitos (ex: representante legal,
+// assinante a rogo) para o padrão (00) 00000-0000 / (00) 0000-0000 usado nos
+// documentos gerados. Valores já formatados ou incompletos são devolvidos como vieram.
+export function formatPhone(value: string | null | undefined): string {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.length === 11) return digits.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+  if (digits.length === 10) return digits.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+  return String(value || '');
+}
+
 export function formatBirthDate(value: string | Date | null | undefined): string {
   if (!value) return '';
   const raw = value instanceof Date ? value.toISOString().slice(0, 10) : String(value).trim();
@@ -135,15 +145,7 @@ export function ensureClientQualificationTokens(contentHtml: string, title: stri
   const hasSignatureLineBeforeRole = roleIndex !== undefined && blocks
     .slice(Math.max(0, roleIndex - 3), roleIndex)
     .some((block) => /^_{5,}/.test(textOf(block)));
-  const nameBlockBeforeRole = roleIndex !== undefined && blocks[roleIndex - 1]
-    ? textOf(blocks[roleIndex - 1])
-    : '';
-  // Alguns modelos não usam a linha sublinhada: deixam apenas "NOME" e,
-  // abaixo, "Outorgante/Contratante". Esse também é um rodapé de assinatura
-  // válido e precisa ser dinâmico, sem manter a cliente anterior.
-  const hasStandaloneNameBeforeRole = /^{{\s*cliente_nome\s*}}$/i.test(nameBlockBeforeRole)
-    || /^[A-ZÀ-Ý][A-ZÀ-Ý\s.'’\-]{4,}$/i.test(nameBlockBeforeRole);
-  if (roleIndex !== undefined && roleIndex >= Math.max(1, blocks.length - 10) && (hasSignatureLineBeforeRole || hasStandaloneNameBeforeRole)) {
+  if (roleIndex !== undefined && roleIndex >= Math.max(1, blocks.length - 10) && hasSignatureLineBeforeRole) {
     if (blocks[roleIndex - 1]) replaceBlock(blocks[roleIndex - 1], '{{cliente_nome}}');
     const dateBlock = blocks.slice(0, Math.max(0, roleIndex - 1)).reverse().find((block) => /\d{1,2}\s+de\s+/i.test(textOf(block)) || /\d{1,2}[\/.\-]\d{2,4}/.test(textOf(block)));
     if (dateBlock) replaceBlock(dateBlock, '{{cidade}}, {{data_atual}}.');

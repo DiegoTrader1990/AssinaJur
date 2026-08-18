@@ -92,10 +92,6 @@ export default function DispatchKitPage() {
 
   const [showReviewStep, setShowReviewStep] = useState(false);
   const [customContents, setCustomContents] = useState<Record<string, string>>({});
-  // Cada minuta recebe os dados do cliente uma única vez ao ser aberta. Depois
-  // disso, o conteúdo passa a ser uma cópia de trabalho do envio e não pode
-  // ser reprocessado a cada tecla digitada pelo advogado.
-  const preparedReviewContentsRef = useRef<Set<string>>(new Set());
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [reviewItem, setReviewItem] = useState<LegalKit['items'][number] | null>(null);
   const [reviewClientData, setReviewClientData] = useState<Record<string, string>>({});
@@ -237,7 +233,6 @@ export default function DispatchKitPage() {
     setReviewItem(null);
     setReviewClientData({});
     setCustomContents({});
-    preparedReviewContentsRef.current.clear();
     setStampOverrides({});
     setAdjustingStamp(false);
     if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl);
@@ -285,22 +280,16 @@ export default function DispatchKitPage() {
         const oab = String(member.oabNumber || '').trim();
         return `${member.name}, ${role} ${/\bOAB\b/i.test(oab) ? `na ${oab}` : oab ? `na OAB/${officeState} sob o nº ${oab}` : 'na Ordem dos Advogados do Brasil'}`;
       }).join(' e ');
-      const clientGender = String(client.gender || '').trim().toUpperCase();
-      const clientIsFemale = clientGender === 'FEMININO';
-      const clientIsMale = clientGender === 'MASCULINO';
-      const clientNationality = (!client.nationality || /^brasileir[ao]$/i.test(client.nationality))
-        ? clientIsFemale ? 'Brasileira' : clientIsMale ? 'Brasileiro' : 'Brasileira'
-        : client.nationality;
       setReviewClientData({
-        cliente_nome: client.name || '', cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '—', cliente_nacionalidade: clientNationality,
-        cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—', cliente_nascimento_qualificacao: client.birthDate ? `, ${clientIsFemale ? 'nascida' : clientIsMale ? 'nascido' : 'nascido(a)'} em ${formatBirthDate(client.birthDate)}` : '', cliente_endereco: [client.address, client.number, client.complement, client.neighborhood, [client.city, client.state].filter(Boolean).join('/'), client.cep ? `CEP ${client.cep}` : ''].filter(Boolean).join(', ') || '—', cidade: [client.city, client.state].filter(Boolean).join('/') || '—',
+        cliente_nome: client.name || '', cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '—', cliente_nacionalidade: client.nationality || 'Brasileira',
+        cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—', cliente_nascimento_qualificacao: client.birthDate ? `, nascido(a) em ${formatBirthDate(client.birthDate)}` : '', cliente_endereco: [client.address, client.number, client.complement, client.neighborhood, [client.city, client.state].filter(Boolean).join('/'), client.cep ? `CEP ${client.cep}` : ''].filter(Boolean).join(', ') || '—', cidade: [client.city, client.state].filter(Boolean).join('/') || '—',
         advogado_nome: lawyer.name || 'Advogado responsável', advogado_oab: lawyer.oabNumber || '—', escritorio_nome: officePayload.office?.tradeName || officePayload.office?.name || '—',
         patronos_qualificacao_conjunta: patronos ? `${patronos}, com escritório profissional na ${officeAddress}` : 'Advogado responsável',
         patronos_nomes: activeLawyers.map((member: any) => member.name).join('|'),
-        cliente_genero: clientGender,
-        representante_legal: client.legalRepresentative || '', representante_cpf: client.representativeCpf || '', representante_rg: client.representativeRg || '', representante_telefone: client.representativePhone || '',
-        representante_qualificacao: [client.representativeRole, client.representativeCpf ? `CPF nº ${client.representativeCpf}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${client.representativePhone}` : ''].filter(Boolean).join(', '),
-        cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${[client.representativeRole, client.representativeCpf ? `CPF nº ${client.representativeCpf}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${client.representativePhone}` : ''].filter(Boolean).join(', ')}` : '',
+        cliente_genero: client.gender || '',
+        representante_legal: client.legalRepresentative || '', representante_cpf: formatCpfCnpj(client.representativeCpf) || '', representante_rg: client.representativeRg || '', representante_telefone: maskPhone(client.representativePhone || '') || '',
+        representante_qualificacao: [client.representativeRole, client.representativeCpf ? `CPF nº ${formatCpfCnpj(client.representativeCpf)}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${maskPhone(client.representativePhone)}` : ''].filter(Boolean).join(', '),
+        cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${[client.representativeRole, client.representativeCpf ? `CPF nº ${formatCpfCnpj(client.representativeCpf)}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${maskPhone(client.representativePhone)}` : ''].filter(Boolean).join(', ')}` : '',
         data_atual: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date()),
       });
     } catch (reviewError: any) {
@@ -308,40 +297,22 @@ export default function DispatchKitPage() {
       setError(reviewError?.message || 'Não foi possível aplicar os dados da cliente à revisão.');
       return;
     }
-    preparedReviewContentsRef.current.clear();
     setCustomContents(contents);
     setShowReviewStep(true);
     setReviewItem(null);
   };
 
-  const renderForReview = (html: string) => {
-    const values: Record<string, string> = { ...variables, ...reviewClientData };
-    const rendered = Object.entries(values).reduce(
-      (result, [key, value]) => result.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), String(value || '—')),
-      html,
-    ).replace(/{{\s*[a-zA-Z0-9_]+\s*}}/g, '—');
-    const gender = String(values.cliente_genero || '').trim().toUpperCase();
-    if (!['MASCULINO', 'FEMININO'].includes(gender)) return rendered;
-    const feminine = gender === 'FEMININO';
-    const replacements: Array<[RegExp, string]> = [
-      [/brasileir[ao]\b/gi, feminine ? 'brasileira' : 'brasileiro'], [/solteiro\(a\)|solteir[oa]\b/gi, feminine ? 'solteira' : 'solteiro'],
-      [/portador\(a\)|portador[ao]\b/gi, feminine ? 'portadora' : 'portador'], [/inscrito\(a\)|inscrit[oa]\b/gi, feminine ? 'inscrita' : 'inscrito'],
-      [/nascido\(a\)|nascid[oa]\b/gi, feminine ? 'nascida' : 'nascido'], [/domiciliado\(a\)|domiciliad[oa]\b/gi, feminine ? 'domiciliada' : 'domiciliado'],
-    ];
-    const clientName = String(values.cliente_nome || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return rendered.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, _tag, _attrs, inner) =>
-      clientName && new RegExp(clientName, 'i').test(String(inner).replace(/<[^>]+>/g, ' '))
-        ? replacements.reduce((value, [pattern, replacement]) => value.replace(pattern, replacement), block)
-        : block,
-    );
-  };
+  const renderForReview = (html: string) => Object.entries({ ...variables, ...reviewClientData }).reduce(
+    (result, [key, value]) => result.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), String(value || '—')),
+    html,
+  ).replace(/{{\s*[a-zA-Z0-9_]+\s*}}/g, '—');
 
-  const renderEditableReview = (html: string, templateTitle: string) => {
+  const renderEditableReview = (html: string) => {
     let rendered = removeStandaloneClientNameBeforeQualification(
-      renderForReview(ensureClientQualificationTokens(html, templateTitle)),
+      renderForReview(ensureClientQualificationTokens(html, reviewItem?.template.title || '')),
       reviewClientData.cliente_nome || '',
     );
-    if (/(procura[cç][aã]o|contrato)/i.test(templateTitle)) {
+    if (/(procura[cç][aã]o|contrato)/i.test(reviewItem?.template.title || '')) {
       let replaced = false;
       rendered = rendered.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
         const text = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
@@ -353,8 +324,8 @@ export default function DispatchKitPage() {
       if (!replaced) rendered = rendered.replace(/(OUTORGADOS?|CONTRATADOS?)\s*:[^\n<]*/i, (_match, label) => `${label}: ${reviewClientData.patronos_qualificacao_conjunta || '—'}.`);
     }
 
-    if (reviewClientData.cliente_representacao && /(procura[cç][aã]o|contrato|declara[cç][aã]o)/i.test(templateTitle)) {
-      const label = /contrato/i.test(templateTitle) ? 'CONTRATANTE' : /procura/i.test(templateTitle) ? 'OUTORGANTE' : '';
+    if (reviewClientData.cliente_representacao && /(procura[cç][aã]o|contrato|declara[cç][aã]o)/i.test(reviewItem?.template.title || '')) {
+      const label = /contrato/i.test(reviewItem?.template.title || '') ? 'CONTRATANTE' : /procura/i.test(reviewItem?.template.title || '') ? 'OUTORGANTE' : '';
       let included = false;
       rendered = rendered.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
         const text = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
@@ -363,15 +334,6 @@ export default function DispatchKitPage() {
         included = true;
         return `<${tag}${attributes}>${String(innerHtml).replace(/\s*\.?\s*$/, '')}, ${reviewClientData.cliente_representacao}.</${tag}>`;
       });
-      if (!included) {
-        let inserted = false;
-        rendered = rendered.replace(/{{\s*cliente_endereco\s*}}/i, (token) => {
-          if (inserted) return token;
-          inserted = true;
-          return `${token}, ${reviewClientData.cliente_representacao}`;
-        });
-        if (!inserted) rendered += `<p>${reviewClientData.cliente_representacao}.</p>`;
-      }
     }
 
     // O PDF destaca automaticamente os nomes envolvidos; a edição deve mostrar o mesmo resultado.
@@ -398,11 +360,11 @@ export default function DispatchKitPage() {
     return rendered;
   };
 
-  const generateReviewPdf = async (item: LegalKit['items'][number], contentOverride?: string) => {
+  const generateReviewPdf = async (item: LegalKit['items'][number]) => {
     setLoadingReviewPdf(true);
     setReviewPdfUrl(null);
     try {
-      const response = await fetch('/api/kits/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: selectedClientId, title: item.template.title, contentHtml: contentOverride ?? customContents[item.template.id] ?? item.template.contentHtml, customVariables: variables }) });
+      const response = await fetch('/api/kits/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: selectedClientId, title: item.template.title, contentHtml: customContents[item.template.id] || item.template.contentHtml, customVariables: variables }) });
       if (!response.ok) throw new Error();
       const url = URL.createObjectURL(await response.blob());
       if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl);
@@ -412,18 +374,12 @@ export default function DispatchKitPage() {
   };
 
   const openReviewItem = (item: LegalKit['items'][number]) => {
-    let contentForPreview = customContents[item.template.id] || item.template.contentHtml;
-    if (!preparedReviewContentsRef.current.has(item.template.id)) {
-      contentForPreview = renderEditableReview(contentForPreview, item.template.title);
-      preparedReviewContentsRef.current.add(item.template.id);
-      setCustomContents((current) => ({ ...current, [item.template.id]: contentForPreview }));
-    }
     setReviewItem(item);
     setEditingReview(false);
     setAdjustingStamp(false);
     const existingOverride = stampOverrides[item.template.id];
     setStampDraft(existingOverride || { page: 1, x: 0.31, y: 0.62, width: 0.38, height: 0.085 });
-    void generateReviewPdf(item, contentForPreview);
+    void generateReviewPdf(item);
   };
 
   const handleSaveStampPosition = () => {
@@ -1064,7 +1020,7 @@ export default function DispatchKitPage() {
               {loadingReviewPdf ? (
                 <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-600"><Loader2 className="w-8 h-8 animate-spin text-gold-500" /><p className="text-sm font-semibold">Montando a prévia final…</p></div>
               ) : editingReview ? (
-                <div className="mx-auto max-w-4xl rounded-xl border border-slate-200 bg-white p-4"><DocumentRichEditor key={reviewItem.id} value={customContents[reviewItem.template.id] ?? reviewItem.template.contentHtml} onChange={(html) => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: html }))} showTags={false} showAiCopilot={false} placeholder="Redija ou ajuste o documento..." /></div>
+                <div className="mx-auto max-w-4xl rounded-xl border border-slate-200 bg-white p-4"><DocumentRichEditor key={reviewItem.id} value={customContents[reviewItem.template.id] ?? renderEditableReview(reviewItem.template.contentHtml)} onChange={(html) => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: html }))} showTags={false} showAiCopilot={false} placeholder="Redija ou ajuste o documento..." /></div>
               ) : adjustingStamp ? (
                 <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50/70 via-white to-amber-50/50 p-4 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1175,11 +1131,7 @@ export default function DispatchKitPage() {
                 </>
               ) : editingReview ? (
                 <>
-                  <button type="button" onClick={() => {
-                    const restored = renderEditableReview(reviewItem.template.contentHtml, reviewItem.template.title);
-                    preparedReviewContentsRef.current.add(reviewItem.template.id);
-                    setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: restored }));
-                  }} className="text-xs font-bold text-slate-600">Restaurar modelo</button>
+                  <button type="button" onClick={() => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: renderEditableReview(reviewItem.template.contentHtml) }))} className="text-xs font-bold text-slate-600">Restaurar modelo</button>
                   <div className="flex gap-2"><button type="button" onClick={() => void generateReviewPdf(reviewItem)} className="px-4 py-2.5 border border-[#071B3A] text-[#071B3A] rounded-lg text-xs font-bold">Atualizar prévia final</button><button type="button" onClick={() => { if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl); setReviewPdfUrl(null); setReviewItem(null); }} className="px-5 py-2.5 bg-[#071B3A] text-white rounded-lg text-xs font-bold">Concluir revisão</button></div>
                 </>
               ) : (

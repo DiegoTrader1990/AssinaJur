@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { compileTemplatePreviewToPdf } from '@/lib/templateCompiler';
 import { getDocumentLetterheadBuffer } from '@/lib/documentLetterhead';
-import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
+import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,21 +30,13 @@ function ensureClientRepresentativeQualification(contentHtml: string, title: str
   if (!hasRepresentative || (!isPowerOfAttorney && !isContract && !isDeclaration) || /{{\s*cliente_representacao\s*}}/i.test(contentHtml)) return contentHtml;
   const label = isContract ? 'CONTRATANTE' : isPowerOfAttorney ? 'OUTORGANTE' : '';
   let included = false;
-  const withBlockQualification = contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
+  return contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
     const visibleText = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
     const matchesClientQualification = label ? new RegExp(`^${label}\\s*:`, 'i').test(visibleText) : /{{\s*cliente_nome\s*}}/i.test(innerHtml);
     if (included || !matchesClientQualification) return block;
     included = true;
     return `<${tag}${attributes}>${String(innerHtml).replace(/\s*\.?\s*$/, '')}, {{cliente_representacao}}.</${tag}>`;
   });
-  if (included) return withBlockQualification;
-  let addedByToken = false;
-  const withTokenQualification = withBlockQualification.replace(/{{\s*cliente_endereco\s*}}/i, (token) => {
-    if (addedByToken) return token;
-    addedByToken = true;
-    return `${token}, {{cliente_representacao}}`;
-  });
-  return addedByToken ? withTokenQualification : `${withBlockQualification}<p>{{cliente_representacao}}.</p>`;
 }
 
 export async function POST(req: Request) {
@@ -59,15 +51,6 @@ export async function POST(req: Request) {
     ]);
     if (!client || !office) return NextResponse.json({ error: 'Cliente ou escritório não encontrado.' }, { status: 404 });
     const letterheadBuffer = await getDocumentLetterheadBuffer(office);
-    const clientGender = String(client.gender || '').trim().toUpperCase();
-    const clientIsFemale = clientGender === 'FEMININO';
-    const clientIsMale = clientGender === 'MASCULINO';
-    const clientNationality = (!client.nationality || /^brasileir[ao]$/i.test(client.nationality))
-      ? clientIsFemale ? 'Brasileira' : clientIsMale ? 'Brasileiro' : 'Brasileira'
-      : client.nationality;
-    const clientBirthQualification = client.birthDate
-      ? `, ${clientIsFemale ? 'nascida' : clientIsMale ? 'nascido' : 'nascido(a)'} em ${formatBirthDate(client.birthDate)}`
-      : '';
     const officeState = String((office as any).address || '').match(/(?:\/|,|\s)(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b/i)?.[1]?.toUpperCase() || 'BA';
     const fullAddress = String((office as any).address || '').trim() || 'endereço profissional informado na configuração';
     const orderedLawyers = [...activeLawyers].sort((left, right) => left.name === user.name ? -1 : right.name === user.name ? 1 : left.name.localeCompare(right.name, 'pt-BR'));
@@ -79,18 +62,18 @@ export async function POST(req: Request) {
     }).join(' e ') || 'Advogado responsável';
     const lawyer = orderedLawyers[0];
     const variables = {
-      ...(customVariables || {}),
-      representante_legal: client.legalRepresentative || '', representante_cpf: client.representativeCpf || '', representante_rg: client.representativeRg || '', representante_telefone: client.representativePhone || '',
-      representante_qualificacao: [client.representativeRole, client.representativeCpf ? `CPF nº ${client.representativeCpf}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${client.representativePhone}` : ''].filter(Boolean).join(', '),
-      cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${[client.representativeRole, client.representativeCpf ? `CPF nº ${client.representativeCpf}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${client.representativePhone}` : ''].filter(Boolean).join(', ')}` : '',
-      cliente_nome: client.name, cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '—', cliente_nacionalidade: clientNationality, cliente_genero: clientGender,
+      representante_legal: client.legalRepresentative || '', representante_cpf: formatCpfCnpj(client.representativeCpf) || '', representante_rg: client.representativeRg || '', representante_telefone: formatPhone(client.representativePhone) || '',
+      representante_qualificacao: [client.representativeRole, client.representativeCpf ? `CPF nº ${formatCpfCnpj(client.representativeCpf)}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${formatPhone(client.representativePhone)}` : ''].filter(Boolean).join(', '),
+      cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${[client.representativeRole, client.representativeCpf ? `CPF nº ${formatCpfCnpj(client.representativeCpf)}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${formatPhone(client.representativePhone)}` : ''].filter(Boolean).join(', ')}` : '',
+      cliente_nome: client.name, cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '—', cliente_nacionalidade: client.nationality || 'Brasileira',
       cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—',
-      cliente_nascimento_qualificacao: clientBirthQualification,
+      cliente_nascimento_qualificacao: client.birthDate ? `, nascido(a) em ${formatBirthDate(client.birthDate)}` : '',
       cliente_endereco: [client.address, client.number, client.complement, client.neighborhood, [client.city, client.state].filter(Boolean).join('/'), client.cep ? `CEP ${client.cep}` : ''].filter(Boolean).join(', ') || '—',
       advogado_nome: lawyer?.name || 'Advogado responsável', advogado_oab: lawyer?.oabNumber || '—', escritorio_nome: office.tradeName || office.name,
       patronos_qualificacao_conjunta: `${patronosQualification}, com escritório profissional na ${fullAddress}`,
       patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),
       data_atual: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date()),
+      ...(customVariables || {}),
       cidade: [client.city, client.state].filter(Boolean).join('/') || '—',
     };
     const normalizedClientContent = removeStandaloneClientNameBeforeQualification(ensureClientQualificationTokens(contentHtml, title || ''), client.name);

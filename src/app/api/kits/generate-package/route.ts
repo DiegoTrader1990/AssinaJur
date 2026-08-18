@@ -5,7 +5,7 @@ import { logAuditEvent } from '@/lib/audit';
 import { compileTemplateToPdf } from '@/lib/templateCompiler';
 import { getDocumentLetterheadBuffer } from '@/lib/documentLetterhead';
 import { randomUUID } from 'crypto';
-import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
+import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,27 +88,13 @@ function ensureClientRepresentativeQualification(contentHtml: string, documentTy
   if (!hasRepresentative || (!isPowerOfAttorney && !isContract && !isDeclaration) || /{{\s*cliente_representacao\s*}}/i.test(contentHtml)) return contentHtml;
   const label = isPowerOfAttorney ? 'OUTORGANTE' : isContract ? 'CONTRATANTE' : '';
   let included = false;
-  const withBlockQualification = contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
+  return contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
     const visibleText = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
     const matchesClientQualification = label ? new RegExp(`^${label}\\s*:`, 'i').test(visibleText) : /{{\s*cliente_nome\s*}}/i.test(innerHtml);
     if (included || !matchesClientQualification) return block;
     included = true;
     return `<${tag}${attributes}>${String(innerHtml).replace(/\s*\.?\s*$/, '')}, {{cliente_representacao}}.</${tag}>`;
   });
-
-  if (included) return withBlockQualification;
-
-  // Alguns modelos antigos foram salvos com spans/linhas soltas, sem um
-  // parágrafo que comece pelo rótulo. Neles a representação ainda precisa
-  // constar: usamos o endereço, que integra a qualificação da parte, como
-  // âncora estável em vez de depender da estrutura visual do editor.
-  let addedByToken = false;
-  const withTokenQualification = withBlockQualification.replace(/{{\s*cliente_endereco\s*}}/i, (token) => {
-    if (addedByToken) return token;
-    addedByToken = true;
-    return `${token}, {{cliente_representacao}}`;
-  });
-  return addedByToken ? withTokenQualification : `${withBlockQualification}<p>{{cliente_representacao}}.</p>`;
 }
 
 export async function POST(req: Request) {
@@ -260,27 +246,14 @@ export async function POST(req: Request) {
 
     const mainLawyer = activeLawyers.find(l => l.name.toLowerCase().includes('diego')) || activeLawyers[0] || { name: user.name, oabNumber: 'OAB/BA 51.881' };
     const secondLawyer = activeLawyers.find(l => l.name.toLowerCase().includes('dominick')) || activeLawyers[1] || { name: 'Dra. Dominick Quinto Soares', oabNumber: 'OAB/BA 62.443' };
-    const clientGender = String(client.gender || '').trim().toUpperCase();
-    const clientIsFemale = clientGender === 'FEMININO';
-    const clientIsMale = clientGender === 'MASCULINO';
-    const clientNationality = (!client.nationality || /^brasileir[ao]$/i.test(client.nationality))
-      ? clientIsFemale ? 'Brasileira' : clientIsMale ? 'Brasileiro' : 'Brasileira'
-      : client.nationality;
-    const clientBirthQualification = client.birthDate
-      ? `, ${clientIsFemale ? 'nascida' : clientIsMale ? 'nascido' : 'nascido(a)'} em ${formatBirthDate(client.birthDate)}`
-      : '';
 
     // Montar mapa completo de variáveis para substituição automática
     const variableValues = {
-      // Valores livres (honorários, êxito e cláusulas adicionais) podem vir da
-      // tela de revisão. Os dados vinculados ao cliente abaixo sempre prevalecem
-      // para que um valor de uma revisão anterior jamais permaneça no novo kit.
-      ...(customVariables || {}),
       cliente_nome: client.name,
       cliente_cpf: formatCpfCnpj(client.cpfCnpj),
       cliente_rg: client.rg || '—',
-      cliente_nacionalidade: clientNationality,
-      cliente_genero: clientGender,
+      cliente_nacionalidade: client.nationality || 'Brasileira',
+      cliente_genero: client.gender || '',
       cliente_telefone: client.whatsapp || client.phone || '—',
       cliente_endereco: [
         client.address,
@@ -292,13 +265,13 @@ export async function POST(req: Request) {
       ].filter(Boolean).join(', ') || '—',
       cliente_estado_civil: client.maritalStatus || '—',
       cliente_profissao: client.profession || '—',
-      cliente_nascimento_qualificacao: clientBirthQualification,
+      cliente_nascimento_qualificacao: client.birthDate ? `, nascido(a) em ${formatBirthDate(client.birthDate)}` : '',
       representante_legal: client.legalRepresentative || '',
-      representante_cpf: client.representativeCpf || '',
+      representante_cpf: formatCpfCnpj(client.representativeCpf) || '',
       representante_rg: client.representativeRg || '',
-      representante_telefone: client.representativePhone || '',
-      representante_qualificacao: [client.representativeRole, client.representativeCpf ? `CPF nº ${client.representativeCpf}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${client.representativePhone}` : ''].filter(Boolean).join(', '),
-      cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${[client.representativeRole, client.representativeCpf ? `CPF nº ${client.representativeCpf}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${client.representativePhone}` : ''].filter(Boolean).join(', ')}` : '',
+      representante_telefone: formatPhone(client.representativePhone) || '',
+      representante_qualificacao: [client.representativeRole, client.representativeCpf ? `CPF nº ${formatCpfCnpj(client.representativeCpf)}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${formatPhone(client.representativePhone)}` : ''].filter(Boolean).join(', '),
+      cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${[client.representativeRole, client.representativeCpf ? `CPF nº ${formatCpfCnpj(client.representativeCpf)}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${formatPhone(client.representativePhone)}` : ''].filter(Boolean).join(', ')}` : '',
       advogado_nome: mainLawyer.name,
       advogado_oab: mainLawyer.oabNumber || 'OAB/BA 51.881',
       advogada_nome: secondLawyer.name,
@@ -311,6 +284,7 @@ export async function POST(req: Request) {
       escritorio_qualificacao: fullOfficeQualification,
       patronos_qualificacao_conjunta: jointPatronosQualification,
       patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),
+      ...(customVariables || {}),
       // A cidade é um dado do cliente selecionado; um valor antigo salvo no kit não pode sobrescrevê-la.
       cidade: [client.city, client.state].filter(Boolean).join('/') || 'Porto Seguro/BA',
     };
@@ -361,9 +335,6 @@ export async function POST(req: Request) {
         variables: variableValues,
         officeName: office.name,
         letterheadBuffer,
-        // O kit já usa o papel timbrado do escritório. O título técnico do
-        // sistema não deve ser impresso acima da minuta assinada.
-        showSystemHeader: false,
       });
 
       // Se o advogado ajustou manualmente a posição do selo para esta minuta
