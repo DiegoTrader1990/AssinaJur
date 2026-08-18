@@ -150,12 +150,35 @@ export function DocumentRichEditor({
 
   const executeCommand = (command: string, value: string | undefined = undefined) => {
     restoreEditorSelection();
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    // O comando nativo do navegador (document.execCommand) para negrito/itálico/
+    // fonte/tamanho às vezes reconstrói os nós de texto da seleção e, quando a
+    // seleção termina bem na borda de uma variável {{cliente_nome}}, {{cidade}}
+    // etc., pode apagar esse trecho junto - foi o que causava o rodapé de
+    // assinatura perder a variável ao aplicar formatação. Comparamos as
+    // variáveis antes/depois e desfazemos a formatação se alguma sumiu, em vez
+    // de deixar a perda passar silenciosamente.
+    const beforeHtml = editor.innerHTML;
+    const beforeTags = Array.from(new Set(beforeHtml.match(/{{[^}]+}}/g) || []));
+
     // Forçamos a marcação semântica <strong>, que também é entendida pelo gerador de PDF.
     if (command === 'bold') document.execCommand('styleWithCSS', false, 'false');
     document.execCommand(command, false, value);
-    if (editorRef.current) {
-      onChange(editorRef.current.innerHTML);
+
+    const afterHtml = editor.innerHTML;
+    const afterTags = Array.from(new Set(afterHtml.match(/{{[^}]+}}/g) || []));
+    const missingTags = beforeTags.filter((tag) => !afterTags.includes(tag));
+
+    if (missingTags.length > 0) {
+      editor.innerHTML = beforeHtml;
+      setAiWarning(`Formatação desfeita: apagaria a(s) variável(is) ${missingTags.join(', ')}. Selecione um trecho que não corte o {{...}} e tente novamente.`);
+      onChange(beforeHtml);
+      return;
     }
+
+    onChange(afterHtml);
   };
 
   const applyAlignment = (alignment: 'left' | 'center' | 'right' | 'justify') => {
@@ -164,6 +187,9 @@ export function DocumentRichEditor({
     const selection = window.getSelection();
     const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
     if (!editor || !range) return;
+
+    const beforeHtml = editor.innerHTML;
+    const beforeTags = Array.from(new Set(beforeHtml.match(/{{[^}]+}}/g) || []));
 
     const blocks = Array.from(editor.querySelectorAll<HTMLElement>('p, div, h1, h2, h3, li'))
       .filter((block) => range.intersectsNode(block));
@@ -177,7 +203,17 @@ export function DocumentRichEditor({
       if (block && editor.contains(block)) block.style.textAlign = alignment;
       else document.execCommand(({ left: 'justifyLeft', center: 'justifyCenter', right: 'justifyRight', justify: 'justifyFull' } as const)[alignment], false);
     }
-    onChange(editor.innerHTML);
+
+    const afterHtml = editor.innerHTML;
+    const afterTags = Array.from(new Set(afterHtml.match(/{{[^}]+}}/g) || []));
+    const missingTags = beforeTags.filter((tag) => !afterTags.includes(tag));
+    if (missingTags.length > 0) {
+      editor.innerHTML = beforeHtml;
+      setAiWarning(`Alinhamento desfeito: apagaria a(s) variável(is) ${missingTags.join(', ')}. Selecione um trecho que não corte o {{...}} e tente novamente.`);
+      onChange(beforeHtml);
+      return;
+    }
+    onChange(afterHtml);
   };
 
   const insertTag = (tag: string) => {
