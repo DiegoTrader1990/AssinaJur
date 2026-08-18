@@ -21,9 +21,16 @@ const showEditorPreview = (html: string, documentType: string, values: Record<st
       })
     : html;
   const withValues = Object.entries(samples).reduce((text, [key, value]) => text.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), value), withPatronos);
-  const names = [samples.cliente_nome, samples.advogado_nome, samples.escritorio_nome, ...(samples.patronos_nomes || '').split('|')]
-    .map((name) => name.trim()).filter((name) => name.length >= 3).sort((left, right) => right.length - left.length);
-  return names.reduce((text, name) => text.replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), (match) => `<strong>${match}</strong>`), withValues);
+  // Antes negritávamos os nomes de amostra aqui só para deixar a prévia mais
+  // bonita - mas isso quebrava o "{{cliente_nome}}" ao envolver o texto do
+  // valor de amostra com <strong>, tornando o trecho contínuo esperado por
+  // restoreEditorPreview() incompleto. Resultado: ao salvar, o nome de
+  // amostra ficava gravado como texto fixo no modelo, em vez de voltar a ser
+  // a variável {{cliente_nome}} - exatamente o "o código some ao salvar"
+  // relatado. O PDF final já negrita os nomes por conta própria (na geração
+  // real, via emphasizeDocumentNames), então esse negrito aqui era só
+  // cosmético e arriscado - removido.
+  return withValues;
 };
 const restoreEditorPreview = (html: string, values: Record<string, string>) => Object.entries({ ...SAMPLE_VALUES, ...values })
   .sort(([, left], [, right]) => right.length - left.length)
@@ -88,8 +95,27 @@ export default function TemplatesPage() {
     }
   };
 
+  // Rede de segurança: se por qualquer motivo um valor de amostra (ex.: o
+  // nome "MARIA APARECIDA DA SILVA" usado só para a prévia) ainda estiver
+  // gravado como texto fixo no conteúdo na hora de salvar - em vez de ter
+  // voltado a ser a variável {{...}} -, avisamos antes de gravar, para nunca
+  // salvar silenciosamente um modelo com dados de amostra fixos no lugar da
+  // variável dinâmica.
+  const findLeftoverSampleValues = (html: string, values: Record<string, string>) =>
+    Object.entries({ ...SAMPLE_VALUES, ...values })
+      .filter(([, value]) => value && value.trim().length >= 6)
+      .filter(([, value]) => html.includes(value))
+      .map(([key]) => key);
+
   const handleCreateTemplate = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const leftover = findLeftoverSampleValues(formData.contentHtml, sampleValues);
+    if (leftover.length > 0) {
+      setError(`Não foi possível salvar: o texto de amostra da prévia ficou gravado no lugar da(s) variável(is) ${leftover.join(', ')}. Volte ao trecho afetado, apague o texto fixo e reinsira a tag {{${leftover[0]}}} antes de salvar.`);
+      return;
+    }
+
     setSaving(true);
     setError('');
 

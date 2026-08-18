@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 import { compileTemplateToPdf } from '@/lib/templateCompiler';
-import { getFileBuffer } from '@/lib/storage';
+import { getDocumentLetterheadBuffer } from '@/lib/documentLetterhead';
 import { randomUUID } from 'crypto';
 import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
 
@@ -289,17 +289,9 @@ export async function POST(req: Request) {
       cidade: [client.city, client.state].filter(Boolean).join('/') || 'Porto Seguro/BA',
     };
 
-    // Carregar papel timbrado do escritório (se configurado)
-    let letterheadBuffer: Buffer | undefined;
-    if (office.letterheadFileId) {
-      const letterheadFile = await prisma.storageFile.findUnique({
-        where: { id: office.letterheadFileId },
-      });
-      if (letterheadFile) {
-        const buf = await getFileBuffer(office.id, letterheadFile.storageKey);
-        if (buf) letterheadBuffer = buf;
-      }
-    }
+    // Carregar papel timbrado dos documentos: o próprio do escritório (se
+    // configurado e selecionado) ou o modelo original do AssinaJur.
+    const letterheadBuffer = await getDocumentLetterheadBuffer(office);
 
     const createdDocuments: Array<{
       id: string;

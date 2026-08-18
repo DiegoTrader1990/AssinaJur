@@ -36,7 +36,12 @@ model Office {
   defaultFooter      String?
   clientEmailMessage String?
   address            String?
-  letterheadFileId   String?  // ID do StorageFile com o PDF do papel timbrado
+  letterheadFileId   String?  // ID do StorageFile com o papel timbrado PRÓPRIO do escritório (contrato/procuração)
+  // Escolha do papel timbrado usado nos CONTRATOS/PROCURAÇÕES (não é o do
+  // certificado de evidências, que é fixo e já tem a logo do AssinaJur).
+  // DEFAULT = modelo original do AssinaJur (public/certificado/papel-timbrado-documentos.jpg);
+  // CUSTOM = o arquivo próprio do escritório em letterheadFileId acima.
+  documentLetterheadMode String @default("DEFAULT")
   active             Boolean  @default(true)
   
   // Planos e Limites (Fase 5)
@@ -162,7 +167,7 @@ model ClientPendency {
   clientId      String?
   client        Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   description   String
-  priority      String    @default("NORMAL") // URGENTE | ALTA | NORMAL | BAIXA
+  priority      String    @default("NORMAL")
   dueDate       DateTime?
 
   createdById   String?
@@ -174,8 +179,6 @@ model ClientPendency {
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-
-  @@index([officeId, resolvedAt, dueDate])
 }
 
 // Arquivos em Armazenamento Seguro

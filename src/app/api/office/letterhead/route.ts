@@ -15,11 +15,13 @@ export async function GET() {
 
     const office = await prisma.office.findUnique({
       where: { id: user.officeId },
-      select: { letterheadFileId: true },
+      select: { letterheadFileId: true, documentLetterheadMode: true },
     });
 
+    const mode = office?.documentLetterheadMode || 'DEFAULT';
+
     if (!office?.letterheadFileId) {
-      return NextResponse.json({ hasLetterhead: false });
+      return NextResponse.json({ hasLetterhead: false, mode });
     }
 
     const storageFile = await prisma.storageFile.findUnique({
@@ -27,7 +29,7 @@ export async function GET() {
     });
 
     if (!storageFile) {
-      return NextResponse.json({ hasLetterhead: false });
+      return NextResponse.json({ hasLetterhead: false, mode });
     }
 
     const fileData = {
@@ -41,6 +43,7 @@ export async function GET() {
       hasLetterhead: true,
       file: fileData,
       letterhead: fileData,
+      mode,
     });
   } catch (error: any) {
     console.error('Erro ao buscar papel timbrado:', error);
@@ -112,9 +115,12 @@ export async function POST(req: Request) {
       mimeType: 'application/pdf',
     });
 
+    // Enviar um papel timbrado próprio já seleciona automaticamente o modo
+    // "meu próprio modelo" - não faria sentido enviar e continuar usando o
+    // modelo original do AssinaJur.
     await prisma.office.update({
       where: { id: user.officeId },
-      data: { letterheadFileId: storageRecord.id },
+      data: { letterheadFileId: storageRecord.id, documentLetterheadMode: 'CUSTOM' },
     });
 
     await logAuditEvent({
@@ -134,10 +140,47 @@ export async function POST(req: Request) {
       success: true,
       file: fileData,
       letterhead: fileData,
+      mode: 'CUSTOM',
     });
   } catch (error: any) {
     console.error('Erro ao enviar papel timbrado:', error);
     return NextResponse.json({ error: error?.message || 'Erro ao salvar papel timbrado.' }, { status: 500 });
+  }
+}
+
+// Alterna entre DEFAULT (modelo original do AssinaJur) e CUSTOM (o arquivo já
+// enviado, se houver). Não remove o arquivo enviado ao voltar para DEFAULT -
+// assim o escritório pode voltar para CUSTOM depois sem reenviar o PDF.
+export async function PUT(req: Request) {
+  try {
+    const user = await getSessionUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Nao autenticado.' }, { status: 401 });
+    }
+
+    const { mode } = await req.json();
+    if (mode !== 'DEFAULT' && mode !== 'CUSTOM') {
+      return NextResponse.json({ error: 'Modo inválido.' }, { status: 400 });
+    }
+
+    const office = await prisma.office.findUnique({
+      where: { id: user.officeId },
+      select: { letterheadFileId: true },
+    });
+
+    if (mode === 'CUSTOM' && !office?.letterheadFileId) {
+      return NextResponse.json({ error: 'Envie um PDF antes de selecionar "Meu próprio papel timbrado".' }, { status: 400 });
+    }
+
+    await prisma.office.update({
+      where: { id: user.officeId },
+      data: { documentLetterheadMode: mode },
+    });
+
+    return NextResponse.json({ success: true, mode });
+  } catch (error: any) {
+    console.error('Erro ao alterar modo do papel timbrado:', error);
+    return NextResponse.json({ error: error?.message || 'Erro ao alterar o papel timbrado.' }, { status: 500 });
   }
 }
 
@@ -160,7 +203,7 @@ export async function DELETE() {
     const oldFileId = office.letterheadFileId;
     await prisma.office.update({
       where: { id: user.officeId },
-      data: { letterheadFileId: null },
+      data: { letterheadFileId: null, documentLetterheadMode: 'DEFAULT' },
     });
 
     const storageFile = await prisma.storageFile.findUnique({

@@ -743,43 +743,16 @@ export default function DispatchKitPage() {
           </div>
         )}
 
-        {/* Ajuste de Variáveis */}
-        <div className="space-y-4 pt-2 border-t border-slate-100">
-          <span className="text-xs font-bold text-[#0B1D3D] uppercase tracking-wider block">
-            3. Ajustar Valores e Variáveis do Contrato
-          </span>
-
-          <div className="grid sm:grid-cols-2 gap-4 text-sm">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Valor dos Honorários</label>
-              <input
-                type="text"
-                value={variables.valor_honorarios}
-                onChange={(e) => setVariables({ ...variables, valor_honorarios: e.target.value })}
-                placeholder="R$ 3.000,00"
-                className="w-full p-2.5 border border-slate-300 rounded-xl text-slate-800 text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Percentual de Êxito</label>
-              <input
-                type="text"
-                value={variables.percentual_exito}
-                onChange={(e) => setVariables({ ...variables, percentual_exito: e.target.value })}
-                placeholder="30%"
-                className="w-full p-2.5 border border-slate-300 rounded-xl text-slate-800 text-sm"
-              />
-            </div>
-          </div>
-        </div>
+        {/* Valores e variáveis do contrato (honorários, percentual de êxito) usam os
+            padrões definidos no modelo. Quem quiser um valor diferente edita
+            diretamente o texto na etapa de revisão de cada minuta, mais abaixo. */}
 
         {/* Signatários Adicionais, Assinatura a Rogo e Testemunhas */}
         {selectedClientId && (
           <div className="space-y-4 pt-4 border-t border-slate-100">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-[#0B1D3D] uppercase tracking-wider block">
-                4. Assinatura a Rogo e Testemunhas (Opcional)
+                3. Assinatura a Rogo e Testemunhas (Opcional)
               </span>
               <button
                 type="button"
@@ -967,13 +940,13 @@ export default function DispatchKitPage() {
                 onClick={handleReviewStep}
                 className="w-full py-3 border-2 border-dashed border-slate-300 rounded-xl text-slate-600 font-bold hover:bg-slate-50 hover:border-slate-400 hover:text-slate-800 transition-all text-sm"
               >
-                5. Revisar Minutas e Posição do Selo (Opcional)
+                4. Revisar Minutas e Posição do Selo (Opcional)
               </button>
             ) : (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-[#0B1D3D] uppercase tracking-wider block">
-                    5. Revisar Minutas e Posição do Selo
+                    4. Revisar Minutas e Posição do Selo
                   </span>
                   <button
                     type="button"

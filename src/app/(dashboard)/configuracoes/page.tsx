@@ -39,6 +39,10 @@ export default function SettingsPage() {
 
   const [letterhead, setLetterhead] = useState<{id: string; originalName: string; sizeBytes: number} | null>(null);
   const [uploadingLetterhead, setUploadingLetterhead] = useState(false);
+  // Papel timbrado usado nos contratos/procurações: DEFAULT = modelo original
+  // do AssinaJur, CUSTOM = o PDF próprio enviado pelo escritório abaixo.
+  const [letterheadMode, setLetterheadMode] = useState<'DEFAULT' | 'CUSTOM'>('DEFAULT');
+  const [savingLetterheadMode, setSavingLetterheadMode] = useState(false);
 
   const [lawyers, setLawyers] = useState<LawyerMember[]>([]);
   const [showAddLawyerModal, setShowAddLawyerModal] = useState(false);
@@ -87,6 +91,9 @@ export default function SettingsPage() {
       .then((data) => {
         if (data.letterhead || data.file) {
           setLetterhead(data.letterhead || data.file);
+        }
+        if (data.mode === 'CUSTOM' || data.mode === 'DEFAULT') {
+          setLetterheadMode(data.mode);
         }
       })
       .catch((err) => console.error('Erro ao carregar papel timbrado:', err));
@@ -247,6 +254,8 @@ export default function SettingsPage() {
       if (data.letterhead || data.file) {
         setLetterhead(data.letterhead || data.file);
       }
+      // Enviar um papel timbrado próprio já seleciona automaticamente "meu próprio modelo".
+      setLetterheadMode('CUSTOM');
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -260,8 +269,32 @@ export default function SettingsPage() {
       const res = await fetch('/api/office/letterhead', { method: 'DELETE' });
       if (!res.ok) throw new Error('Erro ao remover papel timbrado');
       setLetterhead(null);
+      setLetterheadMode('DEFAULT');
     } catch (err: any) {
       alert(err.message);
+    }
+  };
+
+  const handleChangeLetterheadMode = async (mode: 'DEFAULT' | 'CUSTOM') => {
+    if (mode === letterheadMode) return;
+    if (mode === 'CUSTOM' && !letterhead) {
+      alert('Envie um PDF antes de selecionar "Meu próprio papel timbrado".');
+      return;
+    }
+    setSavingLetterheadMode(true);
+    try {
+      const res = await fetch('/api/office/letterhead', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao alterar o papel timbrado.');
+      setLetterheadMode(mode);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSavingLetterheadMode(false);
     }
   };
 
@@ -562,8 +595,39 @@ export default function SettingsPage() {
           </div>
 
           <p className="text-xs text-slate-500 font-medium">
-            Envie um PDF com o papel timbrado oficial do escritório. Ele será aplicado automaticamente como plano de fundo em todos os contratos, procurações e declarações gerados pelo sistema.
+            Escolha o papel timbrado usado como plano de fundo em todos os contratos, procurações e declarações gerados pelo sistema.
           </p>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            <label className={`flex items-start gap-2.5 p-3.5 rounded-2xl border cursor-pointer transition-colors ${letterheadMode === 'DEFAULT' ? 'border-blue-600 bg-blue-50/60' : 'border-slate-200 hover:bg-slate-50'}`}>
+              <input
+                type="radio"
+                name="letterheadMode"
+                checked={letterheadMode === 'DEFAULT'}
+                onChange={() => handleChangeLetterheadMode('DEFAULT')}
+                disabled={savingLetterheadMode}
+                className="mt-0.5 accent-blue-600"
+              />
+              <span>
+                <span className="block text-xs font-extrabold text-[#071B3A] font-heading">Modelo original do AssinaJur</span>
+                <span className="block text-[11px] text-slate-500 mt-0.5">Papel timbrado padrão já pronto para uso, sem precisar enviar nada.</span>
+              </span>
+            </label>
+            <label className={`flex items-start gap-2.5 p-3.5 rounded-2xl border transition-colors ${letterheadMode === 'CUSTOM' ? 'border-blue-600 bg-blue-50/60' : 'border-slate-200 hover:bg-slate-50'} ${letterhead ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
+              <input
+                type="radio"
+                name="letterheadMode"
+                checked={letterheadMode === 'CUSTOM'}
+                onChange={() => handleChangeLetterheadMode('CUSTOM')}
+                disabled={savingLetterheadMode || !letterhead}
+                className="mt-0.5 accent-blue-600"
+              />
+              <span>
+                <span className="block text-xs font-extrabold text-[#071B3A] font-heading">Meu próprio papel timbrado</span>
+                <span className="block text-[11px] text-slate-500 mt-0.5">{letterhead ? 'Usa o PDF enviado abaixo.' : 'Envie um PDF abaixo para poder selecionar esta opção.'}</span>
+              </span>
+            </label>
+          </div>
 
           {!letterhead ? (
             <div className="border-2 border-dashed rounded-2xl p-6 text-center border-slate-300 hover:border-blue-600 transition-colors relative">

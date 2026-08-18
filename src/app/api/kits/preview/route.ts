@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { compileTemplatePreviewToPdf } from '@/lib/templateCompiler';
-import { getFileBuffer } from '@/lib/storage';
+import { getDocumentLetterheadBuffer } from '@/lib/documentLetterhead';
 import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
@@ -50,11 +50,7 @@ export async function POST(req: Request) {
       prisma.user.findMany({ where: { officeId: user.officeId, active: true, role: { in: ['LAWYER', 'OFFICE_ADMIN'] } }, select: { name: true, oabNumber: true, gender: true }, orderBy: { createdAt: 'asc' } }),
     ]);
     if (!client || !office) return NextResponse.json({ error: 'Cliente ou escritório não encontrado.' }, { status: 404 });
-    let letterheadBuffer: Buffer | undefined;
-    if (office.letterheadFileId) {
-      const file = await prisma.storageFile.findUnique({ where: { id: office.letterheadFileId } });
-      if (file) letterheadBuffer = await getFileBuffer(office.id, file.storageKey) || undefined;
-    }
+    const letterheadBuffer = await getDocumentLetterheadBuffer(office);
     const officeState = String((office as any).address || '').match(/(?:\/|,|\s)(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b/i)?.[1]?.toUpperCase() || 'BA';
     const fullAddress = String((office as any).address || '').trim() || 'endereço profissional informado na configuração';
     const orderedLawyers = [...activeLawyers].sort((left, right) => left.name === user.name ? -1 : right.name === user.name ? 1 : left.name.localeCompare(right.name, 'pt-BR'));
