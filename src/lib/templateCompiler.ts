@@ -357,7 +357,9 @@ function applyDynamicSignatureFooter(paragraphs: RichParagraph[], variables: Var
   const hasSignatureLine = paragraphs
     .slice(Math.max(0, roleIndex - 3), roleIndex)
     .some((paragraph) => /^_{5,}$/.test(paragraphText(paragraph)));
-  if (!/^ASSINATURA\s+DO\s+CLIENTE/i.test(roleText) && !hasSignatureLine) return paragraphs;
+  const signatureNameText = paragraphText(paragraphs[roleIndex - 1]);
+  const hasStandaloneSignatureName = /^[A-ZÀ-Ý][A-ZÀ-Ý\s.'’\-]{4,}$/i.test(signatureNameText);
+  if (!/^ASSINATURA\s+DO\s+CLIENTE/i.test(roleText) && !hasSignatureLine && !hasStandaloneSignatureName) return paragraphs;
 
   const result = paragraphs.map((paragraph) => ({ ...paragraph, runs: paragraph.runs.map((run) => ({ ...run })) }));
   const signatureNameIndex = roleIndex - 1;

@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import React, { useRef, useState, useEffect, FormEvent } from 'react';
+import React, { useRef, useState, useEffect, useCallback, FormEvent } from 'react';
 import { 
   Bold, 
   Italic, 
@@ -111,17 +111,18 @@ export function DocumentRichEditor({
     }
   }, [value]);
 
+  const rememberSelection = useCallback(() => {
+    const selection = window.getSelection();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    if (range && editorRef.current?.contains(range.commonAncestorContainer)) {
+      savedRangeRef.current = range.cloneRange();
+    }
+  }, []);
+
   useEffect(() => {
-    const rememberSelection = () => {
-      const selection = window.getSelection();
-      const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
-      if (range && editorRef.current?.contains(range.commonAncestorContainer)) {
-        savedRangeRef.current = range.cloneRange();
-      }
-    };
     document.addEventListener('selectionchange', rememberSelection);
     return () => document.removeEventListener('selectionchange', rememberSelection);
-  }, []);
+  }, [rememberSelection]);
 
   const restoreEditorSelection = () => {
     const editor = editorRef.current;
@@ -163,8 +164,11 @@ export function DocumentRichEditor({
     const beforeHtml = editor.innerHTML;
     const beforeTags = Array.from(new Set(beforeHtml.match(/{{[^}]+}}/g) || []));
 
-    // Forçamos a marcação semântica <strong>, que também é entendida pelo gerador de PDF.
-    if (command === 'bold') document.execCommand('styleWithCSS', false, 'false');
+    // Forçamos marcação semântica para que o HTML salvo e o PDF recebam a
+    // mesma instrução de formatação, em vez de depender do CSS transitório do navegador.
+    if (['bold', 'italic', 'underline', 'fontName', 'fontSize'].includes(command)) {
+      document.execCommand('styleWithCSS', false, 'false');
+    }
     document.execCommand(command, false, value);
 
     const afterHtml = editor.innerHTML;
@@ -360,7 +364,7 @@ export function DocumentRichEditor({
         <div className="w-px h-6 bg-slate-300 mx-1"></div>
         
         <button 
-          onClick={() => executeCommand('formatBlock', 'h1')}
+          onClick={() => executeCommand('formatBlock', '<h1>')}
           className="p-2 rounded-lg hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
           title="Título H1"
           type="button"
@@ -368,7 +372,7 @@ export function DocumentRichEditor({
           <Heading1 size={16} />
         </button>
         <button 
-          onClick={() => executeCommand('formatBlock', 'h2')}
+          onClick={() => executeCommand('formatBlock', '<h2>')}
           className="p-2 rounded-lg hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
           title="Título H2"
           type="button"
@@ -376,7 +380,7 @@ export function DocumentRichEditor({
           <Heading2 size={16} />
         </button>
         <button 
-          onClick={() => executeCommand('formatBlock', 'p')}
+          onClick={() => executeCommand('formatBlock', '<p>')}
           className="p-2 rounded-lg hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
           title="Parágrafo"
           type="button"
@@ -446,6 +450,9 @@ export function DocumentRichEditor({
         contentEditable
         onInput={handleInput}
         onBlur={handleInput}
+        onFocus={rememberSelection}
+        onMouseUp={rememberSelection}
+        onKeyUp={rememberSelection}
         onKeyDown={handleEditorKeyDown}
         className={`min-h-[1123px] w-full max-w-[794px] mx-auto bg-white p-[53px] text-slate-800 shadow-sm focus:outline-none [&_p]:m-0 [&_p]:mb-[7px] [&_div]:mb-[7px] [&_h1]:m-0 [&_h1]:mb-[16px] [&_h1]:text-center [&_h1]:text-[16px] [&_h1]:leading-[22px] [&_h1]:font-bold [&_h2]:m-0 [&_h2]:mb-[8px] [&_h2]:text-[14.4px] [&_h2]:leading-[21px] [&_h2]:font-bold ${plainDocumentMode ? '' : ''} empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none ${contentClassName}`}
         style={{ fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '10pt', lineHeight: '15pt', boxSizing: 'border-box' }}

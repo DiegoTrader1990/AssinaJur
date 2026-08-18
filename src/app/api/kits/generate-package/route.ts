@@ -249,6 +249,10 @@ export async function POST(req: Request) {
 
     // Montar mapa completo de variáveis para substituição automática
     const variableValues = {
+      // Valores livres (honorários, êxito e cláusulas adicionais) podem vir da
+      // tela de revisão. Os dados vinculados ao cliente abaixo sempre prevalecem
+      // para que um valor de uma revisão anterior jamais permaneça no novo kit.
+      ...(customVariables || {}),
       cliente_nome: client.name,
       cliente_cpf: formatCpfCnpj(client.cpfCnpj),
       cliente_rg: client.rg || '—',
@@ -284,7 +288,6 @@ export async function POST(req: Request) {
       escritorio_qualificacao: fullOfficeQualification,
       patronos_qualificacao_conjunta: jointPatronosQualification,
       patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),
-      ...(customVariables || {}),
       // A cidade é um dado do cliente selecionado; um valor antigo salvo no kit não pode sobrescrevê-la.
       cidade: [client.city, client.state].filter(Boolean).join('/') || 'Porto Seguro/BA',
     };

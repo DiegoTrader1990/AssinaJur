@@ -135,7 +135,15 @@ export function ensureClientQualificationTokens(contentHtml: string, title: stri
   const hasSignatureLineBeforeRole = roleIndex !== undefined && blocks
     .slice(Math.max(0, roleIndex - 3), roleIndex)
     .some((block) => /^_{5,}/.test(textOf(block)));
-  if (roleIndex !== undefined && roleIndex >= Math.max(1, blocks.length - 10) && hasSignatureLineBeforeRole) {
+  const nameBlockBeforeRole = roleIndex !== undefined && blocks[roleIndex - 1]
+    ? textOf(blocks[roleIndex - 1])
+    : '';
+  // Alguns modelos não usam a linha sublinhada: deixam apenas "NOME" e,
+  // abaixo, "Outorgante/Contratante". Esse também é um rodapé de assinatura
+  // válido e precisa ser dinâmico, sem manter a cliente anterior.
+  const hasStandaloneNameBeforeRole = /^{{\s*cliente_nome\s*}}$/i.test(nameBlockBeforeRole)
+    || /^[A-ZÀ-Ý][A-ZÀ-Ý\s.'’\-]{4,}$/i.test(nameBlockBeforeRole);
+  if (roleIndex !== undefined && roleIndex >= Math.max(1, blocks.length - 10) && (hasSignatureLineBeforeRole || hasStandaloneNameBeforeRole)) {
     if (blocks[roleIndex - 1]) replaceBlock(blocks[roleIndex - 1], '{{cliente_nome}}');
     const dateBlock = blocks.slice(0, Math.max(0, roleIndex - 1)).reverse().find((block) => /\d{1,2}\s+de\s+/i.test(textOf(block)) || /\d{1,2}[\/.\-]\d{2,4}/.test(textOf(block)));
     if (dateBlock) replaceBlock(dateBlock, '{{cidade}}, {{data_atual}}.');
