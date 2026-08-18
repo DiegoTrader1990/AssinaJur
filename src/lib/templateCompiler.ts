@@ -100,26 +100,10 @@ function emphasizeDocumentNames(html: string, variables: VariableValues): string
 }
 
 function applyClientGenderToQualification(html: string, variables: VariableValues): string {
-  const gender = String(variables.cliente_genero || '').trim().toUpperCase();
-  // Aceita também cadastros antigos que possam ter vindo como M/F ou por extenso.
-  const feminine = ['FEMININO', 'F', 'FEMININA', 'MULHER'].includes(gender);
-  const masculine = ['MASCULINO', 'M', 'MASCULINA', 'HOMEM'].includes(gender);
-  if (!feminine && !masculine) return html;
+  const gender = String(variables.cliente_genero || '').toUpperCase();
+  if (gender !== 'MASCULINO' && gender !== 'FEMININO') return html;
+  const feminine = gender === 'FEMININO';
   const replacements: Array<[RegExp, string]> = [
-    // Alguns modelos antigos foram salvos já no feminino ("Brasileira") em
-    // vez de "brasileiro(a)". Normalizamos ambos os formatos pelo sexo do
-    // cliente selecionado, sempre dentro da qualificação dele.
-    [/brasileir[ao]\b/gi, feminine ? 'brasileira' : 'brasileiro'],
-    [/solteir[oa]\b/gi, feminine ? 'solteira' : 'solteiro'],
-    [/casad[oa]\b/gi, feminine ? 'casada' : 'casado'],
-    [/divorciad[oa]\b/gi, feminine ? 'divorciada' : 'divorciado'],
-    [/viúv[oa]\b/gi, feminine ? 'viúva' : 'viúvo'],
-    [/portador[ao]\b/gi, feminine ? 'portadora' : 'portador'],
-    [/inscrit[oa]\b/gi, feminine ? 'inscrita' : 'inscrito'],
-    [/nascid[oa]\b/gi, feminine ? 'nascida' : 'nascido'],
-    [/domiciliad[oa]\b/gi, feminine ? 'domiciliada' : 'domiciliado'],
-    [/denominad[oa]\b/gi, feminine ? 'denominada' : 'denominado'],
-    [/representad[oa]\b/gi, feminine ? 'representada' : 'representado'],
     [/brasileiro\(a\)/gi, feminine ? 'brasileira' : 'brasileiro'],
     [/solteiro\(a\)/gi, feminine ? 'solteira' : 'solteiro'],
     [/casado\(a\)/gi, feminine ? 'casada' : 'casado'],
@@ -280,10 +264,8 @@ function parseRichParagraphs(html: string): RichParagraph[] {
         }
       }
       // Linhas vazias criadas no editor (Enter em um parágrafo vazio) também são
-      // parte da minuta. Antes elas chegavam aqui sem runs e sem spacer, sendo
-      // descartadas na diagramação — principalmente no rodapé de assinatura.
-      // Cada parágrafo vazio agora reserva uma linha real no PDF.
-      return { kind, alignment, runs, spacer: runs.length === 0 ? Math.max(spacer, kind === 'H1' ? 17 : kind === 'H2' ? 16 : 15) : spacer, defaultFontFamily, defaultFontSize };
+      // parte da minuta: preservamos a altura para que a emissão respeite o espaçamento.
+      return { kind, alignment, runs, spacer, defaultFontFamily, defaultFontSize };
     })
     .filter((item): item is RichParagraph => Boolean(item));
 
@@ -325,14 +307,7 @@ function parseRichParagraphs(html: string): RichParagraph[] {
     return counts;
   }, {});
   const baseSize = Number(Object.entries(preferredSize).sort(([, left], [, right]) => right - left)[0]?.[0] || 10);
-  // A primeira run estilizada pode ser apenas um título/qualificação colada
-  // do Word. A fonte predominante do corpo representa melhor o que o advogado
-  // vê no editor e deve ser a base das runs sem estilo explícito.
-  const preferredFamilies = bodyRuns.reduce<Record<PdfFontFamily, number>>((counts, run) => {
-    if (run.fontFamily) counts[run.fontFamily] = (counts[run.fontFamily] || 0) + 1;
-    return counts;
-  }, { HELVETICA: 0, TIMES: 0, COURIER: 0 });
-  const preferredFamily = (Object.entries(preferredFamilies).sort(([, left], [, right]) => right - left)[0]?.[0] as PdfFontFamily | undefined) || 'HELVETICA';
+  const preferredFamily = bodyRuns.find((run) => run.fontFamily)?.fontFamily || 'HELVETICA';
   return mergedParagraphs.map((paragraph) => ({
     ...paragraph,
     runs: paragraph.runs.map((run) => ({
@@ -382,9 +357,7 @@ function applyDynamicSignatureFooter(paragraphs: RichParagraph[], variables: Var
   const hasSignatureLine = paragraphs
     .slice(Math.max(0, roleIndex - 3), roleIndex)
     .some((paragraph) => /^_{5,}$/.test(paragraphText(paragraph)));
-  const signatureNameText = paragraphText(paragraphs[roleIndex - 1]);
-  const hasStandaloneSignatureName = /^[A-ZÀ-Ý][A-ZÀ-Ý\s.'’\-]{4,}$/i.test(signatureNameText);
-  if (!/^ASSINATURA\s+DO\s+CLIENTE/i.test(roleText) && !hasSignatureLine && !hasStandaloneSignatureName) return paragraphs;
+  if (!/^ASSINATURA\s+DO\s+CLIENTE/i.test(roleText) && !hasSignatureLine) return paragraphs;
 
   const result = paragraphs.map((paragraph) => ({ ...paragraph, runs: paragraph.runs.map((run) => ({ ...run })) }));
   const signatureNameIndex = roleIndex - 1;
@@ -481,14 +454,11 @@ async function renderTemplatePdf({
   // Margem superior ampliada para não colidir com papel timbrado/cabeçalho
   const startTopMargin = embeddedLetterhead ? 135 : showSystemHeader === false ? 70 : 115;
   const subsequentTopMargin = embeddedLetterhead ? 125 : showSystemHeader === false ? 60 : 100;
-  const bottomMarginLimit = embeddedLetterhead ? 92 : 65;
+  const bottomMarginLimit = embeddedLetterhead ? 85 : 65;
 
   let currentY = height - startTopMargin;
-  // O papel timbrado possui uma moldura interna. Reservamos uma área útil
-  // menor para que texto justificado, títulos e linhas de assinatura nunca
-  // avancem sobre a arte nas laterais ou no rodapé.
-  const marginX = embeddedLetterhead ? 62 : 40;
-  const maxWidth = width - marginX * 2;
+  const marginX = 40;
+  const maxWidth = width - 80;
   const paragraphs = applyDynamicSignatureFooter(parseRichParagraphs(presentationHtml), variables);
   let signaturePlacement: { page: number; x: number; y: number; width: number; height: number } | null = null;
   let explicitSignatureLineFound = false;
@@ -544,6 +514,11 @@ async function renderTemplatePdf({
 
     if (tokens.length === 0) {
       if (paragraph.spacer) { ensureLineSpace(paragraph.spacer); currentY -= paragraph.spacer; }
+      // Um parágrafo/div totalmente vazio (Enter em uma linha em branco, sem <br>
+      // dentro) ainda representa uma linha em branco visível no editor - sem isso,
+      // o PDF final "engolia" essas linhas e o espaçamento não coincidia com o
+      // que foi digitado no modelo.
+      if (paragraph.kind === 'BODY' || paragraph.kind === 'LIST') { ensureLineSpace(lineHeight); currentY -= lineHeight; }
       continue;
     }
 
@@ -701,7 +676,6 @@ export async function compileTemplateToPdf({
   variables,
   officeName,
   letterheadBuffer,
-  showSystemHeader,
 }: {
   officeId: string;
   uploadedBy?: string;
@@ -710,7 +684,6 @@ export async function compileTemplateToPdf({
   variables: VariableValues;
   officeName: string;
   letterheadBuffer?: Buffer;
-  showSystemHeader?: boolean;
 }) {
   // Auto-limpar ou substituir instruções entre colchetes por textos padrão sem travar a geração
   contentHtml = contentHtml.replace(/\[DESCREVER COM PRECISÃO A DEMANDA[^\]]*\]/gi, 'Ajuizamento de ação e acompanhamento integral da demanda')
@@ -720,7 +693,7 @@ export async function compileTemplateToPdf({
     .replace(/\[DESCREVER A FINALIDADE[^\]]*\]/gi, 'Acompanhamento processual e administrativo completo')
     .replace(/\[PREENCHER, SE APLICÁVEL\]/gi, 'Acompanhamento de processos e requerimentos')
     .replace(/\[(?:INFORMAR|PREENCHER|DESCREVER|DEFINIR|REVISAR|INSERIR)[^\]]*\]/gi, '________________');
-  const rendered = await renderTemplatePdf({ title, contentHtml, variables, officeName, letterheadBuffer, showSystemHeader });
+  const rendered = await renderTemplatePdf({ title, contentHtml, variables, officeName, letterheadBuffer });
   const storageRecord = await saveFile({
     officeId,
     uploadedBy,
