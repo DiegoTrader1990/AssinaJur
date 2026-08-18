@@ -85,8 +85,8 @@ export default function DocumentCapture({
   autoStart = false,
 }: DocumentCaptureProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const frameRef = useRef<HTMLDivElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const [frameEl, setFrameEl] = useState<HTMLDivElement | null>(null);
   const [frameWidth, setFrameWidth] = useState(0);
   const emitRef = useRef(onEvent);
   const autoStartedRef = useRef<CaptureSide | null>(null);
@@ -128,15 +128,16 @@ export default function DocumentCapture({
   }, [stopCamera]);
 
   useEffect(() => {
-    const el = frameRef.current;
-    if (!el) return;
+    if (!frameEl) return;
+    // Medição imediata - não espera o primeiro disparo do ResizeObserver.
+    setFrameWidth(frameEl.getBoundingClientRect().width);
     const observer = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect?.width;
       if (width) setFrameWidth(width);
     });
-    observer.observe(el);
+    observer.observe(frameEl);
     return () => observer.disconnect();
-  }, []);
+  }, [frameEl]);
 
   // O vídeo só existe no DOM depois que a fase muda para LIVE. Em celulares,
   // tentar atribuir o stream antes dessa renderização ativa a câmera (ponto
@@ -477,7 +478,7 @@ export default function DocumentCapture({
 
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2">
         <div
-          ref={frameRef}
+          ref={setFrameEl}
           className="relative w-full max-w-sm overflow-hidden rounded-2xl border-4 border-[#D4AF37]/70 bg-slate-900"
           style={{ aspectRatio: String(CROP_ASPECT) }}
         >
