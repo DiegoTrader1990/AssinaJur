@@ -600,6 +600,16 @@ async function renderTemplatePdf({
     currentY -= isClientSignatureLabel ? 84 : isExplicitSignatureLine ? 8 : isSignatureCaption ? 3 : isFollowedByExplicitSignatureLine ? 42 : paragraph.kind === 'H1' ? 12 : heading ? 6 : 5 + (paragraph.spacer || 0);
   }
 
+  // Se nenhuma linha de assinatura explícita nem rótulo (CONTRATANTE:/OUTORGANTE:
+  // etc.) foi encontrado no modelo, não adivinhamos uma posição fixa no meio da
+  // página - isso já causou o selo sobrepondo cláusulas de contratos mais curtos.
+  // Em vez disso, ancoramos com segurança logo abaixo da última linha realmente
+  // desenhada na última página, onde nunca há texto do contrato.
+  if (!signaturePlacement) {
+    const safeTopY = Math.min(0.9, Math.max(0.1, (height - currentY + 10) / height));
+    signaturePlacement = { page: pdfDoc.getPageCount(), x: 0.31, y: safeTopY, width: 0.38, height: 0.085 };
+  }
+
   if (watermark) {
     for (const pdfPage of pdfDoc.getPages()) {
       const size = pdfPage.getSize();

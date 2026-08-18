@@ -416,18 +416,43 @@ export async function generateFinalPdfCertificate(documentId: string) {
       const nameLines = wrapTextToWidth(signerNames, bold, 6.8, contentW).slice(0, 2);
       const signedAt = doc.signers.find((item) => item.signedAt)?.signedAt || doc.completedAt || new Date();
 
-      nameLines.forEach((line, lineIndex) => {
-        p.drawText(line.toUpperCase(), { x: contentX, y: stampY + stampH - 13 - lineIndex * 8.0, size: 6.8, font: bold, color: navy });
+      // Calcula toda a disposição vertical ANTES de desenhar qualquer coisa,
+      // para poder colocar um fundo de proteção atrás do texto do selo do
+      // tamanho exato do conteúdo. A posição do selo em documentos gerados
+      // automaticamente (kits) é apenas estimada a partir do texto do modelo
+      // e pode, em alguns casos, ficar próxima de outras linhas do contrato -
+      // sem um fundo, o texto do selo ficaria ilegível, sobreposto ao clausulado.
+      const nameTopY = stampY + stampH - 13;
+      const yAfterName = nameTopY - nameLines.length * 8.0;
+      const qualificationY = yAfterName - 5 - cpfLines.length * 6.4;
+      let bottomLineY = qualificationY - 9 - 8 - 9;
+      const goldLineW = Math.min(140, stampW * 0.46);
+      const goldLineY = bottomLineY - 6;
+      const textTopY = nameTopY + 6;
+      const textBottomY = goldLineY;
+
+      // Fundo de proteção leve: opaco o bastante para nunca deixar o
+      // clausulado do contrato "vazar" por trás do texto do selo, mas ainda
+      // discreto (sem borda), preservando o visual clean pedido.
+      p.drawRectangle({
+        x: stampX - 4,
+        y: textBottomY - 5,
+        width: stampW + 8,
+        height: textTopY - textBottomY + 10,
+        color: rgb(1, 1, 1),
+        opacity: 0.9,
       });
 
-      const yAfterName = stampY + stampH - 13 - nameLines.length * 8.0;
+      nameLines.forEach((line, lineIndex) => {
+        p.drawText(line.toUpperCase(), { x: contentX, y: nameTopY - lineIndex * 8.0, size: 6.8, font: bold, color: navy });
+      });
+
       // Nunca use uma única linha para os dois CPFs: em assinaturas a rogo
       // ela extrapolava a largura útil do selo. Cada identificação ocupa a
       // própria linha, com tamanho adequado à leitura e à área disponível.
       cpfLines.forEach((line, lineIndex) => {
         p.drawText(line, { x: contentX, y: yAfterName - 2 - lineIndex * 6.4, size: 5.25, font: bold, color: text });
       });
-      const qualificationY = yAfterName - 5 - cpfLines.length * 6.4;
       p.drawText('ASSINATURA ELETRÔNICA QUALIFICADA', { x: contentX, y: qualificationY, size: 5.0, font: bold, color: green });
 
       // Se o signatário desenhou uma rubrica opcional, desenha por cima do selo com opacidade suave
@@ -448,24 +473,17 @@ export async function generateFinalPdfCertificate(documentId: string) {
       // em relação à base do selo - antes isso abria um vão grande quando o
       // texto de cima era curto (1 signatário) e quase colava quando era
       // longo (assinatura a rogo, 2 CPFs). Agora sempre acompanha o texto.
-      let bottomLineY = qualificationY - 9;
-      p.drawText(doc.signers.length > 1 ? `${doc.signers.length} CPFs + SELFIES + GEOLOCALIZAÇÃO` : 'CPF + 3 SELFIES + GEOLOCALIZAÇÃO', { x: contentX, y: bottomLineY, size: 5.1, font: regular, color: text });
-      bottomLineY -= 8;
-      p.drawText(formatBrasiliaDateTime(signedAt, false).replace(/\s*\(.+$/, ''), { x: contentX, y: bottomLineY, size: 5.1, font: regular, color: muted });
-      bottomLineY -= 9;
+      p.drawText(doc.signers.length > 1 ? `${doc.signers.length} CPFs + SELFIES + GEOLOCALIZAÇÃO` : 'CPF + 3 SELFIES + GEOLOCALIZAÇÃO', { x: contentX, y: qualificationY - 9, size: 5.1, font: regular, color: text });
+      p.drawText(formatBrasiliaDateTime(signedAt, false).replace(/\s*\(.+$/, ''), { x: contentX, y: qualificationY - 17, size: 5.1, font: regular, color: muted });
       p.drawText(`CÓD: ${verificationCode}`, { x: contentX, y: bottomLineY, size: 6.8, font: bold, color: navy });
       // Traco dourado colado logo abaixo do código, curto e um pouco mais
-      // grosso - sem contorno azul nem fundo, so esse acento discreto.
-      const goldLineW = Math.min(140, stampW * 0.46);
-      const goldLineY = bottomLineY - 6;
+      // grosso - sem contorno azul, so esse acento discreto.
       p.drawRectangle({ x: contentX, y: goldLineY, width: goldLineW, height: 2, color: gold });
 
       // QR centralizado verticalmente em relação ao bloco de texto inteiro
       // (do topo do nome até a linha dourada), em vez de grudado na base do
       // selo - com o texto mais compacto agora, ficar preso embaixo deixava
       // o QR desalinhado do conteúdo.
-      const textTopY = stampY + stampH - 13 + 6;
-      const textBottomY = goldLineY;
       const textCenterY = (textTopY + textBottomY) / 2;
       const qrY = textCenterY - qrStampSize / 2;
       p.drawImage(qrImage, { x: stampX + 8, y: qrY, width: qrStampSize, height: qrStampSize });
@@ -679,7 +697,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const compactPhotoGap = 27;
     let compactPhotoX = CX + (CW - (compactPhotoW * 3 + compactPhotoGap * 2)) / 2;
     for (const [label, imageData] of compactPhotos) {
-      const embedded = await embedBase64Image(pdfDoc, imageData, { width: 560, height: 528 });
+      // Alvo de corte alinhado à proporção real do quadro de exibição (140x106)
+      // em vez de um corte mais estreito - evita "zoom" excessivo no rosto,
+      // preservando mais do enquadramento original da selfie.
+      const embedded = await embedBase64Image(pdfDoc, imageData, { width: 560, height: 424 });
       certificatePage.drawRectangle({ x: compactPhotoX - 2, y: 309, width: compactPhotoW + 4, height: compactPhotoH + 4, color: navy });
       certificatePage.drawRectangle({ x: compactPhotoX - 2, y: 441, width: compactPhotoW + 4, height: 4, color: gold });
 
@@ -1115,7 +1136,11 @@ export async function generateFinalPdfCertificate(documentId: string) {
       let photoX = padX + Math.max(0, (innerWidth - photosTotalWidth) / 2);
 
       for (const [label, img] of photoLabels) {
-        const embedded = await embedBase64Image(pdfDoc, img, { width: 540, height: 620 });
+        // Alvo de corte quadrado, igual ao quadro de exibição (140x140) - o corte
+        // anterior (540x620, retrato) recortava boa parte das laterais da selfie
+        // antes mesmo do encaixe final no quadro, dando a impressão de "zoom"
+        // excessivo no rosto. Agora o corte só remove o estritamente necessário.
+        const embedded = await embedBase64Image(pdfDoc, img, { width: 600, height: 600 });
         const cardY = cursor - cardH - 12;
         const imgFrameH = boxH;
         const imgFrameY = cardY + 20;
