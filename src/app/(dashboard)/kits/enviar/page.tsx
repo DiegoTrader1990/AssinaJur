@@ -92,6 +92,10 @@ export default function DispatchKitPage() {
 
   const [showReviewStep, setShowReviewStep] = useState(false);
   const [customContents, setCustomContents] = useState<Record<string, string>>({});
+  // Cada minuta recebe os dados do cliente uma única vez ao ser aberta. Depois
+  // disso, o conteúdo passa a ser uma cópia de trabalho do envio e não pode
+  // ser reprocessado a cada tecla digitada pelo advogado.
+  const preparedReviewContentsRef = useRef<Set<string>>(new Set());
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [reviewItem, setReviewItem] = useState<LegalKit['items'][number] | null>(null);
   const [reviewClientData, setReviewClientData] = useState<Record<string, string>>({});
@@ -233,6 +237,7 @@ export default function DispatchKitPage() {
     setReviewItem(null);
     setReviewClientData({});
     setCustomContents({});
+    preparedReviewContentsRef.current.clear();
     setStampOverrides({});
     setAdjustingStamp(false);
     if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl);
@@ -303,6 +308,7 @@ export default function DispatchKitPage() {
       setError(reviewError?.message || 'Não foi possível aplicar os dados da cliente à revisão.');
       return;
     }
+    preparedReviewContentsRef.current.clear();
     setCustomContents(contents);
     setShowReviewStep(true);
     setReviewItem(null);
@@ -330,12 +336,12 @@ export default function DispatchKitPage() {
     );
   };
 
-  const renderEditableReview = (html: string) => {
+  const renderEditableReview = (html: string, templateTitle: string) => {
     let rendered = removeStandaloneClientNameBeforeQualification(
-      renderForReview(ensureClientQualificationTokens(html, reviewItem?.template.title || '')),
+      renderForReview(ensureClientQualificationTokens(html, templateTitle)),
       reviewClientData.cliente_nome || '',
     );
-    if (/(procura[cç][aã]o|contrato)/i.test(reviewItem?.template.title || '')) {
+    if (/(procura[cç][aã]o|contrato)/i.test(templateTitle)) {
       let replaced = false;
       rendered = rendered.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
         const text = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
@@ -347,8 +353,8 @@ export default function DispatchKitPage() {
       if (!replaced) rendered = rendered.replace(/(OUTORGADOS?|CONTRATADOS?)\s*:[^\n<]*/i, (_match, label) => `${label}: ${reviewClientData.patronos_qualificacao_conjunta || '—'}.`);
     }
 
-    if (reviewClientData.cliente_representacao && /(procura[cç][aã]o|contrato|declara[cç][aã]o)/i.test(reviewItem?.template.title || '')) {
-      const label = /contrato/i.test(reviewItem?.template.title || '') ? 'CONTRATANTE' : /procura/i.test(reviewItem?.template.title || '') ? 'OUTORGANTE' : '';
+    if (reviewClientData.cliente_representacao && /(procura[cç][aã]o|contrato|declara[cç][aã]o)/i.test(templateTitle)) {
+      const label = /contrato/i.test(templateTitle) ? 'CONTRATANTE' : /procura/i.test(templateTitle) ? 'OUTORGANTE' : '';
       let included = false;
       rendered = rendered.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
         const text = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
@@ -392,11 +398,11 @@ export default function DispatchKitPage() {
     return rendered;
   };
 
-  const generateReviewPdf = async (item: LegalKit['items'][number]) => {
+  const generateReviewPdf = async (item: LegalKit['items'][number], contentOverride?: string) => {
     setLoadingReviewPdf(true);
     setReviewPdfUrl(null);
     try {
-      const response = await fetch('/api/kits/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: selectedClientId, title: item.template.title, contentHtml: customContents[item.template.id] || item.template.contentHtml, customVariables: variables }) });
+      const response = await fetch('/api/kits/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: selectedClientId, title: item.template.title, contentHtml: contentOverride ?? customContents[item.template.id] ?? item.template.contentHtml, customVariables: variables }) });
       if (!response.ok) throw new Error();
       const url = URL.createObjectURL(await response.blob());
       if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl);
@@ -406,12 +412,18 @@ export default function DispatchKitPage() {
   };
 
   const openReviewItem = (item: LegalKit['items'][number]) => {
+    let contentForPreview = customContents[item.template.id] || item.template.contentHtml;
+    if (!preparedReviewContentsRef.current.has(item.template.id)) {
+      contentForPreview = renderEditableReview(contentForPreview, item.template.title);
+      preparedReviewContentsRef.current.add(item.template.id);
+      setCustomContents((current) => ({ ...current, [item.template.id]: contentForPreview }));
+    }
     setReviewItem(item);
     setEditingReview(false);
     setAdjustingStamp(false);
     const existingOverride = stampOverrides[item.template.id];
     setStampDraft(existingOverride || { page: 1, x: 0.31, y: 0.62, width: 0.38, height: 0.085 });
-    void generateReviewPdf(item);
+    void generateReviewPdf(item, contentForPreview);
   };
 
   const handleSaveStampPosition = () => {
@@ -1052,7 +1064,7 @@ export default function DispatchKitPage() {
               {loadingReviewPdf ? (
                 <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-600"><Loader2 className="w-8 h-8 animate-spin text-gold-500" /><p className="text-sm font-semibold">Montando a prévia final…</p></div>
               ) : editingReview ? (
-                <div className="mx-auto max-w-4xl rounded-xl border border-slate-200 bg-white p-4"><DocumentRichEditor key={reviewItem.id} value={renderEditableReview(customContents[reviewItem.template.id] || reviewItem.template.contentHtml)} onChange={(html) => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: html }))} showTags={false} showAiCopilot={false} placeholder="Redija ou ajuste o documento..." /></div>
+                <div className="mx-auto max-w-4xl rounded-xl border border-slate-200 bg-white p-4"><DocumentRichEditor key={reviewItem.id} value={customContents[reviewItem.template.id] ?? reviewItem.template.contentHtml} onChange={(html) => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: html }))} showTags={false} showAiCopilot={false} placeholder="Redija ou ajuste o documento..." /></div>
               ) : adjustingStamp ? (
                 <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50/70 via-white to-amber-50/50 p-4 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1163,7 +1175,11 @@ export default function DispatchKitPage() {
                 </>
               ) : editingReview ? (
                 <>
-                  <button type="button" onClick={() => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: reviewItem.template.contentHtml }))} className="text-xs font-bold text-slate-600">Restaurar modelo</button>
+                  <button type="button" onClick={() => {
+                    const restored = renderEditableReview(reviewItem.template.contentHtml, reviewItem.template.title);
+                    preparedReviewContentsRef.current.add(reviewItem.template.id);
+                    setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: restored }));
+                  }} className="text-xs font-bold text-slate-600">Restaurar modelo</button>
                   <div className="flex gap-2"><button type="button" onClick={() => void generateReviewPdf(reviewItem)} className="px-4 py-2.5 border border-[#071B3A] text-[#071B3A] rounded-lg text-xs font-bold">Atualizar prévia final</button><button type="button" onClick={() => { if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl); setReviewPdfUrl(null); setReviewItem(null); }} className="px-5 py-2.5 bg-[#071B3A] text-white rounded-lg text-xs font-bold">Concluir revisão</button></div>
                 </>
               ) : (
