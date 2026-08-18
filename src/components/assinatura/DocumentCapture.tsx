@@ -22,9 +22,6 @@ import { Camera, RefreshCw, Check, AlertTriangle, Loader2 } from 'lucide-react';
 import {
   analyseCanvas,
   buildQualityReport,
-  captureQualityMessage,
-  captureQualityStatus,
-  firstBlockingMessage,
   type QualityReport,
 } from '@/lib/assinatura/documentQuality';
 
@@ -64,8 +61,6 @@ interface DocumentCaptureProps {
 }
 
 type Phase = 'IDLE' | 'STARTING' | 'LIVE' | 'REVIEW';
-type LiveReadiness = 'ANALYSING' | 'ADJUST' | 'READY';
-type VisionCheck = 'IDLE' | 'CHECKING' | 'VALID' | 'REJECTED' | 'ERROR';
 
 /**
  * Retângulo de recorte, em pixels do vídeo. É a única fonte de verdade:
@@ -95,18 +90,11 @@ export default function DocumentCapture({
   const [frameWidth, setFrameWidth] = useState(0);
   const emitRef = useRef(onEvent);
   const autoStartedRef = useRef<CaptureSide | null>(null);
-  const autoCaptureRef = useRef(false);
-  const stableFramesRef = useRef(0);
 
   const [phase, setPhase] = useState<Phase>('IDLE');
   const [error, setError] = useState('');
   const [pending, setPending] = useState<CaptureResult | null>(null);
   const [videoDims, setVideoDims] = useState<{ w: number; h: number } | null>(null);
-  const [liveReadiness, setLiveReadiness] = useState<LiveReadiness>('ANALYSING');
-  const [liveHint, setLiveHint] = useState('Preparando a validação da imagem...');
-  const [visionCheck, setVisionCheck] = useState<VisionCheck>('IDLE');
-  const [visionReason, setVisionReason] = useState('');
-  const [validationRetry, setValidationRetry] = useState(0);
 
   useEffect(() => {
     emitRef.current = onEvent;
@@ -182,8 +170,6 @@ export default function DocumentCapture({
     setPending(null);
     setError('');
     setVideoDims(null);
-    setVisionCheck('IDLE');
-    setVisionReason('');
   }, [side, stopCamera]);
 
   const startCamera = useCallback(async () => {
@@ -233,39 +219,6 @@ export default function DocumentCapture({
     void startCamera();
   }, [autoStart, side, startCamera]);
 
-  // Análise de qualidade ao vivo (nitidez/luz), para orientar o usuário antes
-  // de capturar. Roda em intervalos curtos sobre um canvas oculto.
-  const liveCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  useEffect(() => {
-    if (phase !== 'LIVE') return;
-    const interval = window.setInterval(() => {
-      const video = videoRef.current;
-      if (!video || !video.videoWidth || !video.videoHeight) return;
-      const canvas = liveCanvasRef.current || document.createElement('canvas');
-      liveCanvasRef.current = canvas;
-      const crop = computeCropRect(video.videoWidth, video.videoHeight);
-      canvas.width = Math.round(crop.w);
-      canvas.height = Math.round(crop.h);
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.drawImage(video, crop.x, crop.y, crop.w, crop.h, 0, 0, canvas.width, canvas.height);
-      const { meanLuminance, sharpness } = analyseCanvas(canvas);
-      const report = buildQualityReport({ width: canvas.width, height: canvas.height, bytes: 0, meanLuminance, sharpness });
-      const status = captureQualityStatus(report);
-      if (status === 'GOOD') {
-        setLiveReadiness('READY');
-        setLiveHint('Qualidade aprovada');
-      } else if (status === 'CAUTION') {
-        setLiveReadiness('ADJUST');
-        setLiveHint(firstBlockingMessage(report) || 'Ajuste antes de fotografar');
-      } else {
-        setLiveReadiness('ADJUST');
-        setLiveHint(firstBlockingMessage(report));
-      }
-    }, 400);
-    return () => window.clearInterval(interval);
-  }, [phase]);
-
   const crop = videoDims ? computeCropRect(videoDims.w, videoDims.h) : null;
 
   const takePhoto = useCallback(() => {
@@ -301,68 +254,18 @@ export default function DocumentCapture({
       quality,
     });
     setPhase('REVIEW');
-    setVisionCheck('IDLE');
-    setVisionReason('');
     emit(side === 'FRENTE' ? 'FRONT_CAPTURED' : 'BACK_CAPTURED', `Foto ${side === 'FRENTE' ? 'da frente' : 'do verso'} capturada`);
   }, [emit, side, stopCamera]);
 
   const retake = useCallback(() => {
     setPending(null);
-    setVisionCheck('IDLE');
-    setVisionReason('');
     void startCamera();
   }, [startCamera]);
-
-  const reviewStatus = pending ? captureQualityStatus(pending.quality) : 'GOOD';
-
-  // Validação por IA (Gemini): confirma que a foto realmente é um documento.
-  useEffect(() => {
-    if (phase !== 'REVIEW' || !pending) return;
-    let cancelled = false;
-    setVisionCheck('CHECKING');
-    setVisionReason('');
-    (async () => {
-      try {
-        const res = await fetch('/api/sign/documento/validar', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: pending.dataUrl }),
-        });
-        const data = await res.json();
-        if (cancelled) return;
-        if (!res.ok || !data?.success) {
-          setVisionCheck('ERROR');
-          return;
-        }
-        const validation = data.validation;
-        if (validation?.isDocument && validation.confidence >= 55) {
-          setVisionCheck('VALID');
-        } else {
-          setVisionCheck('REJECTED');
-          setVisionReason(validation?.reason || '');
-        }
-      } catch {
-        if (!cancelled) setVisionCheck('ERROR');
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [phase, pending, validationRetry]);
 
   const confirm = useCallback(() => {
     if (!pending) return;
     onConfirm(pending);
   }, [onConfirm, pending]);
-
-  const continueAnyway = useCallback(() => {
-    if (!pending) return;
-    emit(
-      side === 'FRENTE' ? 'FRONT_CONTINUED_UNVALIDATED' : 'BACK_CONTINUED_UNVALIDATED',
-      `${side === 'FRENTE' ? 'Frente' : 'Verso'} confirmado sem validação automática`
-    );
-    onConfirm(pending);
-  }, [emit, onConfirm, pending, side]);
 
   // Antes de abrir a camera: cartao compacto no fluxo normal da pagina.
   if (phase === 'IDLE' || phase === 'STARTING') {
@@ -452,25 +355,10 @@ export default function DocumentCapture({
 
       {phase === 'LIVE' && (
         <div className="mx-auto w-full max-w-sm">
-          <div
-            className={`rounded-xl border px-3 py-2 text-center text-xs font-extrabold shadow-xs ${
-              liveReadiness === 'READY'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                : liveReadiness === 'ADJUST'
-                  ? 'border-amber-200 bg-amber-50 text-amber-700'
-                  : 'border-slate-200 bg-slate-50 text-slate-500'
-            }`}
-          >
-            {liveReadiness === 'READY'
-              ? 'Qualidade aprovada'
-              : liveReadiness === 'ADJUST'
-                ? 'Ajuste antes de fotografar'
-                : 'Analisando a imagem'}
-          </div>
           <button
             type="button"
             onClick={takePhoto}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#071B3A] py-4 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.99]"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#071B3A] py-4 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.99]"
           >
             <Camera className="h-4 w-4 text-[#D4AF37]" /> Tirar foto
           </button>
@@ -479,63 +367,17 @@ export default function DocumentCapture({
 
       {phase === 'REVIEW' && pending && (
         <div className="mx-auto w-full max-w-sm space-y-2">
-          {reviewStatus === 'CAUTION' && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-center text-xs font-bold text-amber-800">
-              <p>Confira antes de continuar</p>
-              <p className="mt-0.5 text-[11px] font-medium opacity-90">{captureQualityMessage(pending.quality)}</p>
-            </div>
-          )}
-          {visionCheck === 'CHECKING' && (
-            <div className="flex items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 text-center text-xs font-bold text-sky-700">
-              <Loader2 className="h-4 w-4 animate-spin" /> Confirmando se é um documento...
-            </div>
-          )}
-          {visionCheck === 'REJECTED' && (
-            <div className="space-y-2">
-              <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-center text-xs font-bold text-rose-700">
-                <p>Não identificamos um documento nesta foto.</p>
-                {visionReason && <p className="mt-1 text-[11px] font-medium opacity-90">{visionReason}</p>}
-              </div>
-              <button
-                type="button"
-                onClick={continueAnyway}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white shadow-lg transition hover:bg-emerald-700 active:scale-[0.99]"
-              >
-                <Check className="h-4 w-4" /> Usar esta foto assim mesmo
-              </button>
-            </div>
-          )}
-          {visionCheck === 'ERROR' && (
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={() => setValidationRetry((value) => value + 1)}
-                className="w-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-center text-xs font-bold text-amber-800"
-              >
-                Não foi possível validar agora. Toque para tentar novamente.
-              </button>
-              <button
-                type="button"
-                onClick={continueAnyway}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white shadow-lg transition hover:bg-emerald-700 active:scale-[0.99]"
-              >
-                <Check className="h-4 w-4" /> Continuar sem validação automática
-              </button>
-            </div>
-          )}
-          {visionCheck === 'VALID' && (
-            <button
-              type="button"
-              onClick={confirm}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white shadow-lg transition hover:bg-emerald-700 active:scale-[0.99]"
-            >
-              <Check className="h-4 w-4" /> Continuar
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={confirm}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white shadow-lg transition hover:bg-emerald-700 active:scale-[0.99]"
+          >
+            <Check className="h-4 w-4" /> Continuar
+          </button>
           <button
             type="button"
             onClick={retake}
-            className={`flex w-full items-center justify-center gap-2 py-2 text-xs font-semibold transition active:scale-[0.99] ${visionCheck === 'REJECTED' ? 'rounded-xl bg-slate-100 py-3 text-slate-700' : 'text-slate-500 hover:text-slate-700'}`}
+            className="flex w-full items-center justify-center gap-2 py-2 text-xs font-semibold text-slate-500 transition hover:text-slate-700 active:scale-[0.99]"
           >
             <RefreshCw className="h-3.5 w-3.5" /> Tirar outra foto
           </button>

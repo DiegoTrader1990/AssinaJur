@@ -1095,11 +1095,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         {step === 'DOCUMENT' && (
           <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
             <div className="text-center space-y-1">
-              <div className="w-10 h-10 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
-                <Camera className="w-5 h-5" />
-              </div>
               <h2 className="font-heading text-base font-extrabold text-[#071B3A]">
-                🪪 Documento de Identificação ({documentSide === 'FRENTE' ? 'Frente' : 'Verso'})
+                Documento de Identificação ({documentSide === 'FRENTE' ? 'Frente' : 'Verso'})
               </h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
                 Fotografe o RG ou a CNH do cliente titular como evidência complementar. Essa etapa não impede a assinatura.
@@ -1306,11 +1303,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         {step === 'ROGO_DOCUMENT' && (
           <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
             <div className="text-center space-y-1">
-              <div className="w-10 h-10 bg-blue-50 border border-blue-200 text-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
-                <Camera className="w-5 h-5" />
-              </div>
               <h2 className="font-heading text-base font-extrabold text-[#071B3A]">
-                🪪 Documento de Identificação do Assinante a Rogo ({rogoDocumentSide === 'FRENTE' ? 'Frente' : 'Verso'})
+                Documento de Identificação do Assinante a Rogo ({rogoDocumentSide === 'FRENTE' ? 'Frente' : 'Verso'})
               </h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
                 Fotografe o RG ou a CNH de {rogoName || 'quem assina a rogo'} como evidência complementar. Essa etapa não impede a assinatura.
