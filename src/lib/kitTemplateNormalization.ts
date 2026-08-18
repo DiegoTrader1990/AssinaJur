@@ -30,7 +30,13 @@ export function removeStandaloneClientNameBeforeQualification(contentHtml: strin
   const normalizedName = rawName.toLocaleUpperCase('pt-BR');
   if (!normalizedName) return contentHtml;
   const namePattern = rawName.split(/\s+/).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
-  const qualificationOffset = contentHtml.search(/OUTORGANTE\s*:/i);
+  // Procurações/contratos têm um rótulo explícito (OUTORGANTE:/CONTRATANTE:) que
+  // marca onde a qualificação real começa. Declarações de hipossuficiência não têm
+  // esse rótulo - a qualificação começa direto com "NOME, brasileiro(a)... CPF...
+  // residente e domiciliado(a)...". Sem esse segundo padrão, a função nunca
+  // "chegava" na qualificação de uma declaração e apagava até o nome do rodapé.
+  const qualificationAnchor = /(?:OUTORGANTE|CONTRATANTE|DECLARANTE)\s*:|CPF(?:\s*\/\s*MF)?\s*(?:n[ºo.]?)?\s*(?:sob\s+o\s+)?n?[ºo.]?|residente\s+e\s+domiciliad/i;
+  const qualificationOffset = contentHtml.search(qualificationAnchor);
 
   // Alguns modelos Word deixam o nome dentro do próprio título, após uma quebra
   // de linha. O nome não é subtítulo da procuração e precisa sair antes do PDF.
@@ -47,7 +53,7 @@ export function removeStandaloneClientNameBeforeQualification(contentHtml: strin
   let reachedQualification = false;
   result = result.replace(/<(p|div|h1|h2|h3)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attrs, inner) => {
     const visibleText = String(inner).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
-    if (/^OUTORGANTE\s*:/i.test(visibleText)) reachedQualification = true;
+    if (qualificationAnchor.test(visibleText)) reachedQualification = true;
     const normalizedVisible = visibleText.toLocaleUpperCase('pt-BR');
     const isClientName = normalizedVisible === normalizedName || /^{{\s*cliente_nome\s*}}$/i.test(visibleText);
     return !reachedQualification && isClientName ? '' : `<${tag}${attrs}>${inner}</${tag}>`;
@@ -56,7 +62,7 @@ export function removeStandaloneClientNameBeforeQualification(contentHtml: strin
   // A revisão visual pode receber conteúdo vindo do editor com tags adicionais
   // (por exemplo, <strong> dentro de <p>). Como última proteção, removemos
   // qualquer bloco que contenha somente o nome antes da qualificação inicial.
-  const outorganteIndex = result.search(/OUTORGANTE\s*:/i);
+  const outorganteIndex = result.search(qualificationAnchor);
   if (outorganteIndex >= 0) {
     const beforeQualification = result.slice(0, outorganteIndex);
     const afterQualification = result.slice(outorganteIndex);
