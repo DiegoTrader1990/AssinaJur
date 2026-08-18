@@ -85,7 +85,9 @@ export default function DocumentCapture({
   autoStart = false,
 }: DocumentCaptureProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const [frameWidth, setFrameWidth] = useState(0);
   const emitRef = useRef(onEvent);
   const autoStartedRef = useRef<CaptureSide | null>(null);
   const autoCaptureRef = useRef(false);
@@ -124,6 +126,17 @@ export default function DocumentCapture({
   useEffect(() => {
     return () => stopCamera();
   }, [stopCamera]);
+
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect?.width;
+      if (width) setFrameWidth(width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // O vídeo só existe no DOM depois que a fase muda para LIVE. Em celulares,
   // tentar atribuir o stream antes dessa renderização ativa a câmera (ponto
@@ -454,7 +467,6 @@ export default function DocumentCapture({
 
   // Camera aberta ou revisao: ocupa a tela inteira, sem rolagem possivel.
   // O botao fica ancorado na base, respeitando a area segura do aparelho.
-  const alturaMaximaVideo = { maxHeight: 'calc(100dvh - 230px)' } as const;
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-slate-950">
@@ -464,49 +476,36 @@ export default function DocumentCapture({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2">
-        <div className="relative w-fit overflow-hidden rounded-xl">
+        <div
+          ref={frameRef}
+          className="relative w-full max-w-sm overflow-hidden rounded-2xl border-4 border-[#D4AF37]/70 bg-slate-900"
+          style={{ aspectRatio: String(CROP_ASPECT) }}
+        >
           {phase === 'LIVE' && (
-            <>
-              <video
-                ref={videoRef}
-                playsInline
-                muted
-                autoPlay
-                onLoadedMetadata={(e) => {
-                  const v = e.currentTarget;
-                  if (v.videoWidth) setVideoDims({ w: v.videoWidth, h: v.videoHeight });
-                }}
-                style={alturaMaximaVideo}
-                className="block h-auto max-h-[calc(100vh-230px)] max-w-full"
-              />
-
-              {videoDims && crop && (
-                <svg
-                  className="pointer-events-none absolute inset-0 h-full w-full"
-                  viewBox={`0 0 ${videoDims.w} ${videoDims.h}`}
-                  preserveAspectRatio="none"
-                >
-                  <path
-                    d={`M0,0 H${videoDims.w} V${videoDims.h} H0 Z M${crop.x},${crop.y} V${
-                      crop.y + crop.h
-                    } H${crop.x + crop.w} V${crop.y} Z`}
-                    fill="rgba(0,0,0,0.55)"
-                    fillRule="evenodd"
-                  />
-                  <rect
-                    x={crop.x}
-                    y={crop.y}
-                    width={crop.w}
-                    height={crop.h}
-                    fill="none"
-                    stroke="#D4AF37"
-                    strokeWidth={Math.max(2, videoDims.w * 0.004)}
-                    strokeDasharray={`${videoDims.w * 0.03} ${videoDims.w * 0.02}`}
-                    rx={videoDims.w * 0.012}
-                  />
-                </svg>
-              )}
-            </>
+            <video
+              ref={videoRef}
+              playsInline
+              muted
+              autoPlay
+              onLoadedMetadata={(e) => {
+                const v = e.currentTarget;
+                if (v.videoWidth) setVideoDims({ w: v.videoWidth, h: v.videoHeight });
+              }}
+              style={
+                videoDims && crop && frameWidth
+                  ? {
+                      position: 'absolute' as const,
+                      top: 0,
+                      left: 0,
+                      width: `${videoDims.w * (frameWidth / crop.w)}px`,
+                      height: `${videoDims.h * (frameWidth / crop.w)}px`,
+                      transform: `translate(${-crop.x * (frameWidth / crop.w)}px, ${-crop.y * (frameWidth / crop.w)}px)`,
+                      maxWidth: 'none',
+                    }
+                  : { opacity: 0 }
+              }
+              className="block"
+            />
           )}
 
           {phase === 'REVIEW' && pending && (
@@ -514,8 +513,7 @@ export default function DocumentCapture({
             <img
               src={pending.dataUrl}
               alt={`Pre-visualizacao d${side === 'FRENTE' ? 'a frente' : 'o verso'} do documento`}
-              style={alturaMaximaVideo}
-              className="block h-auto max-h-[calc(100vh-230px)] max-w-full"
+              className="absolute inset-0 h-full w-full object-contain"
             />
           )}
         </div>
