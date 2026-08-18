@@ -1188,32 +1188,45 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
   // SEÇÃO 4: EVIDÊNCIA COMPLEMENTAR — DOCUMENTO DE IDENTIFICAÇÃO (FRENTE/VERSO)
   // Em pagina propria, maior e com frente/verso empilhados verticalmente,
-  // para ficar bem legivel e nao dividir espaco com as selfies.
+  // para ficar bem legivel e nao dividir espaco com as selfies. Agora que mais
+  // de um signatário pode ter foto de documento (ex.: cliente + Assinante a
+  // Rogo), este bloco precisa paginar por signatário - antes só o cliente
+  // tinha essas fotos e um único signatário sempre cabia numa página só; com
+  // dois signatários o conteúdo do 2º ultrapassava o rodapé da página e
+  // colidia com a Seção 5 (Hash SHA-256) que vinha logo em seguida.
   if (docPhotoSigners.length > 0) {
-    page = pdfDoc.addPage([PAGE_W, PAGE_H]);
-    manifestPageCount += 1;
-    drawFrame(page, `CERTIFICADO DE EVIDÊNCIAS JURÍDICAS (Continuação ${manifestPageCount})`);
     const docInnerWidth = CW - 28;
-    let dCursor = 706;
+    const docBoxW = Math.min(docInnerWidth, 370);
+    const docBoxH = 210;
+    const docX = padX + (docInnerWidth - docBoxW) / 2;
+    let dCursor = 0;
+
+    const startDocPage = () => {
+      page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+      manifestPageCount += 1;
+      drawFrame(page, `CERTIFICADO DE EVIDÊNCIAS JURÍDICAS (Continuação ${manifestPageCount})`);
+      dCursor = 706;
+    };
+    startDocPage();
 
     for (const signer of docPhotoSigners) {
-      page.drawLine({ start: { x: CX, y: dCursor }, end: { x: CR, y: dCursor }, thickness: 1.3, color: gold });
-      page.drawText('4. DOCUMENTO DE IDENTIFICAÇÃO (EVIDÊNCIA COMPLEMENTAR)', {
-        x: padX, y: dCursor - 14, size: 8, font: bold, color: navy,
-      });
-      page.drawLine({ start: { x: CX, y: dCursor - 20 }, end: { x: CR, y: dCursor - 20 }, thickness: 0.5, color: panelBorder });
-      dCursor -= 34;
-
       const docPhotoLabels: Array<[string, string | null]> = [
         ['Frente do documento', signer.documentFrontImage],
         ['Verso do documento', signer.documentBackImage],
       ].filter(([, img]) => Boolean(img)) as Array<[string, string | null]>;
+      if (!docPhotoLabels.length) continue;
 
-      // Fotos grandes, uma embaixo da outra, para conferência clara pelo
-      // escritório - do tamanho de uma folha de documento real.
-      const docBoxW = Math.min(docInnerWidth, 370);
-      const docBoxH = 210;
-      const docX = padX + (docInnerWidth - docBoxW) / 2;
+      // Espaço necessário para o cabeçalho da seção + cada foto (frente e/ou
+      // verso). Se não couber no que resta da página atual, começa outra.
+      const neededHeight = 34 + docPhotoLabels.length * (docBoxH + 30) + 8;
+      if (dCursor - neededHeight < 60) startDocPage();
+
+      page.drawLine({ start: { x: CX, y: dCursor }, end: { x: CR, y: dCursor }, thickness: 1.3, color: gold });
+      page.drawText(`4. DOCUMENTO DE IDENTIFICAÇÃO — ${signerRoleLabel(signer.role).toUpperCase()} (EVIDÊNCIA COMPLEMENTAR)`, {
+        x: padX, y: dCursor - 14, size: 8, font: bold, color: navy,
+      });
+      page.drawLine({ start: { x: CX, y: dCursor - 20 }, end: { x: CR, y: dCursor - 20 }, thickness: 0.5, color: panelBorder });
+      dCursor -= 34;
 
       for (const [label, img] of docPhotoLabels) {
         const embedded = await embedBase64Image(pdfDoc, img, { width: 1400, height: 900 });
@@ -1240,6 +1253,11 @@ export async function generateFinalPdfCertificate(documentId: string) {
       }
       dCursor -= 8;
     }
+
+    // A Seção 5 (Hash SHA-256) é desenhada logo em seguida usando `page`/`y`.
+    // Sem isto, ela continuaria referenciando a página/posição de ANTES deste
+    // bloco de fotos, desenhando por cima do conteúdo que acabamos de colocar.
+    y = dCursor;
   }
 
   // SEÇÃO 5: INTEGRIDADE SHA-256 COMPLETA (SEM CORTE E SEM RETICÊNCIAS)
