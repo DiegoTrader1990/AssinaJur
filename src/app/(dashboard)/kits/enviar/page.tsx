@@ -195,9 +195,14 @@ export default function DispatchKitPage() {
   };
 
   const handleAddSigner = () => {
+    // Nunca crie com papel TESTEMUNHA aqui: esse papel é gerenciado só pelo
+    // seletor rápido "Sem/1/2 Testemunhas" dentro do bloco de assinatura a
+    // rogo (que não tem botão de excluir individual). Um signatário criado
+    // aqui com papel TESTEMUNHA ficaria "invisível" nesta lista e impossível
+    // de remover - por isso o papel inicial precisa ser outro.
     setSigners([
       ...signers,
-      { name: '', cpf: '', email: '', phone: '', role: 'TESTEMUNHA', signatureOrder: signers.length + 2 },
+      { name: '', cpf: '', email: '', phone: '', role: 'ADVOGADO', signatureOrder: signers.length + 2 },
     ]);
   };
 
