@@ -205,6 +205,34 @@ export default function DocumentsPage() {
     }
   };
 
+  // Um kit concluído representa uma única contratação, embora contenha vários
+  // PDFs. A exclusão do kit remove o conjunto inteiro após uma única confirmação.
+  const handleDeleteCompletedPackage = async (packageDocuments: DocumentItem[]) => {
+    if (!packageDocuments.length) return;
+    const clientName = packageDocuments[0]?.client?.name || 'este cliente';
+    if (!window.confirm(`Excluir permanentemente este kit concluído com ${packageDocuments.length} documentos de ${clientName}? Os PDFs assinados e certificados vinculados serão apagados. Esta ação não pode ser desfeita.`)) return;
+
+    setDeletingSelected(true);
+    try {
+      const results = await Promise.all(
+        packageDocuments.map(async (document) => {
+          const response = await fetch(`/api/documents/${document.id}`, { method: 'DELETE' });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || `Não foi possível excluir "${document.title}".`);
+          return document.id;
+        })
+      );
+      setDocuments((current) => current.filter((document) => !results.includes(document.id)));
+      setSelectedDocIds((current) => new Set([...current].filter((id) => !results.includes(id))));
+      setSelectedDoc(null);
+    } catch (err: any) {
+      alert(err.message || 'Não foi possível excluir o kit completo.');
+      await fetchDocuments();
+    } finally {
+      setDeletingSelected(false);
+    }
+  };
+
   const toggleSelectDoc = (id: string) => {
     setSelectedDocIds((prev) => {
       const next = new Set(prev);
@@ -541,7 +569,22 @@ export default function DocumentsPage() {
         <div className="divide-y divide-slate-100">
           {packageDocuments.map((item, index) => <div key={item.id} className="px-3.5 py-2.5 flex items-center justify-between gap-2"><div className="min-w-0 flex items-center gap-2"><span className="w-5 h-5 shrink-0 rounded-md bg-slate-100 text-slate-600 grid place-items-center text-[10px] font-black">{index + 1}</span><span className="truncate text-[11px] font-bold text-slate-700">{item.title}</span></div>{item.status === 'CONCLUIDO' && <a href={`/api/documents/${item.id}/download`} download title={`Baixar ${item.title}`} className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50"><Download className="w-3.5 h-3.5" /></a>}</div>)}
         </div>
-        <div className="p-3 border-t border-slate-100 flex gap-2"><button onClick={() => setSelectedDoc(lead)} className="flex-1 py-2 bg-[#071B3A] hover:bg-[#0B1D3D] text-white rounded-xl text-[10px] font-extrabold">Abrir dossiê do pacote</button>{isCompleted && lead.client && packageDocuments.every((item) => !item.processId) && <Link href={`/processos?clienteId=${lead.client.id}&documentoIds=${packageDocuments.map((item) => item.id).join(',')}`} className="px-3 py-2 border border-blue-200 text-blue-700 rounded-xl text-[10px] font-extrabold">Processo</Link>}{!isCompleted && lead.signers[0] && <button onClick={() => handleCopyLink(lead.signers[0].token)} className="px-3 py-2 border border-blue-200 text-blue-700 rounded-xl text-[10px] font-extrabold">Copiar link</button>}</div>
+        <div className="p-3 border-t border-slate-100 flex flex-wrap gap-2">
+          <button onClick={() => setSelectedDoc(lead)} className="flex-1 py-2 bg-[#071B3A] hover:bg-[#0B1D3D] text-white rounded-xl text-[10px] font-extrabold">Abrir dossiê do pacote</button>
+          {isCompleted && (
+            <button
+              type="button"
+              onClick={() => handleDeleteCompletedPackage(packageDocuments)}
+              disabled={deletingSelected}
+              className="px-3 py-2 border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 disabled:opacity-50 rounded-xl text-[10px] font-extrabold inline-flex items-center gap-1"
+            >
+              {deletingSelected ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+              Excluir kit
+            </button>
+          )}
+          {isCompleted && lead.client && packageDocuments.every((item) => !item.processId) && <Link href={`/processos?clienteId=${lead.client.id}&documentoIds=${packageDocuments.map((item) => item.id).join(',')}`} className="px-3 py-2 border border-blue-200 text-blue-700 rounded-xl text-[10px] font-extrabold">Processo</Link>}
+          {!isCompleted && lead.signers[0] && <button onClick={() => handleCopyLink(lead.signers[0].token)} className="px-3 py-2 border border-blue-200 text-blue-700 rounded-xl text-[10px] font-extrabold">Copiar link</button>}
+        </div>
       </div>
     );
   };
