@@ -21,7 +21,18 @@ const showEditorPreview = (html: string, documentType: string, values: Record<st
         return new RegExp(`^${label}?S?\\s*:`, 'i').test(text) ? `<${tag}${attributes}><strong>${label}:</strong> ${samples.patronos_qualificacao_conjunta}.</${tag}>` : block;
       })
     : html;
-  const withValues = Object.entries(samples).reduce((text, [key, value]) => text.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), value), withPatronos);
+  // Destacamos em amarelo o valor de amostra que entra no lugar de cada
+  // {{variável}}, para o advogado enxergar de cara o que é dado dinâmico
+  // (troca por cliente) e o que é texto fixo do modelo. O <mark> é só visual:
+  // restoreEditorPreview() SEMPRE remove esse envoltório ao converter de volta
+  // para {{...}}, então ele nunca fica gravado no modelo salvo - a mesma
+  // armadilha do negrito automático (comentário abaixo) foi evitada de propósito.
+  const withValues = Object.entries(samples).reduce(
+    (text, [key, value]) => value
+      ? text.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), `<mark class="aj-var-preview" style="background-color:#fef08a;color:#78350f;border-radius:2px;padding:0 2px;" title="Variável: {{${key}}} — este texto será substituído pelos dados de cada cliente">${value}</mark>`)
+      : text,
+    withPatronos
+  );
   // Antes negritávamos os nomes de amostra aqui só para deixar a prévia mais
   // bonita - mas isso quebrava o "{{cliente_nome}}" ao envolver o texto do
   // valor de amostra com <strong>, tornando o trecho contínuo esperado por
@@ -30,12 +41,19 @@ const showEditorPreview = (html: string, documentType: string, values: Record<st
   // a variável {{cliente_nome}} - exatamente o "o código some ao salvar"
   // relatado. O PDF final já negrita os nomes por conta própria (na geração
   // real, via emphasizeDocumentNames), então esse negrito aqui era só
-  // cosmético e arriscado - removido.
+  // cosmético e arriscado. Dessa vez usamos <mark> (não <strong>/<b>) e
+  // garantimos, em restoreEditorPreview(), que o envoltório é sempre removido
+  // junto com o texto, então esse mesmo problema não se repete.
   return withValues;
 };
-const restoreEditorPreview = (html: string, values: Record<string, string>) => Object.entries({ ...SAMPLE_VALUES, ...values })
-  .sort(([, left], [, right]) => right.length - left.length)
-  .reduce((text, [key, value]) => value ? text.replace(new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), `{{${key}}}`) : text, html);
+const restoreEditorPreview = (html: string, values: Record<string, string>) => {
+  const withTokensRestored = Object.entries({ ...SAMPLE_VALUES, ...values })
+    .sort(([, left], [, right]) => right.length - left.length)
+    .reduce((text, [key, value]) => value ? text.replace(new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), `{{${key}}}`) : text, html);
+  // Remove o <mark> de destaque que envolvia o valor de amostra - ele nunca
+  // deve sobrar no HTML salvo, só serve para a prévia visual do editor.
+  return withTokensRestored.replace(/<mark[^>]*class="aj-var-preview"[^>]*>([\s\S]*?)<\/mark>/gi, '$1');
+};
 
 interface Template {
   id: string;
