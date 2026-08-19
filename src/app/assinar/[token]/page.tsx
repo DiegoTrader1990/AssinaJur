@@ -297,6 +297,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const docDetectedRef = useRef<boolean>(false);
   const cameraStartTimeRef = useRef<number>(0);
   const sampleCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const docFrameCounterRef = useRef<number>(0);
 
   const [showDocPreview, setShowDocPreview] = useState(false);
   const [docBlobUrl, setDocBlobUrl] = useState<string | null>(null);
@@ -501,7 +502,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
   };
 
-  const detectObjectInDocGuide = (video: HTMLVideoElement) => {
+  const detectObjectInDocGuide = (video: HTMLVideoElement, faceLandmarks?: any[]) => {
     if (!video || video.videoWidth === 0) return false;
     try {
       if (!sampleCanvasRef.current && typeof window !== 'undefined') {
@@ -509,6 +510,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       }
       const canvas = sampleCanvasRef.current;
       if (!canvas) return false;
+
       canvas.width = 160;
       canvas.height = 120;
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -516,54 +518,68 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
       ctx.drawImage(video, 0, 0, 160, 120);
 
-      // Câmera frontal espelhada (scaleX(-1)):
-      // Lado Esquerdo da tela = Lado Direito do sensor de vídeo (x de 0.50 a 0.95, y de 0.20 a 0.80)
-      const startX = Math.floor(160 * 0.50);
-      const startY = Math.floor(120 * 0.20);
-      const sampleW = Math.floor(160 * 0.45);
-      const sampleH = Math.floor(120 * 0.60);
+      // Extrai o limite do rosto no sensor de vídeo (0..1) para não sobrepor o documento ao rosto
+      let faceMaxSensorX = 0.48;
+      if (faceLandmarks && faceLandmarks.length > 0) {
+        let maxSensorX = 0;
+        for (let i = 0; i < faceLandmarks.length; i += 5) {
+          if (faceLandmarks[i].x > maxSensorX) maxSensorX = faceLandmarks[i].x;
+        }
+        if (maxSensorX > 0.35) faceMaxSensorX = maxSensorX;
+      }
+
+      // Coordenadas no Sensor de Vídeo (espelhado scaleX(-1)):
+      // Lado Esquerdo da Tela (Guia do Documento) = Lado Direito do Sensor de Vídeo
+      const sensorMinXNorm = Math.max(0.55, faceMaxSensorX + 0.04);
+      const sensorMaxXNorm = 0.95;
+
+      const startX = Math.floor(160 * sensorMinXNorm);
+      const startY = Math.floor(120 * 0.18);
+      const sampleW = Math.floor(160 * (sensorMaxXNorm - sensorMinXNorm));
+      const sampleH = Math.floor(120 * 0.62);
+
+      if (sampleW < 10 || sampleH < 10) return false;
 
       const imageData = ctx.getImageData(startX, startY, sampleW, sampleH);
       const data = imageData.data;
 
-      let sumLuminance = 0;
-      let count = 0;
-      let edgeGradientSum = 0;
+      // Análise multi-critério de bordas e gradientes do objeto (operador de Sobel simplificado)
+      let highEdgePixels = 0;
+      let totalSampled = 0;
+      let edgeStrengthSum = 0;
 
-      for (let i = 0; i < data.length; i += 16) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-        sumLuminance += lum;
-        count++;
+      const widthInPixels = sampleW;
+      const heightInPixels = sampleH;
 
-        if (i + 16 < data.length) {
-          const nextR = data[i + 16];
-          const nextG = data[i + 17];
-          const nextB = data[i + 18];
-          const nextLum = 0.299 * nextR + 0.587 * nextG + 0.114 * nextB;
-          edgeGradientSum += Math.abs(lum - nextLum);
+      for (let y = 1; y < heightInPixels - 1; y += 2) {
+        for (let x = 1; x < widthInPixels - 1; x += 2) {
+          const idx = (y * widthInPixels + x) * 4;
+          const idxRight = (y * widthInPixels + (x + 1)) * 4;
+          const idxDown = ((y + 1) * widthInPixels + x) * 4;
+
+          const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+          const lumRight = 0.299 * data[idxRight] + 0.587 * data[idxRight + 1] + 0.114 * data[idxRight + 2];
+          const lumDown = 0.299 * data[idxDown] + 0.587 * data[idxDown + 1] + 0.114 * data[idxDown + 2];
+
+          const diffX = Math.abs(lum - lumRight);
+          const diffY = Math.abs(lum - lumDown);
+          const gradient = diffX + diffY;
+
+          edgeStrengthSum += gradient;
+          totalSampled++;
+
+          if (gradient >= 38) {
+            highEdgePixels++;
+          }
         }
       }
 
-      if (count === 0) return false;
-      const avgLum = sumLuminance / count;
-      let varianceSum = 0;
+      if (totalSampled === 0) return false;
+      const edgeDensityRatio = highEdgePixels / totalSampled;
+      const avgGradient = edgeStrengthSum / totalSampled;
 
-      for (let i = 0; i < data.length; i += 16) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-        varianceSum += (lum - avgLum) ** 2;
-      }
-
-      const stdDev = Math.sqrt(varianceSum / count);
-      const avgEdgeGradient = edgeGradientSum / count;
-
-      // Presença de documento/objeto gera variância e gradiente no quadro
-      return stdDev >= 16 || avgEdgeGradient >= 9;
+      // Exige densidade de bordas de cartão retangular no ROI isolado
+      return edgeDensityRatio >= 0.11 && avgGradient >= 14;
     } catch {
       return false;
     }
@@ -580,28 +596,36 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       const faceInfo = computeFaceOrientation(landmarks);
       if (faceInfo) {
         const { noseX, faceWidthRatio } = faceInfo;
-        // Sensor de vídeo espelhado (scaleX(-1)): Lado Direito da tela = Lado Esquerdo do sensor (noseX 0.05-0.65)
-        isFaceValid = noseX >= 0.05 && noseX <= 0.65 && faceWidthRatio >= 0.08 && faceWidthRatio <= 0.85;
+        // Sensor espelhado: Tela Direita = Sensor Esquerdo (noseX entre 0.05 e 0.55)
+        isFaceValid = noseX >= 0.05 && noseX <= 0.55 && faceWidthRatio >= 0.08 && faceWidthRatio <= 0.85;
       } else {
         isFaceValid = true;
       }
     }
 
-    const isDocValid = video ? detectObjectInDocGuide(video) : false;
-    const elapsedCamera = cameraStartTimeRef.current ? Date.now() - cameraStartTimeRef.current : 0;
-    // Abordagem tolerante para não criar barreira: após 3s de câmera ativa com rosto, considera documento tolerado
-    const isDocTolerantValid = isDocValid || (isFaceValid && elapsedCamera > 3000);
+    // Passa os landmarks faciais para isolar o ROI do documento sem sobrepor o rosto
+    const isDocFrameValid = video ? detectObjectInDocGuide(video, landmarks) : false;
+
+    // Checagem de estabilidade temporal (exige 4 frames consecutivos ~600ms de confirmação real)
+    if (isDocFrameValid) {
+      docFrameCounterRef.current = Math.min(10, docFrameCounterRef.current + 1);
+    } else {
+      docFrameCounterRef.current = Math.max(0, docFrameCounterRef.current - 1);
+    }
+
+    // docDetected só é VERDADEIRO quando o objeto é validado por múltiplos frames consecutivos!
+    const isRealDocDetected = docFrameCounterRef.current >= 4;
 
     faceDetectedRef.current = isFaceValid;
-    docDetectedRef.current = isDocTolerantValid;
+    docDetectedRef.current = isRealDocDetected;
 
     setFaceDetected(isFaceValid);
-    setDocDetected(isDocTolerantValid);
+    setDocDetected(isRealDocDetected);
 
-    if (isFaceValid && isDocTolerantValid) {
+    if (isFaceValid && isRealDocDetected) {
       setFrameState('GREEN');
       setSelfieInstruction('✨ Ambos posicionados! Toque em Tirar Foto com Documento.');
-    } else if (!isFaceValid && !isDocTolerantValid) {
+    } else if (!isFaceValid && !isRealDocDetected) {
       setFrameState('GRAY');
       setSelfieInstruction('Posicione seu rosto e o documento nas áreas indicadas.');
     } else if (!isFaceValid) {
@@ -609,7 +633,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setSelfieInstruction('👤 Encaixe seu rosto dentro da moldura indicada.');
     } else {
       setFrameState('YELLOW');
-      setSelfieInstruction('🪪 Segure seu documento dentro da área indicada ao lado do rosto.');
+      setSelfieInstruction('🪪 Segure seu documento ao lado do rosto na moldura indicada.');
     }
   };
 
@@ -690,6 +714,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     activeKeyRef.current = keyToStart;
     setActiveSelfieKey(keyToStart);
     cameraStartTimeRef.current = Date.now();
+    docFrameCounterRef.current = 0;
     setFaceDetected(false);
     setDocDetected(false);
 
@@ -1115,28 +1140,28 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               }`}>
                 <video ref={selfieVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
 
-                {/* OVERLAY DAS MOLDURAS (DUAS ÁREAS: ROSTO + DOCUMENTO) */}
-                <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-3">
+                {/* OVERLAY DAS MOLDURAS (DUAS ÁREAS SEPARADAS: ROSTO + DOCUMENTO) */}
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-2">
                   <div className="w-full h-full relative">
                     {/* Moldura do Rosto (Direita na tela do usuário = esquerda no sensor espelhado) */}
-                    <div className={`absolute top-[12%] right-[4%] w-[46%] h-[68%] rounded-[50%] border-[3px] border-dashed transition-all duration-300 flex flex-col items-center justify-between p-2 ${
-                      faceDetected ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' : 'border-white/50 bg-black/20'
+                    <div className={`absolute top-[10%] right-[3%] w-[44%] h-[68%] rounded-[50%] border-[2px] border-dashed transition-all duration-300 flex flex-col items-center justify-between p-2 ${
+                      faceDetected ? 'border-emerald-400 bg-emerald-500/10' : 'border-white/50 bg-black/20'
                     }`}>
-                      <span className={`text-[10px] font-extrabold uppercase font-heading px-2 py-0.5 rounded-full shadow-md ${
+                      <span className={`text-[9px] font-extrabold uppercase font-heading px-2 py-0.5 rounded-full ${
                         faceDetected ? 'bg-emerald-500 text-white' : 'bg-black/60 text-slate-200'
                       }`}>
-                        {faceDetected ? '✓ Rosto Ok' : '👤 Seu Rosto'}
+                        ROSTO
                       </span>
                     </div>
 
                     {/* Moldura do Documento (Esquerda na tela do usuário = direita no sensor espelhado) */}
-                    <div className={`absolute top-[22%] left-[4%] w-[44%] h-[48%] rounded-2xl border-[3px] border-dashed transition-all duration-300 flex flex-col items-center justify-between p-2 ${
-                      docDetected ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' : 'border-amber-300/80 bg-black/20'
+                    <div className={`absolute top-[20%] left-[3%] w-[42%] h-[46%] rounded-xl border-[2px] border-dashed transition-all duration-300 flex flex-col items-center justify-between p-2 ${
+                      docDetected ? 'border-emerald-400 bg-emerald-500/10' : 'border-amber-300/80 bg-black/20'
                     }`}>
-                      <span className={`text-[10px] font-extrabold uppercase font-heading px-2 py-0.5 rounded-full shadow-md ${
-                        docDetected ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'
+                      <span className={`text-[9px] font-extrabold uppercase font-heading px-2 py-0.5 rounded-full ${
+                        docDetected ? 'bg-emerald-500 text-white' : 'bg-black/60 text-slate-200'
                       }`}>
-                        {docDetected ? '✓ Documento Ok' : '🪪 Documento'}
+                        DOCUMENTO
                       </span>
                     </div>
                   </div>
@@ -1155,9 +1180,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   {faceDetected ? '✅ Rosto Detectado' : '⚪ Rosto (aguardando)'}
                 </span>
                 <span className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 transition-all ${
-                  docDetected ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-slate-100 border-slate-200 text-slate-500'
+                  docDetected ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-800'
                 }`}>
-                  {docDetected ? '✅ Documento Posicionado' : '⚪ Documento (aguardando)'}
+                  {docDetected ? '✅ Documento Posicionado' : '❌ Documento não detectado'}
                 </span>
               </div>
 
@@ -1354,28 +1379,28 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               }`}>
                 <video ref={selfieVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
 
-                {/* OVERLAY DAS MOLDURAS (DUAS ÁREAS: ROSTO + DOCUMENTO) */}
-                <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-3">
+                {/* OVERLAY DAS MOLDURAS (DUAS ÁREAS SEPARADAS: ROSTO + DOCUMENTO) */}
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-2">
                   <div className="w-full h-full relative">
                     {/* Moldura do Rosto (Direita na tela do usuário = esquerda no sensor espelhado) */}
-                    <div className={`absolute top-[12%] right-[4%] w-[46%] h-[68%] rounded-[50%] border-[3px] border-dashed transition-all duration-300 flex flex-col items-center justify-between p-2 ${
-                      faceDetected ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' : 'border-white/50 bg-black/20'
+                    <div className={`absolute top-[10%] right-[3%] w-[44%] h-[68%] rounded-[50%] border-[2px] border-dashed transition-all duration-300 flex flex-col items-center justify-between p-2 ${
+                      faceDetected ? 'border-emerald-400 bg-emerald-500/10' : 'border-white/50 bg-black/20'
                     }`}>
-                      <span className={`text-[10px] font-extrabold uppercase font-heading px-2 py-0.5 rounded-full shadow-md ${
+                      <span className={`text-[9px] font-extrabold uppercase font-heading px-2 py-0.5 rounded-full ${
                         faceDetected ? 'bg-emerald-500 text-white' : 'bg-black/60 text-slate-200'
                       }`}>
-                        {faceDetected ? '✓ Rosto Ok' : '👤 Seu Rosto'}
+                        ROSTO
                       </span>
                     </div>
 
                     {/* Moldura do Documento (Esquerda na tela do usuário = direita no sensor espelhado) */}
-                    <div className={`absolute top-[22%] left-[4%] w-[44%] h-[48%] rounded-2xl border-[3px] border-dashed transition-all duration-300 flex flex-col items-center justify-between p-2 ${
-                      docDetected ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' : 'border-amber-300/80 bg-black/20'
+                    <div className={`absolute top-[20%] left-[3%] w-[42%] h-[46%] rounded-xl border-[2px] border-dashed transition-all duration-300 flex flex-col items-center justify-between p-2 ${
+                      docDetected ? 'border-emerald-400 bg-emerald-500/10' : 'border-amber-300/80 bg-black/20'
                     }`}>
-                      <span className={`text-[10px] font-extrabold uppercase font-heading px-2 py-0.5 rounded-full shadow-md ${
-                        docDetected ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'
+                      <span className={`text-[9px] font-extrabold uppercase font-heading px-2 py-0.5 rounded-full ${
+                        docDetected ? 'bg-emerald-500 text-white' : 'bg-black/60 text-slate-200'
                       }`}>
-                        {docDetected ? '✓ Documento Ok' : '🪪 Documento'}
+                        DOCUMENTO
                       </span>
                     </div>
                   </div>
@@ -1394,9 +1419,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   {faceDetected ? '✅ Rosto Detectado' : '⚪ Rosto (aguardando)'}
                 </span>
                 <span className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 transition-all ${
-                  docDetected ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-slate-100 border-slate-200 text-slate-500'
+                  docDetected ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-800'
                 }`}>
-                  {docDetected ? '✅ Documento Posicionado' : '⚪ Documento (aguardando)'}
+                  {docDetected ? '✅ Documento Posicionado' : '❌ Documento não detectado'}
                 </span>
               </div>
 
