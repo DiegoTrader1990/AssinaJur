@@ -278,21 +278,27 @@ export default function DispatchKitPage() {
   const handleReviewStep = async () => {
     if (!selectedKit) return;
 
-    // Garante que item.template.contentHtml esteja preenchido (buscando do
-    // servidor se faltar) para uso posterior na geração/prévia. Não
-    // pré-preenchemos customContents aqui com esse texto cru (com {{...}}) -
-    // se fizéssemos isso, o editor de "Editar conteúdo" (linha ~1180) sempre
-    // mostraria os {{...}} literais em vez do texto já preenchido com os
-    // dados reais da cliente, porque customContents[id] ?? renderEditableReview(...)
-    // nunca cairia no fallback. Deixando customContents vazio até a pessoa
-    // editar de fato, tanto o editor quanto a geração final (que já cai em
-    // template.contentHtml quando customContents está vazio) funcionam certo.
+    // IMPORTANTE: customContents guarda o texto CRU do modelo (com {{...}}),
+    // não o texto já processado (renderEditableReview). O editor mostra esse
+    // texto cru de propósito - editar o texto já processado (com nomes em
+    // negrito injetados por regex e o bloco de assinatura recentralizado) e
+    // mandar esse HTML de volta para o servidor causou geração de PDF
+    // quebrada (páginas em branco, texto sumindo) porque o servidor tenta
+    // normalizar de novo um texto que já não tem mais os tokens {{...}}
+    // esperados. Mantendo o texto cru aqui, a substituição pelos dados reais
+    // da cliente continua acontecendo de forma segura no servidor, tanto na
+    // prévia quanto na geração final.
+    const contents: Record<string, string> = {};
+
     for (const item of selectedKit.items) {
-      if (!item.template.contentHtml) {
+      if (item.template.contentHtml) {
+        contents[item.template.id] = item.template.contentHtml;
+      } else {
         try {
           const res = await fetch(`/api/templates/${item.template.id}`);
           const data = await res.json();
           if (data.template) {
+            contents[item.template.id] = data.template.contentHtml;
             item.template.contentHtml = data.template.contentHtml;
           }
         } catch (error) {
@@ -344,6 +350,7 @@ export default function DispatchKitPage() {
       setError(reviewError?.message || 'Não foi possível aplicar os dados da cliente à revisão.');
       return;
     }
+    setCustomContents(contents);
     setShowReviewStep(true);
     setReviewItem(null);
   };
