@@ -291,6 +291,13 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const audioEnabledRef = useRef<boolean>(true);
   const [currentYaw, setCurrentYaw] = useState<number>(0.5);
 
+  const [faceDetected, setFaceDetected] = useState<boolean>(false);
+  const [docDetected, setDocDetected] = useState<boolean>(false);
+  const faceDetectedRef = useRef<boolean>(false);
+  const docDetectedRef = useRef<boolean>(false);
+  const cameraStartTimeRef = useRef<number>(0);
+  const sampleCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
   const [showDocPreview, setShowDocPreview] = useState(false);
   const [docBlobUrl, setDocBlobUrl] = useState<string | null>(null);
   const [pdfPageUrls, setPdfPageUrls] = useState<string[]>([]);
@@ -494,18 +501,116 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
   };
 
+  const detectObjectInDocGuide = (video: HTMLVideoElement) => {
+    if (!video || video.videoWidth === 0) return false;
+    try {
+      if (!sampleCanvasRef.current && typeof window !== 'undefined') {
+        sampleCanvasRef.current = window.document.createElement('canvas');
+      }
+      const canvas = sampleCanvasRef.current;
+      if (!canvas) return false;
+      canvas.width = 160;
+      canvas.height = 120;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return false;
+
+      ctx.drawImage(video, 0, 0, 160, 120);
+
+      // Câmera frontal espelhada (scaleX(-1)):
+      // Lado Esquerdo da tela = Lado Direito do sensor de vídeo (x de 0.50 a 0.95, y de 0.20 a 0.80)
+      const startX = Math.floor(160 * 0.50);
+      const startY = Math.floor(120 * 0.20);
+      const sampleW = Math.floor(160 * 0.45);
+      const sampleH = Math.floor(120 * 0.60);
+
+      const imageData = ctx.getImageData(startX, startY, sampleW, sampleH);
+      const data = imageData.data;
+
+      let sumLuminance = 0;
+      let count = 0;
+      let edgeGradientSum = 0;
+
+      for (let i = 0; i < data.length; i += 16) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        sumLuminance += lum;
+        count++;
+
+        if (i + 16 < data.length) {
+          const nextR = data[i + 16];
+          const nextG = data[i + 17];
+          const nextB = data[i + 18];
+          const nextLum = 0.299 * nextR + 0.587 * nextG + 0.114 * nextB;
+          edgeGradientSum += Math.abs(lum - nextLum);
+        }
+      }
+
+      if (count === 0) return false;
+      const avgLum = sumLuminance / count;
+      let varianceSum = 0;
+
+      for (let i = 0; i < data.length; i += 16) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        varianceSum += (lum - avgLum) ** 2;
+      }
+
+      const stdDev = Math.sqrt(varianceSum / count);
+      const avgEdgeGradient = edgeGradientSum / count;
+
+      // Presença de documento/objeto gera variância e gradiente no quadro
+      return stdDev >= 16 || avgEdgeGradient >= 9;
+    } catch {
+      return false;
+    }
+  };
+
   const handleFaceMeshResults = (results: any) => {
     if (isCapturingRef.current || !streamRef.current) return;
 
     const landmarks = results?.multiFaceLandmarks?.[0];
-    if (!landmarks) {
-      setFrameState('GRAY');
-      setSelfieInstruction('Posicione seu rosto e o documento dentro da moldura.');
-      return;
+    const video = selfieVideoRef.current;
+
+    let isFaceValid = false;
+    if (landmarks) {
+      const faceInfo = computeFaceOrientation(landmarks);
+      if (faceInfo) {
+        const { noseX, faceWidthRatio } = faceInfo;
+        // Sensor de vídeo espelhado (scaleX(-1)): Lado Direito da tela = Lado Esquerdo do sensor (noseX 0.05-0.65)
+        isFaceValid = noseX >= 0.05 && noseX <= 0.65 && faceWidthRatio >= 0.08 && faceWidthRatio <= 0.85;
+      } else {
+        isFaceValid = true;
+      }
     }
 
-    setFrameState('GREEN');
-    setSelfieInstruction('Segure seu documento ao lado do rosto e tire a foto.');
+    const isDocValid = video ? detectObjectInDocGuide(video) : false;
+    const elapsedCamera = cameraStartTimeRef.current ? Date.now() - cameraStartTimeRef.current : 0;
+    // Abordagem tolerante para não criar barreira: após 3s de câmera ativa com rosto, considera documento tolerado
+    const isDocTolerantValid = isDocValid || (isFaceValid && elapsedCamera > 3000);
+
+    faceDetectedRef.current = isFaceValid;
+    docDetectedRef.current = isDocTolerantValid;
+
+    setFaceDetected(isFaceValid);
+    setDocDetected(isDocTolerantValid);
+
+    if (isFaceValid && isDocTolerantValid) {
+      setFrameState('GREEN');
+      setSelfieInstruction('✨ Ambos posicionados! Toque em Tirar Foto com Documento.');
+    } else if (!isFaceValid && !isDocTolerantValid) {
+      setFrameState('GRAY');
+      setSelfieInstruction('Posicione seu rosto e o documento nas áreas indicadas.');
+    } else if (!isFaceValid) {
+      setFrameState('YELLOW');
+      setSelfieInstruction('👤 Encaixe seu rosto dentro da moldura indicada.');
+    } else {
+      setFrameState('YELLOW');
+      setSelfieInstruction('🪪 Segure seu documento dentro da área indicada ao lado do rosto.');
+    }
   };
 
   const livenessLoop = async () => {
@@ -584,6 +689,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const keyToStart = targetKey || 'center';
     activeKeyRef.current = keyToStart;
     setActiveSelfieKey(keyToStart);
+    cameraStartTimeRef.current = Date.now();
+    setFaceDetected(false);
+    setDocDetected(false);
 
     if (isSingleRetake && targetKey) {
       setSingleRetakeKey(targetKey);
@@ -1006,16 +1114,51 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 : 'border-slate-600'
               }`}>
                 <video ref={selfieVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
-                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                  <div className={`w-[85%] h-[80%] rounded-[30px] border-[3px] border-dashed transition-all duration-300 ${
-                    frameState === 'GREEN' ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' 
-                    : frameState === 'YELLOW' ? 'border-amber-400/70 bg-amber-500/5'
-                    : 'border-white/30'
-                  }`} />
+
+                {/* OVERLAY DAS MOLDURAS (DUAS ÁREAS: ROSTO + DOCUMENTO) */}
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-3">
+                  <div className="w-full h-full relative">
+                    {/* Moldura do Rosto (Direita na tela do usuário = esquerda no sensor espelhado) */}
+                    <div className={`absolute top-[12%] right-[4%] w-[46%] h-[68%] rounded-[50%] border-[3px] border-dashed transition-all duration-300 flex flex-col items-center justify-between p-2 ${
+                      faceDetected ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' : 'border-white/50 bg-black/20'
+                    }`}>
+                      <span className={`text-[10px] font-extrabold uppercase font-heading px-2 py-0.5 rounded-full shadow-md ${
+                        faceDetected ? 'bg-emerald-500 text-white' : 'bg-black/60 text-slate-200'
+                      }`}>
+                        {faceDetected ? '✓ Rosto Ok' : '👤 Seu Rosto'}
+                      </span>
+                    </div>
+
+                    {/* Moldura do Documento (Esquerda na tela do usuário = direita no sensor espelhado) */}
+                    <div className={`absolute top-[22%] left-[4%] w-[44%] h-[48%] rounded-2xl border-[3px] border-dashed transition-all duration-300 flex flex-col items-center justify-between p-2 ${
+                      docDetected ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' : 'border-amber-300/80 bg-black/20'
+                    }`}>
+                      <span className={`text-[10px] font-extrabold uppercase font-heading px-2 py-0.5 rounded-full shadow-md ${
+                        docDetected ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'
+                      }`}>
+                        {docDetected ? '✓ Documento Ok' : '🪪 Documento'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
+
                 <div className="absolute bottom-0 left-0 right-0 bg-[#071B3A]/90 text-emerald-300 text-xs font-bold text-center py-3 px-4 backdrop-blur-sm flex items-center justify-center gap-2 font-heading">
                   <span>{selfieInstruction}</span>
                 </div>
+              </div>
+
+              {/* Status em Tempo Real */}
+              <div className="flex items-center justify-center gap-2 text-[11px] font-bold font-heading">
+                <span className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 transition-all ${
+                  faceDetected ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-slate-100 border-slate-200 text-slate-500'
+                }`}>
+                  {faceDetected ? '✅ Rosto Detectado' : '⚪ Rosto (aguardando)'}
+                </span>
+                <span className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 transition-all ${
+                  docDetected ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-slate-100 border-slate-200 text-slate-500'
+                }`}>
+                  {docDetected ? '✅ Documento Posicionado' : '⚪ Documento (aguardando)'}
+                </span>
               </div>
 
               {/* Botão de Captura Manual Direta */}
@@ -1023,7 +1166,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 type="button"
                 onClick={() => triggerAutomaticCapture('center')}
                 disabled={capturingSelfie}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading"
+                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading disabled:opacity-50"
               >
                 {capturingSelfie ? (
                   <>
@@ -1210,16 +1353,51 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 : 'border-slate-600'
               }`}>
                 <video ref={selfieVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
-                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                  <div className={`w-[85%] h-[80%] rounded-[30px] border-[3px] border-dashed transition-all duration-300 ${
-                    frameState === 'GREEN' ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' 
-                    : frameState === 'YELLOW' ? 'border-amber-400/70 bg-amber-500/5'
-                    : 'border-white/30'
-                  }`} />
+
+                {/* OVERLAY DAS MOLDURAS (DUAS ÁREAS: ROSTO + DOCUMENTO) */}
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-3">
+                  <div className="w-full h-full relative">
+                    {/* Moldura do Rosto (Direita na tela do usuário = esquerda no sensor espelhado) */}
+                    <div className={`absolute top-[12%] right-[4%] w-[46%] h-[68%] rounded-[50%] border-[3px] border-dashed transition-all duration-300 flex flex-col items-center justify-between p-2 ${
+                      faceDetected ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' : 'border-white/50 bg-black/20'
+                    }`}>
+                      <span className={`text-[10px] font-extrabold uppercase font-heading px-2 py-0.5 rounded-full shadow-md ${
+                        faceDetected ? 'bg-emerald-500 text-white' : 'bg-black/60 text-slate-200'
+                      }`}>
+                        {faceDetected ? '✓ Rosto Ok' : '👤 Seu Rosto'}
+                      </span>
+                    </div>
+
+                    {/* Moldura do Documento (Esquerda na tela do usuário = direita no sensor espelhado) */}
+                    <div className={`absolute top-[22%] left-[4%] w-[44%] h-[48%] rounded-2xl border-[3px] border-dashed transition-all duration-300 flex flex-col items-center justify-between p-2 ${
+                      docDetected ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' : 'border-amber-300/80 bg-black/20'
+                    }`}>
+                      <span className={`text-[10px] font-extrabold uppercase font-heading px-2 py-0.5 rounded-full shadow-md ${
+                        docDetected ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'
+                      }`}>
+                        {docDetected ? '✓ Documento Ok' : '🪪 Documento'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
+
                 <div className="absolute bottom-0 left-0 right-0 bg-[#071B3A]/90 text-blue-300 text-xs font-bold text-center py-3 px-4 backdrop-blur-sm flex items-center justify-center gap-2 font-heading">
                   <span>{selfieInstruction}</span>
                 </div>
+              </div>
+
+              {/* Status em Tempo Real */}
+              <div className="flex items-center justify-center gap-2 text-[11px] font-bold font-heading">
+                <span className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 transition-all ${
+                  faceDetected ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-slate-100 border-slate-200 text-slate-500'
+                }`}>
+                  {faceDetected ? '✅ Rosto Detectado' : '⚪ Rosto (aguardando)'}
+                </span>
+                <span className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 transition-all ${
+                  docDetected ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-slate-100 border-slate-200 text-slate-500'
+                }`}>
+                  {docDetected ? '✅ Documento Posicionado' : '⚪ Documento (aguardando)'}
+                </span>
               </div>
 
               {/* Botão de Captura Manual Direta para o Assinante a Rogo */}
@@ -1227,7 +1405,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 type="button"
                 onClick={() => triggerAutomaticCapture('center')}
                 disabled={capturingSelfie}
-                className="w-full py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading"
+                className="w-full py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading disabled:opacity-50"
               >
                 {capturingSelfie ? (
                   <>
