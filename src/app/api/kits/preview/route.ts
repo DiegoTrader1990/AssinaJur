@@ -88,10 +88,13 @@ export async function POST(req: Request) {
       client.representativePhone ? `telefone ${formatPhone(client.representativePhone)}` : '',
       representativeAddressPhrase,
     ].filter(Boolean);
-    // Usa o gênero cadastrado da cliente para escrever "nascido"/"nascida" em
-    // vez do genérico "nascido(a)" - só cai no genérico quando o gênero não
-    // foi informado no cadastro.
+    // Usa o gênero cadastrado da cliente para escrever "nascido"/"nascida",
+    // "portador"/"portadora" e "residente e domiciliado"/"domiciliada" em vez
+    // do genérico "(a)" - só cai no genérico quando o gênero não foi
+    // informado no cadastro.
     const nascidoWord = client.gender === 'FEMININO' ? 'nascida' : client.gender === 'MASCULINO' ? 'nascido' : 'nascido(a)';
+    const portadorWord = client.gender === 'FEMININO' ? 'portadora' : client.gender === 'MASCULINO' ? 'portador' : 'portador(a)';
+    const residenteDomiciliadoWord = client.gender === 'FEMININO' ? 'residente e domiciliada' : client.gender === 'MASCULINO' ? 'residente e domiciliado' : 'residente e domiciliado(a)';
     const variables = {
       representante_legal: client.legalRepresentative || '', representante_cpf: formatCpfCnpj(client.representativeCpf) || '', representante_rg: client.representativeRg || '', representante_telefone: formatPhone(client.representativePhone) || '',
       representante_qualificacao: representativeQualificationParts.join(', '),
@@ -99,6 +102,8 @@ export async function POST(req: Request) {
       cliente_nome: client.name, cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '—', cliente_nacionalidade: client.nationality || 'Brasileira',
       cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—',
       cliente_nascimento_qualificacao: client.birthDate ? `, ${nascidoWord} em ${formatBirthDate(client.birthDate)}` : '',
+      cliente_portador: portadorWord,
+      cliente_residente_domiciliado: residenteDomiciliadoWord,
       cliente_endereco: clienteEnderecoText,
       advogado_nome: lawyer?.name || 'Advogado responsável', advogado_oab: lawyer?.oabNumber || '—', escritorio_nome: office.tradeName || office.name,
       patronos_qualificacao_conjunta: `${patronosQualification}, com escritório profissional na ${fullAddress}`,

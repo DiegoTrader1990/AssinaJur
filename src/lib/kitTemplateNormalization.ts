@@ -118,7 +118,7 @@ export function ensureClientQualificationTokens(contentHtml: string, title: stri
       const suffix = isContract ? ', doravante denominado(a) CONTRATANTE.' : '.';
       const fontOpen = String(inner).match(/<font\b[^>]*>/i)?.[0] || '';
       const fontClose = fontOpen ? '</font>' : '';
-      return `<${tag}${attrs}>${fontOpen}<strong>${label}:</strong> {{cliente_nome}}, {{cliente_nacionalidade}}, {{cliente_estado_civil}}, {{cliente_profissao}}, portador(a) do RG nº {{cliente_rg}} e inscrito(a) no CPF sob o nº {{cliente_cpf}}{{cliente_nascimento_qualificacao}}, residente e domiciliado(a) em {{cliente_endereco}}${suffix}${fontClose}</${tag}>`;
+      return `<${tag}${attrs}>${fontOpen}<strong>${label}:</strong> {{cliente_nome}}, {{cliente_nacionalidade}}, {{cliente_estado_civil}}, {{cliente_profissao}}, {{cliente_portador}} do RG nº {{cliente_rg}} e inscrito(a) no CPF sob o nº {{cliente_cpf}}{{cliente_nascimento_qualificacao}}, {{cliente_residente_domiciliado}} em {{cliente_endereco}}${suffix}${fontClose}</${tag}>`;
     });
   }
 
@@ -135,7 +135,7 @@ export function ensureClientQualificationTokens(contentHtml: string, title: stri
       const looksLikeQualification = /(?:CPF(?:\s*\/\s*MF)?|RG\s*(?:n[ºo.]?)?|residente\s+e\s+domiciliad)/i.test(text);
       if (declarationQualificationReplaced || hasClientToken || !looksLikeQualification) return block;
       declarationQualificationReplaced = true;
-      return `<${tag}${attrs}><strong>{{cliente_nome}}</strong>, {{cliente_nacionalidade}}, {{cliente_estado_civil}}, {{cliente_profissao}}, inscrito(a) no CPF/MF sob o n.º {{cliente_cpf}}, residente e domiciliado(a) em {{cliente_endereco}}, declara, sob as penas da lei, que não possui condições financeiras de arcar com as custas processuais, despesas cartorárias e honorários advocatícios, sem prejuízo do próprio sustento e de sua família.</${tag}>`;
+      return `<${tag}${attrs}><strong>{{cliente_nome}}</strong>, {{cliente_nacionalidade}}, {{cliente_estado_civil}}, {{cliente_profissao}}, inscrito(a) no CPF/MF sob o n.º {{cliente_cpf}}, {{cliente_residente_domiciliado}} em {{cliente_endereco}}, declara, sob as penas da lei, que não possui condições financeiras de arcar com as custas processuais, despesas cartorárias e honorários advocatícios, sem prejuízo do próprio sustento e de sua família.</${tag}>`;
     });
   }
 

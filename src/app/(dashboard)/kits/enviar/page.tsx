@@ -277,18 +277,22 @@ export default function DispatchKitPage() {
 
   const handleReviewStep = async () => {
     if (!selectedKit) return;
-    
-    const contents: Record<string, string> = {};
-    
+
+    // Garante que item.template.contentHtml esteja preenchido (buscando do
+    // servidor se faltar) para uso posterior na geração/prévia. Não
+    // pré-preenchemos customContents aqui com esse texto cru (com {{...}}) -
+    // se fizéssemos isso, o editor de "Editar conteúdo" (linha ~1180) sempre
+    // mostraria os {{...}} literais em vez do texto já preenchido com os
+    // dados reais da cliente, porque customContents[id] ?? renderEditableReview(...)
+    // nunca cairia no fallback. Deixando customContents vazio até a pessoa
+    // editar de fato, tanto o editor quanto a geração final (que já cai em
+    // template.contentHtml quando customContents está vazio) funcionam certo.
     for (const item of selectedKit.items) {
-      if (item.template.contentHtml) {
-        contents[item.template.id] = item.template.contentHtml;
-      } else {
+      if (!item.template.contentHtml) {
         try {
           const res = await fetch(`/api/templates/${item.template.id}`);
           const data = await res.json();
           if (data.template) {
-            contents[item.template.id] = data.template.contentHtml;
             item.template.contentHtml = data.template.contentHtml;
           }
         } catch (error) {
@@ -316,13 +320,16 @@ export default function DispatchKitPage() {
         const oab = String(member.oabNumber || '').trim();
         return `${member.name}, ${role} ${/\bOAB\b/i.test(oab) ? `na ${oab}` : oab ? `na OAB/${officeState} sob o nº ${oab}` : 'na Ordem dos Advogados do Brasil'}`;
       }).join(' e ');
-      // Usa o gênero cadastrado da cliente para escrever "nascido"/"nascida"
-      // em vez do genérico "nascido(a)" - só cai no genérico quando o gênero
-      // não foi informado no cadastro.
+      // Usa o gênero cadastrado da cliente para escrever "nascido"/"nascida",
+      // "portador"/"portadora" e "residente e domiciliado"/"domiciliada" em
+      // vez do genérico "(a)" - só cai no genérico quando o gênero não foi
+      // informado no cadastro.
       const nascidoWord = client.gender === 'FEMININO' ? 'nascida' : client.gender === 'MASCULINO' ? 'nascido' : 'nascido(a)';
+      const portadorWord = client.gender === 'FEMININO' ? 'portadora' : client.gender === 'MASCULINO' ? 'portador' : 'portador(a)';
+      const residenteDomiciliadoWord = client.gender === 'FEMININO' ? 'residente e domiciliada' : client.gender === 'MASCULINO' ? 'residente e domiciliado' : 'residente e domiciliado(a)';
       setReviewClientData({
         cliente_nome: client.name || '', cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '—', cliente_nacionalidade: client.nationality || 'Brasileira',
-        cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—', cliente_nascimento_qualificacao: client.birthDate ? `, ${nascidoWord} em ${formatBirthDate(client.birthDate)}` : '', cliente_endereco: [client.address, client.number, client.complement, client.neighborhood, [client.city, client.state].filter(Boolean).join('/'), client.cep ? `CEP ${client.cep}` : ''].filter(Boolean).join(', ') || '—', cidade: [client.city, client.state].filter(Boolean).join('/') || '—',
+        cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—', cliente_nascimento_qualificacao: client.birthDate ? `, ${nascidoWord} em ${formatBirthDate(client.birthDate)}` : '', cliente_portador: portadorWord, cliente_residente_domiciliado: residenteDomiciliadoWord, cliente_endereco: [client.address, client.number, client.complement, client.neighborhood, [client.city, client.state].filter(Boolean).join('/'), client.cep ? `CEP ${client.cep}` : ''].filter(Boolean).join(', ') || '—', cidade: [client.city, client.state].filter(Boolean).join('/') || '—',
         advogado_nome: lawyer.name || 'Advogado responsável', advogado_oab: lawyer.oabNumber || '—', escritorio_nome: officePayload.office?.tradeName || officePayload.office?.name || '—',
         patronos_qualificacao_conjunta: patronos ? `${patronos}, com escritório profissional na ${officeAddress}` : 'Advogado responsável',
         patronos_nomes: activeLawyers.map((member: any) => member.name).join('|'),
@@ -337,7 +344,6 @@ export default function DispatchKitPage() {
       setError(reviewError?.message || 'Não foi possível aplicar os dados da cliente à revisão.');
       return;
     }
-    setCustomContents(contents);
     setShowReviewStep(true);
     setReviewItem(null);
   };
