@@ -15,8 +15,16 @@ interface Client {
   email?: string;
   legalRepresentative?: string | null;
   representativeCpf?: string | null;
+  representativeRg?: string | null;
   representativePhone?: string | null;
   representativeRole?: string | null;
+  address?: string | null;
+  number?: string | null;
+  complement?: string | null;
+  neighborhood?: string | null;
+  city?: string | null;
+  state?: string | null;
+  cep?: string | null;
 }
 
 interface SignerInput {
@@ -26,6 +34,21 @@ interface SignerInput {
   phone: string;
   role: string;
   signatureOrder: number;
+}
+
+// Mesma composição de endereço usada em /api/kits/generate-package/route.ts
+// (cliente_endereco), reaproveitada aqui só para preencher a opção "mesmo
+// endereço da cliente" do assinante a rogo sem esperar o servidor.
+function formatClientAddress(client: Client | undefined): string {
+  if (!client) return '';
+  return [
+    client.address,
+    client.number && !String(client.address || '').includes(client.number) ? `nº ${client.number}` : '',
+    client.complement,
+    client.neighborhood,
+    [client.city, client.state].filter(Boolean).join('/'),
+    client.cep ? `CEP ${client.cep}` : '',
+  ].filter(Boolean).join(', ');
 }
 
 interface LegalKit {
@@ -75,6 +98,10 @@ export default function DispatchKitPage() {
   const [isIlliterate, setIsIlliterate] = useState(false);
   const [rogoName, setRogoName] = useState('');
   const [rogoCpf, setRogoCpf] = useState('');
+  const [rogoRg, setRogoRg] = useState('');
+  const [rogoBirthDate, setRogoBirthDate] = useState('');
+  const [rogoAddress, setRogoAddress] = useState('');
+  const [rogoSameAddress, setRogoSameAddress] = useState(false);
   const [rogoRelationship, setRogoRelationship] = useState('Acompanhante / Familiar');
   const [rogoPhone, setRogoPhone] = useState('');
   const [rogoEmail, setRogoEmail] = useState('');
@@ -172,6 +199,7 @@ export default function DispatchKitPage() {
   };
 
   const selectedKit = kits.find((k) => k.id === selectedKitId);
+  const selectedClient = clients.find((c) => c.id === selectedClientId);
 
   const handleSelectClient = (clientId: string) => {
     resetReviewForSelection();
@@ -184,11 +212,17 @@ export default function DispatchKitPage() {
       setEnforceSignatureOrder(true);
       setRogoName(client.legalRepresentative);
       setRogoCpf(maskCpfCnpj(client.representativeCpf || ''));
+      setRogoRg(client.representativeRg || '');
       setRogoPhone(maskPhone(client.representativePhone || ''));
       setRogoRelationship(client.representativeRole || 'Representante cadastrado');
+      // O cadastro do representante não guarda nascimento/endereço próprios; o
+      // advogado confirma esses dois campos manualmente antes de gerar.
+      setRogoBirthDate('');
+      setRogoSameAddress(false);
+      setRogoAddress('');
     } else {
       setIsIlliterate(false);
-      setRogoName(''); setRogoCpf(''); setRogoPhone(''); setRogoEmail('');
+      setRogoName(''); setRogoCpf(''); setRogoRg(''); setRogoBirthDate(''); setRogoAddress(''); setRogoSameAddress(false); setRogoPhone(''); setRogoEmail('');
       setRogoRelationship('Acompanhante / Familiar');
     }
     setSigners([]);
@@ -507,6 +541,10 @@ export default function DispatchKitPage() {
           isIlliterate,
           rogoName: isIlliterate ? rogoName : null,
           rogoCpf: isIlliterate ? rogoCpf : null,
+          rogoRg: isIlliterate ? rogoRg : null,
+          rogoBirthDate: isIlliterate ? rogoBirthDate : null,
+          rogoAddress: isIlliterate ? (rogoSameAddress ? formatClientAddress(selectedClient) : rogoAddress) : null,
+          rogoSameAddress: isIlliterate ? rogoSameAddress : false,
           rogoRelationship: isIlliterate ? rogoRelationship : null,
           rogoPhone: isIlliterate ? rogoPhone : null,
           rogoEmail: isIlliterate ? rogoEmail : null,
@@ -610,7 +648,7 @@ export default function DispatchKitPage() {
               setSelectedClientId('');
               setSigners([]);
               setIsIlliterate(false);
-              setRogoName(''); setRogoCpf(''); setRogoPhone(''); setRogoEmail('');
+              setRogoName(''); setRogoCpf(''); setRogoRg(''); setRogoBirthDate(''); setRogoAddress(''); setRogoSameAddress(false); setRogoPhone(''); setRogoEmail('');
               setRogoRelationship('Acompanhante / Familiar');
               setEnforceSignatureOrder(false);
               setStampOverrides({});
@@ -904,6 +942,37 @@ export default function DispatchKitPage() {
                       <input type="email" value={rogoEmail} onChange={(e) => setRogoEmail(e.target.value)}
                         placeholder="email@exemplo.com" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
                     </div>
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">RG do Assinante a Rogo *</label>
+                      <input type="text" required={isIlliterate} value={rogoRg} onChange={(e) => setRogoRg(e.target.value)}
+                        placeholder="00.000.000-0" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Data de Nascimento do Assinante a Rogo *</label>
+                      <input type="date" required={isIlliterate} value={rogoBirthDate} onChange={(e) => setRogoBirthDate(e.target.value)}
+                        className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                    </div>
+                  </div>
+                  <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <input type="checkbox" checked={rogoSameAddress}
+                        onChange={(e) => { setRogoSameAddress(e.target.checked); if (e.target.checked) setRogoAddress(''); }}
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
+                      <span className="text-[11px] font-bold text-slate-700">É residente e domiciliado(a) no mesmo endereço da cliente</span>
+                    </label>
+                    {rogoSameAddress ? (
+                      <p className="text-[11px] text-slate-500 font-medium pl-6">
+                        {formatClientAddress(selectedClient) || 'Endereço da cliente não cadastrado - preencha no cadastro da cliente ou desmarque esta opção.'}
+                      </p>
+                    ) : (
+                      <div className="pl-6">
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Endereço do Assinante a Rogo *</label>
+                        <input type="text" required={isIlliterate && !rogoSameAddress} value={rogoAddress} onChange={(e) => setRogoAddress(e.target.value)}
+                          placeholder="Rua, número, bairro, cidade/UF, CEP" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                      </div>
+                    )}
                   </div>
                   {signers.some((s) => s.role === 'TESTEMUNHA') && (
                     <div className="rounded-xl border border-blue-200 bg-white p-3 space-y-2">

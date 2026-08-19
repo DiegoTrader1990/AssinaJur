@@ -446,7 +446,7 @@ export default function TemplatesPage() {
                   key={`${editingTemplate?.id || 'novo'}-${showModal}-${sampleValues.patronos_nomes || 'carregando'}`}
                   value={showEditorPreview(formData.contentHtml, formData.documentType, sampleValues)}
                   onChange={(html) => { setFormData({ ...formData, contentHtml: restoreEditorPreview(html, sampleValues) }); setAutoDetectMessage(''); }}
-                  showTags
+                  showTags={false}
                   showAiCopilot={false}
                   placeholder="Redija ou ajuste o documento..."
                 />

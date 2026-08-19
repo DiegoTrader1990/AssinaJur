@@ -80,6 +80,9 @@ export async function POST(req: Request) {
       legalRepresentative,
       representativeCpf,
       representativeRg,
+      representativeBirthDate,
+      representativeAddress,
+      representativeSameAddress,
       representativePhone,
       representativeRole,
       financialResponsible,
@@ -115,6 +118,16 @@ export async function POST(req: Request) {
     if (legalRepresentative && cleanRepresentativePhone && (cleanRepresentativePhone.length < 10 || cleanRepresentativePhone.length > 13)) {
       return NextResponse.json({ error: 'Informe um telefone válido do representante legal.' }, { status: 400 });
     }
+    // Endereço do próprio cliente (usado quando o representante mora com ele).
+    const ownAddressText = [
+      address,
+      number && !String(address || '').includes(number) ? `nº ${number}` : '',
+      complement,
+      neighborhood,
+      [city, state].filter(Boolean).join('/'),
+      cep ? `CEP ${cep}` : '',
+    ].filter(Boolean).join(', ');
+    const resolvedRepresentativeAddress = representativeSameAddress ? ownAddressText : (representativeAddress || '');
     if (lawyerInChargeId) {
       const lawyer = await prisma.user.findFirst({ where: { id: lawyerInChargeId, officeId: user.officeId, active: true } });
       if (!lawyer) return NextResponse.json({ error: 'O advogado responsável não pertence a este escritório.' }, { status: 400 });
@@ -162,6 +175,9 @@ export async function POST(req: Request) {
         legalRepresentative: legalRepresentative || null,
         representativeCpf: cleanRepresentativeCpf || null,
         representativeRg: representativeRg || null,
+        representativeBirthDate: representativeBirthDate || null,
+        representativeAddress: resolvedRepresentativeAddress || null,
+        representativeSameAddress: !!representativeSameAddress,
         representativePhone: cleanRepresentativePhone || null,
         representativeRole: representativeRole || null,
         financialResponsible: financialResponsible || null,

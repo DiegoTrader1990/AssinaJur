@@ -135,6 +135,9 @@ model Client {
   legalRepresentative String?
   representativeCpf   String?
   representativeRg    String?
+  representativeBirthDate String?
+  representativeAddress  String?
+  representativeSameAddress Boolean @default(false)
   representativePhone String?
   representativeRole  String?
   financialResponsible String?
@@ -295,6 +298,10 @@ model Document {
   isIlliterate     Boolean  @default(false)
   rogoName         String?
   rogoCpf          String?
+  rogoRg           String?
+  rogoBirthDate    String?
+  rogoAddress      String?
+  rogoSameAddress  Boolean  @default(false)
   rogoRelationship String?
 
   createdAt        DateTime @default(now())

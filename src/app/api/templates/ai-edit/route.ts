@@ -29,10 +29,14 @@ SUA MISSÃO PRINCIPAL:
    - Porcentagem / Percentual de Êxito -> {{percentual_exito}}
    - Cidade -> {{cidade}}
    - Data -> {{data_atual}}
+   - Nome do representante legal do cliente (pai/mãe/tutor/curador, quando o cliente é incapaz ou menor) -> {{representante_legal}}
+   - Qualificação completa do representante legal (cargo, CPF, RG, nascimento, telefone e endereço) -> {{representante_qualificacao}}
+   - Nome completo e qualificação do assinante a rogo (pessoa que assina no lugar do cliente que não sabe ou não pode assinar) -> {{assinante_rogo_nome}} e {{assinante_rogo_qualificacao}}
 3. IMPORTANTE - qualificação de advogado(s) no início de Procurações e Contratos: se o texto tiver um parágrafo começando com "OUTORGADOS:" ou "CONTRATADOS:" seguido do(s) nome(s), OAB e endereço de um ou mais advogados (ex: "OUTORGADOS: Dr. Fulano, ..., inscrito na OAB/BA nº ..., e Dra. Beltrana, ..."), substitua TODO o texto após os dois-pontos, incluindo os nomes/OAB/endereço fixos, por uma única variável {{patronos_qualificacao_conjunta}}, mantendo o rótulo. Exemplo de resultado: "<strong>OUTORGADOS:</strong> {{patronos_qualificacao_conjunta}}." Isso é necessário porque o escritório pode ter advogados diferentes responsáveis por cada caso, e esse texto é preenchido automaticamente pelo sistema no momento de gerar o documento - nunca deixe nomes ou OAB fixos de advogados nesse parágrafo.
-4. Se o documento já possuir variáveis {{nome_da_variavel}}, PRESERVE-AS exatamente como estão, a menos que o comando peça para alterá-las.
-5. Mantenha a mesma estrutura e formatação HTML original (tags <strong>, <h1>, <h2>, <p>, <ul>, <li>, etc).
-6. Mantenha o tom estritamente formal e jurídico da advocacia brasileira.`;
+4. IMPORTANTE - representante legal e assinante a rogo: se o texto mencionar um representante legal (pai/mãe/tutor/curador) ou um "assinante a rogo" com nome, CPF, RG, nascimento ou endereço fixos, substitua pelas variáveis {{representante_qualificacao}} ou {{assinante_rogo_nome}}/{{assinante_rogo_qualificacao}} conforme o caso - esses dados variam por cliente e são preenchidos automaticamente pelo sistema, nunca devem ficar fixos no modelo.
+5. Se o documento já possuir variáveis {{nome_da_variavel}}, PRESERVE-AS exatamente como estão, a menos que o comando peça para alterá-las.
+6. Mantenha a mesma estrutura e formatação HTML original (tags <strong>, <h1>, <h2>, <p>, <ul>, <li>, etc).
+7. Mantenha o tom estritamente formal e jurídico da advocacia brasileira.`;
 
 // Chama o Gemini (Google AI, gratuito) tentando alguns modelos em sequência.
 async function callGemini(apiKey: string, userPrompt: string): Promise<{ text: string; error: string }> {

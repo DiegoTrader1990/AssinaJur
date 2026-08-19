@@ -61,10 +61,20 @@ export async function POST(req: Request) {
       return `${lawyer.name}, ${role} ${registration}`;
     }).join(' e ') || 'Advogado responsável';
     const lawyer = orderedLawyers[0];
+    // Mesma composição usada em /api/kits/generate-package/route.ts, incluindo
+    // nascimento e endereço do representante quando cadastrados.
+    const representativeQualificationParts = [
+      client.representativeRole,
+      client.representativeCpf ? `CPF nº ${formatCpfCnpj(client.representativeCpf)}` : '',
+      client.representativeRg ? `RG nº ${client.representativeRg}` : '',
+      (client as any).representativeBirthDate ? `nascido(a) em ${formatBirthDate((client as any).representativeBirthDate)}` : '',
+      client.representativePhone ? `telefone ${formatPhone(client.representativePhone)}` : '',
+      (client as any).representativeAddress ? `residente e domiciliado(a) em ${(client as any).representativeAddress}` : '',
+    ].filter(Boolean);
     const variables = {
       representante_legal: client.legalRepresentative || '', representante_cpf: formatCpfCnpj(client.representativeCpf) || '', representante_rg: client.representativeRg || '', representante_telefone: formatPhone(client.representativePhone) || '',
-      representante_qualificacao: [client.representativeRole, client.representativeCpf ? `CPF nº ${formatCpfCnpj(client.representativeCpf)}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${formatPhone(client.representativePhone)}` : ''].filter(Boolean).join(', '),
-      cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${[client.representativeRole, client.representativeCpf ? `CPF nº ${formatCpfCnpj(client.representativeCpf)}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${formatPhone(client.representativePhone)}` : ''].filter(Boolean).join(', ')}` : '',
+      representante_qualificacao: representativeQualificationParts.join(', '),
+      cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${representativeQualificationParts.join(', ')}` : '',
       cliente_nome: client.name, cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '—', cliente_nacionalidade: client.nationality || 'Brasileira',
       cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—',
       cliente_nascimento_qualificacao: client.birthDate ? `, nascido(a) em ${formatBirthDate(client.birthDate)}` : '',

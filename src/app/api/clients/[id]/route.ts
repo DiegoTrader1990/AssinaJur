@@ -106,6 +106,24 @@ export async function PUT(
     if (representativeName && cleanRepresentativePhone && (cleanRepresentativePhone.length < 10 || cleanRepresentativePhone.length > 13)) {
       return NextResponse.json({ error: 'Informe um telefone válido do representante legal.' }, { status: 400 });
     }
+    // Endereço do próprio cliente (usado quando o representante mora com ele).
+    const bodyAddress = body.address ?? existingClient.address;
+    const bodyNumber = body.number ?? existingClient.number;
+    const bodyComplement = body.complement ?? existingClient.complement;
+    const bodyNeighborhood = body.neighborhood ?? existingClient.neighborhood;
+    const bodyCity = body.city ?? existingClient.city;
+    const bodyState = body.state ?? existingClient.state;
+    const bodyCep = body.cep ?? existingClient.cep;
+    const ownAddressText = [
+      bodyAddress,
+      bodyNumber && !String(bodyAddress || '').includes(bodyNumber) ? `nº ${bodyNumber}` : '',
+      bodyComplement,
+      bodyNeighborhood,
+      [bodyCity, bodyState].filter(Boolean).join('/'),
+      bodyCep ? `CEP ${bodyCep}` : '',
+    ].filter(Boolean).join(', ');
+    const representativeSameAddress = body.representativeSameAddress ?? existingClient.representativeSameAddress;
+    const resolvedRepresentativeAddress = representativeSameAddress ? ownAddressText : (body.representativeAddress ?? existingClient.representativeAddress);
 
     const duplicateClient = await prisma.client.findFirst({
       where: {
@@ -144,6 +162,9 @@ export async function PUT(
         legalRepresentative: body.legalRepresentative ?? existingClient.legalRepresentative,
         representativeCpf: cleanRepresentativeCpf || null,
         representativeRg: body.representativeRg ?? existingClient.representativeRg,
+        representativeBirthDate: body.representativeBirthDate ?? existingClient.representativeBirthDate,
+        representativeAddress: resolvedRepresentativeAddress || null,
+        representativeSameAddress: !!representativeSameAddress,
         representativePhone: cleanRepresentativePhone || null,
         representativeRole: body.representativeRole ?? existingClient.representativeRole,
         financialResponsible: body.financialResponsible ?? existingClient.financialResponsible,

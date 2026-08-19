@@ -112,6 +112,10 @@ export async function POST(req: Request) {
       isIlliterate,
       rogoName,
       rogoCpf,
+      rogoRg,
+      rogoBirthDate,
+      rogoAddress,
+      rogoSameAddress,
       rogoRelationship,
       rogoPhone,
       rogoEmail,
@@ -143,6 +147,9 @@ export async function POST(req: Request) {
     if (isIlliterate) {
       if (!rogoName || !hasValidCpfCnpjCheckDigits(String(rogoCpf || ''))) {
         return NextResponse.json({ error: 'No fluxo a rogo, informe o nome e CPF válido do assinante a rogo.' }, { status: 400 });
+      }
+      if (!String(rogoRg || '').trim() || !rogoBirthDate || !String(rogoAddress || '').trim()) {
+        return NextResponse.json({ error: 'No fluxo a rogo, informe também RG, data de nascimento e endereço do assinante a rogo.' }, { status: 400 });
       }
       const rogoDigits = String(rogoCpf).replace(/\D/g, '');
       const clientDigits = String(client.cpfCnpj || '').replace(/\D/g, '');
@@ -247,6 +254,18 @@ export async function POST(req: Request) {
     const mainLawyer = activeLawyers.find(l => l.name.toLowerCase().includes('diego')) || activeLawyers[0] || { name: user.name, oabNumber: 'OAB/BA 51.881' };
     const secondLawyer = activeLawyers.find(l => l.name.toLowerCase().includes('dominick')) || activeLawyers[1] || { name: 'Dra. Dominick Quinto Soares', oabNumber: 'OAB/BA 62.443' };
 
+    // Qualificação completa do representante legal (cargo, CPF, RG, nascimento
+    // e endereço), reaproveitada tanto em representante_qualificacao quanto em
+    // cliente_representacao.
+    const representativeQualificationParts = [
+      client.representativeRole,
+      client.representativeCpf ? `CPF nº ${formatCpfCnpj(client.representativeCpf)}` : '',
+      client.representativeRg ? `RG nº ${client.representativeRg}` : '',
+      client.representativeBirthDate ? `nascido(a) em ${formatBirthDate(client.representativeBirthDate)}` : '',
+      client.representativePhone ? `telefone ${formatPhone(client.representativePhone)}` : '',
+      client.representativeAddress ? `residente e domiciliado(a) em ${client.representativeAddress}` : '',
+    ].filter(Boolean);
+
     // Montar mapa completo de variáveis para substituição automática
     const variableValues = {
       cliente_nome: client.name,
@@ -270,8 +289,8 @@ export async function POST(req: Request) {
       representante_cpf: formatCpfCnpj(client.representativeCpf) || '',
       representante_rg: client.representativeRg || '',
       representante_telefone: formatPhone(client.representativePhone) || '',
-      representante_qualificacao: [client.representativeRole, client.representativeCpf ? `CPF nº ${formatCpfCnpj(client.representativeCpf)}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${formatPhone(client.representativePhone)}` : ''].filter(Boolean).join(', '),
-      cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${[client.representativeRole, client.representativeCpf ? `CPF nº ${formatCpfCnpj(client.representativeCpf)}` : '', client.representativeRg ? `RG nº ${client.representativeRg}` : '', client.representativePhone ? `telefone ${formatPhone(client.representativePhone)}` : ''].filter(Boolean).join(', ')}` : '',
+      representante_qualificacao: representativeQualificationParts.join(', '),
+      cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${representativeQualificationParts.join(', ')}` : '',
       advogado_nome: mainLawyer.name,
       advogado_oab: mainLawyer.oabNumber || 'OAB/BA 51.881',
       advogada_nome: secondLawyer.name,
@@ -284,6 +303,19 @@ export async function POST(req: Request) {
       escritorio_qualificacao: fullOfficeQualification,
       patronos_qualificacao_conjunta: jointPatronosQualification,
       patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),
+      // Qualificação completa do assinante a rogo (nome, CPF, RG, nascimento e
+      // endereço), para modelos que precisem identificá-lo formalmente no corpo
+      // do documento - mesmo padrão usado para representante_qualificacao.
+      assinante_rogo_nome: isIlliterate ? String(rogoName || '').trim() : '',
+      assinante_rogo_qualificacao: isIlliterate
+        ? [
+            rogoRelationship ? String(rogoRelationship).trim() : '',
+            rogoCpf ? `CPF nº ${formatCpfCnpj(rogoCpf)}` : '',
+            rogoRg ? `RG nº ${rogoRg}` : '',
+            rogoBirthDate ? `nascido(a) em ${formatBirthDate(rogoBirthDate)}` : '',
+            rogoAddress ? `residente e domiciliado(a) em ${rogoAddress}` : '',
+          ].filter(Boolean).join(', ')
+        : '',
       ...(customVariables || {}),
       // A cidade é um dado do cliente selecionado; um valor antigo salvo no kit não pode sobrescrevê-la.
       cidade: [client.city, client.state].filter(Boolean).join('/') || 'Porto Seguro/BA',
@@ -361,6 +393,10 @@ export async function POST(req: Request) {
           isIlliterate: !!isIlliterate,
           rogoName: isIlliterate ? rogoName || null : null,
           rogoCpf: isIlliterate && rogoCpf ? String(rogoCpf).replace(/\D/g, '') : null,
+          rogoRg: isIlliterate ? rogoRg || null : null,
+          rogoBirthDate: isIlliterate ? rogoBirthDate || null : null,
+          rogoAddress: isIlliterate ? rogoAddress || null : null,
+          rogoSameAddress: isIlliterate ? !!rogoSameAddress : false,
           rogoRelationship: isIlliterate ? rogoRelationship || null : null,
         },
       });
