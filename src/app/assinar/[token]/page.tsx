@@ -547,6 +547,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       let highEdgePixels = 0;
       let totalSampled = 0;
       let edgeStrengthSum = 0;
+      let strongXEdges = 0;
+      let strongYEdges = 0;
 
       const widthInPixels = sampleW;
       const heightInPixels = sampleH;
@@ -568,7 +570,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           edgeStrengthSum += gradient;
           totalSampled++;
 
-          if (gradient >= 38) {
+          if (diffX >= 28) strongXEdges++;
+          if (diffY >= 28) strongYEdges++;
+
+          if (gradient >= 42) {
             highEdgePixels++;
           }
         }
@@ -577,9 +582,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       if (totalSampled === 0) return false;
       const edgeDensityRatio = highEdgePixels / totalSampled;
       const avgGradient = edgeStrengthSum / totalSampled;
+      const xRatio = strongXEdges / totalSampled;
+      const yRatio = strongYEdges / totalSampled;
 
-      // Exige densidade de bordas de cartão retangular no ROI isolado
-      return edgeDensityRatio >= 0.11 && avgGradient >= 14;
+      // Exige densidade de bordas de cartão retangular no ROI isolado (bordas X e Y significativas)
+      return edgeDensityRatio >= 0.14 && avgGradient >= 16 && xRatio >= 0.08 && yRatio >= 0.08;
     } catch {
       return false;
     }
@@ -606,7 +613,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     // Passa os landmarks faciais para isolar o ROI do documento sem sobrepor o rosto
     const isDocFrameValid = video ? detectObjectInDocGuide(video, landmarks) : false;
 
-    // Checagem de estabilidade temporal (exige 4 frames consecutivos ~600ms de confirmação real)
+    // Checagem de estabilidade temporal (exige 5 frames consecutivos ~750ms de confirmação real)
     if (isDocFrameValid) {
       docFrameCounterRef.current = Math.min(10, docFrameCounterRef.current + 1);
     } else {
@@ -614,7 +621,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     // docDetected só é VERDADEIRO quando o objeto é validado por múltiplos frames consecutivos!
-    const isRealDocDetected = docFrameCounterRef.current >= 4;
+    const isRealDocDetected = docFrameCounterRef.current >= 5;
 
     faceDetectedRef.current = isFaceValid;
     docDetectedRef.current = isRealDocDetected;
