@@ -21,11 +21,20 @@ import {
   Eye
 } from 'lucide-react';
 import { DocumentRichEditor } from '@/components/DocumentRichEditor';
+import { ensureClientQualificationTokens } from '@/lib/kitTemplateNormalization';
 
-const SAMPLE_VALUES: Record<string, string> = { cliente_nome: 'MARIA APARECIDA DA SILVA', cliente_cpf: '123.456.789-09', cliente_rg: '12.345.678-9', cliente_nacionalidade: 'brasileira', cliente_estado_civil: 'solteira', cliente_profissao: 'aposentada', cliente_endereco: 'Rua das Acácias, nº 120, Centro, Porto Seguro/BA, CEP 45810-000', advogado_nome: 'DR. DIEGO DOS SANTOS RODRIGUES', advogado_oab: 'OAB/BA nº 51.881', escritorio_nome: 'Rodrigues & Soares - Advogados', valor_honorarios: 'R$ 3.000,00', percentual_exito: '30%', cidade: 'Porto Seguro', data_atual: '12 de agosto de 2026' };
+const SAMPLE_VALUES: Record<string, string> = { cliente_nome: 'MARIA APARECIDA DA SILVA', cliente_cpf: '123.456.789-09', cliente_rg: '12.345.678-9', cliente_nacionalidade: 'brasileira', cliente_estado_civil: 'solteira', cliente_profissao: 'aposentada', cliente_endereco: 'Rua das Acácias, nº 120, Centro, Porto Seguro/BA, CEP 45810-000', cliente_nascimento_qualificacao: ', nascido(a) em 07/02/1960', advogado_nome: 'DR. DIEGO DOS SANTOS RODRIGUES', advogado_oab: 'OAB/BA nº 51.881', escritorio_nome: 'Rodrigues & Soares - Advogados', valor_honorarios: 'R$ 3.000,00', percentual_exito: '30%', cidade: 'Porto Seguro', data_atual: '12 de agosto de 2026' };
 const showSamples = (html: string) => Object.entries(SAMPLE_VALUES).reduce((text, [key, value]) => text.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), value), html);
 const restoreVariables = (html: string) => Object.entries(SAMPLE_VALUES).reduce((text, [key, value]) => text.replace(new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), `{{${key}}}`), html);
 
+// showEditorPreview()/restoreEditorPreview() usam o mesmo esquema de <mark> da
+// tela de Modelos (/modelos): o valor de amostra fica envolto num <mark> só
+// visual, que restoreEditorPreview() SEMPRE remove ao converter de volta para
+// {{...}}. Antes esse trecho negritava (<strong>) os nomes de amostra
+// diretamente no texto, o que quebrava o casamento exato usado para
+// reconverter em variável - o texto de amostra ficava gravado como dado fixo
+// no modelo salvo em vez de voltar a ser {{cliente_nome}} etc. Ver o mesmo
+// comentário em /modelos/page.tsx.
 const showEditorPreview = (html: string, documentType: string, values: Record<string, string>) => {
   const samples = { ...SAMPLE_VALUES, ...values };
   const label = /PROCUR/i.test(documentType) ? 'OUTORGADOS' : 'CONTRATADOS';
@@ -35,14 +44,19 @@ const showEditorPreview = (html: string, documentType: string, values: Record<st
         return new RegExp(`^${label}?S?\\s*:`, 'i').test(text) ? `<${tag}${attributes}><strong>${label}:</strong> ${samples.patronos_qualificacao_conjunta}.</${tag}>` : block;
       })
     : html;
-  const withValues = Object.entries(samples).reduce((text, [key, value]) => text.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), value), withPatronos);
-  const names = [samples.cliente_nome, samples.advogado_nome, samples.escritorio_nome, ...(samples.patronos_nomes || '').split('|')]
-    .map((name) => name.trim()).filter((name) => name.length >= 3).sort((left, right) => right.length - left.length);
-  return names.reduce((text, name) => text.replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), (match) => `<strong>${match}</strong>`), withValues);
+  return Object.entries(samples).reduce(
+    (text, [key, value]) => value
+      ? text.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), `<mark class="aj-var-preview" style="background-color:#fef08a;color:#78350f;border-radius:2px;padding:0 2px;" title="Variável: {{${key}}} — este texto será substituído pelos dados de cada cliente">${value}</mark>`)
+      : text,
+    withPatronos
+  );
 };
-const restoreEditorPreview = (html: string, values: Record<string, string>) => Object.entries({ ...SAMPLE_VALUES, ...values })
-  .sort(([, left], [, right]) => right.length - left.length)
-  .reduce((text, [key, value]) => value ? text.replace(new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), `{{${key}}}`) : text, html);
+const restoreEditorPreview = (html: string, values: Record<string, string>) => {
+  const withTokensRestored = Object.entries({ ...SAMPLE_VALUES, ...values })
+    .sort(([, left], [, right]) => right.length - left.length)
+    .reduce((text, [key, value]) => value ? text.replace(new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), `{{${key}}}`) : text, html);
+  return withTokensRestored.replace(/<mark[^>]*class="aj-var-preview"[^>]*>([\s\S]*?)<\/mark>/gi, '$1');
+};
 
 interface KitItem {
   id: string;
@@ -105,6 +119,44 @@ export default function KitsAndTemplatesPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [sampleValues, setSampleValues] = useState<Record<string, string>>({});
+  const [detectingVariables, setDetectingVariables] = useState(false);
+  const [autoDetectMessage, setAutoDetectMessage] = useState('');
+
+  // Mesmo comando usado no "Detectar e aplicar variáveis (IA)" da tela de
+  // Modelos (/modelos) - repetido aqui porque esta é uma segunda tela que
+  // também edita minutas de modelo (a partir de Kits > Modelos).
+  const AUTO_DETECT_AI_COMMAND = 'Remova todos os dados fixos de uma cliente específica que aparecerem neste texto (nome completo, CPF, RG, nacionalidade, estado civil, profissão, endereço, telefone) e troque cada um pela variável correspondente do sistema AssinaJur ({{cliente_nome}}, {{cliente_cpf}}, {{cliente_rg}}, {{cliente_nacionalidade}}, {{cliente_estado_civil}}, {{cliente_profissao}}, {{cliente_endereco}}, {{cliente_telefone}}), tanto na qualificação inicial quanto no rodapé de assinatura (nome antes de "OUTORGANTE"/"CONTRATANTE"/"DECLARANTE", ou o nome sozinho acima da linha de assinatura). Também troque a cidade/data do fechamento por {{cidade}}, {{data_atual}}. Não altere mais nada no texto: mantenha exatamente a mesma redação, formatação e tags HTML, só troque os dados fixos da cliente pelas variáveis.';
+
+  const handleAutoDetectVariables = async () => {
+    const before = templateFormData.contentHtml;
+    setDetectingVariables(true);
+    setAutoDetectMessage('Analisando o texto com IA...');
+    try {
+      const response = await fetch('/api/templates/ai-edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contentHtml: before, command: AUTO_DETECT_AI_COMMAND }),
+      });
+      const data = await response.json();
+      const aiResult: string = data?.contentHtml || data?.html || '';
+      if (response.ok && aiResult && aiResult.trim() && aiResult !== before) {
+        setTemplateFormData((current) => ({ ...current, contentHtml: aiResult }));
+        setAutoDetectMessage('A IA trocou os dados fixos da cliente (nome, CPF, RG, endereço etc) pelas variáveis dinâmicas. Revise o texto abaixo antes de salvar.');
+        return;
+      }
+      throw new Error(data?.error || 'IA não retornou alteração.');
+    } catch (aiError) {
+      const after = ensureClientQualificationTokens(before, templateFormData.title, templateFormData.documentType);
+      if (after === before) {
+        setAutoDetectMessage('Não conseguimos detectar dados fixos automaticamente (a IA está indisponível no momento e o texto não segue um padrão conhecido como "OUTORGANTE: Nome, CPF nº..."). Insira as variáveis manualmente.');
+        return;
+      }
+      setTemplateFormData((current) => ({ ...current, contentHtml: after }));
+      setAutoDetectMessage('A IA está indisponível no momento, então usamos a busca por padrão de texto: trocamos o trecho de qualificação e/ou assinatura por variáveis dinâmicas. Revise o texto abaixo antes de salvar.');
+    } finally {
+      setDetectingVariables(false);
+    }
+  };
 
   const openPdfPreview = async () => {
     setPreviewing(true);
@@ -247,6 +299,7 @@ export default function KitsAndTemplatesPage() {
       contentHtml: '',
       description: '',
     });
+    setAutoDetectMessage('');
     setShowTemplateModal(true);
   };
 
@@ -259,11 +312,30 @@ export default function KitsAndTemplatesPage() {
       contentHtml: tpl.contentHtml,
       description: tpl.description || '',
     });
+    setAutoDetectMessage('');
     setShowTemplateModal(true);
   };
 
+  // Rede de segurança: se por qualquer motivo um valor de amostra da prévia
+  // ainda estiver gravado como texto fixo no conteúdo na hora de salvar - em
+  // vez de ter voltado a ser a variável {{...}} -, avisamos antes de gravar,
+  // para nunca salvar silenciosamente um modelo com dado de amostra fixo no
+  // lugar da variável dinâmica. Mesma proteção usada em /modelos/page.tsx.
+  const findLeftoverSampleValues = (html: string, values: Record<string, string>) =>
+    Object.entries({ ...SAMPLE_VALUES, ...values })
+      .filter(([, value]) => value && value.trim().length >= 6)
+      .filter(([, value]) => html.includes(value))
+      .map(([key]) => key);
+
   const handleSaveTemplate = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const leftover = findLeftoverSampleValues(templateFormData.contentHtml, sampleValues);
+    if (leftover.length > 0) {
+      setError(`Não foi possível salvar: o texto de amostra da prévia ficou gravado no lugar da(s) variável(is) ${leftover.join(', ')}. Volte ao trecho afetado, apague o texto fixo e reinsira a tag {{${leftover[0]}}} antes de salvar.`);
+      return;
+    }
+
     setSaving(true);
     setError('');
 
@@ -804,9 +876,27 @@ export default function KitsAndTemplatesPage() {
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Conteúdo da Minuta (Com Tags Dinâmicas e Copilot de IA): *
-                </label>
+                <div className="flex items-center justify-between gap-3 mb-1">
+                  <label className="block font-bold text-slate-700 uppercase tracking-wider">
+                    Conteúdo da Minuta (Com Tags Dinâmicas e Copilot de IA): *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAutoDetectVariables}
+                    disabled={detectingVariables || !templateFormData.contentHtml}
+                    className="shrink-0 px-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 font-bold text-[11px] hover:bg-blue-100 disabled:opacity-50 flex items-center gap-1.5"
+                    title="Usa IA para reconhecer nome, CPF, RG, endereço etc fixos (de texto colado ou Word) e trocar automaticamente pelas variáveis do sistema"
+                  >
+                    {detectingVariables ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                    Detectar e aplicar variáveis (IA)
+                  </button>
+                </div>
+                {autoDetectMessage && (
+                  <div className="mb-2 p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-[11px] flex items-start gap-2">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>{autoDetectMessage}</span>
+                  </div>
+                )}
                 <DocumentRichEditor
                   key={`${editingTemplate?.id || 'novo'}-${showTemplateModal}-${sampleValues.patronos_nomes || 'carregando'}`}
                   value={showEditorPreview(templateFormData.contentHtml, templateFormData.documentType, sampleValues)}

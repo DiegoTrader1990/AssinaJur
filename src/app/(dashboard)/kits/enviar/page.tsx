@@ -125,6 +125,8 @@ export default function DispatchKitPage() {
   const [reviewPdfUrl, setReviewPdfUrl] = useState<string | null>(null);
   const [loadingReviewPdf, setLoadingReviewPdf] = useState(false);
   const [editingReview, setEditingReview] = useState(false);
+  const [detectingKitVariables, setDetectingKitVariables] = useState(false);
+  const [autoDetectKitMessage, setAutoDetectKitMessage] = useState('');
 
   // Posição manual do selo de assinatura, ajustável por documento do kit
   // (chave = template.id), igual ao arrastar-e-soltar do envio de PDF avulso.
@@ -392,6 +394,65 @@ export default function DispatchKitPage() {
       });
     }
     return rendered;
+  };
+
+  // Mesmo comando usado no "Detectar e aplicar variáveis (IA)" dos modelos,
+  // adaptado para reconhecer também representante legal, assinante a rogo e
+  // qualificação de advogados. Aqui a minuta já está com os dados reais da
+  // cliente preenchidos, então depois de a IA marcar os trechos com {{...}}
+  // nós já substituímos de volta pelos dados corretos desta cliente/kit -
+  // útil quando o texto foi colado/editado manualmente e ficou com dados
+  // fixos de outra pessoa.
+  const KIT_AUTO_DETECT_AI_COMMAND = 'Remova todos os dados fixos de um cliente específico, representante legal, assinante a rogo/acompanhante, advogados e endereço do escritório que aparecerem neste texto, e troque cada um pela variável correspondente do sistema AssinaJur: nome completo -> {{cliente_nome}}, CPF -> {{cliente_cpf}}, RG -> {{cliente_rg}}, nacionalidade -> {{cliente_nacionalidade}}, estado civil -> {{cliente_estado_civil}}, profissão -> {{cliente_profissao}}, endereço -> {{cliente_endereco}}, telefone -> {{cliente_telefone}}; nome e qualificação do representante legal (pai/mãe/tutor/curador) -> {{representante_legal}} e {{representante_qualificacao}}; nome e qualificação do assinante a rogo/acompanhante -> {{assinante_rogo_nome}} e {{assinante_rogo_qualificacao}}; parágrafo de qualificação de advogado(s) (rótulo OUTORGADOS:/CONTRATADOS:) -> {{patronos_qualificacao_conjunta}}; cidade/data do fechamento -> {{cidade}}, {{data_atual}}. Não altere mais nada no texto: mantenha exatamente a mesma redação, formatação e tags HTML, só troque os dados fixos pelas variáveis.';
+
+  const handleAutoDetectKitVariables = async () => {
+    if (!reviewItem) return;
+    const before = customContents[reviewItem.template.id] ?? renderEditableReview(reviewItem.template.contentHtml);
+    setDetectingKitVariables(true);
+    setAutoDetectKitMessage('Analisando o texto com IA...');
+    try {
+      const rogoRgCpfPhrase = rogoRg && rogoCpf
+        ? `portador(a) do RG nº ${rogoRg} e inscrito(a) no CPF sob o nº ${formatCpfCnpj(rogoCpf)}`
+        : rogoRg ? `portador(a) do RG nº ${rogoRg}` : rogoCpf ? `inscrito(a) no CPF sob o nº ${formatCpfCnpj(rogoCpf)}` : '';
+      const rogoAddressPhrase = rogoSameAddress
+        ? `ambos residentes e domiciliados em ${reviewClientData.cliente_endereco || '—'}`
+        : rogoAddress ? `residente e domiciliado(a) em ${rogoAddress}` : '';
+      const dataForSubstitution: Record<string, string> = {
+        ...variables,
+        ...reviewClientData,
+        assinante_rogo_nome: rogoName || '',
+        assinante_rogo_qualificacao: [rogoRelationship, rogoRgCpfPhrase, rogoBirthDate ? `nascido(a) em ${formatBirthDate(rogoBirthDate)}` : '', rogoAddressPhrase].filter(Boolean).join(', '),
+      };
+      const applyClientData = (html: string) => Object.entries(dataForSubstitution).reduce(
+        (result, [key, value]) => result.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), String(value || '—')),
+        html,
+      ).replace(/{{\s*[a-zA-Z0-9_]+\s*}}/g, '—');
+
+      const response = await fetch('/api/templates/ai-edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contentHtml: before, command: KIT_AUTO_DETECT_AI_COMMAND }),
+      });
+      const data = await response.json();
+      const aiResult: string = data?.contentHtml || data?.html || '';
+      if (response.ok && aiResult && aiResult.trim() && aiResult !== before) {
+        setCustomContents((prev) => ({ ...prev, [reviewItem.template.id]: applyClientData(aiResult) }));
+        setAutoDetectKitMessage('A IA reconheceu os dados fixos (cliente, representante, assinante a rogo, advogados etc) e já preencheu com os dados corretos desta cliente. Revise o texto abaixo.');
+        return;
+      }
+      throw new Error(data?.error || 'IA não retornou alteração.');
+    } catch (aiError) {
+      // Reserva sem IA: aplica a mesma normalização por padrão de texto usada ao abrir a revisão.
+      const after = renderEditableReview(reviewItem.template.contentHtml);
+      if (after === before) {
+        setAutoDetectKitMessage('Não conseguimos detectar dados fixos automaticamente (a IA está indisponível no momento e o texto não segue um padrão conhecido). Ajuste manualmente ou use "Restaurar modelo".');
+        return;
+      }
+      setCustomContents((prev) => ({ ...prev, [reviewItem.template.id]: after }));
+      setAutoDetectKitMessage('A IA está indisponível no momento, então usamos a busca por padrão de texto para reaplicar os dados corretos desta cliente. Revise o texto abaixo.');
+    } finally {
+      setDetectingKitVariables(false);
+    }
   };
 
   const generateReviewPdf = async (item: LegalKit['items'][number]) => {
@@ -1089,7 +1150,28 @@ export default function DispatchKitPage() {
               {loadingReviewPdf ? (
                 <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-600"><Loader2 className="w-8 h-8 animate-spin text-gold-500" /><p className="text-sm font-semibold">Montando a prévia final…</p></div>
               ) : editingReview ? (
-                <div className="mx-auto max-w-4xl rounded-xl border border-slate-200 bg-white p-4"><DocumentRichEditor key={reviewItem.id} value={customContents[reviewItem.template.id] ?? renderEditableReview(reviewItem.template.contentHtml)} onChange={(html) => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: html }))} showTags={false} showAiCopilot={false} placeholder="Redija ou ajuste o documento..." /></div>
+                <div className="mx-auto max-w-4xl space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[11px] text-slate-500">Se colar ou editar um texto com dados fixos de outra pessoa, use a IA para trocar pelos dados corretos desta cliente.</span>
+                    <button
+                      type="button"
+                      onClick={handleAutoDetectKitVariables}
+                      disabled={detectingKitVariables}
+                      className="shrink-0 px-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 font-bold text-[11px] hover:bg-blue-100 disabled:opacity-50 flex items-center gap-1.5"
+                      title="Usa IA para reconhecer nome, CPF, RG, endereço, representante, assinante a rogo e advogados fixos no texto e trocar pelos dados corretos desta cliente"
+                    >
+                      {detectingKitVariables ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                      Detectar e aplicar dados (IA)
+                    </button>
+                  </div>
+                  {autoDetectKitMessage && (
+                    <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-[11px] flex items-start gap-2">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <span>{autoDetectKitMessage}</span>
+                    </div>
+                  )}
+                  <div className="rounded-xl border border-slate-200 bg-white p-4"><DocumentRichEditor key={reviewItem.id} value={customContents[reviewItem.template.id] ?? renderEditableReview(reviewItem.template.contentHtml)} onChange={(html) => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: html }))} showTags={false} showAiCopilot={false} placeholder="Redija ou ajuste o documento..." /></div>
+                </div>
               ) : adjustingStamp ? (
                 <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50/70 via-white to-amber-50/50 p-4 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1208,7 +1290,7 @@ export default function DispatchKitPage() {
                   <span className="text-xs text-slate-500 self-center">Prévia com a diagramação final do documento</span>
                   <div className="flex gap-2">
                     <button type="button" onClick={() => setAdjustingStamp(true)} className="px-4 py-2.5 border border-blue-600 text-blue-700 rounded-lg text-xs font-bold flex items-center gap-1.5"><Move className="w-3.5 h-3.5" /> Ajustar posição do selo</button>
-                    <button type="button" onClick={() => setEditingReview(true)} className="px-4 py-2.5 border border-[#071B3A] text-[#071B3A] rounded-lg text-xs font-bold">Editar conteúdo</button>
+                    <button type="button" onClick={() => { setAutoDetectKitMessage(''); setEditingReview(true); }} className="px-4 py-2.5 border border-[#071B3A] text-[#071B3A] rounded-lg text-xs font-bold">Editar conteúdo</button>
                     <button type="button" onClick={() => { if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl); setReviewPdfUrl(null); setReviewItem(null); }} className="px-5 py-2.5 bg-[#071B3A] text-white rounded-lg text-xs font-bold">Concluir revisão</button>
                   </div>
                 </>

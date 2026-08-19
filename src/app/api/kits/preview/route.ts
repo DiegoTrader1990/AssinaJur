@@ -61,15 +61,32 @@ export async function POST(req: Request) {
       return `${lawyer.name}, ${role} ${registration}`;
     }).join(' e ') || 'Advogado responsável';
     const lawyer = orderedLawyers[0];
-    // Mesma composição usada em /api/kits/generate-package/route.ts, incluindo
-    // nascimento e endereço do representante quando cadastrados.
+    // Mesma composição usada em /api/kits/generate-package/route.ts: redação
+    // formal "portador(a) do RG nº ... e inscrito(a) no CPF sob o nº ...", em
+    // vez de uma lista seca de "CPF nº X, RG Y", incluindo nascimento e
+    // endereço do representante quando cadastrados.
+    const representativeRgCpfPhrase = client.representativeRg && client.representativeCpf
+      ? `portador(a) do RG nº ${client.representativeRg} e inscrito(a) no CPF sob o nº ${formatCpfCnpj(client.representativeCpf)}`
+      : client.representativeRg
+        ? `portador(a) do RG nº ${client.representativeRg}`
+        : client.representativeCpf
+          ? `inscrito(a) no CPF sob o nº ${formatCpfCnpj(client.representativeCpf)}`
+          : '';
+    // Quando o representante mora no mesmo endereço da cliente, evitamos repetir
+    // o endereço completo duas vezes seguidas - mesma lógica de
+    // /api/kits/generate-package/route.ts.
+    const clienteEnderecoText = [client.address, client.number, client.complement, client.neighborhood, [client.city, client.state].filter(Boolean).join('/'), client.cep ? `CEP ${client.cep}` : ''].filter(Boolean).join(', ') || '—';
+    const representativeAddressPhrase = (client as any).representativeSameAddress
+      ? `ambos residentes e domiciliados em ${clienteEnderecoText}`
+      : (client as any).representativeAddress
+        ? `residente e domiciliado(a) em ${(client as any).representativeAddress}`
+        : '';
     const representativeQualificationParts = [
       client.representativeRole,
-      client.representativeCpf ? `CPF nº ${formatCpfCnpj(client.representativeCpf)}` : '',
-      client.representativeRg ? `RG nº ${client.representativeRg}` : '',
+      representativeRgCpfPhrase,
       (client as any).representativeBirthDate ? `nascido(a) em ${formatBirthDate((client as any).representativeBirthDate)}` : '',
       client.representativePhone ? `telefone ${formatPhone(client.representativePhone)}` : '',
-      (client as any).representativeAddress ? `residente e domiciliado(a) em ${(client as any).representativeAddress}` : '',
+      representativeAddressPhrase,
     ].filter(Boolean);
     const variables = {
       representante_legal: client.legalRepresentative || '', representante_cpf: formatCpfCnpj(client.representativeCpf) || '', representante_rg: client.representativeRg || '', representante_telefone: formatPhone(client.representativePhone) || '',
@@ -78,7 +95,7 @@ export async function POST(req: Request) {
       cliente_nome: client.name, cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '—', cliente_nacionalidade: client.nationality || 'Brasileira',
       cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—',
       cliente_nascimento_qualificacao: client.birthDate ? `, nascido(a) em ${formatBirthDate(client.birthDate)}` : '',
-      cliente_endereco: [client.address, client.number, client.complement, client.neighborhood, [client.city, client.state].filter(Boolean).join('/'), client.cep ? `CEP ${client.cep}` : ''].filter(Boolean).join(', ') || '—',
+      cliente_endereco: clienteEnderecoText,
       advogado_nome: lawyer?.name || 'Advogado responsável', advogado_oab: lawyer?.oabNumber || '—', escritorio_nome: office.tradeName || office.name,
       patronos_qualificacao_conjunta: `${patronosQualification}, com escritório profissional na ${fullAddress}`,
       patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),

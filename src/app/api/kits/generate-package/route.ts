@@ -254,19 +254,46 @@ export async function POST(req: Request) {
     const mainLawyer = activeLawyers.find(l => l.name.toLowerCase().includes('diego')) || activeLawyers[0] || { name: user.name, oabNumber: 'OAB/BA 51.881' };
     const secondLawyer = activeLawyers.find(l => l.name.toLowerCase().includes('dominick')) || activeLawyers[1] || { name: 'Dra. Dominick Quinto Soares', oabNumber: 'OAB/BA 62.443' };
 
-    // Qualificação completa do representante legal (cargo, CPF, RG, nascimento
-    // e endereço), reaproveitada tanto em representante_qualificacao quanto em
-    // cliente_representacao.
+    // Qualificação completa do representante legal (cargo, RG, CPF, nascimento,
+    // telefone e endereço), na mesma redação formal usada para o cliente titular
+    // ("portador(a) do RG nº ... e inscrito(a) no CPF sob o nº ..."), em vez de
+    // uma lista seca de "CPF nº X, RG Y". Reaproveitada em representante_qualificacao
+    // e em cliente_representacao.
+    const representativeRgCpfPhrase = client.representativeRg && client.representativeCpf
+      ? `portador(a) do RG nº ${client.representativeRg} e inscrito(a) no CPF sob o nº ${formatCpfCnpj(client.representativeCpf)}`
+      : client.representativeRg
+        ? `portador(a) do RG nº ${client.representativeRg}`
+        : client.representativeCpf
+          ? `inscrito(a) no CPF sob o nº ${formatCpfCnpj(client.representativeCpf)}`
+          : '';
+    // Montar mapa completo de variáveis para substituição automática
+    const clienteEnderecoText = [
+      client.address,
+      client.number && !String(client.address || '').includes(client.number) ? `nº ${client.number}` : '',
+      client.complement,
+      client.neighborhood,
+      [client.city, client.state].filter(Boolean).join('/'),
+      client.cep ? `CEP ${client.cep}` : '',
+    ].filter(Boolean).join(', ') || '—';
+
+    // Quando o representante mora no mesmo endereço da cliente, o endereço já
+    // apareceu na qualificação da própria cliente logo antes - repeti-lo por
+    // extenso na sequência ficaria seco e redundante. Nesse caso encerramos a
+    // qualificação do representante com "ambos residentes e domiciliados em
+    // [endereço]" em vez de repetir o endereço completo pela segunda vez.
+    const representativeAddressPhrase = client.representativeSameAddress
+      ? `ambos residentes e domiciliados em ${clienteEnderecoText}`
+      : client.representativeAddress
+        ? `residente e domiciliado(a) em ${client.representativeAddress}`
+        : '';
     const representativeQualificationParts = [
       client.representativeRole,
-      client.representativeCpf ? `CPF nº ${formatCpfCnpj(client.representativeCpf)}` : '',
-      client.representativeRg ? `RG nº ${client.representativeRg}` : '',
+      representativeRgCpfPhrase,
       client.representativeBirthDate ? `nascido(a) em ${formatBirthDate(client.representativeBirthDate)}` : '',
       client.representativePhone ? `telefone ${formatPhone(client.representativePhone)}` : '',
-      client.representativeAddress ? `residente e domiciliado(a) em ${client.representativeAddress}` : '',
+      representativeAddressPhrase,
     ].filter(Boolean);
 
-    // Montar mapa completo de variáveis para substituição automática
     const variableValues = {
       cliente_nome: client.name,
       cliente_cpf: formatCpfCnpj(client.cpfCnpj),
@@ -274,14 +301,7 @@ export async function POST(req: Request) {
       cliente_nacionalidade: client.nationality || 'Brasileira',
       cliente_genero: client.gender || '',
       cliente_telefone: client.whatsapp || client.phone || '—',
-      cliente_endereco: [
-        client.address,
-        client.number && !String(client.address || '').includes(client.number) ? `nº ${client.number}` : '',
-        client.complement,
-        client.neighborhood,
-        [client.city, client.state].filter(Boolean).join('/'),
-        client.cep ? `CEP ${client.cep}` : '',
-      ].filter(Boolean).join(', ') || '—',
+      cliente_endereco: clienteEnderecoText,
       cliente_estado_civil: client.maritalStatus || '—',
       cliente_profissao: client.profession || '—',
       cliente_nascimento_qualificacao: client.birthDate ? `, nascido(a) em ${formatBirthDate(client.birthDate)}` : '',
@@ -310,10 +330,20 @@ export async function POST(req: Request) {
       assinante_rogo_qualificacao: isIlliterate
         ? [
             rogoRelationship ? String(rogoRelationship).trim() : '',
-            rogoCpf ? `CPF nº ${formatCpfCnpj(rogoCpf)}` : '',
-            rogoRg ? `RG nº ${rogoRg}` : '',
+            rogoRg && rogoCpf
+              ? `portador(a) do RG nº ${rogoRg} e inscrito(a) no CPF sob o nº ${formatCpfCnpj(rogoCpf)}`
+              : rogoRg
+                ? `portador(a) do RG nº ${rogoRg}`
+                : rogoCpf
+                  ? `inscrito(a) no CPF sob o nº ${formatCpfCnpj(rogoCpf)}`
+                  : '',
             rogoBirthDate ? `nascido(a) em ${formatBirthDate(rogoBirthDate)}` : '',
-            rogoAddress ? `residente e domiciliado(a) em ${rogoAddress}` : '',
+            // Mesma lógica do representante legal: se o assinante a rogo mora no
+            // mesmo endereço da cliente, evita repetir o endereço por extenso
+            // (já apareceu na qualificação da cliente) e fecha com "ambos".
+            rogoSameAddress
+              ? `ambos residentes e domiciliados em ${clienteEnderecoText}`
+              : rogoAddress ? `residente e domiciliado(a) em ${rogoAddress}` : '',
           ].filter(Boolean).join(', ')
         : '',
       ...(customVariables || {}),
