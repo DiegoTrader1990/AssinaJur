@@ -215,9 +215,10 @@ const PUBLIC_EVENT_LABELS: Record<string, string> = {
   BACK_CONTINUED_UNVALIDATED: 'Verso do documento confirmado sem validação automática por IA',
   LIVENESS_STARTED: 'Prova de presença iniciada',
   SELFIE_CENTER_VALIDATED: 'Imagem frontal validada',
+  SELFIE_WITH_DOC_VALIDATED: 'Selfie com documento de identificação registrada',
   SELFIE_LEFT_VALIDATED: 'Perfil esquerdo validado',
   SELFIE_RIGHT_VALIDATED: 'Perfil direito validado',
-  LIVENESS_CAPTURED: 'Prova de presença concluída (3 registros faciais)',
+  LIVENESS_CAPTURED: 'Prova de presença concluída (selfie com documento)',
   CONSENT_ACCEPTED: 'Declaração de ciência e concordância aceita',
   SIGNATURE_SUBMITTED: 'Assinatura eletrônica registrada',
   DOCUMENT_COMPLETED: 'Documento finalizado e certificado emitido',
@@ -691,20 +692,26 @@ export async function generateFinalPdfCertificate(documentId: string) {
     compactLabel(leftX, 505, 'Dispositivo e navegador');
     compactValue(leftX, 493, parseUserAgentFriendly(signer.userAgent), CW - 28, 7.8, bold, navy, 1);
 
-    certificatePage.drawText('2. PROVA DE PRESENÇA AO VIVO - 3 REGISTROS FACIAIS', { x: CX, y: 458, size: 7.4, font: bold, color: navy });
-    const compactPhotos: Array<[string, string | null]> = [
-      ['1  FRONTAL', signer.selfieCenterImage],
-      ['2  PERFIL ESQUERDO', signer.selfieLeftImage],
-      ['3  PERFIL DIREITO', signer.selfieRightImage],
-    ];
-    // Fotos de presença em retrato 3:4: preservam o enquadramento capturado
-    // pela câmera, sem aproximar/cortar o rosto para preencher um quadro largo.
-    const compactPhotoW = 90;
+    const hasLegacy3Selfies = Boolean(signer.selfieLeftImage && signer.selfieRightImage);
+    certificatePage.drawText(
+      hasLegacy3Selfies ? '2. PROVA DE PRESENÇA AO VIVO - 3 REGISTROS FACIAIS' : '2. PROVA DE PRESENÇA - SELFIE COM DOCUMENTO DE IDENTIFICAÇÃO',
+      { x: CX, y: 458, size: 7.4, font: bold, color: navy }
+    );
+
+    const compactPhotos: Array<[string, string | null]> = hasLegacy3Selfies
+      ? [
+          ['1  FRONTAL', signer.selfieCenterImage],
+          ['2  PERFIL ESQUERDO', signer.selfieLeftImage],
+          ['3  PERFIL DIREITO', signer.selfieRightImage],
+        ]
+      : [['SELFIE COM DOCUMENTO DE IDENTIFICAÇÃO', signer.selfieCenterImage]];
+
+    const compactPhotoW = hasLegacy3Selfies ? 90 : 160;
     const compactPhotoH = 144;
     const compactPhotoGap = 35;
-    let compactPhotoX = CX + (CW - (compactPhotoW * 3 + compactPhotoGap * 2)) / 2;
+    let compactPhotoX = CX + (CW - (compactPhotoW * compactPhotos.length + compactPhotoGap * (compactPhotos.length - 1))) / 2;
     for (const [label, imageData] of compactPhotos) {
-      const embedded = await embedBase64Image(pdfDoc, imageData, { width: 360, height: 480, fit: 'contain', position: 'centre' });
+      const embedded = await embedBase64Image(pdfDoc, imageData, { width: 480, height: 640, fit: 'contain', position: 'centre' });
       certificatePage.drawRectangle({ x: compactPhotoX - 2, y: 303, width: compactPhotoW + 4, height: compactPhotoH + 4, color: navy });
       certificatePage.drawRectangle({ x: compactPhotoX - 2, y: 443, width: compactPhotoW + 4, height: 4, color: gold });
 
@@ -725,7 +732,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       }
 
       certificatePage.drawRectangle({ x: compactPhotoX, y: 303, width: compactPhotoW, height: 18, color: navy });
-      certificatePage.drawText(label, { x: compactPhotoX + 5, y: 309, size: 4.3, font: bold, color: rgb(1, 1, 1) });
+      certificatePage.drawText(safeText(label, 35), { x: compactPhotoX + 5, y: 309, size: hasLegacy3Selfies ? 4.3 : 4.8, font: bold, color: rgb(1, 1, 1) });
       certificatePage.drawText('OK', { x: compactPhotoX + compactPhotoW - 14, y: 309, size: 4.8, font: bold, color: gold });
       compactPhotoX += compactPhotoW + compactPhotoGap;
     }
@@ -1120,29 +1127,33 @@ export async function generateFinalPdfCertificate(documentId: string) {
       }
     }
 
-    // SEÇÃO 3: EVIDÊNCIAS COLETADAS — 3 SELFIES (CENTRO / PERFIL ESQUERDO / PERFIL DIREITO)
+    // SEÇÃO 3: EVIDÊNCIAS COLETADAS — FOTO DE PRESENÇA
     if (hasPhotos) {
-      page.drawText('3. PROVA DE PRESENÇA AO VIVO (REGISTRO FACIAL HD)', {
-        x: padX,
-        y: cursor,
-        size: 7.2,
-        font: bold,
-        color: navy,
-      });
+      const signerHasLegacy3Selfies = Boolean(signer.selfieLeftImage && signer.selfieRightImage);
+      page.drawText(
+        signerHasLegacy3Selfies ? '3. PROVA DE PRESENÇA AO VIVO (REGISTRO FACIAL HD)' : '3. PROVA DE PRESENÇA (SELFIE COM DOCUMENTO DE IDENTIFICAÇÃO)',
+        {
+          x: padX,
+          y: cursor,
+          size: 7.2,
+          font: bold,
+          color: navy,
+        }
+      );
 
-      const photoLabels: Array<[string, string | null]> = [
-        ['1. Frontal (Centro)', signer.selfieCenterImage],
-        ['2. Perfil Esquerdo', signer.selfieLeftImage],
-        ['3. Perfil Direito', signer.selfieRightImage],
-      ];
+      const photoLabels: Array<[string, string | null]> = signerHasLegacy3Selfies
+        ? [
+            ['1. Frontal (Centro)', signer.selfieCenterImage],
+            ['2. Perfil Esquerdo', signer.selfieLeftImage],
+            ['3. Perfil Direito', signer.selfieRightImage],
+          ]
+        : [['1. Selfie com Documento de Identificação', signer.selfieCenterImage]];
 
-      // Mantém a proporção de selfie. O corte quadrado aproximava demais o
-      // rosto e eliminava partes importantes do enquadramento original.
-      const boxW = 96;
+      const boxW = signerHasLegacy3Selfies ? 96 : 160;
       const boxH = 128;
       const cardH = 156;
       const gap = 18;
-      const photosTotalWidth = boxW * 3 + gap * 2;
+      const photosTotalWidth = boxW * photoLabels.length + gap * (photoLabels.length - 1);
       let photoX = padX + Math.max(0, (innerWidth - photosTotalWidth) / 2);
 
       for (const [label, img] of photoLabels) {

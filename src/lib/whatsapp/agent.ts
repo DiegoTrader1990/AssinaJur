@@ -1528,7 +1528,7 @@ async function handleTextCommand(
     });
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.assinajur.com.br';
     return {
-      replyText: `✅ *${newSigner.name}* foi incluído como *${role === 'ASSINANTE_A_ROGO' ? 'assinante a rogo' : 'testemunha'}* em “${document.title}”.\n\nLink individual: ${appUrl}/assinar/${newSigner.token}\n\nCada participante usará o próprio CPF e fará suas 3 selfies.`,
+      replyText: `✅ *${newSigner.name}* foi incluído como *${role === 'ASSINANTE_A_ROGO' ? 'assinante a rogo' : 'testemunha'}* em “${document.title}”.\n\nLink individual: ${appUrl}/assinar/${newSigner.token}\n\nCada participante usará o próprio CPF e tirará a foto segurando o documento.`,
       actionTaken: 'SIGNER_ADDED_BY_WHATSAPP',
     };
   }

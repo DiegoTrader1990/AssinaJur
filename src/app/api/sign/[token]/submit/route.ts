@@ -69,10 +69,10 @@ export async function POST(
       );
     }
 
-    // 2. Validação da Prova de Presença (3 selfies do Cliente)
-    if (!selfieCenterImage || !selfieLeftImage || !selfieRightImage) {
+    // 2. Validação da Prova de Presença (Selfie segurando o documento)
+    if (!selfieCenterImage) {
       return NextResponse.json(
-        { error: 'É necessário concluir a prova de presença ao vivo (3 fotos) antes de assinar.' },
+        { error: 'É necessário enviar a foto segurando o documento de identificação antes de assinar.' },
         { status: 400 }
       );
     }
@@ -81,9 +81,9 @@ export async function POST(
 
     // 3. Se for fluxo a rogo e dados do acompanhante foram enviados no mesmo link, validar dados do Acompanhante
     if (isRogadoConsent && rogo) {
-      if (!rogo.selfieCenterImage || !rogo.selfieLeftImage || !rogo.selfieRightImage) {
+      if (!rogo.selfieCenterImage) {
         return NextResponse.json(
-          { error: 'O Assinante a Rogo também deve concluir sua prova de presença com 3 fotos no mesmo aparelho.' },
+          { error: 'O Assinante a Rogo também deve enviar a foto segurando o documento no mesmo aparelho.' },
           { status: 400 }
         );
       }
@@ -110,8 +110,8 @@ export async function POST(
           ? 'Declaro ciência e concordância integral com este documento, autorizando a assinatura a rogo realizada em meu nome.'
           : 'Declaro que li os documentos, concordo com seu conteúdo e reconheço esta manifestação como minha assinatura eletrônica.'),
         selfieCenterImage,
-        selfieLeftImage,
-        selfieRightImage,
+        selfieLeftImage: selfieLeftImage || null,
+        selfieRightImage: selfieRightImage || null,
         documentFrontImage: documentFrontImage || null,
         documentBackImage: documentBackImage || null,
         geoLat: typeof geoLat === 'number' ? geoLat : null,
@@ -150,8 +150,8 @@ export async function POST(
             signatureImage: rogo.signatureImage || null,
             signedConsentText: rogo.signedConsentText || `Assino a rogo pelo cliente ${signer.name}, declarando a veracidade das informações apresentadas.`,
             selfieCenterImage: rogo.selfieCenterImage,
-            selfieLeftImage: rogo.selfieLeftImage,
-            selfieRightImage: rogo.selfieRightImage,
+            selfieLeftImage: rogo.selfieLeftImage || null,
+            selfieRightImage: rogo.selfieRightImage || null,
             documentFrontImage: rogo.documentFrontImage || null,
             documentBackImage: rogo.documentBackImage || null,
             geoLat: typeof geoLat === 'number' ? geoLat : null,

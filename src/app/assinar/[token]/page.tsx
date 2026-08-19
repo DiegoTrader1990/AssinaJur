@@ -496,112 +496,16 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   const handleFaceMeshResults = (results: any) => {
     if (isCapturingRef.current || !streamRef.current) return;
-    const currentKey = activeKeyRef.current;
-
-    if (Date.now() < warmupUntilRef.current) {
-      setFrameState('YELLOW');
-      setCountdownSecs(null);
-      centeredStartTimeRef.current = null;
-      return;
-    }
 
     const landmarks = results?.multiFaceLandmarks?.[0];
     if (!landmarks) {
       setFrameState('GRAY');
-      setSelfieInstruction('Posicione seu rosto dentro da moldura.');
-      centeredStartTimeRef.current = null;
-      setCountdownSecs(null);
-      return;
-    }
-
-    const faceInfo = computeFaceOrientation(landmarks);
-    if (!faceInfo) {
-      setFrameState('GRAY');
-      setSelfieInstruction('Rosto dentro da moldura.');
-      centeredStartTimeRef.current = null;
-      setCountdownSecs(null);
-      return;
-    }
-
-    const { noseX, faceWidthRatio, noseRelOffset, eyeRatio } = faceInfo;
-    setCurrentYaw(noseX);
-    const hasValidFace = noseX >= 0.15 && noseX <= 0.85 && faceWidthRatio >= 0.08 && faceWidthRatio <= 0.85;
-
-    if (!hasValidFace) {
-      setFrameState('YELLOW');
-      setSelfieInstruction('Mantenha seu rosto visível dentro da moldura.');
-      centeredStartTimeRef.current = null;
-      setCountdownSecs(null);
-      return;
-    }
-
-    if (currentKey === 'center') {
-      const isCentered = Math.abs(noseRelOffset) <= 0.08 && noseX >= 0.28 && noseX <= 0.72;
-      if (!isCentered) {
-        setFrameState('YELLOW');
-        setSelfieInstruction('Olhe para a CÂMERA e centralize o rosto.');
-        centeredStartTimeRef.current = null;
-        setCountdownSecs(null);
-        return;
-      }
-      frontalNoseXRef.current = noseRelOffset;
-      frontalEyeRatioRef.current = eyeRatio;
-      setFrameState('GREEN');
-      if (!centeredStartTimeRef.current) centeredStartTimeRef.current = Date.now();
-
-      const elapsed = Date.now() - centeredStartTimeRef.current;
-      const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
-      setCountdownSecs(secsRemaining);
-      setSelfieInstruction(`Mantenha-se assim! Foto 1 em ${secsRemaining}s...`);
-
-      if (elapsed >= 3000) {
-        setCountdownSecs(null);
-        centeredStartTimeRef.current = null;
-        triggerAutomaticCapture('center');
-      }
-      return;
-    }
-
-    const baseOffset = frontalNoseXRef.current ?? 0;
-    const baseEye = frontalEyeRatioRef.current ?? 0.50;
-    const offsetDev = noseRelOffset - baseOffset;
-    const eyeDev = eyeRatio - baseEye;
-    let isPoseValid = false;
-
-    if (currentKey === 'left') {
-      isPoseValid = eyeDev <= -0.05 || offsetDev <= -0.05 || offsetDev >= 0.05;
-      if (isPoseValid) leftTurnDirRef.current = Math.abs(eyeDev) > Math.abs(offsetDev) ? eyeDev : offsetDev;
-    } else if (currentKey === 'right') {
-      if (leftTurnDirRef.current !== null) {
-        const curDev = Math.abs(eyeDev) > Math.abs(offsetDev) ? eyeDev : offsetDev;
-        isPoseValid = (curDev * leftTurnDirRef.current) < 0 && Math.abs(curDev) >= 0.05;
-      } else {
-        isPoseValid = eyeDev >= 0.05 || offsetDev >= 0.05;
-      }
-    }
-
-    if (!isPoseValid) {
-      setFrameState('YELLOW');
-      const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
-      setSelfieInstruction(`Vire o rosto para a ${dirLabel}`);
-      centeredStartTimeRef.current = null;
-      setCountdownSecs(null);
+      setSelfieInstruction('Posicione seu rosto e o documento dentro da moldura.');
       return;
     }
 
     setFrameState('GREEN');
-    if (!centeredStartTimeRef.current) centeredStartTimeRef.current = Date.now();
-
-    const elapsed = Date.now() - centeredStartTimeRef.current;
-    const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
-    setCountdownSecs(secsRemaining);
-    setSelfieInstruction(`Excelente! Mantenha a cabeça virada (${secsRemaining}s)...`);
-
-    if (elapsed >= 3000) {
-      setCountdownSecs(null);
-      centeredStartTimeRef.current = null;
-      triggerAutomaticCapture(currentKey);
-    }
+    setSelfieInstruction('Segure seu documento ao lado do rosto e tire a foto.');
   };
 
   const livenessLoop = async () => {
@@ -618,7 +522,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
   };
 
-  const triggerAutomaticCapture = async (key: SelfieKey) => {
+  const triggerAutomaticCapture = async (key: SelfieKey = 'center') => {
     if (isCapturingRef.current) return;
     isCapturingRef.current = true;
     setCapturingSelfie(true);
@@ -633,10 +537,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     try {
-      // A prova de presença deve guardar exatamente o enquadramento recebido
-      // da câmera. Uma proporção fixa (4:3) cortava laterais ou topo de fotos
-      // feitas em aparelhos com câmera 16:9/9:16, aproximando o rosto no
-      // certificado. Mantemos a proporção original, apenas reduzindo o peso.
       const sourceWidth = video.videoWidth;
       const sourceHeight = video.videoHeight;
       const maxSide = 960;
@@ -654,56 +554,15 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
       const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
       const currentPerson = activePersonRef.current;
-      const currentTargetSelfies = currentPerson === 'ROGO'
-        ? rogoSelfieImagesRef.current
-        : currentPerson === 'WITNESS_1'
-        ? witness1SelfieImagesRef.current
-        : currentPerson === 'WITNESS_2'
-        ? witness2SelfieImagesRef.current
-        : selfieImagesRef.current;
-
-      const updatedSelfies = { ...currentTargetSelfies, [key]: dataUrl };
+      const updatedSelfies = { center: dataUrl, left: null, right: null };
       updateCurrentSelfieImages(updatedSelfies, currentPerson);
       if (currentPerson === 'CLIENT') {
-        recordEvidence(key === 'center' ? 'SELFIE_CENTER_VALIDATED' : key === 'left' ? 'SELFIE_LEFT_VALIDATED' : 'SELFIE_RIGHT_VALIDATED');
-      }
-
-      if (singleRetakeKey) {
-        setSelfieInstruction(`✓ Foto de ${LIVENESS_STEPS.find(s => s.key === key)?.label} atualizada!`);
-        stopSelfieCamera();
-        setSingleRetakeKey(null);
-        return;
+        recordEvidence('SELFIE_WITH_DOC_VALIDATED');
       }
 
       playShutterSound(audioEnabledRef.current);
-
-      if (key === 'center') {
-        activeKeyRef.current = 'left';
-        setActiveSelfieKey('left');
-        centeredStartTimeRef.current = null;
-        warmupUntilRef.current = Date.now() + 800;
-        setSelfieInstruction('✓ Foto 1 Salva! Agora vire o rosto para a ESQUERDA ←');
-        playGoogleAudio('step1', audioEnabledRef.current);
-      } else if (key === 'left') {
-        activeKeyRef.current = 'right';
-        setActiveSelfieKey('right');
-        centeredStartTimeRef.current = null;
-        warmupUntilRef.current = Date.now() + 800;
-        setSelfieInstruction('✓ Foto 2 Salva! Agora vire o rosto para a DIREITA →');
-        playGoogleAudio('step2', audioEnabledRef.current);
-      } else if (key === 'right') {
-        setSelfieInstruction('✓ Prova de presença concluída com 3 fotos!');
-        playGoogleAudio('step3', audioEnabledRef.current);
-        stopSelfieCamera();
-
-        setTimeout(() => {
-          if (isRogadoConsent && activePersonRef.current === 'CLIENT') {
-            setStep('ROGO_TRANSITION');
-          } else {
-            setStep('SIGN');
-          }
-        }, 1200);
-      }
+      setSelfieInstruction('✓ Foto com documento capturada com sucesso!');
+      stopSelfieCamera();
     } finally {
       setTimeout(() => {
         isCapturingRef.current = false;
@@ -750,7 +609,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       await recordEvidence('CAMERA_PERMITTED');
       await recordEvidence('LIVENESS_STARTED');
       setFrameState('GRAY');
-      playGoogleAudio('intro', audioEnabledRef.current);
       const fm = await initFaceMesh();
       if (fm) {
         fm.onResults(handleFaceMeshResults);
@@ -791,8 +649,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     );
   };
 
-  const clientSelfieComplete = Boolean(selfieImages.center && selfieImages.left && selfieImages.right);
-  const rogoSelfieComplete = Boolean(rogoSelfieImages.center && rogoSelfieImages.left && rogoSelfieImages.right);
+  const clientSelfieComplete = Boolean(selfieImages.center);
+  const rogoSelfieComplete = Boolean(rogoSelfieImages.center);
 
   const startDrawing = (e: any) => {
     const canvas = canvasRef.current;
@@ -845,14 +703,14 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const rogoLeft = rogoSelfieImages.left || rogoSelfieImagesRef.current.left;
     const rogoRight = rogoSelfieImages.right || rogoSelfieImagesRef.current.right;
 
-    if (!clientCenter || !clientLeft || !clientRight) {
-      setError('É necessário concluir a prova de presença do cliente (3 fotos) antes de assinar.');
+    if (!clientCenter) {
+      setError('É necessário enviar a foto segurando o documento de identificação antes de assinar.');
       return;
     }
 
     if (isRogadoConsent) {
-      if (!rogoCenter || !rogoLeft || !rogoRight) {
-        setError('O Assinante a Rogo também deve concluir a prova de presença com 3 fotos no mesmo aparelho.');
+      if (!rogoCenter) {
+        setError('O Assinante a Rogo também deve enviar a foto segurando o documento no mesmo aparelho.');
         return;
       }
       if (!rogoName.trim() || !rogoCpf.trim()) {
@@ -1122,11 +980,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
             <div className="text-center space-y-1">
               <div className="w-10 h-10 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
-                <Eye className="w-5 h-5" />
+                <Camera className="w-5 h-5" />
               </div>
-              <h2 className="font-heading text-base font-extrabold text-[#071B3A]">🤳 Prova de Presença do Cliente ({signer?.name})</h2>
+              <h2 className="font-heading text-base font-extrabold text-[#071B3A]">🤳 Segure seu documento ao lado do rosto</h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Registramos 3 fotos em sequência (Frontal, Esquerda e Direita) para confirmar a presença do cliente titular.
+                Posicione seu rosto e o documento dentro da área indicada e tire uma foto ({signer?.name}).
               </p>
             </div>
 
@@ -1141,7 +999,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             )}
 
             <div className={cameraActive ? 'space-y-3' : 'hidden'}>
-              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[3/4] sm:aspect-[4/3] bg-black ${
+              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[3/4] bg-black ${
                 frameState === 'GREEN' ? 'border-emerald-500 shadow-emerald-500/50 shadow-xl'
                 : frameState === 'YELLOW' ? 'border-amber-400'
                 : frameState === 'FLASH' ? 'border-white animate-pulse'
@@ -1149,19 +1007,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               }`}>
                 <video ref={selfieVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
                 <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                  <div className={`w-[70%] h-[75%] rounded-[50%] border-[3px] border-dashed transition-all duration-300 ${
+                  <div className={`w-[85%] h-[80%] rounded-[30px] border-[3px] border-dashed transition-all duration-300 ${
                     frameState === 'GREEN' ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' 
                     : frameState === 'YELLOW' ? 'border-amber-400/70 bg-amber-500/5'
                     : 'border-white/30'
                   }`} />
                 </div>
-                {cameraActive && countdownSecs !== null && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-30 bg-black/30 backdrop-blur-[2px]">
-                    <div className="w-24 h-24 rounded-full bg-black/80 border-4 border-amber-400 backdrop-blur-md flex items-center justify-center shadow-2xl animate-pulse">
-                      <span className="text-5xl font-black text-amber-400 font-mono tracking-tighter">{countdownSecs}</span>
-                    </div>
-                  </div>
-                )}
                 <div className="absolute bottom-0 left-0 right-0 bg-[#071B3A]/90 text-emerald-300 text-xs font-bold text-center py-3 px-4 backdrop-blur-sm flex items-center justify-center gap-2 font-heading">
                   <span>{selfieInstruction}</span>
                 </div>
@@ -1170,7 +1021,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               {/* Botão de Captura Manual Direta */}
               <button
                 type="button"
-                onClick={handleManualCapture}
+                onClick={() => triggerAutomaticCapture('center')}
                 disabled={capturingSelfie}
                 className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading"
               >
@@ -1180,10 +1031,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   </>
                 ) : (
                   <>
-                    <Camera className="w-4 h-4 text-white" />
-                    {activeSelfieKey === 'center' && '📸 Tirar Foto 1 (Frontal)'}
-                    {activeSelfieKey === 'left' && '📸 Tirar Foto 2 (Perfil Esquerdo)'}
-                    {activeSelfieKey === 'right' && '📸 Tirar Foto 3 (Perfil Direito)'}
+                    <Camera className="w-4 h-4 text-white" /> 📸 Tirar Foto com Documento
                   </>
                 )}
               </button>
@@ -1191,35 +1039,41 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
             {clientSelfieComplete && (
               <div className="space-y-4 pt-1">
-                <div className="grid grid-cols-3 gap-2.5">
-                  {LIVENESS_STEPS.map((s) => (
-                    <div key={s.key} className="space-y-1.5 text-center">
-                      <div className="rounded-2xl overflow-hidden border-2 border-emerald-500 aspect-[4/3] bg-black relative group shadow-sm">
-                        {selfieImages[s.key] && (
-                          <img src={selfieImages[s.key] as string} alt={s.label} className="w-full h-full object-contain" />
-                        )}
-                        <span className="absolute top-1.5 right-1.5 bg-emerald-500 text-white rounded-full p-0.5 shadow-sm">
-                          <Check className="w-3 h-3 stroke-[3]" />
-                        </span>
-                      </div>
-                      <p className="text-[10px] font-bold text-slate-700 font-heading">{s.label}</p>
-                    </div>
-                  ))}
+                <div className="space-y-2 text-center">
+                  <div className="rounded-3xl overflow-hidden border-2 border-emerald-500 aspect-[3/4] max-w-[240px] mx-auto bg-black relative shadow-md">
+                    <img src={selfieImages.center as string} alt="Selfie com documento" className="w-full h-full object-contain" />
+                    <span className="absolute top-2 right-2 bg-emerald-500 text-white rounded-full p-1 shadow-sm">
+                      <Check className="w-4 h-4 stroke-[3]" />
+                    </span>
+                  </div>
+                  <p className="text-xs font-bold text-emerald-700 font-heading flex items-center justify-center gap-1">
+                    <CheckCircle2 className="w-4 h-4" /> Foto com documento capturada com sucesso!
+                  </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isRogadoConsent) {
-                      setStep('ROGO_TRANSITION');
-                    } else {
-                      setStep('SIGN');
-                    }
-                  }}
-                  className="w-full py-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
-                >
-                  {isRogadoConsent ? 'Avançar para o Assinante a Rogo' : 'Continuar para Assinatura'} <ArrowRight className="w-4 h-4 stroke-[2.5]" />
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => startSelfieCamera(undefined, false, 'CLIENT')}
+                    className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl transition-all flex items-center justify-center gap-1.5 text-xs font-heading"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" /> Tirar Novamente
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isRogadoConsent) {
+                        setStep('ROGO_TRANSITION');
+                      } else {
+                        setStep('SIGN');
+                      }
+                    }}
+                    className="flex-1 py-3.5 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-1.5 text-xs font-heading"
+                  >
+                    Confirmar e Continuar <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                  </button>
+                </div>
               </div>
             )}
             <canvas ref={selfieCanvasRef} className="hidden" />
@@ -1325,16 +1179,16 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           </div>
         )}
 
-        {/* ETAPA ROGO: Fotos do Assinante a Rogo */}
+        {/* ETAPA ROGO: Foto com Documento do Assinante a Rogo */}
         {step === 'ROGO_SELFIE' && (
           <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
             <div className="text-center space-y-1">
               <div className="w-10 h-10 bg-blue-50 border border-blue-200 text-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
                 <Camera className="w-5 h-5" />
               </div>
-              <h2 className="font-heading text-base font-extrabold text-[#071B3A]">🤳 Prova de Presença do Assinante a Rogo ({rogoName})</h2>
+              <h2 className="font-heading text-base font-extrabold text-[#071B3A]">🤳 Segure seu documento ao lado do rosto</h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Agora registramos as 3 fotos do acompanhante ({rogoName}) que assinará a rogo pelo cliente.
+                Posicione seu rosto e o documento dentro da área indicada e tire uma foto ({rogoName}).
               </p>
             </div>
 
@@ -1349,7 +1203,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             )}
 
             <div className={cameraActive ? 'space-y-3' : 'hidden'}>
-              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[3/4] sm:aspect-[4/3] bg-black ${
+              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[3/4] bg-black ${
                 frameState === 'GREEN' ? 'border-emerald-500 shadow-emerald-500/50 shadow-xl'
                 : frameState === 'YELLOW' ? 'border-amber-400'
                 : frameState === 'FLASH' ? 'border-white animate-pulse'
@@ -1357,19 +1211,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               }`}>
                 <video ref={selfieVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
                 <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                  <div className={`w-[70%] h-[75%] rounded-[50%] border-[3px] border-dashed transition-all duration-300 ${
+                  <div className={`w-[85%] h-[80%] rounded-[30px] border-[3px] border-dashed transition-all duration-300 ${
                     frameState === 'GREEN' ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' 
                     : frameState === 'YELLOW' ? 'border-amber-400/70 bg-amber-500/5'
                     : 'border-white/30'
                   }`} />
                 </div>
-                {cameraActive && countdownSecs !== null && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-30 bg-black/30 backdrop-blur-[2px]">
-                    <div className="w-24 h-24 rounded-full bg-black/80 border-4 border-amber-400 backdrop-blur-md flex items-center justify-center shadow-2xl animate-pulse">
-                      <span className="text-5xl font-black text-amber-400 font-mono tracking-tighter">{countdownSecs}</span>
-                    </div>
-                  </div>
-                )}
                 <div className="absolute bottom-0 left-0 right-0 bg-[#071B3A]/90 text-blue-300 text-xs font-bold text-center py-3 px-4 backdrop-blur-sm flex items-center justify-center gap-2 font-heading">
                   <span>{selfieInstruction}</span>
                 </div>
@@ -1378,7 +1225,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               {/* Botão de Captura Manual Direta para o Assinante a Rogo */}
               <button
                 type="button"
-                onClick={handleManualCapture}
+                onClick={() => triggerAutomaticCapture('center')}
                 disabled={capturingSelfie}
                 className="w-full py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading"
               >
@@ -1388,10 +1235,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   </>
                 ) : (
                   <>
-                    <Camera className="w-4 h-4 text-white" />
-                    {activeSelfieKey === 'center' && '📸 Tirar Foto 1 (Frontal)'}
-                    {activeSelfieKey === 'left' && '📸 Tirar Foto 2 (Perfil Esquerdo)'}
-                    {activeSelfieKey === 'right' && '📸 Tirar Foto 3 (Perfil Direito)'}
+                    <Camera className="w-4 h-4 text-white" /> 📸 Tirar Foto com Documento
                   </>
                 )}
               </button>
@@ -1399,29 +1243,35 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
             {rogoSelfieComplete && (
               <div className="space-y-4 pt-1">
-                <div className="grid grid-cols-3 gap-2.5">
-                  {LIVENESS_STEPS.map((s) => (
-                    <div key={s.key} className="space-y-1.5 text-center">
-                      <div className="rounded-2xl overflow-hidden border-2 border-blue-500 aspect-[4/3] bg-black relative shadow-sm">
-                        {rogoSelfieImages[s.key] && (
-                          <img src={rogoSelfieImages[s.key] as string} alt={s.label} className="w-full h-full object-contain" />
-                        )}
-                        <span className="absolute top-1.5 right-1.5 bg-blue-600 text-white rounded-full p-0.5 shadow-sm">
-                          <Check className="w-3 h-3 stroke-[3]" />
-                        </span>
-                      </div>
-                      <p className="text-[10px] font-bold text-slate-700 font-heading">{s.label}</p>
-                    </div>
-                  ))}
+                <div className="space-y-2 text-center">
+                  <div className="rounded-3xl overflow-hidden border-2 border-blue-500 aspect-[3/4] max-w-[240px] mx-auto bg-black relative shadow-md">
+                    <img src={rogoSelfieImages.center as string} alt="Selfie com documento do acompanhante" className="w-full h-full object-contain" />
+                    <span className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-1 shadow-sm">
+                      <Check className="w-4 h-4 stroke-[3]" />
+                    </span>
+                  </div>
+                  <p className="text-xs font-bold text-blue-700 font-heading flex items-center justify-center gap-1">
+                    <CheckCircle2 className="w-4 h-4" /> Foto com documento capturada com sucesso!
+                  </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setStep('SIGN')}
-                  className="w-full py-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
-                >
-                  Ir para Quadro de Assinatura a Rogo <ArrowRight className="w-4 h-4 stroke-[2.5]" />
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => startSelfieCamera(undefined, false, 'ROGO')}
+                    className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl transition-all flex items-center justify-center gap-1.5 text-xs font-heading"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" /> Tirar Novamente
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setStep('SIGN')}
+                    className="flex-1 py-3.5 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-1.5 text-xs font-heading"
+                  >
+                    Confirmar e Continuar <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                  </button>
+                </div>
               </div>
             )}
             <canvas ref={selfieCanvasRef} className="hidden" />
@@ -1473,7 +1323,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   {isRogadoConsent ? `CPF Cliente: ${signer?.cpf ? formatFullCpf(signer.cpf) : ''} | CPF A Rogo: ${rogoCpf ? formatFullCpf(rogoCpf) : ''}` : `CPF: ${signer?.cpf ? formatFullCpf(signer.cpf) : ''}`}
                 </p>
                 <p className="text-[10px] text-emerald-700 font-extrabold uppercase">
-                  {isRogadoConsent ? '✓ 6 FOTOS DE PRESENÇA (3 CLIENTE + 3 ACOMPANHANTE) VINCULADOS' : '✓ PROVA DE PRESENÇA + GEOLOCALIZAÇÃO VINCULADOS'}
+                  {isRogadoConsent ? '✓ FOTOS DE PRESENÇA DO CLIENTE E ACOMPANHANTE VINCULADAS' : '✓ PROVA DE PRESENÇA + GEOLOCALIZAÇÃO VINCULADOS'}
                 </p>
               </div>
             </div>
@@ -1587,7 +1437,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         {step === 'NEXT_PARTICIPANT' && nextParticipant && (
           <div className="bg-white p-8 rounded-3xl border border-blue-200 shadow-2xl text-center space-y-6">
             <div className="w-16 h-16 bg-blue-50 border border-blue-200 text-blue-600 rounded-full flex items-center justify-center mx-auto shadow-xs"><Users className="w-9 h-9" /></div>
-            <div className="space-y-2"><span className="px-3.5 py-1 rounded-full bg-blue-50 text-blue-700 font-extrabold text-xs border border-blue-200 uppercase tracking-wider font-heading">Próxima etapa obrigatória</span><h2 className="font-heading text-xl font-extrabold text-[#071B3A]">Passe o celular para {nextParticipant.name}</h2><p className="text-sm text-slate-600 font-medium leading-relaxed">A etapa anterior foi registrada, mas o documento ainda não foi concluído. Agora a {nextParticipant.role.replace(/_/g, ' ').toLowerCase()} deverá confirmar o próprio CPF, fazer as três fotos e assinar.</p></div>
+            <div className="space-y-2"><span className="px-3.5 py-1 rounded-full bg-blue-50 text-blue-700 font-extrabold text-xs border border-blue-200 uppercase tracking-wider font-heading">Próxima etapa obrigatória</span><h2 className="font-heading text-xl font-extrabold text-[#071B3A]">Passe o celular para {nextParticipant.name}</h2><p className="text-sm text-slate-600 font-medium leading-relaxed">A etapa anterior foi registrada, mas o documento ainda não foi concluído. Agora a {nextParticipant.role.replace(/_/g, ' ').toLowerCase()} deverá confirmar o próprio CPF, tirar a foto com o documento de identificação e assinar.</p></div>
             <button type="button" onClick={() => window.location.assign(`/assinar/${nextParticipant.token}`)} className="w-full py-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg text-sm font-heading">Iniciar etapa de {nextParticipant.name}</button>
           </div>
         )}
