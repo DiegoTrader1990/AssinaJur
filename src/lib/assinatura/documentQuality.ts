@@ -52,13 +52,13 @@ export const MIN_HEIGHT = 300;
 /** Abaixo disso a imagem quase certamente está vazia/corrompida. */
 export const MIN_BYTES = 15_000;
 /** Abaixo disso a foto está praticamente no escuro. */
-export const MIN_MEAN_LUMINANCE = 25;
+export const MIN_MEAN_LUMINANCE = 45;
 /** Aviso (não bloqueio) de imagem pouco iluminada. */
-export const LOW_LIGHT_LUMINANCE = 55;
+export const LOW_LIGHT_LUMINANCE = 80;
 /** Abaixo deste valor, a leitura do documento fica insegura e a foto é recusada. */
-export const MIN_SHARPNESS = 70;
+export const MIN_SHARPNESS = 135;
 /** Aviso de imagem que passa, mas merece conferência adicional. */
-export const LOW_SHARPNESS = 115;
+export const LOW_SHARPNESS = 185;
 
 /**
  * Calcula luminância média e um proxy de nitidez a partir do canvas capturado.
@@ -177,6 +177,14 @@ export function buildQualityReport(params: {
       code: 'LOW_LIGHT',
       level: 'WARN',
       message: 'Iluminação abaixo do ideal.',
+    });
+  }
+
+  if (meanLuminance > 245) {
+    issues.push({
+      code: 'OVEREXPOSED',
+      level: 'BLOCK',
+      message: 'A foto ficou clara demais, com reflexo ou excesso de luz. Mude o ângulo e tente novamente.',
     });
   }
 

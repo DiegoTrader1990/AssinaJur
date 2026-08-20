@@ -529,7 +529,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     try {
       const img = new window.Image();
       img.crossOrigin = 'anonymous';
-      img.onload = () => {
+      let processed = false;
+      const processReference = () => {
+        if (processed) return;
+        processed = true;
         try {
           const canvas = window.document.createElement('canvas');
           canvas.width = 64;
@@ -563,7 +566,13 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           docRefFingerprintRef.current = null;
         }
       };
+      img.onload = processReference;
+      img.onerror = () => { docRefFingerprintRef.current = null; };
       img.src = dataUrl;
+      // Em alguns Safari/iPhone o data URL já chega pronto antes de onload ser
+      // observado. decode garante que a referência seja criada nesse caso.
+      void img.decode?.().then(processReference).catch(() => {});
+      if (img.complete && img.naturalWidth) processReference();
     } catch {
       docRefFingerprintRef.current = null;
     }
@@ -614,10 +623,13 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       const frameAspect = 3 / 4;
       const visibleWidth = sourceAspect > frameAspect ? frameAspect / sourceAspect : 1;
       const visibleXStart = sourceAspect > frameAspect ? (1 - visibleWidth) / 2 : 0;
-      const sensorMinXNorm = visibleXStart + visibleWidth * 0.03;
-      const sensorMaxXNorm = visibleXStart + visibleWidth * 0.47;
-      const visualTop = Math.max(0.14, faceMinSensorY - 0.04);
-      const visualBottom = Math.min(0.76, Math.max(faceMaxSensorY + 0.08, 0.68));
+      // Como a imagem é espelhada, a moldura visual do lado esquerdo equivale
+      // à área direita no sensor original. Este era o ponto que impedia a
+      // identificação mesmo com o RG corretamente enquadrado.
+      const sensorMinXNorm = visibleXStart + visibleWidth * (1 - 0.45);
+      const sensorMaxXNorm = visibleXStart + visibleWidth * (1 - 0.03);
+      const visualTop = 0.25;
+      const visualBottom = 0.67;
 
       const startX = Math.floor(200 * sensorMinXNorm);
       const startY = Math.floor(150 * visualTop);
@@ -699,7 +711,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   // Sintetizador Web Audio de beeps/chimes para retorno sonoro 100% auditável no iOS Safari e Android
   const playBeep = (freq: number = 880, durationMs: number = 180) => {
-    if (!audioEnabledRef.current || typeof window === 'undefined') return;
+    if (!audioEnabledRef.current || typeof window === 'undefined' || window.document.hidden) return;
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) return;
@@ -725,7 +737,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   // Voz Guia com suporte total ao Safari / iOS e seleção de voz pt-BR
   const speakGuide = (text: string, stateKey: string, force: boolean = false) => {
-    if (!audioEnabledRef.current) return;
+    if (!audioEnabledRef.current || window.document.hidden) return;
     const now = Date.now();
     if (!force && stateKey === lastVoiceStateRef.current && now - lastVoiceTimeRef.current < 3500) return;
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
@@ -1032,6 +1044,23 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
     setCameraActive(false);
   };
+
+  // Safari pode manter a fila de voz ativa ao minimizar o WhatsApp ou trocar
+  // de aba. Interrompemos voz, contagem e câmera na hora para não haver áudio
+  // repetido em segundo plano nem captura fora da tela.
+  useEffect(() => {
+    const stopWhenHidden = () => {
+      if (!window.document.hidden) return;
+      cancelCountdown();
+      lastVoiceStateRef.current = '';
+      if (window.speechSynthesis) {
+        try { window.speechSynthesis.cancel(); } catch {}
+      }
+      stopSelfieCamera();
+    };
+    window.document.addEventListener('visibilitychange', stopWhenHidden);
+    return () => window.document.removeEventListener('visibilitychange', stopWhenHidden);
+  });
 
   const requestGeolocation = () => {
     if (!navigator.geolocation) return;
@@ -1412,7 +1441,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-2">
                   <div className="w-full h-full relative">
                     {/* Moldura Orientativa do Documento na lateral */}
-                    <div className={`absolute top-[18%] left-[3%] w-[42%] h-[50%] rounded-2xl border-[2px] border-dashed transition-all duration-300 flex flex-col items-center justify-start pt-2 ${
+                    <div className={`absolute top-[25%] left-[3%] w-[42%] aspect-[1.58/1] rounded-xl border-[2px] border-dashed transition-all duration-300 flex flex-col items-center justify-start pt-2 ${
                       docDetected ? 'border-emerald-400/80 bg-emerald-500/10' : 'border-white/40 bg-black/20'
                     }`}>
                       <span className={`text-[9px] font-bold uppercase font-heading px-2 py-0.5 rounded-full ${
@@ -1656,7 +1685,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-2">
                   <div className="w-full h-full relative">
                     {/* Moldura Orientativa do Documento na lateral */}
-                    <div className={`absolute top-[18%] left-[3%] w-[42%] h-[50%] rounded-2xl border-[2px] border-dashed transition-all duration-300 flex flex-col items-center justify-start pt-2 ${
+                    <div className={`absolute top-[25%] left-[3%] w-[42%] aspect-[1.58/1] rounded-xl border-[2px] border-dashed transition-all duration-300 flex flex-col items-center justify-start pt-2 ${
                       docDetected ? 'border-emerald-400/80 bg-emerald-500/10' : 'border-white/40 bg-black/20'
                     }`}>
                       <span className={`text-[9px] font-bold uppercase font-heading px-2 py-0.5 rounded-full ${
