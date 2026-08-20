@@ -396,6 +396,15 @@ export default function DocumentCapture({
             {captureQualityStatus(pending.quality) === 'GOOD' ? <Check className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
             {captureQualityStatus(pending.quality) === 'GOOD' ? 'Continuar' : 'Tirar outra foto'}
           </button>
+          {captureQualityStatus(pending.quality) === 'GOOD' && (
+            <button
+              type="button"
+              onClick={retake}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white py-3 text-sm font-extrabold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 active:scale-[0.99]"
+            >
+              <RefreshCw className="h-4 w-4" /> Tirar outra foto
+            </button>
+          )}
         </div>
       )}
 

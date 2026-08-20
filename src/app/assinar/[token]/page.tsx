@@ -1194,11 +1194,45 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         };
       }
 
-      const res = await fetch(`/api/sign/${params.token}/submit`, {
+      const submitRequest = fetch(`/api/sign/${params.token}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+
+      // A montagem do PDF e do certificado pode levar mais tempo que o registro
+      // da assinatura. Depois de alguns segundos, conferimos o estado gravado para
+      // não deixar a pessoa presa numa tela de processamento.
+      const res = await Promise.race<Response | null>([
+        submitRequest,
+        new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 12_000)),
+      ]);
+
+      if (!res) {
+        const progressResponse = await fetch(`/api/sign/${params.token}`, { cache: 'no-store' });
+        const progress = await progressResponse.json().catch(() => null);
+        if (progressResponse.ok && progress?.signer?.status === 'ASSINADO') {
+          sessionStorage.setItem(`assinajur-signed-${params.token}`, '1');
+          setPendingParticipants([]);
+          setStep('SUCCESS');
+          return;
+        }
+
+        // Caso o registro ainda não tenha sido concluído, aguarda a resposta
+        // original em vez de repetir a assinatura.
+        const completedResponse = await submitRequest;
+        const completedData = await completedResponse.json();
+        if (!completedResponse.ok) throw new Error(completedData.error || 'Erro ao processar assinatura.');
+        sessionStorage.setItem(`assinajur-signed-${params.token}`, '1');
+        if (completedData.nextSigner?.token) {
+          setNextParticipant(completedData.nextSigner);
+          setStep('NEXT_PARTICIPANT');
+          return;
+        }
+        setPendingParticipants(completedData.pendingParticipants || []);
+        setStep('SUCCESS');
+        return;
+      }
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao processar assinatura.');
@@ -1242,29 +1276,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col justify-between font-sans">
-      <header className="bg-white border-b border-slate-200/80 py-4 px-6 sticky top-0 z-30 shadow-xs">
-        <div className="max-w-md mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#071B3A] text-white font-heading font-extrabold flex items-center justify-center text-lg shadow-md border border-white/10">
-              AJ
-            </div>
-            <div>
-              <h1 className="font-heading font-extrabold text-[#071B3A] text-base tracking-tight leading-none">
-                {document?.officeName || 'AssinaJur'}
-              </h1>
-              <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Assinatura Eletrônica Jurídica</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-extrabold text-[#071B3A] bg-slate-100 px-3 py-1 rounded-full border border-slate-200 font-heading uppercase tracking-wider">
-              {isRogadoConsent ? 'Fluxo A Rogo' : 'Assinatura'}
-            </span>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-md mx-auto w-full mt-4 mb-auto p-4 sm:p-6 space-y-4">
+      <main className="max-w-md mx-auto w-full mb-auto p-3 sm:p-5 space-y-4">
         {error && (
           <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-3 font-medium">
             <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
