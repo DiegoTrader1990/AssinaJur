@@ -38,6 +38,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const image = typeof body?.image === 'string' ? body.image : '';
+    const selfieWithDocument = body?.mode === 'SELFIE_WITH_DOCUMENT';
     const match = image.match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,([a-z0-9+/=]+)$/i);
     if (!match) return NextResponse.json({ error: 'Imagem inválida.' }, { status: 400 });
 
@@ -54,6 +55,7 @@ Responda JSON puro, sem markdown, exatamente neste formato:
 {"isDocument":true,"documentType":"RG","readable":true,"confidence":90,"reason":"..."}
 
 Critérios:
+- ${selfieWithDocument ? 'Esta é uma selfie: aceite quando houver uma pessoa segurando ao lado do rosto um RG, CIN ou CNH visível. Analise a imagem inteira; o documento pode ocupar apenas parte da foto.' : 'Esta é uma foto direta do documento.'}
 - Priorize não rejeitar um documento verdadeiro por enquadramento, rotação, reflexo leve ou leitura parcial. isDocument deve ser true se houver evidência razoável de RG/CIN ou CNH, mesmo sem conseguir ler todos os dados.
 - Considere como evidência: cartão laminado retangular, retrato, brasão, QR code, código de barras, campos estruturados, rótulos como NOME/CPF/RG/CNH, números de documento, assinatura ou diagramação típica de identidade.
 - Um documento pode estar de cabeça para baixo, na vertical, parcialmente cortado ou ocupar apenas parte da moldura.

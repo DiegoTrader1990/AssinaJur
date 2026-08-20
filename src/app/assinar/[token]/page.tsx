@@ -35,7 +35,7 @@ import {
 import { formatBrasiliaDateTime } from '@/lib/dateUtils';
 import { maskCpfCnpj } from '@/lib/formatters';
 import DocumentCapture, { type CaptureResult } from '@/components/assinatura/DocumentCapture';
-import { analyseCanvas } from '@/lib/assinatura/documentQuality';
+import { analyseCanvas, buildQualityReport } from '@/lib/assinatura/documentQuality';
 
 function formatFullCpf(cpf: string): string {
   const clean = String(cpf || '').replace(/\D/g, '');
@@ -295,14 +295,15 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [selfieInstruction, setSelfieInstruction] = useState<string>('Posicione seu rosto dentro da moldura.');
   const [capturingSelfie, setCapturingSelfie] = useState<boolean>(false);
   const [countdownSecs, setCountdownSecs] = useState<number | null>(null);
-  const [audioEnabled, setAudioEnabled] = useState<boolean>(true);
-  const audioEnabledRef = useRef<boolean>(true);
+  const [audioEnabled, setAudioEnabled] = useState<boolean>(false);
+  const audioEnabledRef = useRef<boolean>(false);
   const [currentYaw, setCurrentYaw] = useState<number>(0.5);
 
   const [faceDetected, setFaceDetected] = useState<boolean>(false);
   const [docDetected, setDocDetected] = useState<boolean>(false);
   const [documentReferenceReady, setDocumentReferenceReady] = useState<boolean>(false);
   const [documentQualityApproved, setDocumentQualityApproved] = useState<boolean>(false);
+  const [checkingSelfieDocument, setCheckingSelfieDocument] = useState<boolean>(false);
   const faceDetectedRef = useRef<boolean>(false);
   const docDetectedRef = useRef<boolean>(false);
   const documentQualityApprovedRef = useRef<boolean>(false);
@@ -818,64 +819,14 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       isFaceValid = true;
     }
 
-    // Compara o objeto na ROI lateral contígua ao rosto com a imagem do documento capturada na Etapa 1
-    const documentCheck = video ? detectObjectMatchingReference(video, landmarks) : { detected: false, qualityApproved: false, meanLuminance: 0, sharpness: 0 };
-    const isDocMatch = documentCheck.detected;
-
-    // Estabilidade rigorosa: exige 5 frames consecutivos (~750ms) de confirmação visual do objeto
-    if (isDocMatch) {
-      docFrameCounterRef.current = Math.min(10, docFrameCounterRef.current + 1);
-    } else {
-      docFrameCounterRef.current = Math.max(0, docFrameCounterRef.current - 2);
-    }
-
-    const isRealDocDetected = docFrameCounterRef.current >= 5;
-
     faceDetectedRef.current = isFaceValid;
-    docDetectedRef.current = isRealDocDetected;
-    documentQualityApprovedRef.current = documentCheck.qualityApproved;
-
     setFaceDetected(isFaceValid);
-    setDocDetected(isRealDocDetected);
-    setDocumentQualityApproved(documentCheck.qualityApproved);
-
-    // --- Lógica de estados com voz e contagem automática ---
-    if (isFaceValid && isRealDocDetected) {
+    if (isFaceValid) {
       setFrameState('GREEN');
-
-      if (!countdownActiveRef.current) {
-        if (bothValidSinceRef.current === 0) {
-          bothValidSinceRef.current = Date.now();
-        }
-        setSelfieInstruction('✓ Documento identificado e qualidade aprovada. Toque em “Capturar foto”.');
-      } else {
-        setSelfieInstruction(`📸 Foto em ${countdownSecs || '...'}...`);
-      }
+      setSelfieInstruction('Rosto identificado. Mantenha o RG ou a CNH dentro da moldura e tire a foto.');
     } else {
-      if (countdownActiveRef.current) {
-        cancelCountdown();
-      }
-      bothValidSinceRef.current = 0;
-
-      if (!isFaceValid && !isRealDocDetected) {
-        setFrameState('GRAY');
-        setSelfieInstruction('Olhe para a câmera e segure o documento.');
-        speakGuide('Olhe para a câmera.', 'no_face');
-      } else if (!isFaceValid) {
-        setFrameState('YELLOW');
-        setSelfieInstruction('👤 Olhe para a câmera.');
-        speakGuide('Olhe para a câmera.', 'no_face');
-      } else if (!documentReferenceReady) {
-        setFrameState('YELLOW');
-        setSelfieInstruction('Preparando a conferência do documento...');
-      } else if (!documentCheck.qualityApproved) {
-        setFrameState('YELLOW');
-        setSelfieInstruction('Melhore a iluminação e mantenha o documento firme na moldura.');
-      } else {
-        setFrameState('YELLOW');
-        setSelfieInstruction('🪪 Segure seu documento ao lado do rosto.');
-        speakGuide('Agora segure seu documento ao lado do rosto.', 'no_doc');
-      }
+      setFrameState('YELLOW');
+      setSelfieInstruction('Olhe para a câmera para continuar.');
     }
   };
 
@@ -895,8 +846,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   const triggerAutomaticCapture = async (key: SelfieKey = 'center') => {
     if (isCapturingRef.current) return;
-    if (!faceDetectedRef.current || !docDetectedRef.current || !documentQualityApprovedRef.current) {
-      setSelfieInstruction('Posicione o rosto e o documento na moldura até a qualidade ser aprovada.');
+    if (!faceDetectedRef.current) {
+      setSelfieInstruction('Olhe para a câmera antes de capturar a foto.');
       return;
     }
     isCapturingRef.current = true;
@@ -928,6 +879,35 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       }
 
       const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+      const bytes = Math.round((dataUrl.length * 3) / 4);
+      const { meanLuminance, sharpness } = analyseCanvas(canvas);
+      const quality = buildQualityReport({ width: canvas.width, height: canvas.height, bytes, meanLuminance, sharpness });
+      if (!quality.acceptable) {
+        setFrameState('YELLOW');
+        setSelfieInstruction(quality.issues.find((issue) => issue.level === 'BLOCK')?.message || 'A foto não ficou boa. Tente novamente.');
+        return;
+      }
+
+      // A confirmação de que existe RG/CNH é feita na foto completa, por IA,
+      // e não mais por um palpite em tempo real de uma área minúscula da tela.
+      // Isso é mais confiável e permite uma moldura simples para a pessoa.
+      setCheckingSelfieDocument(true);
+      setSelfieInstruction('Conferindo se o documento está visível na foto...');
+      stopSelfieCamera();
+      const validationResponse = await fetch('/api/sign/documento/validar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: dataUrl, mode: 'SELFIE_WITH_DOCUMENT' }),
+      });
+      const validationPayload = await validationResponse.json().catch(() => ({}));
+      const validation = validationPayload?.validation;
+      if (!validationResponse.ok || !validation?.isDocument || Number(validation.confidence || 0) < 45) {
+        setFrameState('YELLOW');
+        setError(validation?.reason || 'Não conseguimos identificar um documento na foto. Mantenha o RG ou a CNH aberto e bem visível ao lado do rosto e tente novamente.');
+        setSelfieInstruction('Documento não identificado. Tire outra foto com o cartão mais próximo.');
+        return;
+      }
+
       const currentPerson = activePersonRef.current;
       const updatedSelfies = { center: dataUrl, left: null, right: null };
       updateCurrentSelfieImages(updatedSelfies, currentPerson);
@@ -937,8 +917,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
       playShutterSound(audioEnabledRef.current);
       setSelfieInstruction('✓ Foto com documento capturada com sucesso!');
-      stopSelfieCamera();
     } finally {
+      setCheckingSelfieDocument(false);
       setTimeout(() => {
         isCapturingRef.current = false;
         setCapturingSelfie(false);
@@ -1412,9 +1392,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               <div className="w-10 h-10 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
                 <Camera className="w-5 h-5" />
               </div>
-              <h2 className="font-heading text-base font-extrabold text-[#071B3A]">🤳 Segure seu documento ao lado do rosto</h2>
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-emerald-700">Etapa 2 de 3 · Confirmação de identidade</p>
+              <h2 className="font-heading text-lg font-extrabold text-[#071B3A]">Foto com documento</h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Posicione o documento na moldura ao lado do rosto. A foto só será liberada após a conferência de qualidade.
+                Segure o RG ou a CNH dentro da moldura, ao lado do rosto. Nós conferiremos a imagem antes de aceitar.
               </p>
             </div>
 
@@ -1424,12 +1405,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 onClick={() => unlockAudioAndStartCamera('CLIENT')}
                 className="w-full py-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
               >
-                <Camera className="w-4 h-4 text-blue-400" /> 🔊 Iniciar Verificação por Voz
+                <Camera className="w-4 h-4 text-blue-400" /> Iniciar câmera
               </button>
             )}
 
             <div className={cameraActive ? 'space-y-3' : 'hidden'}>
-              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[3/4] bg-black ${
+              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[4/5] bg-black ${
                 frameState === 'GREEN' ? 'border-emerald-500 shadow-emerald-500/50 shadow-xl'
                 : frameState === 'YELLOW' ? 'border-amber-400'
                 : frameState === 'FLASH' ? 'border-white animate-pulse'
@@ -1441,13 +1422,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-2">
                   <div className="w-full h-full relative">
                     {/* Moldura Orientativa do Documento na lateral */}
-                    <div className={`absolute top-[25%] left-[3%] w-[42%] aspect-[1.58/1] rounded-xl border-[2px] border-dashed transition-all duration-300 flex flex-col items-center justify-start pt-2 ${
-                      docDetected ? 'border-emerald-400/80 bg-emerald-500/10' : 'border-white/40 bg-black/20'
-                    }`}>
-                      <span className={`text-[9px] font-bold uppercase font-heading px-2 py-0.5 rounded-full ${
-                        docDetected ? 'bg-emerald-500 text-white' : 'bg-black/50 text-white/80'
-                      }`}>
-                        DOCUMENTO AO LADO
+                    <div className="absolute top-[36%] left-[4%] w-[48%] aspect-[1.58/1] rounded-xl border-[2px] border-dashed border-white/80 bg-black/10 flex flex-col items-center justify-start pt-2 shadow-lg">
+                      <span className="text-[9px] font-bold uppercase font-heading px-2 py-0.5 rounded-full bg-black/60 text-white">
+                        Posicione o RG ou CNH aqui
                       </span>
                     </div>
                   </div>
@@ -1474,15 +1451,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 }`}>
                   {faceDetected ? '✅ Rosto OK' : '⚪ Rosto'}
                 </span>
-                <span className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 transition-all ${
-                  docDetected ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-slate-100 border-slate-200 text-slate-500'
-                }`}>
-                  {docDetected ? '✅ Documento OK' : '⚪ Documento'}
-                </span>
-                <span className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 transition-all ${
-                  documentQualityApproved ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-800'
-                }`}>
-                  {documentQualityApproved ? '✓ Qualidade aprovada' : documentReferenceReady ? '☀ Ajuste a luz' : '⏳ Conferindo'}
+                <span className="px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 flex items-center gap-1 transition-all">
+                  ✓ Conferência após a foto
                 </span>
               </div>
 
@@ -1490,7 +1460,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               <button
                 type="button"
                 onClick={() => triggerAutomaticCapture('center')}
-                disabled={capturingSelfie || countdownSecs !== null || !faceDetected || !docDetected || !documentQualityApproved}
+                disabled={capturingSelfie || checkingSelfieDocument || !faceDetected}
                 className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading disabled:opacity-50"
               >
                 {capturingSelfie ? (
@@ -1500,12 +1470,16 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 ) : countdownSecs !== null ? (
                   <>📸 Foto em {countdownSecs}...</>
                 ) : (
-                  <>
-                    <Camera className="w-4 h-4 text-white" /> Capturar foto aprovada
-                  </>
+                  <><Camera className="w-4 h-4 text-white" /> Tirar foto para conferência</>
                 )}
               </button>
             </div>
+
+            {checkingSelfieDocument && !clientSelfieComplete && (
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-center text-xs font-bold text-blue-800 flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" /> Conferindo a qualidade e o documento na foto…
+              </div>
+            )}
 
             {clientSelfieComplete && (
               <div className="space-y-4 pt-1">
@@ -1656,9 +1630,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               <div className="w-10 h-10 bg-blue-50 border border-blue-200 text-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
                 <Camera className="w-5 h-5" />
               </div>
-              <h2 className="font-heading text-base font-extrabold text-[#071B3A]">🤳 Segure seu documento ao lado do rosto</h2>
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-blue-700">Confirmação do acompanhante</p>
+              <h2 className="font-heading text-lg font-extrabold text-[#071B3A]">Foto com documento</h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Posicione o documento na moldura ao lado do rosto. A foto só será liberada após a conferência de qualidade.
+                Segure o RG ou a CNH dentro da moldura, ao lado do rosto. Nós conferiremos a imagem antes de aceitar.
               </p>
             </div>
 
@@ -1668,12 +1643,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 onClick={() => unlockAudioAndStartCamera('ROGO')}
                 className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
               >
-                <Camera className="w-4 h-4 text-white" /> 🔊 Iniciar Verificação por Voz ({rogoName.split(' ')[0]})
+                <Camera className="w-4 h-4 text-white" /> Iniciar câmera ({rogoName.split(' ')[0]})
               </button>
             )}
 
             <div className={cameraActive ? 'space-y-3' : 'hidden'}>
-              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[3/4] bg-black ${
+              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[4/5] bg-black ${
                 frameState === 'GREEN' ? 'border-emerald-500 shadow-emerald-500/50 shadow-xl'
                 : frameState === 'YELLOW' ? 'border-amber-400'
                 : frameState === 'FLASH' ? 'border-white animate-pulse'
@@ -1685,13 +1660,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-2">
                   <div className="w-full h-full relative">
                     {/* Moldura Orientativa do Documento na lateral */}
-                    <div className={`absolute top-[25%] left-[3%] w-[42%] aspect-[1.58/1] rounded-xl border-[2px] border-dashed transition-all duration-300 flex flex-col items-center justify-start pt-2 ${
-                      docDetected ? 'border-emerald-400/80 bg-emerald-500/10' : 'border-white/40 bg-black/20'
-                    }`}>
-                      <span className={`text-[9px] font-bold uppercase font-heading px-2 py-0.5 rounded-full ${
-                        docDetected ? 'bg-emerald-500 text-white' : 'bg-black/50 text-white/80'
-                      }`}>
-                        DOCUMENTO AO LADO
+                    <div className="absolute top-[36%] left-[4%] w-[48%] aspect-[1.58/1] rounded-xl border-[2px] border-dashed border-white/80 bg-black/10 flex flex-col items-center justify-start pt-2 shadow-lg">
+                      <span className="text-[9px] font-bold uppercase font-heading px-2 py-0.5 rounded-full bg-black/60 text-white">
+                        Posicione o RG ou CNH aqui
                       </span>
                     </div>
                   </div>
@@ -1718,15 +1689,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 }`}>
                   {faceDetected ? '✅ Rosto OK' : '⚪ Rosto'}
                 </span>
-                <span className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 transition-all ${
-                  docDetected ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-slate-100 border-slate-200 text-slate-500'
-                }`}>
-                  {docDetected ? '✅ Documento OK' : '⚪ Documento'}
-                </span>
-                <span className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 transition-all ${
-                  documentQualityApproved ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-800'
-                }`}>
-                  {documentQualityApproved ? '✓ Qualidade aprovada' : documentReferenceReady ? '☀ Ajuste a luz' : '⏳ Conferindo'}
+                <span className="px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 flex items-center gap-1 transition-all">
+                  ✓ Conferência após a foto
                 </span>
               </div>
 
@@ -1734,7 +1698,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               <button
                 type="button"
                 onClick={() => triggerAutomaticCapture('center')}
-                disabled={capturingSelfie || countdownSecs !== null || !faceDetected || !docDetected || !documentQualityApproved}
+                disabled={capturingSelfie || checkingSelfieDocument || !faceDetected}
                 className="w-full py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading disabled:opacity-50"
               >
                 {capturingSelfie ? (
@@ -1745,11 +1709,17 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   <>📸 Foto em {countdownSecs}...</>
                 ) : (
                   <>
-                    <Camera className="w-4 h-4 text-white" /> Capturar foto aprovada
+                    <Camera className="w-4 h-4 text-white" /> Tirar foto para conferência
                   </>
                 )}
               </button>
             </div>
+
+            {checkingSelfieDocument && !rogoSelfieComplete && (
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-center text-xs font-bold text-blue-800 flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" /> Conferindo a qualidade e o documento na foto…
+              </div>
+            )}
 
             {rogoSelfieComplete && (
               <div className="space-y-4 pt-1">
