@@ -35,6 +35,7 @@ import {
 import { formatBrasiliaDateTime } from '@/lib/dateUtils';
 import { maskCpfCnpj } from '@/lib/formatters';
 import DocumentCapture, { type CaptureResult } from '@/components/assinatura/DocumentCapture';
+import { analyseCanvas } from '@/lib/assinatura/documentQuality';
 
 function formatFullCpf(cpf: string): string {
   const clean = String(cpf || '').replace(/\D/g, '');
@@ -80,6 +81,13 @@ function clientDocumentTitle(title: string) {
 }
 
 type SelfieKey = 'center' | 'left' | 'right';
+
+interface LiveDocumentCheck {
+  detected: boolean;
+  qualityApproved: boolean;
+  meanLuminance: number;
+  sharpness: number;
+}
 
 interface SelfieStepConfig {
   key: SelfieKey;
@@ -293,8 +301,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   const [faceDetected, setFaceDetected] = useState<boolean>(false);
   const [docDetected, setDocDetected] = useState<boolean>(false);
+  const [documentReferenceReady, setDocumentReferenceReady] = useState<boolean>(false);
+  const [documentQualityApproved, setDocumentQualityApproved] = useState<boolean>(false);
   const faceDetectedRef = useRef<boolean>(false);
   const docDetectedRef = useRef<boolean>(false);
+  const documentQualityApprovedRef = useRef<boolean>(false);
   const cameraStartTimeRef = useRef<number>(0);
   const sampleCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const docFrameCounterRef = useRef<number>(0);
@@ -510,6 +521,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   };
 
   const initDocReferenceFingerprint = (dataUrl: string | null) => {
+    setDocumentReferenceReady(false);
     if (!dataUrl || typeof window === 'undefined') {
       docRefFingerprintRef.current = null;
       return;
@@ -545,6 +557,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               b: totalB / count,
               luminance: totalLum / count,
             };
+            setDocumentReferenceReady(true);
           }
         } catch {
           docRefFingerprintRef.current = null;
@@ -556,21 +569,22 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
   };
 
-  const detectObjectMatchingReference = (video: HTMLVideoElement, faceLandmarks?: any[]) => {
-    if (!video || video.videoWidth === 0) return false;
+  const detectObjectMatchingReference = (video: HTMLVideoElement, faceLandmarks?: any[]): LiveDocumentCheck => {
+    const unavailable = { detected: false, qualityApproved: false, meanLuminance: 0, sharpness: 0 };
+    if (!video || video.videoWidth === 0 || !docRefFingerprintRef.current) return unavailable;
     try {
       if (!sampleCanvasRef.current && typeof window !== 'undefined') {
         sampleCanvasRef.current = window.document.createElement('canvas');
       }
       const canvas = sampleCanvasRef.current;
-      if (!canvas) return false;
+      if (!canvas) return unavailable;
 
-      canvas.width = 120;
-      canvas.height = 90;
+      canvas.width = 200;
+      canvas.height = 150;
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) return false;
+      if (!ctx) return unavailable;
 
-      ctx.drawImage(video, 0, 0, 120, 90);
+      ctx.drawImage(video, 0, 0, 200, 150);
 
       // ROI DINÂMICA com base na Bounding Box REAL do Rosto
       let faceMaxSensorX = 0.45;
@@ -591,16 +605,26 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         if (maxY > 0.1) faceMaxSensorY = maxY;
       }
 
-      // ROI da Mão/Documento: região lateral contígua à bochecha
-      const sensorMinXNorm = Math.max(0.40, faceMaxSensorX + 0.02);
-      const sensorMaxXNorm = 0.98;
+      // A câmera é mostrada com object-cover numa moldura 3:4 e espelhada.
+      // A área visível não corresponde a toda a largura do sensor (em câmera
+      // 16:9 as laterais são cortadas). Convertendo a moldura visual para a
+      // coordenada original, a análise ocorre exatamente onde a pessoa vê
+      // “DOCUMENTO AO LADO”, em vez de procurar no lado errado da câmera.
+      const sourceAspect = video.videoWidth / Math.max(video.videoHeight, 1);
+      const frameAspect = 3 / 4;
+      const visibleWidth = sourceAspect > frameAspect ? frameAspect / sourceAspect : 1;
+      const visibleXStart = sourceAspect > frameAspect ? (1 - visibleWidth) / 2 : 0;
+      const sensorMinXNorm = visibleXStart + visibleWidth * 0.03;
+      const sensorMaxXNorm = visibleXStart + visibleWidth * 0.47;
+      const visualTop = Math.max(0.14, faceMinSensorY - 0.04);
+      const visualBottom = Math.min(0.76, Math.max(faceMaxSensorY + 0.08, 0.68));
 
-      const startX = Math.floor(120 * sensorMinXNorm);
-      const startY = Math.floor(90 * Math.max(0.04, faceMinSensorY - 0.05));
-      const sampleW = Math.floor(120 * (sensorMaxXNorm - sensorMinXNorm));
-      const sampleH = Math.floor(90 * Math.min(0.90, (faceMaxSensorY - faceMinSensorY) + 0.30));
+      const startX = Math.floor(200 * sensorMinXNorm);
+      const startY = Math.floor(150 * visualTop);
+      const sampleW = Math.floor(200 * (sensorMaxXNorm - sensorMinXNorm));
+      const sampleH = Math.floor(150 * (visualBottom - visualTop));
 
-      if (sampleW < 10 || sampleH < 10) return false;
+      if (sampleW < 18 || sampleH < 18) return unavailable;
 
       const imageData = ctx.getImageData(startX, startY, sampleW, sampleH);
       const data = imageData.data;
@@ -630,21 +654,32 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         }
       }
 
-      if (count === 0) return false;
+      if (count === 0) return unavailable;
       const avgR = liveR / count;
       const avgG = liveG / count;
       const avgB = liveB / count;
       const avgLum = liveLum / count;
       const edgeDensity = edgeCount / count;
 
-      // Presença de objeto em primeiro plano na ROI (mão / documento): exige densidade de bordas >= 0.08
-      if (edgeDensity < 0.08) return false;
+      // Qualidade ao vivo da própria área de documento. Só uma imagem clara e
+      // com contraste suficiente poderá liberar a captura.
+      const qualityCanvas = window.document.createElement('canvas');
+      qualityCanvas.width = sampleW;
+      qualityCanvas.height = sampleH;
+      const qualityContext = qualityCanvas.getContext('2d', { willReadFrequently: true });
+      if (!qualityContext) return unavailable;
+      qualityContext.putImageData(imageData, 0, 0);
+      const { meanLuminance, sharpness } = analyseCanvas(qualityCanvas);
+      const qualityApproved = meanLuminance >= 55 && meanLuminance <= 238 && sharpness >= 42;
+
+      // Um documento apresenta bordas, texto e blocos gráficos. O limiar alto
+      // evita tratar rosto, mão ou parede como documento.
+      if (edgeDensity < 0.12 || !qualityApproved) {
+        return { detected: false, qualityApproved, meanLuminance, sharpness };
+      }
 
       const refFp = docRefFingerprintRef.current;
-      if (!refFp) {
-        // Sem referência de documento, exige alta densidade de bordas de objeto (>= 0.14)
-        return edgeDensity >= 0.14;
-      }
+      if (!refFp) return { detected: false, qualityApproved, meanLuminance, sharpness };
 
       // Validação estrita: compara cor e luminosidade contra o documento capturado na Etapa 1
       const colorDist = Math.sqrt((avgR - refFp.r) ** 2 + (avgG - refFp.g) ** 2 + (avgB - refFp.b) ** 2);
@@ -654,10 +689,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       const lumMatch = Math.max(0, 1 - lumDist / 130);
       const overallMatch = colorMatch * 0.6 + lumMatch * 0.4;
 
-      // OBRIGATÓRIO: A mão vazia NÃO pode passar! Exige overallMatch >= 0.50 E densidade de bordas de documento >= 0.08
-      return overallMatch >= 0.50 && edgeDensity >= 0.08;
+      // A referência da frente do RG/CNH foi capturada na etapa anterior.
+      // A comparação é tolerante à iluminação, mas não aceita fundo/mão vazia.
+      return { detected: overallMatch >= 0.44 && edgeDensity >= 0.12, qualityApproved, meanLuminance, sharpness };
     } catch {
-      return false;
+      return unavailable;
     }
   };
 
@@ -771,7 +807,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     // Compara o objeto na ROI lateral contígua ao rosto com a imagem do documento capturada na Etapa 1
-    const isDocMatch = video ? detectObjectMatchingReference(video, landmarks) : false;
+    const documentCheck = video ? detectObjectMatchingReference(video, landmarks) : { detected: false, qualityApproved: false, meanLuminance: 0, sharpness: 0 };
+    const isDocMatch = documentCheck.detected;
 
     // Estabilidade rigorosa: exige 5 frames consecutivos (~750ms) de confirmação visual do objeto
     if (isDocMatch) {
@@ -784,9 +821,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
     faceDetectedRef.current = isFaceValid;
     docDetectedRef.current = isRealDocDetected;
+    documentQualityApprovedRef.current = documentCheck.qualityApproved;
 
     setFaceDetected(isFaceValid);
     setDocDetected(isRealDocDetected);
+    setDocumentQualityApproved(documentCheck.qualityApproved);
 
     // --- Lógica de estados com voz e contagem automática ---
     if (isFaceValid && isRealDocDetected) {
@@ -796,13 +835,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         if (bothValidSinceRef.current === 0) {
           bothValidSinceRef.current = Date.now();
         }
-        const stableMs = Date.now() - bothValidSinceRef.current;
-        if (stableMs >= 700) {
-          setSelfieInstruction('📸 Posição ideal! Foto em 3... 2... 1...');
-          startCountdown();
-        } else {
-          setSelfieInstruction('✨ Documento identificado! Mantenha a posição...');
-        }
+        setSelfieInstruction('✓ Documento identificado e qualidade aprovada. Toque em “Capturar foto”.');
       } else {
         setSelfieInstruction(`📸 Foto em ${countdownSecs || '...'}...`);
       }
@@ -820,6 +853,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         setFrameState('YELLOW');
         setSelfieInstruction('👤 Olhe para a câmera.');
         speakGuide('Olhe para a câmera.', 'no_face');
+      } else if (!documentReferenceReady) {
+        setFrameState('YELLOW');
+        setSelfieInstruction('Preparando a conferência do documento...');
+      } else if (!documentCheck.qualityApproved) {
+        setFrameState('YELLOW');
+        setSelfieInstruction('Melhore a iluminação e mantenha o documento firme na moldura.');
       } else {
         setFrameState('YELLOW');
         setSelfieInstruction('🪪 Segure seu documento ao lado do rosto.');
@@ -844,6 +883,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   const triggerAutomaticCapture = async (key: SelfieKey = 'center') => {
     if (isCapturingRef.current) return;
+    if (!faceDetectedRef.current || !docDetectedRef.current || !documentQualityApprovedRef.current) {
+      setSelfieInstruction('Posicione o rosto e o documento na moldura até a qualidade ser aprovada.');
+      return;
+    }
     isCapturingRef.current = true;
     setCapturingSelfie(true);
     setFrameState('FLASH');
@@ -930,6 +973,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     docFrameCounterRef.current = 0;
     setFaceDetected(false);
     setDocDetected(false);
+    setDocumentReferenceReady(false);
+    setDocumentQualityApproved(false);
+    documentQualityApprovedRef.current = false;
     setCountdownSecs(null);
     countdownActiveRef.current = false;
     bothValidSinceRef.current = 0;
@@ -938,7 +984,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     if (countdownTimerRef.current) { clearInterval(countdownTimerRef.current); countdownTimerRef.current = null; }
     initDocReferenceFingerprint(person === 'ROGO' ? rogoDocumentFrontImage : documentFrontImage);
     // Voz inicial após a abertura da câmera
-    setTimeout(() => speakGuide('Olhe para a câmera.', 'init'), 1200);
+    setTimeout(() => speakGuide('Olhe para a câmera e segure o documento na moldura ao lado do rosto.', 'init'), 1200);
 
     if (isSingleRetake && targetKey) {
       setSingleRetakeKey(targetKey);
@@ -1339,7 +1385,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </div>
               <h2 className="font-heading text-base font-extrabold text-[#071B3A]">🤳 Segure seu documento ao lado do rosto</h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Posicione seu rosto e o documento dentro da área indicada e tire uma foto ({signer?.name}).
+                Posicione o documento na moldura ao lado do rosto. A foto só será liberada após a conferência de qualidade.
               </p>
             </div>
 
@@ -1404,13 +1450,18 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 }`}>
                   {docDetected ? '✅ Documento OK' : '⚪ Documento'}
                 </span>
+                <span className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 transition-all ${
+                  documentQualityApproved ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-800'
+                }`}>
+                  {documentQualityApproved ? '✓ Qualidade aprovada' : documentReferenceReady ? '☀ Ajuste a luz' : '⏳ Conferindo'}
+                </span>
               </div>
 
               {/* Botão de Captura Manual (fallback) */}
               <button
                 type="button"
                 onClick={() => triggerAutomaticCapture('center')}
-                disabled={capturingSelfie || countdownSecs !== null}
+                disabled={capturingSelfie || countdownSecs !== null || !faceDetected || !docDetected || !documentQualityApproved}
                 className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading disabled:opacity-50"
               >
                 {capturingSelfie ? (
@@ -1421,7 +1472,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   <>📸 Foto em {countdownSecs}...</>
                 ) : (
                   <>
-                    <Camera className="w-4 h-4 text-white" /> 📸 Tirar Foto Manualmente
+                    <Camera className="w-4 h-4 text-white" /> Capturar foto aprovada
                   </>
                 )}
               </button>
@@ -1578,7 +1629,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </div>
               <h2 className="font-heading text-base font-extrabold text-[#071B3A]">🤳 Segure seu documento ao lado do rosto</h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Posicione seu rosto e o documento dentro da área indicada e tire uma foto ({rogoName}).
+                Posicione o documento na moldura ao lado do rosto. A foto só será liberada após a conferência de qualidade.
               </p>
             </div>
 
@@ -1643,13 +1694,18 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 }`}>
                   {docDetected ? '✅ Documento OK' : '⚪ Documento'}
                 </span>
+                <span className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 transition-all ${
+                  documentQualityApproved ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-800'
+                }`}>
+                  {documentQualityApproved ? '✓ Qualidade aprovada' : documentReferenceReady ? '☀ Ajuste a luz' : '⏳ Conferindo'}
+                </span>
               </div>
 
               {/* Botão de Captura Manual (fallback) para o Assinante a Rogo */}
               <button
                 type="button"
                 onClick={() => triggerAutomaticCapture('center')}
-                disabled={capturingSelfie || countdownSecs !== null}
+                disabled={capturingSelfie || countdownSecs !== null || !faceDetected || !docDetected || !documentQualityApproved}
                 className="w-full py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading disabled:opacity-50"
               >
                 {capturingSelfie ? (
@@ -1660,7 +1716,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   <>📸 Foto em {countdownSecs}...</>
                 ) : (
                   <>
-                    <Camera className="w-4 h-4 text-white" /> 📸 Tirar Foto Manualmente
+                    <Camera className="w-4 h-4 text-white" /> Capturar foto aprovada
                   </>
                 )}
               </button>

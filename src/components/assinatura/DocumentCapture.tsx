@@ -22,6 +22,8 @@ import { Camera, RefreshCw, Check, AlertTriangle, Loader2 } from 'lucide-react';
 import {
   analyseCanvas,
   buildQualityReport,
+  captureQualityMessage,
+  captureQualityStatus,
   type QualityReport,
 } from '@/lib/assinatura/documentQuality';
 
@@ -367,12 +369,28 @@ export default function DocumentCapture({
 
       {phase === 'REVIEW' && pending && (
         <div className="mx-auto w-full max-w-sm space-y-2">
+          {(() => {
+            const status = captureQualityStatus(pending.quality);
+            const approved = status === 'GOOD';
+            const caution = status === 'CAUTION';
+            return (
+              <div className={`rounded-xl border p-3 ${approved ? 'border-emerald-200 bg-emerald-50' : caution ? 'border-amber-200 bg-amber-50' : 'border-rose-200 bg-rose-50'}`}>
+                <p className={`text-xs font-extrabold ${approved ? 'text-emerald-800' : caution ? 'text-amber-900' : 'text-rose-800'}`}>
+                  {approved ? '✓ Qualidade aprovada' : caution ? 'Atenção à qualidade' : 'Foto precisa ser refeita'}
+                </p>
+                <p className={`mt-1 text-[11px] font-medium ${approved ? 'text-emerald-700' : caution ? 'text-amber-800' : 'text-rose-700'}`}>
+                  {captureQualityMessage(pending.quality)}
+                </p>
+              </div>
+            );
+          })()}
           <button
             type="button"
             onClick={confirm}
+            disabled={!pending.quality.acceptable}
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white shadow-lg transition hover:bg-emerald-700 active:scale-[0.99]"
           >
-            <Check className="h-4 w-4" /> Continuar
+            <Check className="h-4 w-4" /> {pending.quality.acceptable ? 'Continuar' : 'Tire outra foto para continuar'}
           </button>
           <button
             type="button"
