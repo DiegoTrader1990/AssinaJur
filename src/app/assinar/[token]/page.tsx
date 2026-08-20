@@ -304,6 +304,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const lastVoiceStateRef = useRef<string>('');
   const lastVoiceTimeRef = useRef<number>(0);
   const bothValidSinceRef = useRef<number>(0);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   const [showDocPreview, setShowDocPreview] = useState(false);
   const [docBlobUrl, setDocBlobUrl] = useState<string | null>(null);
@@ -636,31 +637,54 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       const avgLum = liveLum / count;
       const edgeDensity = edgeCount / count;
 
-      // Presença de objeto em primeiro plano na ROI: exige densidade de bordas do objeto > 0.07
-      if (edgeDensity < 0.07) return false;
+      // Presença de objeto em primeiro plano na ROI (mão / documento)
+      if (edgeDensity < 0.05) return false;
 
       const refFp = docRefFingerprintRef.current;
       if (!refFp) {
-        // Fallback tolerante: se não houver documento de referência carregado, aceita objeto na ROI
-        return edgeDensity >= 0.10;
+        return edgeDensity >= 0.06;
       }
 
-      // 2. Compara a assinatura visual da ROI contra o documento capturado na Etapa 1
       const colorDist = Math.sqrt((avgR - refFp.r) ** 2 + (avgG - refFp.g) ** 2 + (avgB - refFp.b) ** 2);
       const lumDist = Math.abs(avgLum - refFp.luminance);
 
-      const colorMatch = Math.max(0, 1 - colorDist / 180);
-      const lumMatch = Math.max(0, 1 - lumDist / 140);
+      const colorMatch = Math.max(0, 1 - colorDist / 200);
+      const lumMatch = Math.max(0, 1 - lumDist / 160);
       const overallMatch = colorMatch * 0.6 + lumMatch * 0.4;
 
-      // Retorna verdadeiro se o objeto na mão for visualmente compatível com o documento capturado (score >= 0.50)
-      return overallMatch >= 0.50;
+      return overallMatch >= 0.38 || edgeDensity >= 0.08;
     } catch {
       return false;
     }
   };
 
-  // -- Voz Guia com suporte total ao Safari / iOS e seleção de voz pt-BR --
+  // Sintetizador Web Audio de beeps/chimes para retorno sonoro 100% auditável no iOS Safari e Android
+  const playBeep = (freq: number = 880, durationMs: number = 180) => {
+    if (!audioEnabledRef.current || typeof window === 'undefined') return;
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new AudioCtx();
+      }
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + durationMs / 1000);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + durationMs / 1000);
+    } catch {}
+  };
+
+  // Voz Guia com suporte total ao Safari / iOS e seleção de voz pt-BR
   const speakGuide = (text: string, stateKey: string, force: boolean = false) => {
     if (!audioEnabledRef.current) return;
     const now = Date.now();
@@ -684,7 +708,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     } catch {}
   };
 
-  // -- Cancelar contagem regressiva --
+  // Cancelar contagem regressiva
   const cancelCountdown = () => {
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
@@ -695,11 +719,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     bothValidSinceRef.current = 0;
   };
 
-  // -- Iniciar contagem regressiva automática de 3 segundos com Voz Sincronizada --
+  // Iniciar contagem regressiva automática de 3 segundos com Voz Sincronizada e Chimes
   const startCountdown = () => {
     if (countdownActiveRef.current || isCapturingRef.current) return;
     countdownActiveRef.current = true;
     setCountdownSecs(3);
+    playBeep(523, 200);
     speakGuide('Perfeito. Mantenha a posição. Três', 'countdown_3', true);
 
     let remaining = 3;
@@ -708,13 +733,16 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       if (remaining === 2) {
         if (!faceDetectedRef.current || !docDetectedRef.current) { cancelCountdown(); return; }
         setCountdownSecs(2);
+        playBeep(659, 200);
         speakGuide('Dois', 'countdown_2', true);
       } else if (remaining === 1) {
         if (!faceDetectedRef.current || !docDetectedRef.current) { cancelCountdown(); return; }
         setCountdownSecs(1);
+        playBeep(784, 200);
         speakGuide('Um', 'countdown_1', true);
       } else if (remaining <= 0) {
         if (faceDetectedRef.current && docDetectedRef.current && !isCapturingRef.current) {
+          playBeep(1046, 350);
           cancelCountdown();
           triggerAutomaticCapture('center');
         } else {
@@ -730,29 +758,23 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const landmarks = results?.multiFaceLandmarks?.[0];
     const video = selfieVideoRef.current;
 
+    // Qualquer rosto detectado pelo MediaPipe na câmera é VÁLIDO! Sem oval nem rigidez matemática.
     let isFaceValid = false;
     if (landmarks) {
-      const faceInfo = computeFaceOrientation(landmarks);
-      if (faceInfo) {
-        const { noseX, faceWidthRatio } = faceInfo;
-        // Zona central ampla do rosto (sem exigência de alinhamento milimétrico):
-        isFaceValid = noseX >= 0.02 && noseX <= 0.65 && faceWidthRatio >= 0.06 && faceWidthRatio <= 0.95;
-      } else {
-        isFaceValid = true;
-      }
+      isFaceValid = true;
     }
 
-    // Compara o objeto na ROI lateral com a imagem do documento capturada anteriormente
+    // Compara o objeto na ROI lateral contígua ao rosto com a imagem do documento capturada anteriormente
     const isDocMatch = video ? detectObjectMatchingReference(video, landmarks) : false;
 
-    // Estabilidade rápida de 300ms
+    // Estabilidade ultra-rápida (1 frame ~150ms)
     if (isDocMatch) {
       docFrameCounterRef.current = Math.min(10, docFrameCounterRef.current + 1);
     } else {
       docFrameCounterRef.current = Math.max(0, docFrameCounterRef.current - 1);
     }
 
-    const isRealDocDetected = docFrameCounterRef.current >= 2;
+    const isRealDocDetected = docFrameCounterRef.current >= 1;
 
     faceDetectedRef.current = isFaceValid;
     docDetectedRef.current = isRealDocDetected;
@@ -869,14 +891,23 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   };
 
   const unlockAudioAndStartCamera = (person: 'CLIENT' | 'ROGO' = 'CLIENT') => {
-    // Desbloqueia a síntese de voz no Safari / iOS no primeiro clique do usuário
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
+    if (typeof window !== 'undefined') {
       try {
-        window.speechSynthesis.cancel();
-        const dummy = new SpeechSynthesisUtterance('');
-        dummy.volume = 0;
-        window.speechSynthesis.speak(dummy);
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtx) {
+          if (!audioCtxRef.current) audioCtxRef.current = new AudioCtx();
+          if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+        }
       } catch {}
+
+      if (window.speechSynthesis) {
+        try {
+          window.speechSynthesis.cancel();
+          const dummy = new SpeechSynthesisUtterance(' ');
+          dummy.volume = 0.01;
+          window.speechSynthesis.speak(dummy);
+        } catch {}
+      }
     }
     startSelfieCamera(undefined, false, person);
   };
