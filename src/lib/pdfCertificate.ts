@@ -1051,7 +1051,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     // Título + folga + cartões de retrato 3:4 + legenda. A reserva acompanha
     // o tamanho real da grade e evita criar uma página intermediária quase
     // vazia entre os dados do documento e as evidências do signatário.
-    const photosHeight = hasPhotos ? (signerHasLegacy3Selfies ? 188 : 260) : 0;
+    const photosHeight = hasPhotos ? (signerHasLegacy3Selfies ? 188 : 300) : 0;
     const panelH = 32 + dataHeight + photosHeight + 8;
     ensureSpace(panelH + 10);
 
@@ -1199,7 +1199,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
           });
         }
 
-        page.drawText('REGISTRO DE PRESENÇA', { x: detailX, y: evidenceY + 177, size: 7.4, font: bold, color: navy });
+        page.drawText('EVIDÊNCIA FOTOGRÁFICA', { x: detailX, y: evidenceY + 177, size: 7.4, font: bold, color: navy });
         page.drawText('SELFIE COM DOCUMENTO', { x: detailX, y: evidenceY + 162, size: 6.2, font: bold, color: muted });
         page.drawLine({ start: { x: detailX, y: evidenceY + 151 }, end: { x: evidenceX + evidenceW - 18, y: evidenceY + 151 }, thickness: 0.6, color: panelBorder });
         page.drawText('IDENTIDADE E PRESENÇA', { x: detailX, y: evidenceY + 132, size: 5.9, font: bold, color: muted });
@@ -1209,6 +1209,20 @@ export async function generateFinalPdfCertificate(documentId: string) {
         page.drawRectangle({ x: detailX, y: evidenceY + 36, width: 146, height: 25, color: rgb(0.92, 0.99, 0.96), borderWidth: 0.6, borderColor: green });
         page.drawText('✓  EVIDÊNCIA VINCULADA', { x: detailX + 10, y: evidenceY + 45, size: 6.4, font: bold, color: green });
         page.drawText('Imagem original preservada no certificado.', { x: evidenceX + 18, y: evidenceY + 7, size: 5.8, font: regular, color: muted });
+
+        // Continuidade jurídica abaixo da fotografia. Mantém o quadro como
+        // protagonista, mas explica de forma objetiva a ligação desta imagem
+        // com os dados técnicos e a trilha preservados nas páginas seguintes.
+        page.drawText('VÍNCULO DA EVIDÊNCIA', { x: padX, y: evidenceY - 17, size: 6.6, font: bold, color: navy });
+        page.drawText('Registro fotográfico preservado em formato original e vinculado ao CPF, data, horário e dispositivo desta sessão.', {
+          x: padX, y: evidenceY - 30, size: 6.2, font: regular, color: text,
+        });
+        page.drawText('Documento de identificação e detalhamento cronológico disponíveis nas páginas seguintes.', {
+          x: padX, y: evidenceY - 42, size: 6.2, font: regular, color: text,
+        });
+        page.drawText(`Código de autenticidade: ${verificationCode}`, {
+          x: padX, y: evidenceY - 55, size: 6.3, font: bold, color: green,
+        });
       } else {
         const boxW = 96;
         const boxH = 128;
@@ -1399,13 +1413,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
   // SEÇÃO DE TRILHA PÚBLICA DE EVENTOS (SEM OTP)
   if (publicEvents.length > 0) {
-    const dateColX = CX + 6;
-    const dateColWidth = 106;
-    const eventColX = dateColX + dateColWidth + 8;
-    const eventColWidth = 126;
-    const descColX = eventColX + eventColWidth + 8;
-    const descColWidth = CR - descColX - 6;
-    const headerHeight = 18;
+    const lineX = CX + 18;
+    const contentX = lineX + 28;
+    const contentWidth = CR - contentX - 8;
     const tableBottom = 60;
 
     let timelinePage: PDFPage | null = null;
@@ -1444,17 +1454,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
           introY -= 9.5;
         }
       }
-      introY -= 6;
-
-      const headerY = introY - 6;
-      p.drawLine({ start: { x: CX, y: headerY + headerHeight - 4 }, end: { x: CR, y: headerY + headerHeight - 4 }, thickness: 1.1, color: gold });
-      p.drawText('DATA E HORA (BRT)', { x: dateColX, y: headerY, size: 7, font: bold, color: navy });
-      p.drawText('EVENTO', { x: eventColX, y: headerY, size: 7, font: bold, color: navy });
-      p.drawText('DESCRIÇÃO', { x: descColX, y: headerY, size: 7, font: bold, color: navy });
-      p.drawLine({ start: { x: CX, y: headerY - 4 }, end: { x: CR, y: headerY - 4 }, thickness: 0.6, color: panelBorder });
+      introY -= 18;
 
       timelinePage = p;
-      rowY = headerY - 4;
+      rowY = introY;
     };
 
     const closeTimelinePage = (note: string) => {
@@ -1468,11 +1471,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const rows = publicEvents.map((ev) => {
       const dateText = formatBrasiliaDateTime(ev.createdAt, true).replace(' (Horário de Brasília — UTC−3)', '');
       const eventLabel = PUBLIC_EVENT_LABELS[ev.eventType] || ev.eventType;
-      const dateLines = wrapTextToWidth(dateText, mono, 7, dateColWidth - 8);
-      const eventLines = wrapTextToWidth(eventLabel, bold, 7.2, eventColWidth - 8);
-      const descLines = wrapTextToWidth(ev.description, regular, 7, descColWidth - 6);
-      const lineCount = Math.max(1, dateLines.length, eventLines.length, descLines.length);
-      const height = Math.max(26, 15 + lineCount * 9.5);
+      const dateLines = wrapTextToWidth(dateText, mono, 6.7, contentWidth);
+      const eventLines = wrapTextToWidth(eventLabel, bold, 7.5, contentWidth);
+      const descLines = wrapTextToWidth(ev.description, regular, 7, contentWidth);
+      const height = Math.max(48, 20 + dateLines.length * 8.5 + eventLines.length * 9.5 + descLines.length * 9.2);
       return { dateLines, eventLines, descLines, height };
     });
 
@@ -1482,30 +1484,34 @@ export async function generateFinalPdfCertificate(documentId: string) {
         closeTimelinePage('Continua na próxima página.');
         startTimelinePage();
       }
-      rowY -= row.height;
-      if (index % 2 === 1) {
-        timelinePage.drawRectangle({ x: CX, y: rowY, width: CW, height: row.height, color: panelBg, opacity: 0.35 });
-      }
-      let dateY = rowY + row.height - 13;
+      const itemTop = rowY;
+      const itemBottom = rowY - row.height;
+      timelinePage.drawLine({
+        start: { x: lineX, y: itemTop - 4 },
+        end: { x: lineX, y: itemBottom + 4 },
+        thickness: 1.1,
+        color: panelBorder,
+      });
+      timelinePage.drawCircle({ x: lineX, y: itemTop, size: 4.2, color: green });
+
+      let dateY = itemTop + 2;
       for (const line of row.dateLines) {
-        timelinePage.drawText(line, { x: dateColX, y: dateY, size: 7, font: mono, color: text });
-        dateY -= 9.5;
+        timelinePage.drawText(line, { x: contentX, y: dateY, size: 6.7, font: mono, color: muted });
+        dateY -= 8.5;
       }
 
-      let eventY = rowY + row.height - 13;
+      let eventY = dateY - 4;
       for (const line of row.eventLines) {
-        timelinePage.drawText(line, { x: eventColX, y: eventY, size: 7.2, font: bold, color: navy });
+        timelinePage.drawText(line, { x: contentX, y: eventY, size: 7.5, font: bold, color: navy });
         eventY -= 9.5;
       }
 
-      let descY = rowY + row.height - 13;
+      let descY = eventY - 2;
       for (const line of row.descLines) {
-        timelinePage.drawText(line, { x: descColX, y: descY, size: 7, font: regular, color: text });
-        descY -= 9.5;
+        timelinePage.drawText(line, { x: contentX, y: descY, size: 7, font: regular, color: text });
+        descY -= 9.2;
       }
-
-      // Linhas de grade removidas: as faixas alternadas já separam cada
-      // evento e deixam a trilha mais leve, sem aparência de planilha.
+      rowY = itemBottom;
     });
 
     closeTimelinePage(`Trilha de auditoria concluída com ${publicEvents.length} evento(s) registrado(s).`);
