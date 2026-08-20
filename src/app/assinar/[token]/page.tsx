@@ -637,22 +637,25 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       const avgLum = liveLum / count;
       const edgeDensity = edgeCount / count;
 
-      // Presença de objeto em primeiro plano na ROI (mão / documento)
-      if (edgeDensity < 0.05) return false;
+      // Presença de objeto em primeiro plano na ROI (mão / documento): exige densidade de bordas >= 0.08
+      if (edgeDensity < 0.08) return false;
 
       const refFp = docRefFingerprintRef.current;
       if (!refFp) {
-        return edgeDensity >= 0.06;
+        // Sem referência de documento, exige alta densidade de bordas de objeto (>= 0.14)
+        return edgeDensity >= 0.14;
       }
 
+      // Validação estrita: compara cor e luminosidade contra o documento capturado na Etapa 1
       const colorDist = Math.sqrt((avgR - refFp.r) ** 2 + (avgG - refFp.g) ** 2 + (avgB - refFp.b) ** 2);
       const lumDist = Math.abs(avgLum - refFp.luminance);
 
-      const colorMatch = Math.max(0, 1 - colorDist / 200);
-      const lumMatch = Math.max(0, 1 - lumDist / 160);
+      const colorMatch = Math.max(0, 1 - colorDist / 170);
+      const lumMatch = Math.max(0, 1 - lumDist / 130);
       const overallMatch = colorMatch * 0.6 + lumMatch * 0.4;
 
-      return overallMatch >= 0.38 || edgeDensity >= 0.08;
+      // OBRIGATÓRIO: A mão vazia NÃO pode passar! Exige overallMatch >= 0.50 E densidade de bordas de documento >= 0.08
+      return overallMatch >= 0.50 && edgeDensity >= 0.08;
     } catch {
       return false;
     }
@@ -714,6 +717,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
     }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch {}
+    }
     countdownActiveRef.current = false;
     setCountdownSecs(null);
     bothValidSinceRef.current = 0;
@@ -758,23 +764,23 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const landmarks = results?.multiFaceLandmarks?.[0];
     const video = selfieVideoRef.current;
 
-    // Qualquer rosto detectado pelo MediaPipe na câmera é VÁLIDO! Sem oval nem rigidez matemática.
+    // Rosto detectado pelo MediaPipe
     let isFaceValid = false;
     if (landmarks) {
       isFaceValid = true;
     }
 
-    // Compara o objeto na ROI lateral contígua ao rosto com a imagem do documento capturada anteriormente
+    // Compara o objeto na ROI lateral contígua ao rosto com a imagem do documento capturada na Etapa 1
     const isDocMatch = video ? detectObjectMatchingReference(video, landmarks) : false;
 
-    // Estabilidade ultra-rápida (1 frame ~150ms)
+    // Estabilidade rigorosa: exige 5 frames consecutivos (~750ms) de confirmação visual do objeto
     if (isDocMatch) {
       docFrameCounterRef.current = Math.min(10, docFrameCounterRef.current + 1);
     } else {
-      docFrameCounterRef.current = Math.max(0, docFrameCounterRef.current - 1);
+      docFrameCounterRef.current = Math.max(0, docFrameCounterRef.current - 2);
     }
 
-    const isRealDocDetected = docFrameCounterRef.current >= 1;
+    const isRealDocDetected = docFrameCounterRef.current >= 5;
 
     faceDetectedRef.current = isFaceValid;
     docDetectedRef.current = isRealDocDetected;
@@ -791,11 +797,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           bothValidSinceRef.current = Date.now();
         }
         const stableMs = Date.now() - bothValidSinceRef.current;
-        if (stableMs >= 300) {
+        if (stableMs >= 700) {
           setSelfieInstruction('📸 Posição ideal! Foto em 3... 2... 1...');
           startCountdown();
         } else {
-          setSelfieInstruction('✨ Posição identificada! Mantenha...');
+          setSelfieInstruction('✨ Documento identificado! Mantenha a posição...');
         }
       } else {
         setSelfieInstruction(`📸 Foto em ${countdownSecs || '...'}...`);
@@ -808,7 +814,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
       if (!isFaceValid && !isRealDocDetected) {
         setFrameState('GRAY');
-        setSelfieInstruction('Olhe para a câmera.');
+        setSelfieInstruction('Olhe para a câmera e segure o documento.');
         speakGuide('Olhe para a câmera.', 'no_face');
       } else if (!isFaceValid) {
         setFrameState('YELLOW');
