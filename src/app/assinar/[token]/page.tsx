@@ -774,29 +774,33 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     bothValidSinceRef.current = 0;
   };
 
-  // Iniciar contagem regressiva automática de 3 segundos com Voz Sincronizada e Chimes
+  // Contagem guiada iniciada pela própria pessoa: ela toca uma vez e ganha
+  // cinco segundos para segurar o documento, sem precisar apertar nada com as
+  // duas mãos ocupadas. O áudio só é habilitado nesse toque explícito.
   const startCountdown = () => {
     if (countdownActiveRef.current || isCapturingRef.current) return;
+    if (!faceDetectedRef.current) {
+      setSelfieInstruction('Olhe para a câmera para iniciar a contagem.');
+      return;
+    }
+    audioEnabledRef.current = true;
+    setAudioEnabled(true);
     countdownActiveRef.current = true;
-    setCountdownSecs(3);
+    setCountdownSecs(5);
     playBeep(523, 200);
-    speakGuide('Perfeito. Mantenha a posição. Três', 'countdown_3', true);
+    speakGuide('Prepare o documento ao lado do rosto. Cinco', 'countdown_5', true);
 
-    let remaining = 3;
+    let remaining = 5;
     countdownTimerRef.current = setInterval(() => {
       remaining--;
-      if (remaining === 2) {
-        if (!faceDetectedRef.current || !docDetectedRef.current) { cancelCountdown(); return; }
-        setCountdownSecs(2);
-        playBeep(659, 200);
-        speakGuide('Dois', 'countdown_2', true);
-      } else if (remaining === 1) {
-        if (!faceDetectedRef.current || !docDetectedRef.current) { cancelCountdown(); return; }
-        setCountdownSecs(1);
-        playBeep(784, 200);
-        speakGuide('Um', 'countdown_1', true);
+      if (remaining >= 1) {
+        if (!faceDetectedRef.current) { cancelCountdown(); return; }
+        setCountdownSecs(remaining);
+        const voiceNumber = ['zero', 'um', 'dois', 'três', 'quatro'][remaining] || String(remaining);
+        playBeep(523 + (5 - remaining) * 95, 160);
+        speakGuide(voiceNumber, `countdown_${remaining}`, true);
       } else if (remaining <= 0) {
-        if (faceDetectedRef.current && docDetectedRef.current && !isCapturingRef.current) {
+        if (faceDetectedRef.current && !isCapturingRef.current) {
           playBeep(1046, 350);
           cancelCountdown();
           triggerAutomaticCapture('center');
@@ -1422,7 +1426,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-2">
                   <div className="w-full h-full relative">
                     {/* Moldura Orientativa do Documento na lateral */}
-                    <div className="absolute top-[36%] left-[4%] w-[48%] aspect-[1.58/1] rounded-xl border-[2px] border-dashed border-white/80 bg-black/10 flex flex-col items-center justify-start pt-2 shadow-lg">
+                    <div className="absolute top-[40%] left-[4%] w-[38%] aspect-[1.58/1] rounded-xl border-[2px] border-dashed border-white/80 bg-black/10 flex flex-col items-center justify-start pt-2 shadow-lg">
                       <span className="text-[9px] font-bold uppercase font-heading px-2 py-0.5 rounded-full bg-black/60 text-white">
                         Posicione o RG ou CNH aqui
                       </span>
@@ -1459,8 +1463,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               {/* Botão de Captura Manual (fallback) */}
               <button
                 type="button"
-                onClick={() => triggerAutomaticCapture('center')}
-                disabled={capturingSelfie || checkingSelfieDocument || !faceDetected}
+                onClick={startCountdown}
+                disabled={capturingSelfie || checkingSelfieDocument || !faceDetected || countdownSecs !== null}
                 className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading disabled:opacity-50"
               >
                 {capturingSelfie ? (
@@ -1470,7 +1474,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 ) : countdownSecs !== null ? (
                   <>📸 Foto em {countdownSecs}...</>
                 ) : (
-                  <><Camera className="w-4 h-4 text-white" /> Tirar foto para conferência</>
+                  <><Camera className="w-4 h-4 text-white" /> Iniciar contagem para foto</>
                 )}
               </button>
             </div>
@@ -1484,8 +1488,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             {clientSelfieComplete && (
               <div className="space-y-4 pt-1">
                 <div className="space-y-2 text-center">
-                  <div className="rounded-3xl overflow-hidden border-2 border-emerald-500 aspect-[3/4] max-w-[240px] mx-auto bg-black relative shadow-md">
-                    <img src={selfieImages.center as string} alt="Selfie com documento" className="w-full h-full object-contain" />
+                  <div className="rounded-3xl overflow-hidden border-2 border-emerald-500 max-w-[320px] mx-auto bg-slate-950 relative shadow-md">
+                    <img src={selfieImages.center as string} alt="Selfie com documento" className="block w-full h-auto" />
                     <span className="absolute top-2 right-2 bg-emerald-500 text-white rounded-full p-1 shadow-sm">
                       <Check className="w-4 h-4 stroke-[3]" />
                     </span>
@@ -1660,7 +1664,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-2">
                   <div className="w-full h-full relative">
                     {/* Moldura Orientativa do Documento na lateral */}
-                    <div className="absolute top-[36%] left-[4%] w-[48%] aspect-[1.58/1] rounded-xl border-[2px] border-dashed border-white/80 bg-black/10 flex flex-col items-center justify-start pt-2 shadow-lg">
+                    <div className="absolute top-[40%] left-[4%] w-[38%] aspect-[1.58/1] rounded-xl border-[2px] border-dashed border-white/80 bg-black/10 flex flex-col items-center justify-start pt-2 shadow-lg">
                       <span className="text-[9px] font-bold uppercase font-heading px-2 py-0.5 rounded-full bg-black/60 text-white">
                         Posicione o RG ou CNH aqui
                       </span>
@@ -1697,8 +1701,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               {/* Botão de Captura Manual (fallback) para o Assinante a Rogo */}
               <button
                 type="button"
-                onClick={() => triggerAutomaticCapture('center')}
-                disabled={capturingSelfie || checkingSelfieDocument || !faceDetected}
+                onClick={startCountdown}
+                disabled={capturingSelfie || checkingSelfieDocument || !faceDetected || countdownSecs !== null}
                 className="w-full py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading disabled:opacity-50"
               >
                 {capturingSelfie ? (
@@ -1709,7 +1713,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   <>📸 Foto em {countdownSecs}...</>
                 ) : (
                   <>
-                    <Camera className="w-4 h-4 text-white" /> Tirar foto para conferência
+                    <Camera className="w-4 h-4 text-white" /> Iniciar contagem para foto
                   </>
                 )}
               </button>
@@ -1724,8 +1728,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             {rogoSelfieComplete && (
               <div className="space-y-4 pt-1">
                 <div className="space-y-2 text-center">
-                  <div className="rounded-3xl overflow-hidden border-2 border-blue-500 aspect-[3/4] max-w-[240px] mx-auto bg-black relative shadow-md">
-                    <img src={rogoSelfieImages.center as string} alt="Selfie com documento do acompanhante" className="w-full h-full object-contain" />
+                  <div className="rounded-3xl overflow-hidden border-2 border-blue-500 max-w-[320px] mx-auto bg-slate-950 relative shadow-md">
+                    <img src={rogoSelfieImages.center as string} alt="Selfie com documento do acompanhante" className="block w-full h-auto" />
                     <span className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-1 shadow-sm">
                       <Check className="w-4 h-4 stroke-[3]" />
                     </span>

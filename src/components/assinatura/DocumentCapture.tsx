@@ -387,10 +387,10 @@ export default function DocumentCapture({
           <button
             type="button"
             onClick={confirm}
-            disabled={!pending.quality.acceptable}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white shadow-lg transition hover:bg-emerald-700 active:scale-[0.99]"
+            disabled={captureQualityStatus(pending.quality) !== 'GOOD'}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white shadow-lg transition hover:bg-emerald-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
           >
-            <Check className="h-4 w-4" /> {pending.quality.acceptable ? 'Continuar' : 'Tire outra foto para continuar'}
+            <Check className="h-4 w-4" /> {captureQualityStatus(pending.quality) === 'GOOD' ? 'Continuar' : 'Tire outra foto para aprovar'}
           </button>
           <button
             type="button"
