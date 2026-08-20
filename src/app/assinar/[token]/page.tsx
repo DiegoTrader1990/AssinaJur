@@ -1340,7 +1340,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           </div>
         )}
 
-        {/* ETAPA 1.5: Documento de Identificação do Cliente (evidência complementar) */}
+        {/* ETAPA 1.5: Documento de Identificação do Cliente */}
         {step === 'DOCUMENT' && (
           <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
             <div className="text-center space-y-1">
@@ -1348,7 +1348,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 Documento de Identificação ({documentSide === 'FRENTE' ? 'Frente' : 'Verso'})
               </h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Fotografe o RG ou a CNH do cliente titular como evidência complementar. Essa etapa não impede a assinatura.
+                Fotografe a frente e o verso do RG ou da CNH do cliente para continuar com segurança.
               </p>
             </div>
 
@@ -1362,20 +1362,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               autoStart
             />
 
-            <button
-              type="button"
-              onClick={() => {
-                if (documentSide === 'FRENTE') {
-                  setDocumentSide('VERSO');
-                } else {
-                  setStep('SELFIE');
-                  setActivePerson('CLIENT');
-                }
-              }}
-              className="w-full py-3 text-slate-500 hover:text-slate-700 font-bold text-xs underline underline-offset-2 transition-colors"
-            >
-              Pular esta etapa por enquanto
-            </button>
           </div>
         )}
 
@@ -1586,7 +1572,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           </div>
         )}
 
-        {/* ETAPA ROGO 1.5: Documento de Identificação do Assinante a Rogo (evidência complementar) */}
+        {/* ETAPA ROGO 1.5: Documento de Identificação do Assinante a Rogo */}
         {step === 'ROGO_DOCUMENT' && (
           <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
             <div className="text-center space-y-1">
@@ -1594,7 +1580,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 Documento de Identificação do Assinante a Rogo ({rogoDocumentSide === 'FRENTE' ? 'Frente' : 'Verso'})
               </h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Fotografe o RG ou a CNH de {rogoName || 'quem assina a rogo'} como evidência complementar. Essa etapa não impede a assinatura.
+                Fotografe a frente e o verso do RG ou da CNH de {rogoName || 'quem assina a rogo'} para continuar com segurança.
               </p>
             </div>
 
@@ -1608,20 +1594,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               autoStart
             />
 
-            <button
-              type="button"
-              onClick={() => {
-                if (rogoDocumentSide === 'FRENTE') {
-                  setRogoDocumentSide('VERSO');
-                } else {
-                  setStep('ROGO_SELFIE');
-                  startSelfieCamera(undefined, false, 'ROGO');
-                }
-              }}
-              className="w-full py-3 text-slate-500 hover:text-slate-700 font-bold text-xs underline underline-offset-2 transition-colors"
-            >
-              Pular esta etapa por enquanto
-            </button>
           </div>
         )}
 

@@ -386,18 +386,15 @@ export default function DocumentCapture({
           })()}
           <button
             type="button"
-            onClick={confirm}
-            disabled={captureQualityStatus(pending.quality) !== 'GOOD'}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white shadow-lg transition hover:bg-emerald-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
+            onClick={captureQualityStatus(pending.quality) === 'GOOD' ? confirm : retake}
+            className={`flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-extrabold shadow-lg transition active:scale-[0.99] ${
+              captureQualityStatus(pending.quality) === 'GOOD'
+                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                : 'bg-rose-600 text-white hover:bg-rose-700'
+            }`}
           >
-            <Check className="h-4 w-4" /> {captureQualityStatus(pending.quality) === 'GOOD' ? 'Continuar' : 'Tire outra foto para aprovar'}
-          </button>
-          <button
-            type="button"
-            onClick={retake}
-            className="flex w-full items-center justify-center gap-2 py-2 text-xs font-semibold text-slate-500 transition hover:text-slate-700 active:scale-[0.99]"
-          >
-            <RefreshCw className="h-3.5 w-3.5" /> Tirar outra foto
+            {captureQualityStatus(pending.quality) === 'GOOD' ? <Check className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
+            {captureQualityStatus(pending.quality) === 'GOOD' ? 'Continuar' : 'Tirar outra foto'}
           </button>
         </div>
       )}
