@@ -6,6 +6,7 @@ import { queueSignatureCompletionMessages } from '@/lib/whatsapp/signatureComple
 import { getSignatureOrderBlock, signatureOrderError } from '@/lib/signatureOrder';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 export async function POST(
   req: Request,
@@ -339,7 +340,9 @@ export async function POST(
       },
     });
 
-    // Se todas as assinaturas forem concluídas, GERA O PDF FINAL E CERTIFICADO DE EVIDÊNCIAS
+    // Registra a conclusão imediatamente. A geração dos PDFs acontece somente
+    // depois de todos os documentos do pacote terem sido persistidos, evitando
+    // que um certificado pesado deixe o último documento do kit para trás.
     if (allCompleted) {
       await prisma.documentEvent.create({
         data: {
@@ -350,20 +353,14 @@ export async function POST(
           userAgent,
         },
       });
-
-      try {
-        await generateFinalPdfCertificate(signer.document.id);
-        await queueSignatureCompletionMessages(signer.document.id);
-      } catch (pdfErr) {
-        console.error('Erro na compilação ou notificação imediata do PDF:', pdfErr);
-      }
     }
 
     // Um kit é apresentado ao cliente por um único link. A identidade, prova de
     // presença e consentimento desta sessão são vinculados a cada documento pendente
     // do mesmo kit, mantendo PDFs e certificados individuais por documento.
     let kitDocumentsSigned = 1;
-    if (allCompleted && signer.role === 'CLIENTE' && signer.document.kitBatchId) {
+    const completedCompanionIds: string[] = [];
+    if (allCompleted && signer.document.kitBatchId) {
       const companionDocuments = await prisma.document.findMany({
         where: {
           kitBatchId: signer.document.kitBatchId,
@@ -375,8 +372,6 @@ export async function POST(
       });
 
       for (const companion of companionDocuments) {
-        const companionSigner = companion.signers.find((item) => item.role === 'CLIENTE');
-        // Não automatizamos documentos que já tenham outros participantes definidos.
         const sourceParticipants = rawSigners.filter((item) => item.name && item.status === 'ASSINADO');
         const sameParticipants = sourceParticipants.length === companion.signers.length
           && sourceParticipants.every((source) => companion.signers.some((target) =>
@@ -384,22 +379,12 @@ export async function POST(
             && target.role === source.role
             && target.cpf.replace(/\D/g, '') === source.cpf.replace(/\D/g, '')
           ));
-        if (!companionSigner || !sameParticipants) continue;
+        if (!sameParticipants) continue;
 
-        await prisma.signer.update({
-          where: { id: companionSigner.id },
-          data: {
-            status: 'ASSINADO', signatureType: signatureType || 'DESENHADA', signatureImage: signatureImage || null,
-            signedConsentText: signedConsentText || `Declaro que li e concordo com todos os documentos do kit, incluindo "${companion.title}", e reconheço esta manifestação como minha assinatura eletrônica.`,
-            selfieCenterImage, selfieLeftImage, selfieRightImage,
-            documentFrontImage: documentFrontImage || null, documentBackImage: documentBackImage || null,
-            signedAt: new Date(),
-            geoLat: typeof geoLat === 'number' ? geoLat : null, geoLng: typeof geoLng === 'number' ? geoLng : null,
-            geoAccuracy: typeof geoAccuracy === 'number' ? geoAccuracy : null, geoCity: geoCity || null, geoState: geoState || null,
-            ipAddress: clientIp, userAgent,
-          },
-        });
-        for (const source of sourceParticipants.filter((item) => item.id !== signer.id)) {
+        // Copia cada participante pela função, ordem e CPF. Isso funciona para
+        // cliente, representante a rogo e testemunhas, independentemente de quem
+        // tenha sido o último a concluir o fluxo.
+        for (const source of sourceParticipants) {
           const target = companion.signers.find((item) =>
             item.signatureOrder === source.signatureOrder
             && item.role === source.role
@@ -413,30 +398,54 @@ export async function POST(
               signedConsentText: source.signedConsentText || `Participação registrada na mesma sessão deste envio, incluindo "${companion.title}".`,
               selfieCenterImage: source.selfieCenterImage, selfieLeftImage: source.selfieLeftImage, selfieRightImage: source.selfieRightImage,
               documentFrontImage: source.documentFrontImage, documentBackImage: source.documentBackImage,
-              signedAt: new Date(), geoLat: source.geoLat, geoLng: source.geoLng, geoAccuracy: source.geoAccuracy,
+              signedAt: source.signedAt || new Date(), geoLat: source.geoLat, geoLng: source.geoLng, geoAccuracy: source.geoAccuracy,
               geoCity: source.geoCity, geoState: source.geoState, ipAddress: source.ipAddress || clientIp, userAgent: source.userAgent || userAgent,
             },
           });
         }
+        const sourceClient = sourceParticipants.find((item) => item.role === 'CLIENTE') || sourceParticipants[0];
+        const companionClient = companion.signers.find((item) =>
+          item.signatureOrder === sourceClient.signatureOrder
+          && item.role === sourceClient.role
+          && item.cpf.replace(/\D/g, '') === sourceClient.cpf.replace(/\D/g, '')
+        );
+        if (!companionClient) continue;
+
         await prisma.document.update({ where: { id: companion.id }, data: { status: 'CONCLUIDO', completedAt: new Date() } });
         await prisma.documentEvent.createMany({ data: [
           {
-            documentId: companion.id, signerId: companionSigner.id, eventType: 'LIVENESS_CAPTURED',
-            description: `Prova de presença ao vivo de ${signer.name} vinculada a este documento (selfies frontal, perfil esquerdo e perfil direito).`, ipAddress: clientIp, userAgent,
+            documentId: companion.id, signerId: companionClient.id, eventType: 'LIVENESS_CAPTURED',
+            description: `Prova de presença de ${sourceClient.name} vinculada a este documento na mesma sessão de assinatura.`, ipAddress: clientIp, userAgent,
           },
           {
-            documentId: companion.id, signerId: companionSigner.id, eventType: 'SIGNATURE_SUBMITTED',
-            description: `Assinatura eletrônica de ${signer.name} registrada nesta sessão única de assinatura.`, ipAddress: clientIp, userAgent,
+            documentId: companion.id, signerId: companionClient.id, eventType: 'SIGNATURE_SUBMITTED',
+            description: `Assinatura eletrônica de ${sourceClient.name} registrada nesta sessão única de assinatura.`, ipAddress: clientIp, userAgent,
           },
           {
-            documentId: companion.id, signerId: companionSigner.id, eventType: 'DOCUMENT_COMPLETED',
+            documentId: companion.id, signerId: companionClient.id, eventType: 'DOCUMENT_COMPLETED',
             description: 'Documento concluído, com evidências de identidade, presença e consentimento preservadas no certificado individual.', ipAddress: clientIp, userAgent,
           },
         ] });
+        completedCompanionIds.push(companion.id);
+        kitDocumentsSigned += 1;
+      }
+    }
+
+    // Somente depois de o pacote inteiro estar concluído no banco, compila os
+    // certificados. Se uma compilação falhar, o documento continuará concluído e
+    // a rota de download poderá regenerá-lo sob demanda.
+    if (allCompleted) {
+      try {
+        await generateFinalPdfCertificate(signer.document.id);
+        await queueSignatureCompletionMessages(signer.document.id);
+      } catch (pdfErr) {
+        console.error('Erro na compilação ou notificação imediata do PDF:', pdfErr);
+      }
+
+      for (const companionId of completedCompanionIds) {
         try {
-          await generateFinalPdfCertificate(companion.id);
-          await queueSignatureCompletionMessages(companion.id);
-          kitDocumentsSigned += 1;
+          await generateFinalPdfCertificate(companionId);
+          await queueSignatureCompletionMessages(companionId);
         } catch (pdfErr) {
           console.error('Erro ao concluir documento complementar do kit:', pdfErr);
         }
