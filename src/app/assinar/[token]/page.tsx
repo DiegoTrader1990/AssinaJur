@@ -298,6 +298,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const cameraStartTimeRef = useRef<number>(0);
   const sampleCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const docFrameCounterRef = useRef<number>(0);
+  const docRefFingerprintRef = useRef<{ r: number; g: number; b: number; luminance: number } | null>(null);
 
   const [showDocPreview, setShowDocPreview] = useState(false);
   const [docBlobUrl, setDocBlobUrl] = useState<string | null>(null);
@@ -502,7 +503,54 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
   };
 
-  const detectObjectInDocGuide = (video: HTMLVideoElement, faceLandmarks?: any[]) => {
+  const initDocReferenceFingerprint = (dataUrl: string | null) => {
+    if (!dataUrl || typeof window === 'undefined') {
+      docRefFingerprintRef.current = null;
+      return;
+    }
+    try {
+      const img = new window.Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const canvas = window.document.createElement('canvas');
+          canvas.width = 64;
+          canvas.height = 48;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          if (!ctx) return;
+          ctx.drawImage(img, 0, 0, 64, 48);
+          const imageData = ctx.getImageData(0, 0, 64, 48);
+          const data = imageData.data;
+
+          let totalR = 0, totalG = 0, totalB = 0, totalLum = 0;
+          let count = 0;
+
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i], g = data[i + 1], b = data[i + 2];
+            const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+            totalR += r; totalG += g; totalB += b; totalLum += lum;
+            count++;
+          }
+
+          if (count > 0) {
+            docRefFingerprintRef.current = {
+              r: totalR / count,
+              g: totalG / count,
+              b: totalB / count,
+              luminance: totalLum / count,
+            };
+          }
+        } catch {
+          docRefFingerprintRef.current = null;
+        }
+      };
+      img.src = dataUrl;
+    } catch {
+      docRefFingerprintRef.current = null;
+    }
+  };
+
+  const detectObjectMatchingReference = (video: HTMLVideoElement, faceLandmarks?: any[]) => {
     if (!video || video.videoWidth === 0) return false;
     try {
       if (!sampleCanvasRef.current && typeof window !== 'undefined') {
@@ -511,14 +559,14 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       const canvas = sampleCanvasRef.current;
       if (!canvas) return false;
 
-      canvas.width = 160;
-      canvas.height = 120;
+      canvas.width = 120;
+      canvas.height = 90;
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (!ctx) return false;
 
-      ctx.drawImage(video, 0, 0, 160, 120);
+      ctx.drawImage(video, 0, 0, 120, 90);
 
-      // Extrai o limite do rosto no sensor de vídeo (0..1) para não sobrepor o documento ao rosto
+      // Extrai o limite do rosto no sensor de vídeo (0..1) para isolar a ROI do documento
       let faceMaxSensorX = 0.48;
       if (faceLandmarks && faceLandmarks.length > 0) {
         let maxSensorX = 0;
@@ -530,25 +578,23 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
       // Coordenadas no Sensor de Vídeo (espelhado scaleX(-1)):
       // Lado Esquerdo da Tela (Guia do Documento) = Lado Direito do Sensor de Vídeo
-      const sensorMinXNorm = Math.max(0.55, faceMaxSensorX + 0.04);
-      const sensorMaxXNorm = 0.95;
+      const sensorMinXNorm = Math.max(0.52, faceMaxSensorX + 0.04);
+      const sensorMaxXNorm = 0.96;
 
-      const startX = Math.floor(160 * sensorMinXNorm);
-      const startY = Math.floor(120 * 0.18);
-      const sampleW = Math.floor(160 * (sensorMaxXNorm - sensorMinXNorm));
-      const sampleH = Math.floor(120 * 0.62);
+      const startX = Math.floor(120 * sensorMinXNorm);
+      const startY = Math.floor(90 * 0.15);
+      const sampleW = Math.floor(120 * (sensorMaxXNorm - sensorMinXNorm));
+      const sampleH = Math.floor(90 * 0.65);
 
       if (sampleW < 10 || sampleH < 10) return false;
 
       const imageData = ctx.getImageData(startX, startY, sampleW, sampleH);
       const data = imageData.data;
 
-      // Análise multi-critério de bordas e gradientes do objeto (operador de Sobel simplificado)
-      let highEdgePixels = 0;
-      let totalSampled = 0;
-      let edgeStrengthSum = 0;
-      let strongXEdges = 0;
-      let strongYEdges = 0;
+      // 1. Calcula a assinatura de cor e luminosidade da ROI da câmera em tempo real
+      let liveR = 0, liveG = 0, liveB = 0, liveLum = 0;
+      let count = 0;
+      let edgeCount = 0;
 
       const widthInPixels = sampleW;
       const heightInPixels = sampleH;
@@ -557,36 +603,45 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         for (let x = 1; x < widthInPixels - 1; x += 2) {
           const idx = (y * widthInPixels + x) * 4;
           const idxRight = (y * widthInPixels + (x + 1)) * 4;
-          const idxDown = ((y + 1) * widthInPixels + x) * 4;
 
-          const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+          const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+          liveR += r; liveG += g; liveB += b; liveLum += lum;
+          count++;
+
           const lumRight = 0.299 * data[idxRight] + 0.587 * data[idxRight + 1] + 0.114 * data[idxRight + 2];
-          const lumDown = 0.299 * data[idxDown] + 0.587 * data[idxDown + 1] + 0.114 * data[idxDown + 2];
-
-          const diffX = Math.abs(lum - lumRight);
-          const diffY = Math.abs(lum - lumDown);
-          const gradient = diffX + diffY;
-
-          edgeStrengthSum += gradient;
-          totalSampled++;
-
-          if (diffX >= 28) strongXEdges++;
-          if (diffY >= 28) strongYEdges++;
-
-          if (gradient >= 42) {
-            highEdgePixels++;
+          if (Math.abs(lum - lumRight) >= 22) {
+            edgeCount++;
           }
         }
       }
 
-      if (totalSampled === 0) return false;
-      const edgeDensityRatio = highEdgePixels / totalSampled;
-      const avgGradient = edgeStrengthSum / totalSampled;
-      const xRatio = strongXEdges / totalSampled;
-      const yRatio = strongYEdges / totalSampled;
+      if (count === 0) return false;
+      const avgR = liveR / count;
+      const avgG = liveG / count;
+      const avgB = liveB / count;
+      const avgLum = liveLum / count;
+      const edgeDensity = edgeCount / count;
 
-      // Exige densidade de bordas de cartão retangular no ROI isolado (bordas X e Y significativas)
-      return edgeDensityRatio >= 0.14 && avgGradient >= 16 && xRatio >= 0.08 && yRatio >= 0.08;
+      // Presença de objeto em primeiro plano na ROI: exige densidade de bordas do objeto > 0.07
+      if (edgeDensity < 0.07) return false;
+
+      const refFp = docRefFingerprintRef.current;
+      if (!refFp) {
+        // Fallback tolerante: se não houver documento de referência carregado, aceita objeto na ROI
+        return edgeDensity >= 0.10;
+      }
+
+      // 2. Compara a assinatura visual da ROI contra o documento capturado na Etapa 1
+      const colorDist = Math.sqrt((avgR - refFp.r) ** 2 + (avgG - refFp.g) ** 2 + (avgB - refFp.b) ** 2);
+      const lumDist = Math.abs(avgLum - refFp.luminance);
+
+      const colorMatch = Math.max(0, 1 - colorDist / 180);
+      const lumMatch = Math.max(0, 1 - lumDist / 140);
+      const overallMatch = colorMatch * 0.6 + lumMatch * 0.4;
+
+      // Retorna verdadeiro se o objeto na mão for visualmente compatível com o documento capturado (score >= 0.50)
+      return overallMatch >= 0.50;
     } catch {
       return false;
     }
@@ -603,25 +658,24 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       const faceInfo = computeFaceOrientation(landmarks);
       if (faceInfo) {
         const { noseX, faceWidthRatio } = faceInfo;
-        // Sensor espelhado: Tela Direita = Sensor Esquerdo (noseX entre 0.05 e 0.55)
-        isFaceValid = noseX >= 0.05 && noseX <= 0.55 && faceWidthRatio >= 0.08 && faceWidthRatio <= 0.85;
+        // Validação consistente do rosto: noseX entre 0.06 e 0.54 com largura facial razoável
+        isFaceValid = noseX >= 0.06 && noseX <= 0.54 && faceWidthRatio >= 0.10 && faceWidthRatio <= 0.85;
       } else {
         isFaceValid = true;
       }
     }
 
-    // Passa os landmarks faciais para isolar o ROI do documento sem sobrepor o rosto
-    const isDocFrameValid = video ? detectObjectInDocGuide(video, landmarks) : false;
+    // Compara o objeto na ROI com a imagem do documento capturada anteriormente
+    const isDocMatch = video ? detectObjectMatchingReference(video, landmarks) : false;
 
-    // Checagem de estabilidade temporal (exige 5 frames consecutivos ~750ms de confirmação real)
-    if (isDocFrameValid) {
+    // Estabilidade temporal: exige 3 frames consecutivos ~450ms de confirmação visual
+    if (isDocMatch) {
       docFrameCounterRef.current = Math.min(10, docFrameCounterRef.current + 1);
     } else {
       docFrameCounterRef.current = Math.max(0, docFrameCounterRef.current - 1);
     }
 
-    // docDetected só é VERDADEIRO quando o objeto é validado por múltiplos frames consecutivos!
-    const isRealDocDetected = docFrameCounterRef.current >= 5;
+    const isRealDocDetected = docFrameCounterRef.current >= 3;
 
     faceDetectedRef.current = isFaceValid;
     docDetectedRef.current = isRealDocDetected;
@@ -631,7 +685,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
     if (isFaceValid && isRealDocDetected) {
       setFrameState('GREEN');
-      setSelfieInstruction('✨ Ambos posicionados! Toque em Tirar Foto com Documento.');
+      setSelfieInstruction('✨ Documento identificado! Toque em Tirar Foto com Documento.');
     } else if (!isFaceValid && !isRealDocDetected) {
       setFrameState('GRAY');
       setSelfieInstruction('Posicione seu rosto e o documento nas áreas indicadas.');
@@ -640,7 +694,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setSelfieInstruction('👤 Encaixe seu rosto dentro da moldura indicada.');
     } else {
       setFrameState('YELLOW');
-      setSelfieInstruction('🪪 Segure seu documento ao lado do rosto na moldura indicada.');
+      setSelfieInstruction('🪪 Segure o mesmo documento capturado na etapa anterior ao lado do rosto.');
     }
   };
 
@@ -724,6 +778,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     docFrameCounterRef.current = 0;
     setFaceDetected(false);
     setDocDetected(false);
+    initDocReferenceFingerprint(person === 'ROGO' ? rogoDocumentFrontImage : documentFrontImage);
 
     if (isSingleRetake && targetKey) {
       setSingleRetakeKey(targetKey);
