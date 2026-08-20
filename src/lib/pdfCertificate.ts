@@ -1207,7 +1207,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
         page.drawText('QUALIDADE DA IMAGEM', { x: detailX, y: evidenceY + 92, size: 5.9, font: bold, color: muted });
         page.drawText('Registro fotográfico preservado', { x: detailX, y: evidenceY + 79, size: 7, font: regular, color: text });
         page.drawRectangle({ x: detailX, y: evidenceY + 36, width: 146, height: 25, color: rgb(0.92, 0.99, 0.96), borderWidth: 0.6, borderColor: green });
-        page.drawText('✓  EVIDÊNCIA VINCULADA', { x: detailX + 10, y: evidenceY + 45, size: 6.4, font: bold, color: green });
+        // As fontes padrão do pdf-lib usam WinAnsi e não codificam o glifo
+        // Unicode de check. Texto ASCII evita que o certificado deixe de ser
+        // gerado depois de a assinatura já ter sido concluída.
+        page.drawText('OK  EVIDÊNCIA VINCULADA', { x: detailX + 10, y: evidenceY + 45, size: 6.4, font: bold, color: green });
         page.drawText('Imagem original preservada no certificado.', { x: evidenceX + 18, y: evidenceY + 7, size: 5.8, font: regular, color: muted });
 
         // Continuidade jurídica abaixo da fotografia. Mantém o quadro como
