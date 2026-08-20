@@ -18,6 +18,9 @@ interface Client {
   representativeRg?: string | null;
   representativePhone?: string | null;
   representativeRole?: string | null;
+  representativeBirthDate?: string | null;
+  representativeAddress?: string | null;
+  representativeSameAddress?: boolean | null;
   address?: string | null;
   number?: string | null;
   complement?: string | null;
@@ -217,11 +220,12 @@ export default function DispatchKitPage() {
       setRogoRg(client.representativeRg || '');
       setRogoPhone(maskPhone(client.representativePhone || ''));
       setRogoRelationship(client.representativeRole || 'Representante cadastrado');
-      // O cadastro do representante não guarda nascimento/endereço próprios; o
-      // advogado confirma esses dois campos manualmente antes de gerar.
-      setRogoBirthDate('');
-      setRogoSameAddress(false);
-      setRogoAddress('');
+      // O cadastro do representante já guarda nascimento e endereço próprios
+      // (adicionados ao cadastro do cliente) - puxamos direto daqui em vez de
+      // deixar em branco, mas o advogado ainda pode ajustar antes de gerar.
+      setRogoBirthDate(client.representativeBirthDate || '');
+      setRogoSameAddress(Boolean(client.representativeSameAddress));
+      setRogoAddress(client.representativeSameAddress ? '' : (client.representativeAddress || ''));
     } else {
       setIsIlliterate(false);
       setRogoName(''); setRogoCpf(''); setRogoRg(''); setRogoBirthDate(''); setRogoAddress(''); setRogoSameAddress(false); setRogoPhone(''); setRogoEmail('');
