@@ -1009,6 +1009,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
   const docPhotoSigners: any[] = [];
   for (const signer of doc.signers) {
     const hasPhotos = Boolean(signer.selfieCenterImage || signer.selfieLeftImage || signer.selfieRightImage);
+    const signerHasLegacy3Selfies = Boolean(signer.selfieLeftImage && signer.selfieRightImage);
     const hasLocation = signer.geoLat != null && signer.geoLng != null;
     const locationText = hasLocation
       ? `${signer.geoCity ? `${safeText(signer.geoCity, 200)}${signer.geoState ? '/' + signer.geoState : ''} — ` : ''}${Number(
@@ -1018,9 +1019,12 @@ export async function generateFinalPdfCertificate(documentId: string) {
         }`
       : 'Não coletada (permissão não concedida)';
     const hasDocPhotos = Boolean(signer.documentFrontImage || signer.documentBackImage);
+    const presenceMethod = signerHasLegacy3Selfies
+      ? 'Prova de presença ao vivo (3 fotos)'
+      : 'Selfie com documento de identificação';
     const authenticationText = hasDocPhotos
-      ? 'CPF + Documento de identificação fotografado no momento da assinatura + Prova de presença ao vivo (3 fotos) + Geolocalização do dispositivo'
-      : 'CPF + Prova de presença ao vivo (3 fotos) + Geolocalização do dispositivo';
+      ? `CPF + Documento de identificação fotografado no momento da assinatura + ${presenceMethod} + Geolocalização do dispositivo`
+      : `CPF + ${presenceMethod} + Geolocalização do dispositivo`;
     const innerWidth = CW - 28;
     const halfWidth = 226;
     const gapWidth = 34;
@@ -1047,7 +1051,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     // Título + folga + cartões de retrato 3:4 + legenda. A reserva acompanha
     // o tamanho real da grade e evita criar uma página intermediária quase
     // vazia entre os dados do documento e as evidências do signatário.
-    const photosHeight = hasPhotos ? 188 : 0;
+    const photosHeight = hasPhotos ? (signerHasLegacy3Selfies ? 188 : 260) : 0;
     const panelH = 32 + dataHeight + photosHeight + 8;
     ensureSpace(panelH + 10);
 
@@ -1129,7 +1133,6 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
     // SEÇÃO 3: EVIDÊNCIAS COLETADAS — FOTO DE PRESENÇA
     if (hasPhotos) {
-      const signerHasLegacy3Selfies = Boolean(signer.selfieLeftImage && signer.selfieRightImage);
       page.drawText(
         signerHasLegacy3Selfies ? '3. PROVA DE PRESENÇA AO VIVO (REGISTRO FACIAL HD)' : '3. PROVA DE PRESENÇA (SELFIE COM DOCUMENTO DE IDENTIFICAÇÃO)',
         {
@@ -1149,14 +1152,72 @@ export async function generateFinalPdfCertificate(documentId: string) {
           ]
         : [['1. Selfie com Documento de Identificação', signer.selfieCenterImage]];
 
-      const boxW = signerHasLegacy3Selfies ? 96 : 160;
-      const boxH = 128;
-      const cardH = 156;
-      const gap = 18;
-      const photosTotalWidth = boxW * photoLabels.length + gap * (photoLabels.length - 1);
-      let photoX = padX + Math.max(0, (innerWidth - photosTotalWidth) / 2);
+      // A selfie atual é uma prova única, feita com o documento ao lado do
+      // rosto. Ela merece um quadro próprio, maior e com informações de
+      // conferência - não uma fotografia isolada no meio da página.
+      if (!signerHasLegacy3Selfies) {
+        const [label, img] = photoLabels[0];
+        const evidenceW = Math.min(innerWidth, 404);
+        const evidenceH = 228;
+        const evidenceX = padX + (innerWidth - evidenceW) / 2;
+        const evidenceY = cursor - evidenceH - 14;
+        const photoW = 176;
+        const photoH = 184;
+        const photoX = evidenceX + 18;
+        const photoY = evidenceY + 18;
+        const detailX = photoX + photoW + 22;
+        const embedded = await embedBase64Image(pdfDoc, img, {
+          width: 720,
+          height: 960,
+          fit: 'contain',
+          position: 'centre',
+        });
 
-      for (const [label, img] of photoLabels) {
+        page.drawRectangle({
+          x: evidenceX,
+          y: evidenceY,
+          width: evidenceW,
+          height: evidenceH,
+          color: rgb(1, 1, 1),
+          opacity: 0.74,
+          borderWidth: 0.9,
+          borderColor: panelBorder,
+        });
+        page.drawRectangle({ x: evidenceX, y: evidenceY + evidenceH - 5, width: evidenceW, height: 5, color: gold });
+        page.drawRectangle({ x: photoX - 2, y: photoY - 2, width: photoW + 4, height: photoH + 4, color: navy });
+        page.drawRectangle({ x: photoX, y: photoY, width: photoW, height: photoH, color: rgb(0.96, 0.97, 0.99) });
+
+        if (embedded) {
+          const scale = Math.min(photoW / embedded.width, photoH / embedded.height);
+          const drawW = Math.round(embedded.width * scale);
+          const drawH = Math.round(embedded.height * scale);
+          page.drawImage(embedded, {
+            x: photoX + (photoW - drawW) / 2,
+            y: photoY + (photoH - drawH) / 2,
+            width: drawW,
+            height: drawH,
+          });
+        }
+
+        page.drawText('REGISTRO DE PRESENÇA', { x: detailX, y: evidenceY + 177, size: 7.4, font: bold, color: navy });
+        page.drawText('SELFIE COM DOCUMENTO', { x: detailX, y: evidenceY + 162, size: 6.2, font: bold, color: muted });
+        page.drawLine({ start: { x: detailX, y: evidenceY + 151 }, end: { x: evidenceX + evidenceW - 18, y: evidenceY + 151 }, thickness: 0.6, color: panelBorder });
+        page.drawText('IDENTIDADE E PRESENÇA', { x: detailX, y: evidenceY + 132, size: 5.9, font: bold, color: muted });
+        page.drawText('Confirmadas na sessão de assinatura', { x: detailX, y: evidenceY + 119, size: 7.3, font: bold, color: navy });
+        page.drawText('QUALIDADE DA IMAGEM', { x: detailX, y: evidenceY + 92, size: 5.9, font: bold, color: muted });
+        page.drawText('Registro fotográfico preservado', { x: detailX, y: evidenceY + 79, size: 7, font: regular, color: text });
+        page.drawRectangle({ x: detailX, y: evidenceY + 36, width: 146, height: 25, color: rgb(0.92, 0.99, 0.96), borderWidth: 0.6, borderColor: green });
+        page.drawText('✓  EVIDÊNCIA VINCULADA', { x: detailX + 10, y: evidenceY + 45, size: 6.4, font: bold, color: green });
+        page.drawText('Imagem original preservada no certificado.', { x: evidenceX + 18, y: evidenceY + 7, size: 5.8, font: regular, color: muted });
+      } else {
+        const boxW = 96;
+        const boxH = 128;
+        const cardH = 156;
+        const gap = 18;
+        const photosTotalWidth = boxW * photoLabels.length + gap * (photoLabels.length - 1);
+        let photoX = padX + Math.max(0, (innerWidth - photosTotalWidth) / 2);
+
+        for (const [label, img] of photoLabels) {
         const embedded = await embedBase64Image(pdfDoc, img, {
           width: 480,
           height: 640,
@@ -1195,7 +1256,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
         const validText = 'OK validada';
         const validW = bold.widthOfTextAtSize(validText, 5.6);
         page.drawText(validText, { x: photoX + boxW - validW, y: cardY + 4, size: 5.6, font: bold, color: green });
-        photoX += boxW + gap;
+          photoX += boxW + gap;
+        }
       }
     }
 
