@@ -892,26 +892,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         return;
       }
 
-      // A confirmação de que existe RG/CNH é feita na foto completa, por IA,
-      // e não mais por um palpite em tempo real de uma área minúscula da tela.
-      // Isso é mais confiável e permite uma moldura simples para a pessoa.
-      setCheckingSelfieDocument(true);
-      setSelfieInstruction('Conferindo se o documento está visível na foto...');
-      stopSelfieCamera();
-      const validationResponse = await fetch('/api/sign/documento/validar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: dataUrl, mode: 'SELFIE_WITH_DOCUMENT' }),
-      });
-      const validationPayload = await validationResponse.json().catch(() => ({}));
-      const validation = validationPayload?.validation;
-      if (!validationResponse.ok || !validation?.isDocument || Number(validation.confidence || 0) < 45) {
-        setFrameState('YELLOW');
-        setError(validation?.reason || 'Não conseguimos identificar um documento na foto. Mantenha o RG ou a CNH aberto e bem visível ao lado do rosto e tente novamente.');
-        setSelfieInstruction('Documento não identificado. Tire outra foto com o cartão mais próximo.');
-        return;
-      }
-
       const currentPerson = activePersonRef.current;
       const updatedSelfies = { center: dataUrl, left: null, right: null };
       updateCurrentSelfieImages(updatedSelfies, currentPerson);
@@ -921,6 +901,16 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
       playShutterSound(audioEnabledRef.current);
       setSelfieInstruction('✓ Foto com documento capturada com sucesso!');
+      stopSelfieCamera();
+
+      // A IA continua verificando a imagem inteira para auditoria, mas esta
+      // conferência não deixa o cliente aguardando nem rejeita uma foto boa
+      // por falso negativo. A qualidade técnica já foi exigida acima.
+      void fetch('/api/sign/documento/validar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: dataUrl, mode: 'SELFIE_WITH_DOCUMENT' }),
+      }).catch(() => {});
     } finally {
       setCheckingSelfieDocument(false);
       setTimeout(() => {
@@ -1443,9 +1433,17 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   </div>
                 )}
 
-                <div className="absolute bottom-0 left-0 right-0 bg-[#071B3A]/90 text-emerald-300 text-xs font-bold text-center py-3 px-4 backdrop-blur-sm flex items-center justify-center gap-2 font-heading">
+                <div className="absolute top-3 left-3 right-3 z-10 bg-[#071B3A]/90 text-emerald-200 text-xs font-bold text-center py-2.5 px-3 rounded-xl backdrop-blur-sm flex items-center justify-center gap-2 font-heading">
                   <span>{selfieInstruction}</span>
                 </div>
+                <button
+                  type="button"
+                  onClick={startCountdown}
+                  disabled={capturingSelfie || !faceDetected || countdownSecs !== null}
+                  className="absolute z-20 bottom-3 left-3 right-3 min-h-12 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-[#071B3A] font-extrabold text-sm shadow-xl transition active:scale-[0.99] disabled:opacity-60"
+                >
+                  {countdownSecs !== null ? `Foto em ${countdownSecs}…` : 'Iniciar foto com contagem'}
+                </button>
               </div>
 
               {/* Status em Tempo Real */}
@@ -1465,7 +1463,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 type="button"
                 onClick={startCountdown}
                 disabled={capturingSelfie || checkingSelfieDocument || !faceDetected || countdownSecs !== null}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading disabled:opacity-50"
+                className="hidden"
               >
                 {capturingSelfie ? (
                   <>
@@ -1681,9 +1679,17 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   </div>
                 )}
 
-                <div className="absolute bottom-0 left-0 right-0 bg-[#071B3A]/90 text-blue-300 text-xs font-bold text-center py-3 px-4 backdrop-blur-sm flex items-center justify-center gap-2 font-heading">
+                <div className="absolute top-3 left-3 right-3 z-10 bg-[#071B3A]/90 text-blue-200 text-xs font-bold text-center py-2.5 px-3 rounded-xl backdrop-blur-sm flex items-center justify-center gap-2 font-heading">
                   <span>{selfieInstruction}</span>
                 </div>
+                <button
+                  type="button"
+                  onClick={startCountdown}
+                  disabled={capturingSelfie || !faceDetected || countdownSecs !== null}
+                  className="absolute z-20 bottom-3 left-3 right-3 min-h-12 rounded-2xl bg-blue-500 hover:bg-blue-400 text-white font-extrabold text-sm shadow-xl transition active:scale-[0.99] disabled:opacity-60"
+                >
+                  {countdownSecs !== null ? `Foto em ${countdownSecs}…` : 'Iniciar foto com contagem'}
+                </button>
               </div>
 
               {/* Status em Tempo Real */}
@@ -1703,7 +1709,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 type="button"
                 onClick={startCountdown}
                 disabled={capturingSelfie || checkingSelfieDocument || !faceDetected || countdownSecs !== null}
-                className="w-full py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading disabled:opacity-50"
+                className="hidden"
               >
                 {capturingSelfie ? (
                   <>
