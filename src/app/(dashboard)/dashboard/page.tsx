@@ -925,7 +925,6 @@ export default function DashboardPage() {
         avisosSistema={painelAvisosSistema}
         clientes={mappedClients}
         pendencies={openPendencies}
-        onNovaPendencia={() => setPendenciaFormOpen(true)}
         onVerCliente={(id) => router.push(`/clientes?q=${id}`)}
       />
 
