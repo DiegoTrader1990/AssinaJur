@@ -162,7 +162,7 @@ function addLinkAnnotation(
 async function embedBase64Image(
   pdfDoc: PDFDocument,
   base64: string | null | undefined,
-  cover?: { width: number; height: number }
+  cover?: { width: number; height: number; fit?: 'cover' | 'contain' }
 ) {
   if (!base64) return null;
   try {
@@ -186,7 +186,11 @@ async function embedBase64Image(
       // otimizado falhar ao ser incorporado, tentamos de novo sem o mozjpeg (forçando
       // baseline) e, em último caso, caímos de volta no PNG original - a foto NUNCA
       // pode sumir do certificado só porque a compressão mais agressiva falhou.
-      const resized = sharp(bytes).rotate().resize(cover.width, cover.height, { fit: 'cover', position: 'top' });
+      const resized = sharp(bytes).rotate().resize(cover.width, cover.height, {
+        fit: cover.fit || 'cover',
+        position: 'top',
+        background: { r: 248, g: 250, b: 252, alpha: 1 },
+      });
       try {
         const jpegBytes = Buffer.from(await resized.clone().jpeg({ quality: 85, mozjpeg: true }).toBuffer());
         return await pdfDoc.embedJpg(jpegBytes);
@@ -1131,9 +1135,12 @@ export async function generateFinalPdfCertificate(documentId: string) {
     // SEÇÃO 3: EVIDÊNCIA COLETADA — SELFIE FRONTAL
     if (hasPhotos) {
       // Cartão único, centralizado, maior que o antigo layout de 3 fotos lado a lado.
-      const boxW = 180;
-      const boxH = 168;
-      const captionH = 20;
+      // Um cartão de evidência, e não uma foto solta: a imagem é preservada
+      // por inteiro (sem zoom/corte do rosto) e acompanhada de informações
+      // que explicam o seu vínculo probatório.
+      const boxW = 300;
+      const boxH = 172;
+      const captionH = 0;
       const cardH = boxH + captionH + 14;
       const gap = 20;
       const photosTotalWidth = boxW;
@@ -1175,7 +1182,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
         // anterior (540x620, retrato) recortava boa parte das laterais da selfie
         // antes mesmo do encaixe final no quadro, dando a impressão de "zoom"
         // excessivo no rosto. Agora o corte só remove o estritamente necessário.
-        const embedded = await embedBase64Image(pdfDoc, img, { width: 600, height: 600 });
+        const embedded = await embedBase64Image(pdfDoc, img, { width: 560, height: 560, fit: 'contain' });
         const imgFrameY = cardY + captionH;
 
         // Sem bloco de cor: só um friso dourado fino na borda superior da
@@ -1185,18 +1192,24 @@ export async function generateFinalPdfCertificate(documentId: string) {
         // sólido usado antes lia como uma etiqueta colada por cima do papel
         // timbrado; este friso integra a foto ao certificado em vez de
         // emoldurá-la como um objeto à parte.
-        page.drawRectangle({ x: photoX, y: imgFrameY, width: boxW, height: boxH, color: rgb(0.96, 0.96, 0.97), opacity: 0.55 });
+        page.drawRectangle({ x: photoX, y: imgFrameY, width: boxW, height: boxH, color: rgb(0.96, 0.97, 0.985), opacity: 0.82, borderColor: rgb(0.82, 0.86, 0.92), borderWidth: 0.8 });
         page.drawRectangle({ x: photoX, y: imgFrameY + boxH - 1.4, width: boxW, height: 1.4, color: gold });
+
+        const photoFrameW = 128;
+        const photoFrameH = 142;
+        const photoFrameX = photoX + 14;
+        const photoFrameY = imgFrameY + 15;
+        page.drawRectangle({ x: photoFrameX, y: photoFrameY, width: photoFrameW, height: photoFrameH, color: rgb(1, 1, 1), borderColor: rgb(0.8, 0.84, 0.9), borderWidth: 0.7 });
 
         if (embedded) {
           const imgW = embedded.width;
           const imgH = embedded.height;
-          const scale = Math.min(boxW / imgW, boxH / imgH);
+          const scale = Math.min((photoFrameW - 8) / imgW, (photoFrameH - 8) / imgH);
           const drawW = Math.round(imgW * scale);
           const drawH = Math.round(imgH * scale);
 
-          const offsetX = photoX + (boxW - drawW) / 2;
-          const offsetY = imgFrameY + (boxH - drawH) / 2;
+          const offsetX = photoFrameX + (photoFrameW - drawW) / 2;
+          const offsetY = photoFrameY + (photoFrameH - drawH) / 2;
 
           page.drawImage(embedded, {
             x: offsetX,
@@ -1206,16 +1219,16 @@ export async function generateFinalPdfCertificate(documentId: string) {
           });
         }
 
-        page.drawText(safeText(label, 40).toUpperCase(), {
-          x: photoX,
-          y: cardY + 6,
-          size: 6,
-          font: bold,
-          color: muted,
-        });
-        const validText = 'VALIDADA';
-        const validW = bold.widthOfTextAtSize(validText, 5.8);
-        page.drawText(validText, { x: photoX + boxW - validW, y: cardY + 6, size: 5.8, font: bold, color: green });
+        const infoX = photoFrameX + photoFrameW + 18;
+        page.drawText('EVIDÊNCIA FOTOGRÁFICA', { x: infoX, y: imgFrameY + 124, size: 6.4, font: bold, color: navy });
+        page.drawText('SELFIE COM DOCUMENTO', { x: infoX, y: imgFrameY + 108, size: 5.7, font: bold, color: muted });
+        page.drawLine({ start: { x: infoX, y: imgFrameY + 99 }, end: { x: photoX + boxW - 16, y: imgFrameY + 99 }, thickness: 0.5, color: rgb(0.8, 0.84, 0.9) });
+        page.drawText('Identidade e presença', { x: infoX, y: imgFrameY + 77, size: 5.8, font: regular, color: muted });
+        page.drawText('confirmadas na sessão', { x: infoX, y: imgFrameY + 63, size: 8.1, font: bold, color: navy });
+        page.drawText('Imagem original preservada', { x: infoX, y: imgFrameY + 39, size: 5.8, font: regular, color: muted });
+        page.drawText('junto aos registros técnicos.', { x: infoX, y: imgFrameY + 28, size: 5.8, font: regular, color: muted });
+        page.drawRectangle({ x: infoX, y: imgFrameY + 8, width: 118, height: 14, borderColor: green, borderWidth: 0.7 });
+        page.drawText('EVIDÊNCIA VINCULADA', { x: infoX + 10, y: imgFrameY + 12.5, size: 5.2, font: bold, color: green });
         photoX += boxW + gap;
       }
     }

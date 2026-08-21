@@ -814,7 +814,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     try {
       stopSelfieCamera();
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        // 4:3 preserva melhor o rosto e o documento ao lado. O formato
+        // vertical anterior ampliava demais a imagem em celulares e cortava
+        // justamente o espaço que a pessoa precisava para segurar o RG/CNH.
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 }, aspectRatio: { ideal: 4 / 3 } },
         audio: false,
       });
       streamRef.current = stream;
@@ -1260,7 +1263,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             )}
 
             <div className={cameraActive ? 'space-y-3' : 'hidden'}>
-              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[3/4] sm:aspect-[4/3] bg-black ${
+              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[4/3] bg-black ${
                 frameState === 'GREEN' ? 'border-emerald-500 shadow-emerald-500/50 shadow-xl'
                 : frameState === 'YELLOW' ? 'border-amber-400'
                 : frameState === 'FLASH' ? 'border-white animate-pulse'
@@ -1273,14 +1276,17 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                     mais forte que só o rosto sozinho). Limitado entre o topo
                     e o início da barra do botão (em vez de inset-y-0) para a
                     borda tracejada não cruzar por cima do botão de disparo. */}
-                <div className="absolute left-0 top-[18%] bottom-[104px] w-[36%] pointer-events-none flex items-center justify-center pl-3">
+                <div className="absolute left-[5%] top-[15%] bottom-[104px] w-[31%] pointer-events-none flex items-center justify-center">
                   <div className={`w-full aspect-[3/4] rounded-xl border-[3px] border-dashed transition-all duration-300 flex items-end justify-center pb-2 ${
                     frameState === 'GREEN' ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20'
                     : frameState === 'YELLOW' ? 'border-amber-400/70 bg-amber-500/5'
                     : 'border-white/40'
                   }`}>
-                    <span className="text-[9px] font-extrabold text-white/80 bg-black/40 rounded-full px-2 py-0.5">📄 Documento aqui</span>
+                    <span className="text-[9px] font-extrabold text-white/90 bg-black/55 rounded-full px-2 py-0.5">DOCUMENTO</span>
                   </div>
+                </div>
+                <div className="absolute right-3 top-3 rounded-full bg-black/45 px-2.5 py-1 text-[9px] font-extrabold tracking-wide text-white/90 pointer-events-none">
+                  ROSTO VISÍVEL
                 </div>
                 {cameraActive && countdownSecs !== null && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-30 bg-black/30 backdrop-blur-[2px]">
@@ -1325,10 +1331,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
             {clientSelfieComplete && (
               <div className="space-y-4 pt-1">
-                <div className="grid grid-cols-1 gap-2.5 max-w-[220px] mx-auto">
+                <div className="max-w-sm mx-auto rounded-2xl border border-emerald-200 bg-emerald-50/60 p-3 shadow-sm">
+                  <div className="mb-2 flex items-center justify-between"><span className="text-[10px] font-extrabold tracking-wide text-emerald-800">EVIDÊNCIA DE PRESENÇA</span><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold text-emerald-700">CAPTURADA</span></div>
+                <div className="grid grid-cols-1 gap-2.5">
                   {LIVENESS_STEPS.map((s) => (
                     <div key={s.key} className="space-y-1.5 text-center">
-                      <div className="rounded-2xl overflow-hidden border-2 border-emerald-500 aspect-[4/3] bg-black relative group shadow-sm">
+                      <div className="rounded-xl overflow-hidden border-2 border-emerald-500 aspect-[4/3] bg-slate-950 relative group shadow-sm">
                         {selfieImages[s.key] && (
                           <img src={selfieImages[s.key] as string} alt={s.label} className="w-full h-full object-contain" />
                         )}
@@ -1339,7 +1347,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                       <p className="text-[10px] font-bold text-slate-700 font-heading">{s.label}</p>
                     </div>
                   ))}
-                </div>
+                </div></div>
 
                 <button
                   type="button"
@@ -1486,20 +1494,23 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             )}
 
             <div className={cameraActive ? 'space-y-3' : 'hidden'}>
-              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[3/4] sm:aspect-[4/3] bg-black ${
+              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[4/3] bg-black ${
                 frameState === 'GREEN' ? 'border-emerald-500 shadow-emerald-500/50 shadow-xl'
                 : frameState === 'YELLOW' ? 'border-amber-400'
                 : frameState === 'FLASH' ? 'border-white animate-pulse'
                 : 'border-slate-600'
               }`}>
                 <video ref={selfieVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
-                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                  <div className={`w-[70%] h-[75%] rounded-[50%] border-[3px] border-dashed transition-all duration-300 ${
-                    frameState === 'GREEN' ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' 
+                <div className="absolute left-[5%] top-[15%] bottom-[104px] w-[31%] pointer-events-none flex items-center justify-center">
+                  <div className={`w-full aspect-[3/4] rounded-xl border-[3px] border-dashed transition-all duration-300 flex items-end justify-center pb-2 ${
+                    frameState === 'GREEN' ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20'
                     : frameState === 'YELLOW' ? 'border-amber-400/70 bg-amber-500/5'
-                    : 'border-white/30'
-                  }`} />
+                    : 'border-white/40'
+                  }`}>
+                    <span className="text-[9px] font-extrabold text-white/90 bg-black/55 rounded-full px-2 py-0.5">DOCUMENTO</span>
+                  </div>
                 </div>
+                <div className="absolute right-3 top-3 rounded-full bg-black/45 px-2.5 py-1 text-[9px] font-extrabold tracking-wide text-white/90 pointer-events-none">ROSTO VISÍVEL</div>
                 {cameraActive && countdownSecs !== null && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-30 bg-black/30 backdrop-blur-[2px]">
                     <div className="w-24 h-24 rounded-full bg-black/80 border-4 border-amber-400 backdrop-blur-md flex items-center justify-center shadow-2xl animate-pulse">
@@ -1541,10 +1552,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
             {rogoSelfieComplete && (
               <div className="space-y-4 pt-1">
-                <div className="grid grid-cols-1 gap-2.5 max-w-[220px] mx-auto">
+                <div className="max-w-sm mx-auto rounded-2xl border border-blue-200 bg-blue-50/60 p-3 shadow-sm">
+                  <div className="mb-2 flex items-center justify-between"><span className="text-[10px] font-extrabold tracking-wide text-blue-800">EVIDÊNCIA DO ACOMPANHANTE</span><span className="rounded-full bg-blue-100 px-2 py-0.5 text-[9px] font-bold text-blue-700">CAPTURADA</span></div>
+                <div className="grid grid-cols-1 gap-2.5">
                   {LIVENESS_STEPS.map((s) => (
                     <div key={s.key} className="space-y-1.5 text-center">
-                      <div className="rounded-2xl overflow-hidden border-2 border-blue-500 aspect-[4/3] bg-black relative shadow-sm">
+                      <div className="rounded-xl overflow-hidden border-2 border-blue-500 aspect-[4/3] bg-slate-950 relative shadow-sm">
                         {rogoSelfieImages[s.key] && (
                           <img src={rogoSelfieImages[s.key] as string} alt={s.label} className="w-full h-full object-contain" />
                         )}
@@ -1555,7 +1568,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                       <p className="text-[10px] font-bold text-slate-700 font-heading">{s.label}</p>
                     </div>
                   ))}
-                </div>
+                </div></div>
 
                 <button
                   type="button"
