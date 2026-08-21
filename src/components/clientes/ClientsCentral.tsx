@@ -233,6 +233,7 @@ export default function ClientsCentral({
   onOpen,
   onEdit,
   onDelete,
+  onCreateFollowUp,
 }: {
   clients: CentralClient[];
   loading: boolean;
@@ -241,6 +242,7 @@ export default function ClientsCentral({
   onOpen: (client: CentralClient) => void;
   onEdit: (client: CentralClient) => void;
   onDelete: (client: CentralClient) => void;
+  onCreateFollowUp: (client: CentralClient) => void;
 }) {
   const [search, setSearch] = useState('');
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('TODOS');
@@ -429,33 +431,33 @@ export default function ClientsCentral({
                 const due = dueLabel(info.due);
                 const whatsapp = String(client.whatsapp || client.phone || '').replace(/\D/g, '');
                 return (
-                  <article key={client.id} onClick={() => onOpen(client)} className="group relative cursor-pointer rounded-[20px] border border-slate-200 bg-white p-4 shadow-[0_12px_32px_-30px_rgba(7,27,58,.5)] transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_42px_-28px_rgba(7,27,58,.38)]">
-                    <span className={`absolute inset-y-5 left-0 w-[3px] rounded-r-full ${statusInfo.dot}`} />
+                  <article key={client.id} onClick={() => onOpen(client)} className="group relative cursor-pointer rounded-[18px] border border-slate-200 bg-white p-3.5 shadow-[0_10px_28px_-28px_rgba(7,27,58,.48)] transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_16px_38px_-26px_rgba(7,27,58,.34)]">
+                    <span className={`absolute inset-y-4 left-0 w-[3px] rounded-r-full ${statusInfo.dot}`} />
 
                     <div className="flex items-start gap-3">
                       <div onClick={(event) => event.stopPropagation()} className="pt-1"><input type="checkbox" checked={selected.has(client.id)} onChange={() => setSelected((current) => { const next = new Set(current); next.has(client.id) ? next.delete(client.id) : next.add(client.id); return next; })} className="h-4 w-4 rounded border-slate-300 text-blue-600" /></div>
-                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-slate-200 bg-gradient-to-br from-[#f8fafc] to-[#eef2f7] font-heading text-xs font-black text-[#071B3A] transition group-hover:border-[#d7c06b]">{initials(client.name)}</span>
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-gradient-to-br from-[#f8fafc] to-[#eef2f7] font-heading text-[11px] font-black text-[#071B3A] transition group-hover:border-[#d7c06b]">{initials(client.name)}</span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0"><strong className="block truncate font-heading text-[13px] font-black text-[#071B3A]">{client.name}</strong><span className="mt-1 block truncate text-[10px] font-semibold text-slate-400">{maskCpfCnpj(client.cpfCnpj)}{client.city ? ` · ${client.city}${client.state ? `/${client.state}` : ''}` : ''}</span></div>
-                          <div className="relative shrink-0" onClick={(event) => event.stopPropagation()}><button onClick={() => setMenuId(menuId === client.id ? null : client.id)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-slate-400 transition hover:border-slate-200 hover:bg-slate-50 hover:text-[#071B3A]" aria-label={`Mais ações para ${client.name}`}><MoreHorizontal className="h-4 w-4" /></button>{menuId === client.id && <ActionMenu menuRef={menuRef} client={client} onOpen={() => onOpen(client)} onEdit={() => onEdit(client)} onDelete={() => onDelete(client)} />}</div>
+                          <div className="relative shrink-0" onClick={(event) => event.stopPropagation()}><button onClick={() => setMenuId(menuId === client.id ? null : client.id)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-slate-400 transition hover:border-slate-200 hover:bg-slate-50 hover:text-[#071B3A]" aria-label={`Mais ações para ${client.name}`}><MoreHorizontal className="h-4 w-4" /></button>{menuId === client.id && <ActionMenu menuRef={menuRef} client={client} onOpen={() => onOpen(client)} onEdit={() => onEdit(client)} onFollowUp={() => onCreateFollowUp(client)} onDelete={() => onDelete(client)} />}</div>
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-1.5"><span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[8px] font-black ${statusInfo.classes}`}><span className={`h-1.5 w-1.5 rounded-full ${statusInfo.dot}`} />{statusInfo.label}</span>{info.pendingDocuments.length > 0 && <span className="rounded-full border border-sky-100 bg-sky-50 px-2 py-1 text-[8px] font-black text-sky-700">Assinatura pendente</span>}</div>
                       </div>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-2 gap-2 border-y border-slate-100 py-3">
+                    <div className="mt-2.5 grid grid-cols-2 gap-2 border-y border-slate-100 py-2.5">
                       <div className="min-w-0"><span className="block text-[8px] font-black uppercase tracking-[.12em] text-slate-400">Demanda</span><strong className="mt-1 block truncate text-[10px] font-extrabold text-slate-700">{info.currentProcess?.title || client.legalArea || 'Sem demanda ativa'}</strong>{info.currentProcess?.protocolNumber && <span className="mt-0.5 block truncate text-[8px] text-slate-400">Prot. {info.currentProcess.protocolNumber}</span>}</div>
                       <div className="min-w-0 border-l border-slate-100 pl-3"><span className="block text-[8px] font-black uppercase tracking-[.12em] text-slate-400">Responsável</span><strong className="mt-1 block truncate text-[10px] font-extrabold text-slate-700">{client.lawyerInCharge?.name || 'A definir'}</strong><span className="mt-0.5 block truncate text-[8px] text-slate-400">{client.legalArea || info.currentProcess?.legalArea || 'Área geral'}</span></div>
                     </div>
 
-                    <div className="mt-3 rounded-xl border border-[#eadca9] bg-[#fffdf7] px-3 py-2.5">
-                      <div className="flex items-start gap-2"><span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-lg bg-[#f4e9bd] text-[#8c6910]"><Zap className="h-3 w-3" /></span><div className="min-w-0 flex-1"><span className="block text-[8px] font-black uppercase tracking-[.11em] text-[#9c7b24]">Próxima ação</span><strong className="mt-0.5 block line-clamp-2 text-[10px] font-black leading-4 text-[#071B3A]">{info.nextAction}</strong>{due && <span className={`mt-1 inline-flex items-center gap-1 text-[8px] font-bold ${due.overdue ? 'text-rose-600' : 'text-amber-700'}`}><CalendarClock className="h-3 w-3" />{due.text}</span>}</div></div>
+                    <div className="mt-2 rounded-xl border border-[#eadca9] bg-[#fffdf7] px-2.5 py-2">
+                      <div className="flex items-start gap-2"><span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-lg bg-[#f4e9bd] text-[#8c6910]"><Zap className="h-3 w-3" /></span><div className="min-w-0 flex-1"><span className="block text-[8px] font-black uppercase tracking-[.11em] text-[#9c7b24]">{info.mainPendency ? 'Acompanhamento em aberto' : 'Próxima ação'}</span><strong className="mt-0.5 block truncate text-[10px] font-black leading-4 text-[#071B3A]">{info.nextAction}</strong>{due && <span className={`mt-0.5 inline-flex items-center gap-1 text-[8px] font-bold ${due.overdue ? 'text-rose-600' : 'text-amber-700'}`}><CalendarClock className="h-3 w-3" />{due.text}</span>}</div></div>
                     </div>
 
-                    <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="mt-2.5 flex items-center justify-between gap-2">
                       <div className="min-w-0"><strong className="block truncate text-[10px] font-extrabold text-slate-600">{maskPhone(client.phone)}</strong><span className="mt-0.5 block truncate text-[8px] text-slate-400">{dateLabel(info.lastActivity)} · {info.activityDescription}</span></div>
-                      <div className="flex shrink-0 items-center gap-1.5" onClick={(event) => event.stopPropagation()}>{whatsapp && <a href={`https://wa.me/${whatsapp.startsWith('55') ? whatsapp : `55${whatsapp}`}`} target="_blank" rel="noreferrer" className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-600 transition hover:bg-emerald-100" aria-label={`WhatsApp de ${client.name}`}><MessageCircle className="h-3.5 w-3.5" /></a>}<button onClick={() => onOpen(client)} className="h-8 rounded-lg bg-[#071B3A] px-3 text-[9px] font-black text-white transition hover:bg-[#12335e]">Abrir ficha</button></div>
+                      <div className="flex shrink-0 items-center gap-1" onClick={(event) => event.stopPropagation()}>{whatsapp && <a href={`https://wa.me/${whatsapp.startsWith('55') ? whatsapp : `55${whatsapp}`}`} target="_blank" rel="noreferrer" className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-600 transition hover:bg-emerald-100" aria-label={`WhatsApp de ${client.name}`}><MessageCircle className="h-3.5 w-3.5" /></a>}<button onClick={() => onCreateFollowUp(client)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#dec66e] bg-[#fffaf0] px-2 text-[8px] font-black text-[#7d5f0d] transition hover:bg-[#f8edc4]"><Plus className="h-3 w-3" /> Acompanhar</button><button onClick={() => onOpen(client)} className="h-8 rounded-lg bg-[#071B3A] px-2.5 text-[8px] font-black text-white transition hover:bg-[#12335e]">Abrir ficha</button></div>
                     </div>
                   </article>
                 );
@@ -474,13 +476,14 @@ function FilterSelect({ label, value, onChange, options }: { label: string; valu
   return <label className="space-y-1.5"><span className="block text-[9px] font-black uppercase tracking-wider text-slate-400">{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 outline-none focus:border-blue-400"><option value="">Todos</option>{options.map(([key, text]) => <option key={key} value={key}>{text}</option>)}</select></label>;
 }
 
-function ActionMenu({ menuRef, client, onOpen, onEdit, onDelete }: { menuRef: React.RefObject<HTMLDivElement>; client: CentralClient; onOpen: () => void; onEdit: () => void; onDelete: () => void }) {
+function ActionMenu({ menuRef, client, onOpen, onEdit, onFollowUp, onDelete }: { menuRef: React.RefObject<HTMLDivElement>; client: CentralClient; onOpen: () => void; onEdit: () => void; onFollowUp: () => void; onDelete: () => void }) {
   const phone = String(client.whatsapp || client.phone || '').replace(/\D/g, '');
   const href = phone ? `https://wa.me/${phone.startsWith('55') ? phone : `55${phone}`}` : '#';
   const item = 'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[10px] font-bold text-slate-600 transition hover:bg-slate-50 hover:text-[#071B3A]';
   return <div ref={menuRef} className="absolute right-0 top-10 z-30 w-56 rounded-2xl border border-slate-200 bg-white p-2 text-left shadow-[0_18px_45px_-15px_rgba(15,23,42,.28)]">
     <button onClick={onOpen} className={item}><UsersRound className="h-3.5 w-3.5" /> Ver cliente</button>
     <button onClick={onEdit} className={item}><SlidersHorizontal className="h-3.5 w-3.5" /> Editar cadastro</button>
+    <button onClick={onFollowUp} className={item}><CalendarClock className="h-3.5 w-3.5 text-[#9c7b24]" /> Criar acompanhamento</button>
     <a href={href} target="_blank" rel="noreferrer" className={item}><MessageCircle className="h-3.5 w-3.5 text-emerald-600" /> Enviar WhatsApp</a>
     <div className="my-1 border-t border-slate-100" />
     <a href={`/processos?clienteId=${client.id}`} className={item}><FolderKanban className="h-3.5 w-3.5" /> Criar ou abrir demanda</a>
