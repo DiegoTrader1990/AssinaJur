@@ -453,12 +453,16 @@ export async function generateFinalPdfCertificate(documentId: string) {
       // clausulado do contrato "vazar" por trás do texto do selo, mas ainda
       // discreto (sem borda), preservando o visual clean pedido.
       p.drawRectangle({
+        // opacity 1 (antes 0.9): com 90%, texto em negrito do documento por trás do selo
+        // ainda "vazava" de forma legível através do fundo branco (foi o que apareceu como
+        // um nome fantasma atrás do selo da Nerci) - o objetivo do fundo é justamente nunca
+        // deixar o clausulado aparecer atrás do selo, então ele precisa ser 100% opaco.
         x: stampX - 4,
         y: textBottomY - 5,
         width: stampW + 8,
         height: textTopY - textBottomY + 10,
         color: rgb(1, 1, 1),
-        opacity: 0.9,
+        opacity: 1,
       });
 
       nameLines.forEach((line, lineIndex) => {
@@ -1152,6 +1156,11 @@ export async function generateFinalPdfCertificate(documentId: string) {
       let photoX = padX + Math.max(0, (innerWidth - photosTotalWidth) / 2);
 
       for (const [label, img] of photoLabels) {
+        // Diagnóstico: se a foto sumir do certificado de novo, isto deixa claro nos logs
+        // do servidor se o dado nem chegou a ser salvo no signatário (Foto ausente) ou se
+        // chegou mas falhou ao ser incorporada no PDF (nesse caso embedBase64Image já loga
+        // o próprio erro) - sem isto, as duas causas eram indistinguíveis.
+        if (!img) console.warn(`Foto ausente no signatário para o certificado: "${label}" (signer ${signer.id}) - selfie não foi capturada/salva na assinatura.`);
         // Alvo de corte quadrado, igual ao quadro de exibição (140x140) - o corte
         // anterior (540x620, retrato) recortava boa parte das laterais da selfie
         // antes mesmo do encaixe final no quadro, dando a impressão de "zoom"
