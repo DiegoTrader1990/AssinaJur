@@ -1040,9 +1040,16 @@ export async function generateFinalPdfCertificate(documentId: string) {
       (signer.signatureImage ? 65 : 0);
     const hasDocPhotos = Boolean(signer.documentFrontImage || signer.documentBackImage);
     if (hasDocPhotos) docPhotoSigners.push(signer);
-    const photosHeight = hasPhotos ? 224 : 0;
-    const panelH = 32 + dataHeight + photosHeight + 8;
+    // A seção de fotos (selfie) NÃO entra mais nesta conta: antes o bloco de
+    // dados + selfie era tratado como uma única peça indivisível, então
+    // sempre que a selfie (224pt) não coubesse no que restava da página, a
+    // seção inteira - inclusive os dados que caberiam tranquilamente - pulava
+    // para a próxima, deixando um vão enorme em branco no fim da página
+    // anterior. Agora os dados do signatário reservam espaço próprio e a
+    // selfie reserva o dela separadamente, logo antes de ser desenhada.
+    const panelH = 32 + dataHeight + 8;
     ensureSpace(panelH + 10);
+    let selfieCardBottomY: number | null = null;
 
     const pTop = y;
     const pY = pTop - panelH;
@@ -1122,6 +1129,21 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
     // SEÇÃO 3: EVIDÊNCIA COLETADA — SELFIE FRONTAL
     if (hasPhotos) {
+      // Cartão único, centralizado, maior que o antigo layout de 3 fotos lado a lado.
+      const boxW = 180;
+      const boxH = 180;
+      const cardH = 202;
+      const gap = 20;
+      const photosTotalWidth = boxW;
+
+      // Reserva espaço só para o cartão da selfie (cardH + o título da seção
+      // acima dele). Se não couber no que resta da página atual, só esta
+      // parte pula para a próxima - os dados do signatário, que já foram
+      // desenhados acima, ficam na página anterior mesmo, sem deixar um vão
+      // enorme em branco como acontecia quando dados+foto eram uma coisa só.
+      y = cursor;
+      ensureSpace(cardH + 12 + 24);
+      cursor = y;
       page.drawText('3. PROVA DE PRESENÇA AO VIVO (REGISTRO FACIAL HD)', {
         x: padX,
         y: cursor,
@@ -1134,13 +1156,12 @@ export async function generateFinalPdfCertificate(documentId: string) {
         ['Selfie Frontal', signer.selfieCenterImage],
       ];
 
-      // Cartão único, centralizado, maior que o antigo layout de 3 fotos lado a lado.
-      const boxW = 180;
-      const boxH = 180;
-      const cardH = 202;
-      const gap = 20;
-      const photosTotalWidth = boxW;
       let photoX = padX + Math.max(0, (innerWidth - photosTotalWidth) / 2);
+      // Guardado fora do bloco "if (hasPhotos)" (via selfieCardBottomY) para
+      // continuar acessível depois dele, ao posicionar o restante do
+      // certificado logo abaixo do cartão da selfie.
+      const cardY = cursor - cardH - 12;
+      selfieCardBottomY = cardY;
 
       for (const [label, img] of photoLabels) {
         // Diagnóstico: se a foto sumir do certificado de novo, isto deixa claro nos logs
@@ -1153,7 +1174,6 @@ export async function generateFinalPdfCertificate(documentId: string) {
         // antes mesmo do encaixe final no quadro, dando a impressão de "zoom"
         // excessivo no rosto. Agora o corte só remove o estritamente necessário.
         const embedded = await embedBase64Image(pdfDoc, img, { width: 600, height: 600 });
-        const cardY = cursor - cardH - 12;
         const labelBarH = 18;
         const imgFrameH = boxH - labelBarH;
         const imgFrameY = cardY + labelBarH;
@@ -1199,7 +1219,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
       }
     }
 
-    y = pY - 14;
+    // Usa a posição final real do cursor (depois dos dados e, se houve, da
+    // selfie) em vez do antigo "pY" fixo - que representava o fim de um
+    // painel de altura pré-calculada que não existe mais como bloco único.
+    y = (selfieCardBottomY ?? cursor) - 14;
   }
 
   // SEÇÃO 4: EVIDÊNCIA COMPLEMENTAR — DOCUMENTO DE IDENTIFICAÇÃO (FRENTE/VERSO)
