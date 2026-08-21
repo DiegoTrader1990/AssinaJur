@@ -236,6 +236,33 @@ export default function DispatchKitPage() {
     setSigners([]);
   };
 
+  // Quando a página já chega com um cliente pré-selecionado (fluxo rápido:
+  // botão "Kit jurídico" no cartão do cliente, que abre esta tela direto com
+  // ?clientId=...), o <select> nunca dispara handleSelectClient - o estado
+  // inicial de selectedClientId já vem preenchido pela URL. Sem isto, um
+  // cliente com representante cadastrado chegava aqui SEM o bloco de
+  // assinatura a rogo ativado automaticamente (o usuário precisava trocar de
+  // cliente e voltar para "acordar" a lógica de handleSelectClient).
+  const appliedInitialClientRef = useRef(false);
+  useEffect(() => {
+    if (appliedInitialClientRef.current) return;
+    if (!selectedClientId || clients.length === 0) return;
+    appliedInitialClientRef.current = true;
+    const client = clients.find((c) => c.id === selectedClientId);
+    if (client?.legalRepresentative) {
+      setIsIlliterate(true);
+      setEnforceSignatureOrder(true);
+      setRogoName(client.legalRepresentative);
+      setRogoCpf(maskCpfCnpj(client.representativeCpf || ''));
+      setRogoRg(client.representativeRg || '');
+      setRogoPhone(maskPhone(client.representativePhone || ''));
+      setRogoRelationship(client.representativeRole || 'Representante cadastrado');
+      setRogoBirthDate(client.representativeBirthDate || '');
+      setRogoSameAddress(Boolean(client.representativeSameAddress));
+      setRogoAddress(client.representativeSameAddress ? '' : (client.representativeAddress || ''));
+    }
+  }, [clients, selectedClientId]);
+
   const handleAddSigner = () => {
     // Nunca crie com papel TESTEMUNHA aqui: esse papel é gerenciado só pelo
     // seletor rápido "Sem/1/2 Testemunhas" dentro do bloco de assinatura a
