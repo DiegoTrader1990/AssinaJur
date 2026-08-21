@@ -186,6 +186,61 @@ export function DocumentRichEditor({
     onChange(afterHtml);
   };
 
+  // Fonte e tamanho NÃO usam mais document.execCommand('fontName'/'fontSize'):
+  // essa API antiga do navegador tem um bug conhecido em que, ao aplicar a
+  // formatação numa seleção que cobre o conteúdo inteiro de um bloco (ex.:
+  // título em <h1> selecionado com triplo-clique), o texto selecionado é
+  // apagado em vez de envolvido pela tag de fonte - foi o que fazia o título
+  // (e outros trechos) sumir ao trocar a fonte/tamanho no editor. Em vez de
+  // depender do execCommand, extraímos manualmente o conteúdo selecionado e o
+  // reinserimos dentro de uma tag <font>, preservando sempre o texto.
+  const applyFontToSelection = (attribute: 'face' | 'size', value: string) => {
+    restoreEditorSelection();
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    if (!editor || !range || range.collapsed || !editor.contains(range.commonAncestorContainer)) {
+      setAiWarning('Selecione um trecho de texto antes de trocar a fonte ou o tamanho.');
+      return;
+    }
+
+    const beforeHtml = editor.innerHTML;
+    try {
+      const fragment = range.extractContents();
+      const font = document.createElement('font');
+      font.setAttribute(attribute, value);
+      font.appendChild(fragment);
+      range.insertNode(font);
+
+      // Reseleciona o conteúdo recém-formatado, para permitir aplicar mais de
+      // um atributo em sequência (ex.: fonte e depois tamanho) sem perder a seleção.
+      const newRange = document.createRange();
+      newRange.selectNodeContents(font);
+      selection?.removeAllRanges();
+      selection?.addRange(newRange);
+      savedRangeRef.current = newRange.cloneRange();
+    } catch (err) {
+      console.error('Erro ao aplicar fonte/tamanho:', err);
+      editor.innerHTML = beforeHtml;
+      setAiWarning('Não foi possível aplicar a formatação nesse trecho. Tente selecionar novamente.');
+      onChange(beforeHtml);
+      return;
+    }
+
+    const afterHtml = editor.innerHTML;
+    const beforeTags = Array.from(new Set(beforeHtml.match(/{{[^}]+}}/g) || []));
+    const afterTags = Array.from(new Set(afterHtml.match(/{{[^}]+}}/g) || []));
+    const missingTags = beforeTags.filter((tag) => !afterTags.includes(tag));
+    if (missingTags.length > 0) {
+      editor.innerHTML = beforeHtml;
+      setAiWarning(`Formatação desfeita: apagaria a(s) variável(is) ${missingTags.join(', ')}. Selecione um trecho que não corte o {{...}} e tente novamente.`);
+      onChange(beforeHtml);
+      return;
+    }
+
+    onChange(afterHtml);
+  };
+
   const applyAlignment = (alignment: 'left' | 'center' | 'right' | 'justify') => {
     restoreEditorSelection();
     const editor = editorRef.current;
@@ -315,7 +370,7 @@ export function DocumentRichEditor({
           Fonte
           <select
             defaultValue="Helvetica"
-            onChange={(event) => executeCommand('fontName', event.target.value)}
+            onChange={(event) => applyFontToSelection('face', event.target.value)}
             className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-700 outline-none focus:border-blue-500"
           >
             {FONT_OPTIONS.map((font) => <option key={font.value} value={font.value}>{font.label}</option>)}
@@ -325,7 +380,7 @@ export function DocumentRichEditor({
           Tamanho
           <select
             defaultValue="2"
-            onChange={(event) => executeCommand('fontSize', event.target.value)}
+            onChange={(event) => applyFontToSelection('size', event.target.value)}
             className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-700 outline-none focus:border-blue-500"
           >
             {FONT_SIZE_OPTIONS.map((size) => <option key={size.value} value={size.value}>{size.label}</option>)}

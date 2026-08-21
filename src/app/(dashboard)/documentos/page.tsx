@@ -1061,9 +1061,9 @@ export default function DocumentsPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleRedoSignature(item, 'redo-document')}
+                              onClick={() => handleRedoSignature(item, 'redo-package')}
                               disabled={redoingIds.has(item.id)}
-                              title="Refazer só este documento, mantendo o mesmo link"
+                              title="Refazer todo o pacote (kit) para manter os documentos sincronizados na mesma sessão de assinatura"
                               className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-700 hover:text-amber-800 disabled:opacity-50"
                             >
                               {redoingIds.has(item.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />} Refazer

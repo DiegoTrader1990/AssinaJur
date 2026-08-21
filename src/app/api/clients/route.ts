@@ -17,7 +17,8 @@ export async function GET(req: Request) {
     const query = searchParams.get('q') || '';
     const legalArea = searchParams.get('legalArea') || '';
 
-    const clients = await prisma.client.findMany({
+    const [clients, processStats, documentStats, pendencyStats] = await Promise.all([
+      prisma.client.findMany({
       where: {
         officeId: user.officeId, // ISOLAMENTO RIGOROSO MULTI-TENANT
         AND: [
@@ -99,7 +100,9 @@ export async function GET(req: Request) {
             category: true,
             priority: true,
             dueDate: true,
+            createdAt: true,
             updatedAt: true,
+            _count: { select: { history: true } },
             responsible: { select: { id: true, name: true } },
           },
           orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }],
@@ -107,9 +110,94 @@ export async function GET(req: Request) {
         },
       },
       orderBy: { createdAt: 'desc' },
+      }),
+      prisma.legalProcess.findMany({
+        where: { officeId: user.officeId },
+        select: {
+          clientId: true,
+          status: true,
+          _count: { select: { activities: true } },
+        },
+      }),
+      prisma.document.findMany({
+        where: { officeId: user.officeId, clientId: { not: null } },
+        select: {
+          clientId: true,
+          status: true,
+          _count: { select: { events: true } },
+        },
+      }),
+      prisma.clientPendency.findMany({
+        where: { officeId: user.officeId, clientId: { not: null } },
+        select: {
+          clientId: true,
+          resolvedAt: true,
+          _count: { select: { history: true } },
+        },
+      }),
+    ]);
+
+    type MovementSummary = {
+      total: number;
+      processes: number;
+      activeProcesses: number;
+      processActivities: number;
+      documents: number;
+      pendingDocuments: number;
+      documentEvents: number;
+      alerts: number;
+      openAlerts: number;
+      alertChanges: number;
+    };
+
+    const movementByClient = new Map<string, MovementSummary>();
+    const summaryFor = (clientId: string) => {
+      const current = movementByClient.get(clientId);
+      if (current) return current;
+      const created: MovementSummary = {
+        total: 0,
+        processes: 0,
+        activeProcesses: 0,
+        processActivities: 0,
+        documents: 0,
+        pendingDocuments: 0,
+        documentEvents: 0,
+        alerts: 0,
+        openAlerts: 0,
+        alertChanges: 0,
+      };
+      movementByClient.set(clientId, created);
+      return created;
+    };
+
+    processStats.forEach((item) => {
+      const summary = summaryFor(item.clientId);
+      summary.processes += 1;
+      summary.processActivities += item._count.activities;
+      if (!['CONCLUIDO', 'ARQUIVADO', 'CANCELADO'].includes(String(item.status || '').toUpperCase())) summary.activeProcesses += 1;
+    });
+    documentStats.forEach((item) => {
+      if (!item.clientId) return;
+      const summary = summaryFor(item.clientId);
+      summary.documents += 1;
+      summary.documentEvents += item._count.events;
+      if (['ENVIADO', 'PENDENTE', 'PARCIALMENTE_ASSINADO'].includes(String(item.status || '').toUpperCase())) summary.pendingDocuments += 1;
+    });
+    pendencyStats.forEach((item) => {
+      if (!item.clientId) return;
+      const summary = summaryFor(item.clientId);
+      summary.alerts += 1;
+      summary.alertChanges += item._count.history;
+      if (!item.resolvedAt) summary.openAlerts += 1;
     });
 
-    return NextResponse.json({ clients });
+    const managedClients = clients.map((client) => {
+      const summary = summaryFor(client.id);
+      summary.total = summary.processes + summary.processActivities + summary.documents + summary.documentEvents + summary.alerts + summary.alertChanges;
+      return { ...client, movementSummary: summary };
+    });
+
+    return NextResponse.json({ clients: managedClients });
   } catch (error: any) {
     console.error('Erro ao listar clientes:', error);
     return NextResponse.json({ error: 'Erro ao buscar clientes.' }, { status: 500 });
