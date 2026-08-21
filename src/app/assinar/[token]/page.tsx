@@ -390,6 +390,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   // o botão ao mesmo tempo.
   const manualCountdownActiveRef = useRef(false);
   const manualCountdownTimeoutRef = useRef<number | null>(null);
+  // Continua sendo atualizado DURANTE a contagem (ver handleFaceMeshResults)
+  // para saber se a pessoa se descentralizou/saiu do quadro no meio da
+  // contagem - se sim, a contagem reinicia em vez de tirar uma foto ruim.
+  const centeredNowRef = useRef(true);
 
   useEffect(() => {
     fetchSignatureData();
@@ -502,7 +506,23 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   };
 
   const handleFaceMeshResults = (results: any) => {
-    if (isCapturingRef.current || manualCountdownActiveRef.current || !streamRef.current) return;
+    if (isCapturingRef.current || !streamRef.current) return;
+
+    if (manualCountdownActiveRef.current) {
+      // Durante a contagem regressiva, o frameState/instrução ficam a cargo
+      // do tick() (ver handleManualCapture) - aqui só atualizamos se a pessoa
+      // continua centralizada, para o tick() poder reiniciar a contagem caso
+      // ela se mexa/saia do quadro no meio da espera.
+      const landmarks = results?.multiFaceLandmarks?.[0];
+      const faceInfo = landmarks ? computeFaceOrientation(landmarks) : null;
+      if (!faceInfo) {
+        centeredNowRef.current = false;
+        return;
+      }
+      centeredNowRef.current = Math.abs(faceInfo.noseRelOffset) <= 0.08 && faceInfo.noseX >= 0.28 && faceInfo.noseX <= 0.72;
+      return;
+    }
+
     const currentKey = activeKeyRef.current;
 
     if (Date.now() < warmupUntilRef.current) {
@@ -740,11 +760,23 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     if (isCapturingRef.current || manualCountdownActiveRef.current) return;
     manualCountdownActiveRef.current = true;
     centeredStartTimeRef.current = null;
+    centeredNowRef.current = true;
     let secsLeft = MANUAL_CAPTURE_COUNTDOWN_SECS;
     setCountdownSecs(secsLeft);
     setFrameState('GREEN');
     setSelfieInstruction(`Fique parado! Tirando a foto em ${secsLeft}s...`);
     const tick = () => {
+      // Se a pessoa se descentralizou/saiu do quadro durante a espera, a
+      // contagem reinicia do zero em vez de continuar e arriscar tirar uma
+      // foto ruim (rosto cortado, fora de posição etc.).
+      if (!centeredNowRef.current) {
+        secsLeft = MANUAL_CAPTURE_COUNTDOWN_SECS;
+        setCountdownSecs(secsLeft);
+        setFrameState('YELLOW');
+        setSelfieInstruction('Recentralize o rosto - reiniciando a contagem...');
+        manualCountdownTimeoutRef.current = window.setTimeout(tick, 1000);
+        return;
+      }
       secsLeft -= 1;
       if (secsLeft <= 0) {
         setCountdownSecs(null);
@@ -754,6 +786,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         return;
       }
       setCountdownSecs(secsLeft);
+      setFrameState('GREEN');
       setSelfieInstruction(`Fique parado! Tirando a foto em ${secsLeft}s...`);
       manualCountdownTimeoutRef.current = window.setTimeout(tick, 1000);
     };
@@ -794,6 +827,25 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       await recordEvidence('LIVENESS_STARTED');
       setFrameState('GRAY');
       playGoogleAudio('intro', audioEnabledRef.current);
+      // O áudio "intro" pré-gravado é de antes do quadrado de documento
+      // existir, então não menciona segurar o documento ao lado do rosto.
+      // Como não é possível gravar um novo áudio aqui, falamos essa parte
+      // extra por síntese de voz do navegador, com um pequeno atraso para
+      // não sobrepor o áudio pré-gravado - dispara só uma vez por abertura
+      // de câmera (não a cada foto/retomada).
+      if (audioEnabledRef.current && typeof window !== 'undefined' && window.speechSynthesis) {
+        window.setTimeout(() => {
+          try {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(
+              'Centralize seu rosto na câmera e segure seu documento de identidade ao lado do rosto, dentro do quadrado indicado. Toque no botão verde quando estiver pronto.'
+            );
+            utterance.lang = 'pt-BR';
+            utterance.rate = 1;
+            window.speechSynthesis.speak(utterance);
+          } catch {}
+        }, 2600);
+      }
       const fm = await initFaceMesh();
       if (fm) {
         fm.onResults(handleFaceMeshResults);
@@ -1038,27 +1090,33 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col justify-between font-sans">
-      <header className="bg-white border-b border-slate-200/80 py-4 px-6 sticky top-0 z-30 shadow-xs">
-        <div className="max-w-md mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#071B3A] text-white font-heading font-extrabold flex items-center justify-center text-lg shadow-md border border-white/10">
-              AJ
+      {/* O cabeçalho fixo some nas telas de câmera (documento/selfie): nelas
+          já não sobra espaço de sobra na tela, e ele forçava a pessoa a
+          rolar para ver o botão de disparo inteiro. Nas demais etapas ele
+          continua normalmente. */}
+      {!['DOCUMENT', 'SELFIE', 'ROGO_DOCUMENT', 'ROGO_SELFIE'].includes(step) && (
+        <header className="bg-white border-b border-slate-200/80 py-4 px-6 sticky top-0 z-30 shadow-xs">
+          <div className="max-w-md mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-[#071B3A] text-white font-heading font-extrabold flex items-center justify-center text-lg shadow-md border border-white/10">
+                AJ
+              </div>
+              <div>
+                <h1 className="font-heading font-extrabold text-[#071B3A] text-base tracking-tight leading-none">
+                  {document?.officeName || 'AssinaJur'}
+                </h1>
+                <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Assinatura Eletrônica Jurídica</p>
+              </div>
             </div>
-            <div>
-              <h1 className="font-heading font-extrabold text-[#071B3A] text-base tracking-tight leading-none">
-                {document?.officeName || 'AssinaJur'}
-              </h1>
-              <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Assinatura Eletrônica Jurídica</p>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-extrabold text-[#071B3A] bg-slate-100 px-3 py-1 rounded-full border border-slate-200 font-heading uppercase tracking-wider">
-              {isRogadoConsent ? 'Fluxo A Rogo' : 'Assinatura'}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-extrabold text-[#071B3A] bg-slate-100 px-3 py-1 rounded-full border border-slate-200 font-heading uppercase tracking-wider">
+                {isRogadoConsent ? 'Fluxo A Rogo' : 'Assinatura'}
+              </span>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       <main className="max-w-md mx-auto w-full mt-4 mb-auto p-4 sm:p-6 space-y-4">
         {error && (
@@ -1210,10 +1268,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               }`}>
                 <video ref={selfieVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
                 {/* Sem a marcação oval de rosto: agora só um quadrado do lado
-                    direito do quadro, indicando onde segurar o documento ao
+                    esquerdo do quadro, indicando onde segurar o documento ao
                     lado do rosto na mesma selfie (evidência de identidade
-                    mais forte que só o rosto sozinho). */}
-                <div className="absolute inset-y-0 right-0 w-[38%] pointer-events-none flex items-center justify-center pr-3">
+                    mais forte que só o rosto sozinho). Limitado entre o topo
+                    e o início da barra do botão (em vez de inset-y-0) para a
+                    borda tracejada não cruzar por cima do botão de disparo. */}
+                <div className="absolute left-0 top-[18%] bottom-[104px] w-[36%] pointer-events-none flex items-center justify-center pl-3">
                   <div className={`w-full aspect-[3/4] rounded-xl border-[3px] border-dashed transition-all duration-300 flex items-end justify-center pb-2 ${
                     frameState === 'GREEN' ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20'
                     : frameState === 'YELLOW' ? 'border-amber-400/70 bg-amber-500/5'

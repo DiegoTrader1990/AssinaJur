@@ -104,6 +104,10 @@ export default function DocumentCapture({
   // depois de já ter apertado, em vez de fotografar no instante do toque.
   const [countdownSecs, setCountdownSecs] = useState<number | null>(null);
   const countdownTimeoutRef = useRef<number | null>(null);
+  // Espelha liveReadiness em ref para ser lido dentro do tick() do
+  // countdown sem depender de closures desatualizadas - se a qualidade
+  // deixar de estar "READY" no meio da contagem, ela reinicia.
+  const liveReadinessRef = useRef<LiveReadiness>('ANALYSING');
   // Instrução falada UMA VEZ por lado (frente/verso), quando a câmera abre -
   // nunca em loop. Usa a Web Speech API (não depende de arquivo de áudio
   // pré-gravado, então funciona para qualquer texto sem gerar novo asset).
@@ -348,6 +352,15 @@ export default function DocumentCapture({
     let secsLeft = DOCUMENT_CAPTURE_COUNTDOWN_SECS;
     setCountdownSecs(secsLeft);
     const tick = () => {
+      // Se a imagem deixou de estar com qualidade aprovada durante a espera
+      // (documento saiu da moldura, ficou fora de foco, perdeu luz etc.), a
+      // contagem reinicia do zero em vez de continuar e tirar uma foto ruim.
+      if (liveReadinessRef.current !== 'READY') {
+        secsLeft = DOCUMENT_CAPTURE_COUNTDOWN_SECS;
+        setCountdownSecs(secsLeft);
+        countdownTimeoutRef.current = window.setTimeout(tick, 1000);
+        return;
+      }
       secsLeft -= 1;
       if (secsLeft <= 0) {
         setCountdownSecs(null);
@@ -367,6 +380,7 @@ export default function DocumentCapture({
     if (phase !== 'LIVE' || !videoDims) return;
     autoCaptureRef.current = false;
     stableFramesRef.current = 0;
+    liveReadinessRef.current = 'ANALYSING';
     setLiveReadiness('ANALYSING');
     setLiveHint('Posicione o documento inteiro dentro da moldura.');
 
@@ -386,6 +400,7 @@ export default function DocumentCapture({
 
       if (!clearEnough) {
         stableFramesRef.current = 0;
+        liveReadinessRef.current = 'ADJUST';
         setLiveReadiness('ADJUST');
         setLiveHint(
           meanLuminance < 65
@@ -398,6 +413,7 @@ export default function DocumentCapture({
       }
 
       stableFramesRef.current += 1;
+      liveReadinessRef.current = 'READY';
       setLiveReadiness('READY');
       setLiveHint('Imagem legível. Toque em "Tirar foto" quando quiser.');
     };
