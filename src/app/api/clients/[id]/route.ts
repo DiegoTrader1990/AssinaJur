@@ -32,7 +32,7 @@ export async function GET(
             dueDate: true,
             protocolNumber: true,
             lastActivityAt: true,
-            _count: { select: { documents: true, attachments: true, activities: true } },
+            _count: { select: { documents: true, attachments: true } },
           },
           orderBy: { lastActivityAt: 'desc' },
         },
@@ -43,28 +43,10 @@ export async function GET(
             status: true,
             completedAt: true,
             createdAt: true,
-            _count: { select: { events: true } },
             process: { select: { id: true, title: true } },
           },
           orderBy: { createdAt: 'desc' },
           take: 20,
-        },
-        pendencies: {
-          where: { resolvedAt: null },
-          select: {
-            id: true,
-            title: true,
-            description: true,
-            status: true,
-            category: true,
-            priority: true,
-            dueDate: true,
-            createdAt: true,
-            updatedAt: true,
-            _count: { select: { history: true } },
-            responsible: { select: { id: true, name: true } },
-          },
-          orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }],
         },
       },
     });
@@ -73,36 +55,7 @@ export async function GET(
       return NextResponse.json({ error: 'Cliente não encontrado.' }, { status: 404 });
     }
 
-    const [processStats, documentStats, pendencyStats] = await Promise.all([
-      prisma.legalProcess.findMany({
-        where: { officeId: user.officeId, clientId: client.id },
-        select: { status: true, _count: { select: { activities: true } } },
-      }),
-      prisma.document.findMany({
-        where: { officeId: user.officeId, clientId: client.id },
-        select: { status: true, _count: { select: { events: true } } },
-      }),
-      prisma.clientPendency.findMany({
-        where: { officeId: user.officeId, clientId: client.id },
-        select: { resolvedAt: true, _count: { select: { history: true } } },
-      }),
-    ]);
-
-    const movementSummary = {
-      processes: processStats.length,
-      activeProcesses: processStats.filter((item) => !['CONCLUIDO', 'ARQUIVADO', 'CANCELADO'].includes(String(item.status || '').toUpperCase())).length,
-      processActivities: processStats.reduce((total, item) => total + item._count.activities, 0),
-      documents: documentStats.length,
-      pendingDocuments: documentStats.filter((item) => ['ENVIADO', 'PENDENTE', 'PARCIALMENTE_ASSINADO'].includes(String(item.status || '').toUpperCase())).length,
-      documentEvents: documentStats.reduce((total, item) => total + item._count.events, 0),
-      alerts: pendencyStats.length,
-      openAlerts: pendencyStats.filter((item) => !item.resolvedAt).length,
-      alertChanges: pendencyStats.reduce((total, item) => total + item._count.history, 0),
-      total: 0,
-    };
-    movementSummary.total = movementSummary.processes + movementSummary.processActivities + movementSummary.documents + movementSummary.documentEvents + movementSummary.alerts + movementSummary.alertChanges;
-
-    return NextResponse.json({ client: { ...client, movementSummary } });
+    return NextResponse.json({ client });
   } catch (error: any) {
     console.error('Erro ao buscar cliente:', error);
     return NextResponse.json({ error: 'Erro ao carregar detalhes do cliente.' }, { status: 500 });
@@ -154,18 +107,21 @@ export async function PUT(
       return NextResponse.json({ error: 'Informe um telefone válido do representante legal.' }, { status: 400 });
     }
     // Endereço do próprio cliente (usado quando o representante mora com ele).
+    // O campo "address" do cadastro já é um texto único (rua, número e bairro
+    // digitados juntos ali mesmo) - não há campos separados editáveis de
+    // número/bairro nesta tela. Incluir também "number"/"neighborhood" aqui
+    // duplicava a informação (às vezes com um bairro antigo de um cadastro
+    // anterior, sem relação com o endereço atual digitado no campo acima) -
+    // foi o que causou o "Salobrinho" aparecendo no endereço da Nerci mesmo
+    // sem estar no campo de endereço visível no formulário.
     const bodyAddress = body.address ?? existingClient.address;
-    const bodyNumber = body.number ?? existingClient.number;
     const bodyComplement = body.complement ?? existingClient.complement;
-    const bodyNeighborhood = body.neighborhood ?? existingClient.neighborhood;
     const bodyCity = body.city ?? existingClient.city;
     const bodyState = body.state ?? existingClient.state;
     const bodyCep = body.cep ?? existingClient.cep;
     const ownAddressText = [
       bodyAddress,
-      bodyNumber && !String(bodyAddress || '').includes(bodyNumber) ? `nº ${bodyNumber}` : '',
       bodyComplement,
-      bodyNeighborhood,
       [bodyCity, bodyState].filter(Boolean).join('/'),
       bodyCep ? `CEP ${bodyCep}` : '',
     ].filter(Boolean).join(', ');

@@ -266,12 +266,17 @@ export async function POST(req: Request) {
         : client.representativeCpf
           ? `inscrito(a) no CPF sob o nº ${formatCpfCnpj(client.representativeCpf)}`
           : '';
-    // Montar mapa completo de variáveis para substituição automática
+    // Montar mapa completo de variáveis para substituição automática.
+    // O campo "address" do cadastro é um texto único (rua, número e bairro
+    // digitados juntos ali mesmo pelo escritório) - "number"/"neighborhood"
+    // são colunas legadas, às vezes preenchidas por extração automática de um
+    // documento antigo (ex.: RG digitalizado) e podem não ter mais relação
+    // com o endereço atual. Incluí-las aqui duplicava/contradizia o endereço
+    // certo já digitado em "address" (ex.: bairro errado aparecendo no
+    // documento gerado, mesmo sem estar no campo de endereço do cadastro).
     const clienteEnderecoText = [
       client.address,
-      client.number && !String(client.address || '').includes(client.number) ? `nº ${client.number}` : '',
       client.complement,
-      client.neighborhood,
       [client.city, client.state].filter(Boolean).join('/'),
       client.cep ? `CEP ${client.cep}` : '',
     ].filter(Boolean).join(', ') || '—';

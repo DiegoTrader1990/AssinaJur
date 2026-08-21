@@ -15,6 +15,7 @@ import {
   Briefcase,
   FileText,
   Clock,
+  History,
   AlertCircle,
   Loader2,
   CheckCircle,
@@ -32,7 +33,6 @@ import {
   RotateCw,
   RotateCcw,
   Pencil,
-  Palette,
   Trash2,
   ShieldAlert
 } from 'lucide-react';
@@ -74,43 +74,11 @@ interface Client {
   legalArea?: string;
   processNumber?: string;
   lawyerInCharge?: { id: string; name: string; oabNumber?: string };
-  processes?: Array<{ id: string; title: string; legalArea?: string; status: string; priority: string; dueDate?: string | null; protocolNumber?: string | null; lastActivityAt: string; _count?: { documents: number; attachments: number; activities?: number } }>;
-  documents?: Array<{ id: string; title: string; status: string; createdAt: string; completedAt?: string | null; _count?: { events: number }; process?: { id: string; title: string } | null }>;
-  pendencies?: Array<{ id: string; title?: string | null; description: string; status: string; category: string; priority: string; dueDate?: string | null; createdAt?: string; updatedAt: string; _count?: { history: number }; responsible?: { id: string; name: string } | null }>;
-  movementSummary?: { total: number; processes: number; activeProcesses: number; processActivities: number; documents: number; pendingDocuments: number; documentEvents: number; alerts: number; openAlerts: number; alertChanges: number };
+  processes?: Array<{ id: string; title: string; legalArea?: string; status: string; priority: string; dueDate?: string | null; protocolNumber?: string | null; lastActivityAt: string; _count?: { documents: number; attachments: number } }>;
+  documents?: Array<{ id: string; title: string; status: string; createdAt: string; completedAt?: string | null; process?: { id: string; title: string } | null }>;
+  pendencies?: Array<{ id: string; title?: string | null; description: string; status: string; category: string; priority: string; dueDate?: string | null; updatedAt: string; responsible?: { id: string; name: string } | null }>;
   createdAt: string;
   updatedAt?: string;
-}
-
-function clientTimeline(client: Client) {
-  const processItems = (client.processes || []).map((item) => ({
-    id: `process-${item.id}`,
-    date: item.lastActivityAt,
-    kind: 'PROCESSO',
-    title: item.title,
-    description: `${item.status.replaceAll('_', ' ')}${item._count?.activities ? ` · ${item._count.activities} registros no histórico` : ''}`,
-    color: 'bg-violet-500',
-  }));
-  const documentItems = (client.documents || []).map((item) => ({
-    id: `document-${item.id}`,
-    date: item.completedAt || item.createdAt,
-    kind: 'DOCUMENTO',
-    title: item.title,
-    description: `${item.status === 'CONCLUIDO' ? 'Documento assinado' : item.status.replaceAll('_', ' ')}${item._count?.events ? ` · ${item._count.events} eventos` : ''}`,
-    color: item.status === 'CONCLUIDO' ? 'bg-emerald-500' : 'bg-blue-500',
-  }));
-  const alertItems = (client.pendencies || []).map((item) => ({
-    id: `alert-${item.id}`,
-    date: item.updatedAt,
-    kind: 'ALERTA',
-    title: item.title || item.description,
-    description: `${item.status.replaceAll('_', ' ')}${item._count?.history ? ` · ${item._count.history} movimentações` : ''}`,
-    color: item.priority === 'URGENTE' ? 'bg-rose-500' : item.priority === 'ALTA' ? 'bg-orange-500' : item.priority === 'NORMAL' ? 'bg-[#c39a25]' : 'bg-slate-400',
-  }));
-  return [...processItems, ...documentItems, ...alertItems]
-    .filter((item) => item.date)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 10);
 }
 
 const EMPTY_CLIENT_FORM = {
@@ -147,15 +115,17 @@ const EMPTY_CLIENT_FORM = {
   processNumber: '',
 };
 
-// Mesma composição de endereço usada em /api/kits/generate-package/route.ts
-// (cliente_endereco), reaproveitada para mostrar o endereço da própria cliente
-// quando o representante marca "mesmo endereço da cliente".
+// Mostra o endereço da própria cliente quando o representante marca "mesmo
+// endereço da cliente". O campo "Endereço Residencial" deste formulário já é
+// um texto único (Rua - Nº - Bairro, tudo digitado junto ali mesmo) - não há
+// campos separados de número/bairro editáveis nesta tela. Usar também
+// data.number/data.neighborhood aqui duplicava informação (às vezes com um
+// bairro antigo, de um cadastro anterior, que não tem mais nada a ver com o
+// endereço atual digitado no campo acima) - por isso não entram mais aqui.
 function formatOwnAddress(data: typeof EMPTY_CLIENT_FORM): string {
   return [
     data.address,
-    data.number && !String(data.address || '').includes(data.number) ? `nº ${data.number}` : '',
     data.complement,
-    data.neighborhood,
     [data.city, data.state].filter(Boolean).join('/'),
     data.cep ? `CEP ${data.cep}` : '',
   ].filter(Boolean).join(', ');
@@ -181,11 +151,6 @@ export default function ClientsPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [showRepresentative, setShowRepresentative] = useState(false);
-  const [followUpClient, setFollowUpClient] = useState<Client | null>(null);
-  const [followUpEditing, setFollowUpEditing] = useState<NonNullable<Client['pendencies']>[number] | null>(null);
-  const [followUpForm, setFollowUpForm] = useState({ title: '', description: '', priority: 'NORMAL', dueDate: '', status: 'PARA_FAZER' });
-  const [savingFollowUp, setSavingFollowUp] = useState(false);
-  const [followUpError, setFollowUpError] = useState('');
 
   // OCR Document Parser State & Transform (Zoom + Pan Mãozinha)
   const [ocrLoading, setOcrLoading] = useState(false);
@@ -313,94 +278,6 @@ export default function ClientsPage() {
     setOcrDocPreview(null);
     setOcrSuccess(false);
     setShowModal(true);
-  };
-
-  const closeFollowUp = () => {
-    setFollowUpClient(null);
-    setFollowUpEditing(null);
-    setFollowUpError('');
-  };
-
-  const openFollowUp = (client: Client, pendency?: NonNullable<Client['pendencies']>[number]) => {
-    setFollowUpClient(client);
-    setFollowUpEditing(pendency || null);
-    setFollowUpForm(pendency ? {
-      title: pendency.title || '',
-      description: pendency.description || '',
-      priority: pendency.priority || 'NORMAL',
-      dueDate: pendency.dueDate ? String(pendency.dueDate).slice(0, 10) : '',
-      status: pendency.status || 'PARA_FAZER',
-    } : { title: '', description: '', priority: 'NORMAL', dueDate: '', status: 'PARA_FAZER' });
-    setFollowUpError('');
-  };
-
-  const saveFollowUp = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!followUpClient || (!followUpForm.title.trim() && !followUpForm.description.trim())) {
-      setFollowUpError('Informe o que precisa ser acompanhado.');
-      return;
-    }
-    setSavingFollowUp(true);
-    setFollowUpError('');
-    try {
-      const response = await fetch(followUpEditing ? `/api/pendencias/${followUpEditing.id}` : '/api/pendencias', {
-        method: followUpEditing ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clientId: followUpClient.id,
-          title: followUpForm.title.trim(),
-          description: followUpForm.description.trim() || followUpForm.title.trim(),
-          priority: followUpForm.priority,
-          dueDate: followUpForm.dueDate || null,
-          status: followUpForm.status,
-          ...(!followUpEditing ? { category: 'ATENDIMENTO', source: 'CENTRAL_CLIENTES' } : {}),
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Não foi possível salvar o acompanhamento.');
-      closeFollowUp();
-      await fetchClients();
-      const selectedClientId = selectedClient?.id;
-      if (selectedClientId && selectedClientId === data.pendency?.clientId) {
-        const updated = await fetch(`/api/clients/${selectedClientId}`, { cache: 'no-store' });
-        if (updated.ok) {
-          const detail = await updated.json();
-          if (detail.client) setSelectedClient(detail.client);
-        }
-      }
-    } catch (error: any) {
-      setFollowUpError(error.message || 'Erro ao criar acompanhamento.');
-    } finally {
-      setSavingFollowUp(false);
-    }
-  };
-
-  const resolveFollowUp = async () => {
-    if (!followUpEditing) return;
-    setSavingFollowUp(true);
-    setFollowUpError('');
-    try {
-      const response = await fetch(`/api/pendencias/${followUpEditing.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resolved: true }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Não foi possível resolver o alerta.');
-      closeFollowUp();
-      await fetchClients();
-      if (selectedClient) {
-        const updated = await fetch(`/api/clients/${selectedClient.id}`, { cache: 'no-store' });
-        if (updated.ok) {
-          const detail = await updated.json();
-          if (detail.client) setSelectedClient(detail.client);
-        }
-      }
-    } catch (error: any) {
-      setFollowUpError(error.message || 'Erro ao resolver alerta.');
-    } finally {
-      setSavingFollowUp(false);
-    }
   };
 
   const openClientDossier = async (client: Client) => {
@@ -633,7 +510,6 @@ export default function ClientsPage() {
         onCreate={openCreateClient}
         onOpen={(client) => openClientDossier(client as Client)}
         onEdit={(client) => openEditClient(client as Client)}
-        onCreateFollowUp={(client, pendency) => openFollowUp(client as Client, pendency as NonNullable<Client['pendencies']>[number] | undefined)}
         onDelete={(client) => {
           setClientToDelete(client as Client);
           setDeleteConfirmation('');
@@ -1141,33 +1017,29 @@ export default function ClientsPage() {
         document.body
       )}
 
-      {/* Ficha operacional: modal central, sem navegação lateral */}
-      {selectedClient && mounted && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-[#071B3A]/55 p-3 font-sans backdrop-blur-[4px] sm:p-6" onMouseDown={(event) => { if (event.currentTarget === event.target) setSelectedClient(null); }}>
-          <section role="dialog" aria-modal="true" aria-label={`Ficha de ${selectedClient.name}`} className="relative flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-[0_35px_100px_-28px_rgba(7,27,58,.72)]">
-            <div className="h-1 shrink-0 bg-gradient-to-r from-[#b98f17] via-[#e1c45b] to-[#b98f17]" />
-            <header className="shrink-0 border-b border-slate-100 bg-white px-5 py-5 sm:px-7">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex min-w-0 items-center gap-4">
-                  <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-2xl bg-[#071B3A] font-heading text-sm font-black text-[#e3c45e] shadow-[0_12px_26px_-16px_rgba(7,27,58,.9)] sm:h-14 sm:w-14">{selectedClient.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()}</div>
-                  <div className="min-w-0">
-                    <div className="mb-1.5 flex flex-wrap items-center gap-2"><span className="text-[8px] font-black uppercase tracking-[.2em] text-[#a57e11]">Ficha operacional</span>{selectedClient.legalArea && <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[8px] font-bold text-slate-500">{selectedClient.legalArea}</span>}</div>
-                    <h2 className="truncate font-heading text-lg font-black text-[#071B3A] sm:text-xl">{selectedClient.name}</h2>
-                    <p className="mt-1 text-[10px] font-semibold text-slate-400 sm:text-[11px]">{maskCpfCnpj(selectedClient.cpfCnpj)}{selectedClient.city ? ` · ${selectedClient.city}${selectedClient.state ? `/${selectedClient.state}` : ''}` : ''}</p>
-                  </div>
+      {/* Client 360: box centralizado (ficha completa do cliente) */}
+      {selectedClient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#071B3A]/55 p-3 font-sans backdrop-blur-[3px] sm:p-6" onMouseDown={(event) => { if (event.currentTarget === event.target) setSelectedClient(null); }}>
+          <aside className="flex h-full max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_90px_-25px_rgba(7,27,58,.55)]">
+            <header className="relative overflow-hidden bg-[#071B3A] px-5 pb-5 pt-6 text-white sm:px-7">
+              <div className="pointer-events-none absolute -right-14 -top-20 h-52 w-52 rounded-full border border-white/10 bg-white/[.035]" />
+              <div className="relative flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-center gap-3.5">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10 font-heading text-sm font-black">{selectedClient.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()}</div>
+                  <div className="min-w-0"><div className="mb-1 flex flex-wrap items-center gap-1.5"><span className="rounded-full border border-[#d6b23f]/35 bg-[#d6b23f]/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-[#efd77f]">Client 360</span>{selectedClient.legalArea && <span className="rounded-full border border-white/15 px-2 py-0.5 text-[8px] font-bold text-slate-300">{selectedClient.legalArea}</span>}</div><h2 className="truncate font-heading text-lg font-black">{selectedClient.name}</h2><p className="mt-1 text-[10px] font-semibold text-slate-300">{maskCpfCnpj(selectedClient.cpfCnpj)}{selectedClient.city ? ` · ${selectedClient.city}${selectedClient.state ? `/${selectedClient.state}` : ''}` : ''}</p></div>
                 </div>
-                <button onClick={() => setSelectedClient(null)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition hover:border-slate-300 hover:bg-slate-50 hover:text-[#071B3A]" aria-label="Fechar ficha"><X className="h-4 w-4" /></button>
+                <button onClick={() => setSelectedClient(null)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[.06] text-slate-300 transition hover:bg-white/10 hover:text-white"><X className="h-4 w-4" /></button>
+              </div>
+
+              <div className="relative mt-5 grid grid-cols-3 gap-2 sm:grid-cols-6">
+                <a href={`https://wa.me/${String(selectedClient.whatsapp || selectedClient.phone || '').replace(/\D/g, '').startsWith('55') ? String(selectedClient.whatsapp || selectedClient.phone || '').replace(/\D/g, '') : `55${String(selectedClient.whatsapp || selectedClient.phone || '').replace(/\D/g, '')}`}`} target="_blank" rel="noreferrer" className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-white/[.055] px-2 py-2.5 text-[8px] font-bold text-slate-200 transition hover:bg-white/10"><Phone className="h-3.5 w-3.5 text-emerald-400" /> WhatsApp</a>
+                <a href={`/documentos/novo?clientId=${selectedClient.id}`} className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-white/[.055] px-2 py-2.5 text-[8px] font-bold text-slate-200 transition hover:bg-white/10"><FileText className="h-3.5 w-3.5 text-sky-300" /> Documento</a>
+                <a href={`/kits/enviar?clientId=${selectedClient.id}`} className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-white/[.055] px-2 py-2.5 text-[8px] font-bold text-slate-200 transition hover:bg-white/10"><Sparkles className="h-3.5 w-3.5 text-[#efd77f]" /> Kit jurídico</a>
+                <a href={`/processos?clienteId=${selectedClient.id}`} className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-white/[.055] px-2 py-2.5 text-[8px] font-bold text-slate-200 transition hover:bg-white/10"><FolderOpen className="h-3.5 w-3.5 text-violet-300" /> Demanda</a>
+                <button onClick={() => openEditClient(selectedClient)} className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-white/[.055] px-2 py-2.5 text-[8px] font-bold text-slate-200 transition hover:bg-white/10"><Pencil className="h-3.5 w-3.5" /> Editar</button>
+                <a href={`/processos?clienteId=${selectedClient.id}`} className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-white/[.055] px-2 py-2.5 text-[8px] font-bold text-slate-200 transition hover:bg-white/10"><History className="h-3.5 w-3.5" /> Histórico</a>
               </div>
             </header>
-
-            <div className="grid shrink-0 grid-cols-3 border-b border-slate-200 bg-[#f8fafc] px-4 py-3 sm:grid-cols-6 sm:px-6">
-              <a href={`https://wa.me/${String(selectedClient.whatsapp || selectedClient.phone || '').replace(/\D/g, '').startsWith('55') ? String(selectedClient.whatsapp || selectedClient.phone || '').replace(/\D/g, '') : `55${String(selectedClient.whatsapp || selectedClient.phone || '').replace(/\D/g, '')}`}`} target="_blank" rel="noreferrer" className="group flex min-h-12 items-center justify-center gap-2 rounded-xl px-2 text-[9px] font-extrabold text-slate-600 transition hover:bg-white hover:text-[#071B3A] hover:shadow-sm"><Phone className="h-3.5 w-3.5 text-emerald-600" /> WhatsApp</a>
-              <a href={`/documentos/novo?clientId=${selectedClient.id}`} className="group flex min-h-12 items-center justify-center gap-2 rounded-xl px-2 text-[9px] font-extrabold text-slate-600 transition hover:bg-white hover:text-[#071B3A] hover:shadow-sm"><FileText className="h-3.5 w-3.5 text-blue-600" /> Documento</a>
-              <a href={`/kits/enviar?clientId=${selectedClient.id}`} className="group flex min-h-12 items-center justify-center gap-2 rounded-xl px-2 text-[9px] font-extrabold text-slate-600 transition hover:bg-white hover:text-[#071B3A] hover:shadow-sm"><Sparkles className="h-3.5 w-3.5 text-[#b88c14]" /> Kit jurídico</a>
-              <a href={`/processos?clienteId=${selectedClient.id}`} className="group flex min-h-12 items-center justify-center gap-2 rounded-xl px-2 text-[9px] font-extrabold text-slate-600 transition hover:bg-white hover:text-[#071B3A] hover:shadow-sm"><FolderOpen className="h-3.5 w-3.5 text-violet-600" /> Demanda</a>
-              <button onClick={() => { const client = selectedClient; setSelectedClient(null); openEditClient(client); }} className="group flex min-h-12 items-center justify-center gap-2 rounded-xl px-2 text-[9px] font-extrabold text-slate-600 transition hover:bg-white hover:text-[#071B3A] hover:shadow-sm"><Pencil className="h-3.5 w-3.5 text-slate-500" /> Editar</button>
-              <button onClick={() => openFollowUp(selectedClient)} className="group flex min-h-12 items-center justify-center gap-2 rounded-xl px-2 text-[9px] font-extrabold text-slate-600 transition hover:bg-white hover:text-[#071B3A] hover:shadow-sm"><Clock className="h-3.5 w-3.5 text-[#a27a11]" /> Acompanhar</button>
-            </div>
 
             <nav className="flex shrink-0 overflow-x-auto border-b border-slate-200 bg-white px-4 text-[10px] font-black text-slate-400 sm:px-6">
               {[['resumo', 'Visão geral'], ['pessoais', 'Dados pessoais'], ['documentos', 'Processos e documentos']].map(([key, label]) => <button key={key} onClick={() => setActiveTab(key as typeof activeTab)} className={`whitespace-nowrap border-b-2 px-3 py-3.5 transition ${activeTab === key ? 'border-blue-600 text-blue-700' : 'border-transparent hover:text-slate-700'}`}>{label}</button>)}
@@ -1176,27 +1048,18 @@ export default function ClientsPage() {
             <div className="flex-1 overflow-y-auto bg-[#f7f9fc] px-5 py-5 text-xs sm:px-7">
               {activeTab === 'resumo' && (
                 <div className="space-y-5">
-                  <section><div className="mb-2.5 flex items-center justify-between gap-3"><p className="text-[9px] font-black uppercase tracking-[.14em] text-slate-400">Acompanhamentos e próxima ação</p><div className="flex items-center gap-2"><span className="rounded-full bg-white px-2 py-1 text-[9px] font-bold text-slate-500 shadow-sm">{selectedClient.pendencies?.length || 0} abertos</span><button onClick={() => openFollowUp(selectedClient)} className="rounded-lg border border-[#dec66e] bg-[#fffaf0] px-2.5 py-1.5 text-[8px] font-black text-[#7d5f0d] transition hover:bg-[#f8edc4]">+ Acompanhamento</button></div></div>
-                    <div className="space-y-2">{selectedClient.pendencies?.slice(0, 6).map((pendency) => <div key={pendency.id} className={`rounded-2xl border bg-white p-3.5 shadow-sm ${pendency.priority === 'URGENTE' ? 'border-rose-200' : pendency.priority === 'ALTA' ? 'border-orange-200' : pendency.priority === 'NORMAL' ? 'border-[#eadca9]' : 'border-slate-200'}`}><div className="flex items-start gap-3"><span className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${pendency.priority === 'URGENTE' ? 'bg-rose-500' : pendency.priority === 'ALTA' ? 'bg-orange-500' : pendency.priority === 'NORMAL' ? 'bg-[#c39a25]' : 'bg-slate-400'}`} /><div className="min-w-0 flex-1"><strong className="block text-[11px] font-black text-[#071B3A]">{pendency.title || pendency.description}</strong><p className="mt-1 line-clamp-2 text-[10px] leading-4 text-slate-500">{pendency.description}</p><div className="mt-2 flex flex-wrap items-center gap-2 text-[8px] font-bold uppercase tracking-wide text-slate-400">{pendency.dueDate && <span className={new Date(pendency.dueDate) < new Date() ? 'text-rose-600' : 'text-amber-700'}>Prazo {new Date(pendency.dueDate).toLocaleDateString('pt-BR')}</span>}{pendency.responsible && <span>Responsável: {pendency.responsible.name}</span>}{pendency._count?.history ? <span>{pendency._count.history} movimentações</span> : null}</div></div><button onClick={() => openFollowUp(selectedClient, pendency)} className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-2 text-[8px] font-black text-slate-500 transition hover:border-[#dec66e] hover:bg-[#fffaf0] hover:text-[#7d5f0d]"><Pencil className="h-3 w-3" /> Gerenciar</button></div></div>)}{!selectedClient.pendencies?.length && <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 text-[11px] font-bold text-emerald-700"><Check className="mr-2 inline h-4 w-4" />Nenhuma pendência aberta para este cliente.</div>}</div>
-                  </section>
-
-                  <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    {[
-                      ['Movimentações', selectedClient.movementSummary?.total || 0, 'text-[#a57e11]'],
-                      ['Processos ativos', selectedClient.movementSummary?.activeProcesses || 0, 'text-violet-600'],
-                      ['Documentos', selectedClient.movementSummary?.documents || 0, 'text-blue-600'],
-                      ['Alertas abertos', selectedClient.movementSummary?.openAlerts || 0, 'text-orange-600'],
-                    ].map(([label, value, color]) => <div key={String(label)} className="rounded-2xl border border-slate-200 bg-white px-3.5 py-3 shadow-sm"><strong className={`font-heading text-xl font-black ${color}`}>{value}</strong><span className="mt-1 block text-[8px] font-black uppercase tracking-[.1em] text-slate-400">{label}</span></div>)}
+                  <section><div className="mb-2.5 flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-[.14em] text-slate-400">Pendências e próxima ação</p><span className="rounded-full bg-white px-2 py-1 text-[9px] font-bold text-slate-500 shadow-sm">{selectedClient.pendencies?.length || 0} abertas</span></div>
+                    <div className="space-y-2">{selectedClient.pendencies?.slice(0, 4).map((pendency) => <div key={pendency.id} className={`rounded-2xl border bg-white p-3.5 shadow-sm ${pendency.priority === 'URGENTE' ? 'border-rose-200' : 'border-slate-200'}`}><div className="flex items-start gap-3"><span className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${pendency.priority === 'URGENTE' ? 'bg-rose-500' : pendency.status === 'AGUARDANDO_CLIENTE' ? 'bg-violet-500' : 'bg-amber-500'}`} /><div className="min-w-0 flex-1"><strong className="block text-[11px] font-black text-[#071B3A]">{pendency.title || pendency.description}</strong><p className="mt-1 line-clamp-2 text-[10px] leading-4 text-slate-500">{pendency.description}</p><div className="mt-2 flex flex-wrap items-center gap-2 text-[8px] font-bold uppercase tracking-wide text-slate-400">{pendency.dueDate && <span className={new Date(pendency.dueDate) < new Date() ? 'text-rose-600' : 'text-amber-700'}>Prazo {new Date(pendency.dueDate).toLocaleDateString('pt-BR')}</span>}{pendency.responsible && <span>Responsável: {pendency.responsible.name}</span>}</div></div></div></div>)}{!selectedClient.pendencies?.length && <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 text-[11px] font-bold text-emerald-700"><Check className="mr-2 inline h-4 w-4" />Nenhuma pendência aberta para este cliente.</div>}</div>
                   </section>
 
                   <section className="grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Contato principal</p><div className="mt-3 flex items-center gap-2 font-black text-[#071B3A]"><Phone className="h-4 w-4 text-blue-600" />{maskPhone(selectedClient.phone)}</div><div className="mt-2 flex min-w-0 items-center gap-2 text-[10px] font-semibold text-slate-500"><Mail className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{selectedClient.email || 'E-mail não informado'}</span></div></div><div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Gestão jurídica</p><div className="mt-3 flex items-center gap-2 font-black text-[#071B3A]"><Scale className="h-4 w-4 text-blue-600" />{selectedClient.legalArea || 'Área geral'}</div><p className="mt-2 text-[10px] font-semibold text-slate-500">Responsável: {selectedClient.lawyerInCharge?.name || 'Não definido'}</p></div></section>
 
-                  <section><div className="mb-2.5 flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-[.14em] text-slate-400">Linha do tempo operacional</p><span className="text-[8px] font-bold text-slate-400">Processos, documentos e alertas</span></div><div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="space-y-4">{clientTimeline(selectedClient).map((movement, index, items) => <div key={movement.id} className="relative flex gap-3"><span className={`relative z-10 mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ring-4 ring-white ${movement.color}`} />{index < items.length - 1 && <span className="absolute left-[4px] top-4 h-[calc(100%+8px)] w-px bg-slate-200" />}<div className="min-w-0 flex-1 pb-1"><div className="flex items-start justify-between gap-3"><strong className="block truncate text-[10px] font-extrabold text-slate-700">{movement.title}</strong><span className="shrink-0 text-[8px] font-bold text-slate-400">{new Date(movement.date).toLocaleDateString('pt-BR')}</span></div><span className="mt-1 block text-[8px] font-black uppercase tracking-[.09em] text-slate-400">{movement.kind}</span><span className="mt-1 block text-[9px] text-slate-500">{movement.description}</span></div></div>)}{!clientTimeline(selectedClient).length && <p className="text-[10px] text-slate-400">Nenhuma movimentação operacional registrada.</p>}</div></div></section>
+                  <section><p className="mb-2.5 text-[9px] font-black uppercase tracking-[.14em] text-slate-400">Movimentações recentes</p><div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="space-y-4">{selectedClient.documents?.slice(0, 4).map((document, index) => <div key={document.id} className="relative flex gap-3"><span className={`relative z-10 mt-1.5 h-2 w-2 shrink-0 rounded-full ${document.status === 'CONCLUIDO' ? 'bg-emerald-500' : 'bg-blue-500'}`} />{index < Math.min((selectedClient.documents?.length || 0), 4) - 1 && <span className="absolute left-[3px] top-4 h-7 w-px bg-slate-200" />}<div className="min-w-0 flex-1"><strong className="block truncate text-[10px] font-extrabold text-slate-700">{document.title}</strong><span className="mt-1 block text-[9px] text-slate-400">{new Date(document.completedAt || document.createdAt).toLocaleDateString('pt-BR')} · {document.status === 'CONCLUIDO' ? 'Documento assinado' : document.status.replaceAll('_', ' ')}</span></div></div>)}{!selectedClient.documents?.length && <p className="text-[10px] text-slate-400">Nenhuma movimentação documental registrada.</p>}</div></div></section>
                 </div>
               )}
 
               {activeTab === 'pessoais' && (
-                <div className="space-y-4"><section className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2"><DataItem label="CPF/CNPJ" value={maskCpfCnpj(selectedClient.cpfCnpj)} /><DataItem label="RG / Órgão expedidor" value={[selectedClient.rg, selectedClient.issuingOrgan].filter(Boolean).join(' · ') || 'Não informado'} /><DataItem label="Nascimento" value={selectedClient.birthDate ? new Date(`${selectedClient.birthDate}T12:00:00`).toLocaleDateString('pt-BR') : 'Não informado'} /><DataItem label="Estado civil" value={selectedClient.maritalStatus || 'Não informado'} /><DataItem label="Nacionalidade" value={selectedClient.nationality || 'Não informado'} /><DataItem label="Profissão" value={selectedClient.profession || 'Não informado'} /><DataItem label="Endereço" value={[selectedClient.address, selectedClient.number, selectedClient.neighborhood, selectedClient.city && `${selectedClient.city}/${selectedClient.state || ''}`, selectedClient.cep && `CEP ${selectedClient.cep}`].filter(Boolean).join(', ') || 'Não informado'} wide /></section>{selectedClient.legalRepresentative && <section className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4"><p className="text-[9px] font-black uppercase tracking-wider text-blue-700">Representante legal</p><p className="mt-2 text-[11px] font-black text-[#071B3A]">{selectedClient.legalRepresentative}</p><p className="mt-1 text-[10px] text-slate-500">{selectedClient.representativeRole || 'Representante'} · CPF {maskCpfCnpj(selectedClient.representativeCpf || '')}</p></section>}</div>
+                <div className="space-y-4"><section className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2"><DataItem label="CPF/CNPJ" value={maskCpfCnpj(selectedClient.cpfCnpj)} /><DataItem label="RG / Órgão expedidor" value={[selectedClient.rg, selectedClient.issuingOrgan].filter(Boolean).join(' · ') || 'Não informado'} /><DataItem label="Nascimento" value={selectedClient.birthDate ? new Date(`${selectedClient.birthDate}T12:00:00`).toLocaleDateString('pt-BR') : 'Não informado'} /><DataItem label="Estado civil" value={selectedClient.maritalStatus || 'Não informado'} /><DataItem label="Nacionalidade" value={selectedClient.nationality || 'Não informado'} /><DataItem label="Profissão" value={selectedClient.profession || 'Não informado'} /><DataItem label="Endereço" value={[selectedClient.address, selectedClient.city && `${selectedClient.city}/${selectedClient.state || ''}`, selectedClient.cep && `CEP ${selectedClient.cep}`].filter(Boolean).join(', ') || 'Não informado'} wide /></section>{selectedClient.legalRepresentative && <section className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4"><p className="text-[9px] font-black uppercase tracking-wider text-blue-700">Representante legal</p><p className="mt-2 text-[11px] font-black text-[#071B3A]">{selectedClient.legalRepresentative}</p><p className="mt-1 text-[10px] text-slate-500">{selectedClient.representativeRole || 'Representante'} · CPF {maskCpfCnpj(selectedClient.representativeCpf || '')}</p></section>}</div>
               )}
 
               {activeTab === 'documentos' && (
@@ -1205,42 +1068,8 @@ export default function ClientsPage() {
             </div>
 
             <footer className="flex shrink-0 items-center justify-between border-t border-slate-200 bg-white px-5 py-3 sm:px-7"><button onClick={() => { setClientToDelete(selectedClient); setDeleteConfirmation(''); setFormError(''); }} className="text-[9px] font-bold text-slate-400 transition hover:text-rose-600">Excluir cliente</button><button onClick={() => setSelectedClient(null)} className="rounded-xl bg-[#071B3A] px-5 py-2.5 text-[10px] font-black text-white">Fechar</button></footer>
-          </section>
-        </div>,
-        document.body
-      )}
-
-      {/* Novo acompanhamento vinculado ao cliente e às prioridades do painel */}
-      {followUpClient && mounted && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[10030] flex items-center justify-center bg-[#071B3A]/60 p-3 font-sans backdrop-blur-[4px]" onMouseDown={(event) => { if (event.currentTarget === event.target && !savingFollowUp) closeFollowUp(); }}>
-          <form onSubmit={saveFollowUp} className="w-full max-w-xl overflow-hidden rounded-[26px] border border-white/70 bg-white shadow-[0_35px_100px_-28px_rgba(7,27,58,.78)]">
-            <div className="h-1 bg-gradient-to-r from-[#b98f17] via-[#e1c45b] to-[#b98f17]" />
-            <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-5 sm:px-6">
-              <div className="flex min-w-0 items-center gap-3.5"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#071B3A] text-[#e3c45e]">{followUpEditing ? <Palette className="h-5 w-5" /> : <Clock className="h-5 w-5" />}</span><div className="min-w-0"><p className="text-[8px] font-black uppercase tracking-[.18em] text-[#a57e11]">Central de acompanhamento</p><h2 className="mt-1 font-heading text-lg font-black text-[#071B3A]">{followUpEditing ? 'Gerenciar alerta do cliente' : 'Nova ação do cliente'}</h2><p className="mt-1 truncate text-[10px] font-semibold text-slate-400">{followUpClient.name}</p></div></div>
-              <button type="button" onClick={closeFollowUp} disabled={savingFollowUp} className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-400 transition hover:bg-slate-50 hover:text-[#071B3A]" aria-label="Fechar"><X className="h-4 w-4" /></button>
-            </header>
-
-            <div className="space-y-4 px-5 py-5 sm:px-6">
-              <label className="block"><span className="mb-1.5 block text-[9px] font-black uppercase tracking-[.12em] text-slate-500">O que precisa ser feito? *</span><input autoFocus value={followUpForm.title} onChange={(event) => setFollowUpForm((current) => ({ ...current, title: event.target.value }))} placeholder="Ex.: Entrar em contato para solicitar documentos" className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-xs font-bold text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-50" /></label>
-              <label className="block"><span className="mb-1.5 block text-[9px] font-black uppercase tracking-[.12em] text-slate-500">Observação</span><textarea value={followUpForm.description} onChange={(event) => setFollowUpForm((current) => ({ ...current, description: event.target.value }))} placeholder="Inclua os detalhes necessários para qualquer advogado entender a tarefa." rows={3} className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-xs font-medium leading-5 text-slate-700 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-50" /></label>
-
-               <div><span className="mb-2 block text-[9px] font-black uppercase tracking-[.12em] text-slate-500">Cor e prioridade do alerta</span><div className="grid grid-cols-4 gap-2">{[
-                ['BAIXA', 'Baixa', 'border-slate-200 bg-slate-50 text-slate-600'],
-                ['NORMAL', 'Normal', 'border-[#dec66e] bg-[#fffaf0] text-[#7d5f0d]'],
-                ['ALTA', 'Alta', 'border-orange-200 bg-orange-50 text-orange-700'],
-                ['URGENTE', 'Urgente', 'border-rose-200 bg-rose-50 text-rose-700'],
-              ].map(([value, label, colors]) => <button key={value} type="button" onClick={() => setFollowUpForm((current) => ({ ...current, priority: value }))} className={`rounded-xl border px-2 py-2.5 text-[9px] font-black transition ${colors} ${followUpForm.priority === value ? 'ring-2 ring-[#071B3A]/15 shadow-sm' : 'opacity-65 hover:opacity-100'}`}>{label}</button>)}</div></div>
-
-              <div className="grid gap-3 sm:grid-cols-2"><label><span className="mb-1.5 block text-[9px] font-black uppercase tracking-[.12em] text-slate-500">Prazo</span><input type="date" value={followUpForm.dueDate} onChange={(event) => setFollowUpForm((current) => ({ ...current, dueDate: event.target.value }))} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none focus:border-blue-400" /></label><label><span className="mb-1.5 block text-[9px] font-black uppercase tracking-[.12em] text-slate-500">Situação inicial</span><select value={followUpForm.status} onChange={(event) => setFollowUpForm((current) => ({ ...current, status: event.target.value }))} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none focus:border-blue-400"><option value="PARA_FAZER">Para fazer</option><option value="EM_ANDAMENTO">Em andamento</option><option value="AGUARDANDO_CLIENTE">Aguardando cliente</option></select></label></div>
-
-              {followUpError && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[10px] font-bold text-rose-700">{followUpError}</div>}
-               <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2.5 text-[9px] font-semibold leading-4 text-blue-800">A cor escolhida passa a sinalizar este cliente na carteira e o alerta também fica visível nas prioridades do painel do escritório.</div>
-            </div>
-
-            <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-4 sm:px-6"><div>{followUpEditing && <button type="button" onClick={resolveFollowUp} disabled={savingFollowUp} className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-[10px] font-black text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-60"><CheckCircle className="h-3.5 w-3.5" /> Resolver alerta</button>}</div><div className="flex items-center gap-2"><button type="button" onClick={closeFollowUp} disabled={savingFollowUp} className="h-10 rounded-xl px-4 text-[10px] font-black text-slate-500 hover:bg-white">Cancelar</button><button type="submit" disabled={savingFollowUp} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#071B3A] px-5 text-[10px] font-black text-white shadow-[0_12px_24px_-16px_rgba(7,27,58,.9)] disabled:opacity-60">{savingFollowUp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5 text-[#e3c45e]" />} {followUpEditing ? 'Salvar alterações' : 'Criar acompanhamento'}</button></div></footer>
-          </form>
-        </div>,
-        document.body
+          </aside>
+        </div>
       )}
 
       {/* Confirmação segura de exclusão */}

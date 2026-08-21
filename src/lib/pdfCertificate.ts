@@ -231,7 +231,7 @@ const PUBLIC_EVENT_LABELS: Record<string, string> = {
   SELFIE_CENTER_VALIDATED: 'Imagem frontal validada',
   SELFIE_LEFT_VALIDATED: 'Perfil esquerdo validado',
   SELFIE_RIGHT_VALIDATED: 'Perfil direito validado',
-  LIVENESS_CAPTURED: 'Prova de presença concluída (3 registros faciais)',
+  LIVENESS_CAPTURED: 'Prova de presença concluída (registro facial)',
   CONSENT_ACCEPTED: 'Declaração de ciência e concordância aceita',
   SIGNATURE_SUBMITTED: 'Assinatura eletrônica registrada',
   DOCUMENT_COMPLETED: 'Documento finalizado e certificado emitido',
@@ -493,7 +493,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       // em relação à base do selo - antes isso abria um vão grande quando o
       // texto de cima era curto (1 signatário) e quase colava quando era
       // longo (assinatura a rogo, 2 CPFs). Agora sempre acompanha o texto.
-      p.drawText(doc.signers.length > 1 ? `${doc.signers.length} CPFs + SELFIES + GEOLOCALIZAÇÃO` : 'CPF + 3 SELFIES + GEOLOCALIZAÇÃO', { x: contentX, y: qualificationY - 9, size: 5.1, font: regular, color: text });
+      p.drawText(doc.signers.length > 1 ? `${doc.signers.length} CPFs + SELFIES + GEOLOCALIZAÇÃO` : 'CPF + SELFIE + GEOLOCALIZAÇÃO', { x: contentX, y: qualificationY - 9, size: 5.1, font: regular, color: text });
       p.drawText(formatBrasiliaDateTime(signedAt, false).replace(/\s*\(.+$/, ''), { x: contentX, y: qualificationY - 17, size: 5.1, font: regular, color: muted });
       p.drawText(`CÓD: ${verificationCode}`, { x: contentX, y: bottomLineY, size: 6.8, font: bold, color: navy });
       // Traco dourado colado logo abaixo do código, curto e um pouco mais
@@ -706,16 +706,14 @@ export async function generateFinalPdfCertificate(documentId: string) {
     compactLabel(leftX, 505, 'Dispositivo e navegador');
     compactValue(leftX, 493, parseUserAgentFriendly(signer.userAgent), CW - 28, 7.8, bold, navy, 1);
 
-    certificatePage.drawText('2. PROVA DE PRESENÇA AO VIVO - 3 REGISTROS FACIAIS', { x: CX, y: 458, size: 7.4, font: bold, color: navy });
+    certificatePage.drawText('2. PROVA DE PRESENÇA AO VIVO - REGISTRO FACIAL', { x: CX, y: 458, size: 7.4, font: bold, color: navy });
     const compactPhotos: Array<[string, string | null]> = [
-      ['1  FRONTAL', signer.selfieCenterImage],
-      ['2  PERFIL ESQUERDO', signer.selfieLeftImage],
-      ['3  PERFIL DIREITO', signer.selfieRightImage],
+      ['FRONTAL', signer.selfieCenterImage],
     ];
     const compactPhotoW = 140;
     const compactPhotoH = 132;
     const compactPhotoGap = 27;
-    let compactPhotoX = CX + (CW - (compactPhotoW * 3 + compactPhotoGap * 2)) / 2;
+    let compactPhotoX = CX + (CW - compactPhotoW) / 2;
     for (const [label, imageData] of compactPhotos) {
       // Alvo de corte alinhado à proporção real do quadro de exibição (140x106)
       // em vez de um corte mais estreito - evita "zoom" excessivo no rosto,
@@ -757,7 +755,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     certificatePage.drawText(compactHash.substring(0, 32), { x: integrityX + 13, y: integrityY + 78, size: 7.2, font: mono, color: rgb(1, 1, 1) });
     certificatePage.drawText(compactHash.substring(32, 64), { x: integrityX + 13, y: integrityY + 66, size: 7.2, font: mono, color: rgb(1, 1, 1) });
     certificatePage.drawText('PROVAS VINCULADAS', { x: integrityX + 13, y: integrityY + 46, size: 5.7, font: bold, color: rgb(0.68, 0.76, 0.88) });
-    certificatePage.drawText('CPF confirmado | 3 selfies | IP | geolocalização', { x: integrityX + 13, y: integrityY + 33, size: 6.4, font: regular, color: rgb(0.9, 0.93, 0.98) });
+    certificatePage.drawText('CPF confirmado | selfie | IP | geolocalização', { x: integrityX + 13, y: integrityY + 33, size: 6.4, font: regular, color: rgb(0.9, 0.93, 0.98) });
     certificatePage.drawText(`${publicEvents.length} eventos preservados na trilha pública`, { x: integrityX + 13, y: integrityY + 19, size: 6.4, font: bold, color: gold });
 
     const validationX = 304;
@@ -783,7 +781,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     certificatePage.drawText(`${publicEvents.length} EVENTOS | DETALHAMENTO COMPLETO PELO QR CODE`, { x: CR - 196, y: auditY + auditH - 15, size: 5.2, font: bold, color: rgb(0.72, 0.79, 0.9) });
     const milestones = [
       'CPF CONFIRMADO',
-      'PRESENÇA - 3 SELFIES',
+      'PRESENÇA - SELFIE',
       'ASSINATURA REGISTRADA',
       'CERTIFICADO EMITIDO',
     ];
@@ -1026,7 +1024,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
           signer.geoAccuracy != null ? ` (precisão: ${Math.round(signer.geoAccuracy)}m)` : ''
         }`
       : 'Não coletada (permissão não concedida)';
-    const authenticationText = 'CPF + Prova de presença ao vivo (3 fotos) + Geolocalização do dispositivo';
+    const authenticationText = 'CPF + Prova de presença ao vivo (selfie) + Geolocalização do dispositivo';
     const innerWidth = CW - 28;
     const halfWidth = 226;
     const gapWidth = 34;
@@ -1051,7 +1049,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       (signer.signatureImage ? 65 : 0);
     const hasDocPhotos = Boolean(signer.documentFrontImage || signer.documentBackImage);
     if (hasDocPhotos) docPhotoSigners.push(signer);
-    const photosHeight = hasPhotos ? 179 : 0;
+    const photosHeight = hasPhotos ? 224 : 0;
     const panelH = 32 + dataHeight + photosHeight + 8;
     ensureSpace(panelH + 10);
 
@@ -1131,7 +1129,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       }
     }
 
-    // SEÇÃO 3: EVIDÊNCIAS COLETADAS — 3 SELFIES (CENTRO / PERFIL ESQUERDO / PERFIL DIREITO)
+    // SEÇÃO 3: EVIDÊNCIA COLETADA — SELFIE FRONTAL
     if (hasPhotos) {
       page.drawText('3. PROVA DE PRESENÇA AO VIVO (REGISTRO FACIAL HD)', {
         x: padX,
@@ -1142,17 +1140,15 @@ export async function generateFinalPdfCertificate(documentId: string) {
       });
 
       const photoLabels: Array<[string, string | null]> = [
-        ['1. Frontal (Centro)', signer.selfieCenterImage],
-        ['2. Perfil Esquerdo', signer.selfieLeftImage],
-        ['3. Perfil Direito', signer.selfieRightImage],
+        ['Selfie Frontal', signer.selfieCenterImage],
       ];
 
-      // Cartões verticais otimizados em HD para ajuste compacto.
-      const boxW = 140;
-      const boxH = 140;
-      const cardH = 162;
+      // Cartão único, centralizado, maior que o antigo layout de 3 fotos lado a lado.
+      const boxW = 180;
+      const boxH = 180;
+      const cardH = 202;
       const gap = 20;
-      const photosTotalWidth = boxW * 3 + gap * 2;
+      const photosTotalWidth = boxW;
       let photoX = padX + Math.max(0, (innerWidth - photosTotalWidth) / 2);
 
       for (const [label, img] of photoLabels) {

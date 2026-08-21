@@ -75,7 +75,10 @@ export async function POST(req: Request) {
     // Quando o representante mora no mesmo endereço da cliente, evitamos repetir
     // o endereço completo duas vezes seguidas - mesma lógica de
     // /api/kits/generate-package/route.ts.
-    const clienteEnderecoText = [client.address, client.number, client.complement, client.neighborhood, [client.city, client.state].filter(Boolean).join('/'), client.cep ? `CEP ${client.cep}` : ''].filter(Boolean).join(', ') || '—';
+    // "address" já é o texto único (rua, número e bairro juntos) digitado no
+    // cadastro - "number"/"neighborhood" são colunas legadas que podem vir de
+    // extração automática antiga e duplicar/contradizer o endereço atual.
+    const clienteEnderecoText = [client.address, client.complement, [client.city, client.state].filter(Boolean).join('/'), client.cep ? `CEP ${client.cep}` : ''].filter(Boolean).join(', ') || '—';
     const representativeAddressPhrase = (client as any).representativeSameAddress
       ? `ambos residentes e domiciliados em ${clienteEnderecoText}`
       : (client as any).representativeAddress

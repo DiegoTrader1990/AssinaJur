@@ -35,7 +35,6 @@ import {
 import { formatBrasiliaDateTime } from '@/lib/dateUtils';
 import { maskCpfCnpj } from '@/lib/formatters';
 import DocumentCapture, { type CaptureResult } from '@/components/assinatura/DocumentCapture';
-import { analyseCanvas, buildQualityReport } from '@/lib/assinatura/documentQuality';
 
 function formatFullCpf(cpf: string): string {
   const clean = String(cpf || '').replace(/\D/g, '');
@@ -82,13 +81,6 @@ function clientDocumentTitle(title: string) {
 
 type SelfieKey = 'center' | 'left' | 'right';
 
-interface LiveDocumentCheck {
-  detected: boolean;
-  qualityApproved: boolean;
-  meanLuminance: number;
-  sharpness: number;
-}
-
 interface SelfieStepConfig {
   key: SelfieKey;
   label: string;
@@ -96,10 +88,11 @@ interface SelfieStepConfig {
   targetYaw: 'CENTER' | 'LEFT' | 'RIGHT';
 }
 
+// Prova de presença simplificada: apenas 1 selfie frontal (sem viradas de rosto).
+// As chaves 'left'/'right' seguem existindo no tipo por compatibilidade com dados
+// antigos, mas não são mais usadas no fluxo de captura.
 const LIVENESS_STEPS: SelfieStepConfig[] = [
   { key: 'center', label: 'Foto Frontal', instruction: 'Olhe diretamente para a câmera e centralize seu rosto.', targetYaw: 'CENTER' },
-  { key: 'left', label: 'Perfil Esquerdo', instruction: 'Vire lentamente o rosto para a ESQUERDA.', targetYaw: 'LEFT' },
-  { key: 'right', label: 'Perfil Direito', instruction: 'Vire lentamente o rosto para a DIREITA.', targetYaw: 'RIGHT' },
 ];
 
 function computeFaceOrientation(landmarks: any[]) {
@@ -295,28 +288,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [selfieInstruction, setSelfieInstruction] = useState<string>('Posicione seu rosto dentro da moldura.');
   const [capturingSelfie, setCapturingSelfie] = useState<boolean>(false);
   const [countdownSecs, setCountdownSecs] = useState<number | null>(null);
-  const [audioEnabled, setAudioEnabled] = useState<boolean>(false);
-  const audioEnabledRef = useRef<boolean>(false);
+  const [audioEnabled, setAudioEnabled] = useState<boolean>(true);
+  const audioEnabledRef = useRef<boolean>(true);
   const [currentYaw, setCurrentYaw] = useState<number>(0.5);
-
-  const [faceDetected, setFaceDetected] = useState<boolean>(false);
-  const [docDetected, setDocDetected] = useState<boolean>(false);
-  const [documentReferenceReady, setDocumentReferenceReady] = useState<boolean>(false);
-  const [documentQualityApproved, setDocumentQualityApproved] = useState<boolean>(false);
-  const [checkingSelfieDocument, setCheckingSelfieDocument] = useState<boolean>(false);
-  const faceDetectedRef = useRef<boolean>(false);
-  const docDetectedRef = useRef<boolean>(false);
-  const documentQualityApprovedRef = useRef<boolean>(false);
-  const cameraStartTimeRef = useRef<number>(0);
-  const sampleCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const docFrameCounterRef = useRef<number>(0);
-  const docRefFingerprintRef = useRef<{ r: number; g: number; b: number; luminance: number } | null>(null);
-  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const countdownActiveRef = useRef<boolean>(false);
-  const lastVoiceStateRef = useRef<string>('');
-  const lastVoiceTimeRef = useRef<number>(0);
-  const bothValidSinceRef = useRef<number>(0);
-  const audioCtxRef = useRef<AudioContext | null>(null);
 
   const [showDocPreview, setShowDocPreview] = useState(false);
   const [docBlobUrl, setDocBlobUrl] = useState<string | null>(null);
@@ -521,316 +495,113 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
   };
 
-  const initDocReferenceFingerprint = (dataUrl: string | null) => {
-    setDocumentReferenceReady(false);
-    if (!dataUrl || typeof window === 'undefined') {
-      docRefFingerprintRef.current = null;
-      return;
-    }
-    try {
-      const img = new window.Image();
-      img.crossOrigin = 'anonymous';
-      let processed = false;
-      const processReference = () => {
-        if (processed) return;
-        processed = true;
-        try {
-          const canvas = window.document.createElement('canvas');
-          canvas.width = 64;
-          canvas.height = 48;
-          const ctx = canvas.getContext('2d', { willReadFrequently: true });
-          if (!ctx) return;
-          ctx.drawImage(img, 0, 0, 64, 48);
-          const imageData = ctx.getImageData(0, 0, 64, 48);
-          const data = imageData.data;
-
-          let totalR = 0, totalG = 0, totalB = 0, totalLum = 0;
-          let count = 0;
-
-          for (let i = 0; i < data.length; i += 4) {
-            const r = data[i], g = data[i + 1], b = data[i + 2];
-            const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-            totalR += r; totalG += g; totalB += b; totalLum += lum;
-            count++;
-          }
-
-          if (count > 0) {
-            docRefFingerprintRef.current = {
-              r: totalR / count,
-              g: totalG / count,
-              b: totalB / count,
-              luminance: totalLum / count,
-            };
-            setDocumentReferenceReady(true);
-          }
-        } catch {
-          docRefFingerprintRef.current = null;
-        }
-      };
-      img.onload = processReference;
-      img.onerror = () => { docRefFingerprintRef.current = null; };
-      img.src = dataUrl;
-      // Em alguns Safari/iPhone o data URL já chega pronto antes de onload ser
-      // observado. decode garante que a referência seja criada nesse caso.
-      void img.decode?.().then(processReference).catch(() => {});
-      if (img.complete && img.naturalWidth) processReference();
-    } catch {
-      docRefFingerprintRef.current = null;
-    }
-  };
-
-  const detectObjectMatchingReference = (video: HTMLVideoElement, faceLandmarks?: any[]): LiveDocumentCheck => {
-    const unavailable = { detected: false, qualityApproved: false, meanLuminance: 0, sharpness: 0 };
-    if (!video || video.videoWidth === 0 || !docRefFingerprintRef.current) return unavailable;
-    try {
-      if (!sampleCanvasRef.current && typeof window !== 'undefined') {
-        sampleCanvasRef.current = window.document.createElement('canvas');
-      }
-      const canvas = sampleCanvasRef.current;
-      if (!canvas) return unavailable;
-
-      canvas.width = 200;
-      canvas.height = 150;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) return unavailable;
-
-      ctx.drawImage(video, 0, 0, 200, 150);
-
-      // ROI DINÂMICA com base na Bounding Box REAL do Rosto
-      let faceMaxSensorX = 0.45;
-      let faceMinSensorY = 0.08;
-      let faceMaxSensorY = 0.85;
-
-      if (faceLandmarks && faceLandmarks.length > 0) {
-        let maxSensorX = 0;
-        let minY = 1.0;
-        let maxY = 0.0;
-        for (let i = 0; i < faceLandmarks.length; i += 3) {
-          if (faceLandmarks[i].x > maxSensorX) maxSensorX = faceLandmarks[i].x;
-          if (faceLandmarks[i].y < minY) minY = faceLandmarks[i].y;
-          if (faceLandmarks[i].y > maxY) maxY = faceLandmarks[i].y;
-        }
-        if (maxSensorX > 0.20) faceMaxSensorX = maxSensorX;
-        if (minY < 0.9) faceMinSensorY = minY;
-        if (maxY > 0.1) faceMaxSensorY = maxY;
-      }
-
-      // A câmera é mostrada com object-cover numa moldura 3:4 e espelhada.
-      // A área visível não corresponde a toda a largura do sensor (em câmera
-      // 16:9 as laterais são cortadas). Convertendo a moldura visual para a
-      // coordenada original, a análise ocorre exatamente onde a pessoa vê
-      // “DOCUMENTO AO LADO”, em vez de procurar no lado errado da câmera.
-      const sourceAspect = video.videoWidth / Math.max(video.videoHeight, 1);
-      const frameAspect = 3 / 4;
-      const visibleWidth = sourceAspect > frameAspect ? frameAspect / sourceAspect : 1;
-      const visibleXStart = sourceAspect > frameAspect ? (1 - visibleWidth) / 2 : 0;
-      // Como a imagem é espelhada, a moldura visual do lado esquerdo equivale
-      // à área direita no sensor original. Este era o ponto que impedia a
-      // identificação mesmo com o RG corretamente enquadrado.
-      const sensorMinXNorm = visibleXStart + visibleWidth * (1 - 0.45);
-      const sensorMaxXNorm = visibleXStart + visibleWidth * (1 - 0.03);
-      const visualTop = 0.25;
-      const visualBottom = 0.67;
-
-      const startX = Math.floor(200 * sensorMinXNorm);
-      const startY = Math.floor(150 * visualTop);
-      const sampleW = Math.floor(200 * (sensorMaxXNorm - sensorMinXNorm));
-      const sampleH = Math.floor(150 * (visualBottom - visualTop));
-
-      if (sampleW < 18 || sampleH < 18) return unavailable;
-
-      const imageData = ctx.getImageData(startX, startY, sampleW, sampleH);
-      const data = imageData.data;
-
-      // 1. Calcula a assinatura de cor e luminosidade da ROI da câmera em tempo real
-      let liveR = 0, liveG = 0, liveB = 0, liveLum = 0;
-      let count = 0;
-      let edgeCount = 0;
-
-      const widthInPixels = sampleW;
-      const heightInPixels = sampleH;
-
-      for (let y = 1; y < heightInPixels - 1; y += 2) {
-        for (let x = 1; x < widthInPixels - 1; x += 2) {
-          const idx = (y * widthInPixels + x) * 4;
-          const idxRight = (y * widthInPixels + (x + 1)) * 4;
-
-          const r = data[idx], g = data[idx + 1], b = data[idx + 2];
-          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-          liveR += r; liveG += g; liveB += b; liveLum += lum;
-          count++;
-
-          const lumRight = 0.299 * data[idxRight] + 0.587 * data[idxRight + 1] + 0.114 * data[idxRight + 2];
-          if (Math.abs(lum - lumRight) >= 22) {
-            edgeCount++;
-          }
-        }
-      }
-
-      if (count === 0) return unavailable;
-      const avgR = liveR / count;
-      const avgG = liveG / count;
-      const avgB = liveB / count;
-      const avgLum = liveLum / count;
-      const edgeDensity = edgeCount / count;
-
-      // Qualidade ao vivo da própria área de documento. Só uma imagem clara e
-      // com contraste suficiente poderá liberar a captura.
-      const qualityCanvas = window.document.createElement('canvas');
-      qualityCanvas.width = sampleW;
-      qualityCanvas.height = sampleH;
-      const qualityContext = qualityCanvas.getContext('2d', { willReadFrequently: true });
-      if (!qualityContext) return unavailable;
-      qualityContext.putImageData(imageData, 0, 0);
-      const { meanLuminance, sharpness } = analyseCanvas(qualityCanvas);
-      const qualityApproved = meanLuminance >= 55 && meanLuminance <= 238 && sharpness >= 42;
-
-      // Um documento apresenta bordas, texto e blocos gráficos. O limiar alto
-      // evita tratar rosto, mão ou parede como documento.
-      if (edgeDensity < 0.12 || !qualityApproved) {
-        return { detected: false, qualityApproved, meanLuminance, sharpness };
-      }
-
-      const refFp = docRefFingerprintRef.current;
-      if (!refFp) return { detected: false, qualityApproved, meanLuminance, sharpness };
-
-      // Validação estrita: compara cor e luminosidade contra o documento capturado na Etapa 1
-      const colorDist = Math.sqrt((avgR - refFp.r) ** 2 + (avgG - refFp.g) ** 2 + (avgB - refFp.b) ** 2);
-      const lumDist = Math.abs(avgLum - refFp.luminance);
-
-      const colorMatch = Math.max(0, 1 - colorDist / 170);
-      const lumMatch = Math.max(0, 1 - lumDist / 130);
-      const overallMatch = colorMatch * 0.6 + lumMatch * 0.4;
-
-      // A referência da frente do RG/CNH foi capturada na etapa anterior.
-      // A comparação é tolerante à iluminação, mas não aceita fundo/mão vazia.
-      return { detected: overallMatch >= 0.44 && edgeDensity >= 0.12, qualityApproved, meanLuminance, sharpness };
-    } catch {
-      return unavailable;
-    }
-  };
-
-  // Sintetizador Web Audio de beeps/chimes para retorno sonoro 100% auditável no iOS Safari e Android
-  const playBeep = (freq: number = 880, durationMs: number = 180) => {
-    if (!audioEnabledRef.current || typeof window === 'undefined' || window.document.hidden) return;
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new AudioCtx();
-      }
-      const ctx = audioCtxRef.current;
-      if (ctx.state === 'suspended') {
-        ctx.resume();
-      }
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + durationMs / 1000);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + durationMs / 1000);
-    } catch {}
-  };
-
-  // Voz Guia com suporte total ao Safari / iOS e seleção de voz pt-BR
-  const speakGuide = (text: string, stateKey: string, force: boolean = false) => {
-    if (!audioEnabledRef.current || window.document.hidden) return;
-    const now = Date.now();
-    if (!force && stateKey === lastVoiceStateRef.current && now - lastVoiceTimeRef.current < 3500) return;
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
-    try {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'pt-BR';
-      utterance.rate = 0.95;
-      utterance.pitch = 1.0;
-      utterance.volume = 1.0;
-
-      const voices = window.speechSynthesis.getVoices();
-      const ptVoice = voices.find(v => v.lang.includes('pt-BR') || v.lang.includes('pt_BR') || v.lang.includes('pt'));
-      if (ptVoice) utterance.voice = ptVoice;
-
-      window.speechSynthesis.speak(utterance);
-      lastVoiceStateRef.current = stateKey;
-      lastVoiceTimeRef.current = now;
-    } catch {}
-  };
-
-  // Cancelar contagem regressiva
-  const cancelCountdown = () => {
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
-    }
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      try { window.speechSynthesis.cancel(); } catch {}
-    }
-    countdownActiveRef.current = false;
-    setCountdownSecs(null);
-    bothValidSinceRef.current = 0;
-  };
-
-  // Contagem guiada iniciada pela própria pessoa: ela toca uma vez e ganha
-  // cinco segundos para segurar o documento, sem precisar apertar nada com as
-  // duas mãos ocupadas. O áudio só é habilitado nesse toque explícito.
-  const startCountdown = () => {
-    if (countdownActiveRef.current || isCapturingRef.current) return;
-    if (!faceDetectedRef.current) {
-      setSelfieInstruction('Olhe para a câmera para iniciar a contagem.');
-      return;
-    }
-    audioEnabledRef.current = true;
-    setAudioEnabled(true);
-    countdownActiveRef.current = true;
-    setCountdownSecs(5);
-    playBeep(523, 200);
-    speakGuide('Prepare o documento ao lado do rosto. Cinco', 'countdown_5', true);
-
-    let remaining = 5;
-    countdownTimerRef.current = setInterval(() => {
-      remaining--;
-      if (remaining >= 1) {
-        if (!faceDetectedRef.current) { cancelCountdown(); return; }
-        setCountdownSecs(remaining);
-        const voiceNumber = ['zero', 'um', 'dois', 'três', 'quatro'][remaining] || String(remaining);
-        playBeep(523 + (5 - remaining) * 95, 160);
-        speakGuide(voiceNumber, `countdown_${remaining}`, true);
-      } else if (remaining <= 0) {
-        if (faceDetectedRef.current && !isCapturingRef.current) {
-          playBeep(1046, 350);
-          cancelCountdown();
-          triggerAutomaticCapture('center');
-        } else {
-          cancelCountdown();
-        }
-      }
-    }, 1000);
-  };
-
   const handleFaceMeshResults = (results: any) => {
     if (isCapturingRef.current || !streamRef.current) return;
+    const currentKey = activeKeyRef.current;
 
-    const landmarks = results?.multiFaceLandmarks?.[0];
-    const video = selfieVideoRef.current;
-
-    // Rosto detectado pelo MediaPipe
-    let isFaceValid = false;
-    if (landmarks) {
-      isFaceValid = true;
+    if (Date.now() < warmupUntilRef.current) {
+      setFrameState('YELLOW');
+      setCountdownSecs(null);
+      centeredStartTimeRef.current = null;
+      return;
     }
 
-    faceDetectedRef.current = isFaceValid;
-    setFaceDetected(isFaceValid);
-    if (isFaceValid) {
-      setFrameState('GREEN');
-      setSelfieInstruction('Rosto identificado. Mantenha o RG ou a CNH dentro da moldura e tire a foto.');
-    } else {
+    const landmarks = results?.multiFaceLandmarks?.[0];
+    if (!landmarks) {
+      setFrameState('GRAY');
+      setSelfieInstruction('Posicione seu rosto dentro da moldura.');
+      centeredStartTimeRef.current = null;
+      setCountdownSecs(null);
+      return;
+    }
+
+    const faceInfo = computeFaceOrientation(landmarks);
+    if (!faceInfo) {
+      setFrameState('GRAY');
+      setSelfieInstruction('Rosto dentro da moldura.');
+      centeredStartTimeRef.current = null;
+      setCountdownSecs(null);
+      return;
+    }
+
+    const { noseX, faceWidthRatio, noseRelOffset, eyeRatio } = faceInfo;
+    setCurrentYaw(noseX);
+    const hasValidFace = noseX >= 0.15 && noseX <= 0.85 && faceWidthRatio >= 0.08 && faceWidthRatio <= 0.85;
+
+    if (!hasValidFace) {
       setFrameState('YELLOW');
-      setSelfieInstruction('Olhe para a câmera para continuar.');
+      setSelfieInstruction('Mantenha seu rosto visível dentro da moldura.');
+      centeredStartTimeRef.current = null;
+      setCountdownSecs(null);
+      return;
+    }
+
+    if (currentKey === 'center') {
+      const isCentered = Math.abs(noseRelOffset) <= 0.08 && noseX >= 0.28 && noseX <= 0.72;
+      if (!isCentered) {
+        setFrameState('YELLOW');
+        setSelfieInstruction('Olhe para a CÂMERA e centralize o rosto.');
+        centeredStartTimeRef.current = null;
+        setCountdownSecs(null);
+        return;
+      }
+      frontalNoseXRef.current = noseRelOffset;
+      frontalEyeRatioRef.current = eyeRatio;
+      setFrameState('GREEN');
+      if (!centeredStartTimeRef.current) centeredStartTimeRef.current = Date.now();
+
+      const elapsed = Date.now() - centeredStartTimeRef.current;
+      const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
+      setCountdownSecs(secsRemaining);
+      setSelfieInstruction(`Mantenha-se assim! Foto 1 em ${secsRemaining}s...`);
+
+      if (elapsed >= 3000) {
+        setCountdownSecs(null);
+        centeredStartTimeRef.current = null;
+        triggerAutomaticCapture('center');
+      }
+      return;
+    }
+
+    const baseOffset = frontalNoseXRef.current ?? 0;
+    const baseEye = frontalEyeRatioRef.current ?? 0.50;
+    const offsetDev = noseRelOffset - baseOffset;
+    const eyeDev = eyeRatio - baseEye;
+    let isPoseValid = false;
+
+    if (currentKey === 'left') {
+      isPoseValid = eyeDev <= -0.05 || offsetDev <= -0.05 || offsetDev >= 0.05;
+      if (isPoseValid) leftTurnDirRef.current = Math.abs(eyeDev) > Math.abs(offsetDev) ? eyeDev : offsetDev;
+    } else if (currentKey === 'right') {
+      if (leftTurnDirRef.current !== null) {
+        const curDev = Math.abs(eyeDev) > Math.abs(offsetDev) ? eyeDev : offsetDev;
+        isPoseValid = (curDev * leftTurnDirRef.current) < 0 && Math.abs(curDev) >= 0.05;
+      } else {
+        isPoseValid = eyeDev >= 0.05 || offsetDev >= 0.05;
+      }
+    }
+
+    if (!isPoseValid) {
+      setFrameState('YELLOW');
+      const dirLabel = currentKey === 'left' ? 'ESQUERDA ←' : 'DIREITA →';
+      setSelfieInstruction(`Vire o rosto para a ${dirLabel}`);
+      centeredStartTimeRef.current = null;
+      setCountdownSecs(null);
+      return;
+    }
+
+    setFrameState('GREEN');
+    if (!centeredStartTimeRef.current) centeredStartTimeRef.current = Date.now();
+
+    const elapsed = Date.now() - centeredStartTimeRef.current;
+    const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
+    setCountdownSecs(secsRemaining);
+    setSelfieInstruction(`Excelente! Mantenha a cabeça virada (${secsRemaining}s)...`);
+
+    if (elapsed >= 3000) {
+      setCountdownSecs(null);
+      centeredStartTimeRef.current = null;
+      triggerAutomaticCapture(currentKey);
     }
   };
 
@@ -848,12 +619,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
   };
 
-  const triggerAutomaticCapture = async (key: SelfieKey = 'center') => {
+  const triggerAutomaticCapture = async (key: SelfieKey) => {
     if (isCapturingRef.current) return;
-    if (!faceDetectedRef.current) {
-      setSelfieInstruction('Olhe para a câmera antes de capturar a foto.');
-      return;
-    }
     isCapturingRef.current = true;
     setCapturingSelfie(true);
     setFrameState('FLASH');
@@ -867,52 +634,97 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     try {
-      const sourceWidth = video.videoWidth;
-      const sourceHeight = video.videoHeight;
-      const maxSide = 960;
-      const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
-      canvas.width = Math.round(sourceWidth * scale);
-      canvas.height = Math.round(sourceHeight * scale);
+      // A moldura na tela é mais larga (proporção ~4:3 / 3:4) do que era o
+      // canvas de captura (560x520, quase quadrado). Isso fazia o recorte
+      // horizontal do vídeo (feito abaixo, mantendo a altura e cortando as
+      // laterais) descartar boa parte do enquadramento que a pessoa via ao
+      // vivo, resultando numa foto final "mais de perto" do que a prévia.
+      // Usar 4:3 aqui mantém bem mais do enquadramento original.
+      canvas.width = 640;
+      canvas.height = 480;
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        const sourceWidth = video.videoWidth;
+        const sourceHeight = video.videoHeight;
+        const targetRatio = canvas.width / canvas.height;
+        const sourceRatio = sourceWidth / sourceHeight;
+        let sourceX = 0; let sourceY = 0;
+        let cropWidth = sourceWidth; let cropHeight = sourceHeight;
+
+        if (sourceRatio > targetRatio) {
+          cropWidth = sourceHeight * targetRatio;
+          sourceX = (sourceWidth - cropWidth) / 2;
+        } else if (sourceRatio < targetRatio) {
+          cropHeight = sourceWidth / targetRatio;
+          sourceY = (sourceHeight - cropHeight) / 2;
+        }
+
         ctx.save();
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
-        ctx.drawImage(video, 0, 0, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(video, sourceX, sourceY, cropWidth, cropHeight, 0, 0, canvas.width, canvas.height);
         ctx.restore();
       }
 
       const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
-      const bytes = Math.round((dataUrl.length * 3) / 4);
-      const { meanLuminance, sharpness } = analyseCanvas(canvas);
-      const quality = buildQualityReport({ width: canvas.width, height: canvas.height, bytes, meanLuminance, sharpness });
-      if (!quality.acceptable) {
-        setFrameState('YELLOW');
-        setSelfieInstruction(quality.issues.find((issue) => issue.level === 'BLOCK')?.message || 'A foto não ficou boa. Tente novamente.');
+      const currentPerson = activePersonRef.current;
+      const currentTargetSelfies = currentPerson === 'ROGO'
+        ? rogoSelfieImagesRef.current
+        : currentPerson === 'WITNESS_1'
+        ? witness1SelfieImagesRef.current
+        : currentPerson === 'WITNESS_2'
+        ? witness2SelfieImagesRef.current
+        : selfieImagesRef.current;
+
+      const updatedSelfies = { ...currentTargetSelfies, [key]: dataUrl };
+      updateCurrentSelfieImages(updatedSelfies, currentPerson);
+      if (currentPerson === 'CLIENT') {
+        recordEvidence(key === 'center' ? 'SELFIE_CENTER_VALIDATED' : key === 'left' ? 'SELFIE_LEFT_VALIDATED' : 'SELFIE_RIGHT_VALIDATED');
+      }
+
+      if (singleRetakeKey) {
+        setSelfieInstruction(`✓ Foto de ${LIVENESS_STEPS.find(s => s.key === key)?.label} atualizada!`);
+        stopSelfieCamera();
+        setSingleRetakeKey(null);
         return;
       }
 
-      const currentPerson = activePersonRef.current;
-      const updatedSelfies = { center: dataUrl, left: null, right: null };
-      updateCurrentSelfieImages(updatedSelfies, currentPerson);
-      if (currentPerson === 'CLIENT') {
-        recordEvidence('SELFIE_WITH_DOC_VALIDATED');
-      }
-
       playShutterSound(audioEnabledRef.current);
-      setSelfieInstruction('✓ Foto com documento capturada com sucesso!');
-      stopSelfieCamera();
 
-      // A IA continua verificando a imagem inteira para auditoria, mas esta
-      // conferência não deixa o cliente aguardando nem rejeita uma foto boa
-      // por falso negativo. A qualidade técnica já foi exigida acima.
-      void fetch('/api/sign/documento/validar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: dataUrl, mode: 'SELFIE_WITH_DOCUMENT' }),
-      }).catch(() => {});
+      if (key === 'center') {
+        // Fluxo simplificado: 1 selfie frontal já basta para concluir a prova de presença.
+        setSelfieInstruction('✓ Prova de presença concluída!');
+        playGoogleAudio('step3', audioEnabledRef.current);
+        stopSelfieCamera();
+
+        setTimeout(() => {
+          if (isRogadoConsent && activePersonRef.current === 'CLIENT') {
+            setStep('ROGO_TRANSITION');
+          } else {
+            setStep('SIGN');
+          }
+        }, 1200);
+      } else if (key === 'left') {
+        activeKeyRef.current = 'right';
+        setActiveSelfieKey('right');
+        centeredStartTimeRef.current = null;
+        warmupUntilRef.current = Date.now() + 800;
+        setSelfieInstruction('✓ Foto 2 Salva! Agora vire o rosto para a DIREITA →');
+        playGoogleAudio('step2', audioEnabledRef.current);
+      } else if (key === 'right') {
+        setSelfieInstruction('✓ Prova de presença concluída com 3 fotos!'); // legado (ramo 'right' não é mais alcançado no fluxo de 1 selfie)
+        playGoogleAudio('step3', audioEnabledRef.current);
+        stopSelfieCamera();
+
+        setTimeout(() => {
+          if (isRogadoConsent && activePersonRef.current === 'CLIENT') {
+            setStep('ROGO_TRANSITION');
+          } else {
+            setStep('SIGN');
+          }
+        }, 1200);
+      }
     } finally {
-      setCheckingSelfieDocument(false);
       setTimeout(() => {
         isCapturingRef.current = false;
         setCapturingSelfie(false);
@@ -925,28 +737,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     triggerAutomaticCapture(activeKeyRef.current);
   };
 
-  const unlockAudioAndStartCamera = (person: 'CLIENT' | 'ROGO' = 'CLIENT') => {
-    if (typeof window !== 'undefined') {
-      try {
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-        if (AudioCtx) {
-          if (!audioCtxRef.current) audioCtxRef.current = new AudioCtx();
-          if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
-        }
-      } catch {}
-
-      if (window.speechSynthesis) {
-        try {
-          window.speechSynthesis.cancel();
-          const dummy = new SpeechSynthesisUtterance(' ');
-          dummy.volume = 0.01;
-          window.speechSynthesis.speak(dummy);
-        } catch {}
-      }
-    }
-    startSelfieCamera(undefined, false, person);
-  };
-
   const startSelfieCamera = async (targetKey?: SelfieKey, isSingleRetake: boolean = false, person: 'CLIENT' | 'ROGO' | 'WITNESS_1' | 'WITNESS_2' = activePersonRef.current) => {
     activePersonRef.current = person;
     setActivePerson(person);
@@ -955,22 +745,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const keyToStart = targetKey || 'center';
     activeKeyRef.current = keyToStart;
     setActiveSelfieKey(keyToStart);
-    cameraStartTimeRef.current = Date.now();
-    docFrameCounterRef.current = 0;
-    setFaceDetected(false);
-    setDocDetected(false);
-    setDocumentReferenceReady(false);
-    setDocumentQualityApproved(false);
-    documentQualityApprovedRef.current = false;
-    setCountdownSecs(null);
-    countdownActiveRef.current = false;
-    bothValidSinceRef.current = 0;
-    lastVoiceStateRef.current = '';
-    lastVoiceTimeRef.current = 0;
-    if (countdownTimerRef.current) { clearInterval(countdownTimerRef.current); countdownTimerRef.current = null; }
-    initDocReferenceFingerprint(person === 'ROGO' ? rogoDocumentFrontImage : documentFrontImage);
-    // Voz inicial após a abertura da câmera
-    setTimeout(() => speakGuide('Olhe para a câmera e segure o documento na moldura ao lado do rosto.', 'init'), 1200);
 
     if (isSingleRetake && targetKey) {
       setSingleRetakeKey(targetKey);
@@ -996,6 +770,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       await recordEvidence('CAMERA_PERMITTED');
       await recordEvidence('LIVENESS_STARTED');
       setFrameState('GRAY');
+      playGoogleAudio('intro', audioEnabledRef.current);
       const fm = await initFaceMesh();
       if (fm) {
         fm.onResults(handleFaceMeshResults);
@@ -1019,23 +794,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     setCameraActive(false);
   };
 
-  // Safari pode manter a fila de voz ativa ao minimizar o WhatsApp ou trocar
-  // de aba. Interrompemos voz, contagem e câmera na hora para não haver áudio
-  // repetido em segundo plano nem captura fora da tela.
-  useEffect(() => {
-    const stopWhenHidden = () => {
-      if (!window.document.hidden) return;
-      cancelCountdown();
-      lastVoiceStateRef.current = '';
-      if (window.speechSynthesis) {
-        try { window.speechSynthesis.cancel(); } catch {}
-      }
-      stopSelfieCamera();
-    };
-    window.document.addEventListener('visibilitychange', stopWhenHidden);
-    return () => window.document.removeEventListener('visibilitychange', stopWhenHidden);
-  });
-
   const requestGeolocation = () => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
@@ -1053,8 +811,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     );
   };
 
-  const clientSelfieComplete = Boolean(selfieImages.center);
-  const rogoSelfieComplete = Boolean(rogoSelfieImages.center);
+  const clientSelfieComplete = Boolean(selfieImages.center && selfieImages.left && selfieImages.right);
+  const rogoSelfieComplete = Boolean(rogoSelfieImages.center && rogoSelfieImages.left && rogoSelfieImages.right);
 
   const startDrawing = (e: any) => {
     const canvas = canvasRef.current;
@@ -1107,14 +865,14 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const rogoLeft = rogoSelfieImages.left || rogoSelfieImagesRef.current.left;
     const rogoRight = rogoSelfieImages.right || rogoSelfieImagesRef.current.right;
 
-    if (!clientCenter) {
-      setError('É necessário enviar a foto segurando o documento de identificação antes de assinar.');
+    if (!clientCenter || !clientLeft || !clientRight) {
+      setError('É necessário concluir a prova de presença do cliente (selfie) antes de assinar.');
       return;
     }
 
     if (isRogadoConsent) {
-      if (!rogoCenter) {
-        setError('O Assinante a Rogo também deve enviar a foto segurando o documento no mesmo aparelho.');
+      if (!rogoCenter || !rogoLeft || !rogoRight) {
+        setError('O Assinante a Rogo também deve concluir a prova de presença com a selfie no mesmo aparelho.');
         return;
       }
       if (!rogoName.trim() || !rogoCpf.trim()) {
@@ -1194,45 +952,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         };
       }
 
-      const submitRequest = fetch(`/api/sign/${params.token}/submit`, {
+      const res = await fetch(`/api/sign/${params.token}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-
-      // A montagem do PDF e do certificado pode levar mais tempo que o registro
-      // da assinatura. Depois de alguns segundos, conferimos o estado gravado para
-      // não deixar a pessoa presa numa tela de processamento.
-      const res = await Promise.race<Response | null>([
-        submitRequest,
-        new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 12_000)),
-      ]);
-
-      if (!res) {
-        const progressResponse = await fetch(`/api/sign/${params.token}`, { cache: 'no-store' });
-        const progress = await progressResponse.json().catch(() => null);
-        if (progressResponse.ok && progress?.signer?.status === 'ASSINADO') {
-          sessionStorage.setItem(`assinajur-signed-${params.token}`, '1');
-          setPendingParticipants([]);
-          setStep('SUCCESS');
-          return;
-        }
-
-        // Caso o registro ainda não tenha sido concluído, aguarda a resposta
-        // original em vez de repetir a assinatura.
-        const completedResponse = await submitRequest;
-        const completedData = await completedResponse.json();
-        if (!completedResponse.ok) throw new Error(completedData.error || 'Erro ao processar assinatura.');
-        sessionStorage.setItem(`assinajur-signed-${params.token}`, '1');
-        if (completedData.nextSigner?.token) {
-          setNextParticipant(completedData.nextSigner);
-          setStep('NEXT_PARTICIPANT');
-          return;
-        }
-        setPendingParticipants(completedData.pendingParticipants || []);
-        setStep('SUCCESS');
-        return;
-      }
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao processar assinatura.');
@@ -1276,7 +1000,29 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col justify-between font-sans">
-      <main className="max-w-md mx-auto w-full mb-auto p-3 sm:p-5 space-y-4">
+      <header className="bg-white border-b border-slate-200/80 py-4 px-6 sticky top-0 z-30 shadow-xs">
+        <div className="max-w-md mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-[#071B3A] text-white font-heading font-extrabold flex items-center justify-center text-lg shadow-md border border-white/10">
+              AJ
+            </div>
+            <div>
+              <h1 className="font-heading font-extrabold text-[#071B3A] text-base tracking-tight leading-none">
+                {document?.officeName || 'AssinaJur'}
+              </h1>
+              <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Assinatura Eletrônica Jurídica</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-extrabold text-[#071B3A] bg-slate-100 px-3 py-1 rounded-full border border-slate-200 font-heading uppercase tracking-wider">
+              {isRogadoConsent ? 'Fluxo A Rogo' : 'Assinatura'}
+            </span>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-md mx-auto w-full mt-4 mb-auto p-4 sm:p-6 space-y-4">
         {error && (
           <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-3 font-medium">
             <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
@@ -1352,15 +1098,18 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           </div>
         )}
 
-        {/* ETAPA 1.5: Documento de Identificação do Cliente */}
+        {/* ETAPA 1.5: Documento de Identificação do Cliente (evidência complementar) */}
         {step === 'DOCUMENT' && (
           <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
             <div className="text-center space-y-1">
+              <div className="w-10 h-10 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
+                <Camera className="w-5 h-5" />
+              </div>
               <h2 className="font-heading text-base font-extrabold text-[#071B3A]">
-                Documento de Identificação ({documentSide === 'FRENTE' ? 'Frente' : 'Verso'})
+                🪪 Documento de Identificação ({documentSide === 'FRENTE' ? 'Frente' : 'Verso'})
               </h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Fotografe a frente e o verso do RG ou da CNH do cliente para continuar com segurança.
+                Fotografe o RG ou a CNH do cliente titular como evidência complementar. Essa etapa não impede a assinatura.
               </p>
             </div>
 
@@ -1374,6 +1123,20 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               autoStart
             />
 
+            <button
+              type="button"
+              onClick={() => {
+                if (documentSide === 'FRENTE') {
+                  setDocumentSide('VERSO');
+                } else {
+                  setStep('SELFIE');
+                  setActivePerson('CLIENT');
+                }
+              }}
+              className="w-full py-3 text-slate-500 hover:text-slate-700 font-bold text-xs underline underline-offset-2 transition-colors"
+            >
+              Pular esta etapa por enquanto
+            </button>
           </div>
         )}
 
@@ -1382,142 +1145,102 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
             <div className="text-center space-y-1">
               <div className="w-10 h-10 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
-                <Camera className="w-5 h-5" />
+                <Eye className="w-5 h-5" />
               </div>
-              <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-emerald-700">Etapa 2 de 3 · Confirmação de identidade</p>
-              <h2 className="font-heading text-lg font-extrabold text-[#071B3A]">Foto com documento</h2>
+              <h2 className="font-heading text-base font-extrabold text-[#071B3A]">🤳 Prova de Presença do Cliente ({signer?.name})</h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Segure o RG ou a CNH dentro da moldura, ao lado do rosto. Nós conferiremos a imagem antes de aceitar.
+                Registramos 1 selfie frontal para confirmar a presença do cliente titular.
               </p>
             </div>
 
             {!cameraActive && !clientSelfieComplete && (
               <button
                 type="button"
-                onClick={() => unlockAudioAndStartCamera('CLIENT')}
+                onClick={() => startSelfieCamera(undefined, false, 'CLIENT')}
                 className="w-full py-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
               >
-                <Camera className="w-4 h-4 text-blue-400" /> Iniciar câmera
+                <Camera className="w-4 h-4 text-blue-400" /> Abrir Câmera do Celular
               </button>
             )}
 
             <div className={cameraActive ? 'space-y-3' : 'hidden'}>
-              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[4/5] bg-black ${
+              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[3/4] sm:aspect-[4/3] bg-black ${
                 frameState === 'GREEN' ? 'border-emerald-500 shadow-emerald-500/50 shadow-xl'
                 : frameState === 'YELLOW' ? 'border-amber-400'
                 : frameState === 'FLASH' ? 'border-white animate-pulse'
                 : 'border-slate-600'
               }`}>
                 <video ref={selfieVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
-
-                {/* OVERLAY SEM OVAL: APENAS GUIA DISCRETA DE DOCUMENTO AO LADO */}
-                <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-2">
-                  <div className="w-full h-full relative">
-                    {/* Moldura Orientativa do Documento na lateral */}
-                    <div className="absolute top-[40%] left-[4%] w-[38%] aspect-[1.58/1] rounded-xl border-[2px] border-dashed border-white/80 bg-black/10 flex flex-col items-center justify-start pt-2 shadow-lg">
-                      <span className="text-[9px] font-bold uppercase font-heading px-2 py-0.5 rounded-full bg-black/60 text-white">
-                        Posicione o RG ou CNH aqui
-                      </span>
-                    </div>
-                  </div>
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                  <div className={`w-[70%] h-[75%] rounded-[50%] border-[3px] border-dashed transition-all duration-300 ${
+                    frameState === 'GREEN' ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' 
+                    : frameState === 'YELLOW' ? 'border-amber-400/70 bg-amber-500/5'
+                    : 'border-white/30'
+                  }`} />
                 </div>
-
-                {/* CONTAGEM REGRESSIVA GRANDE NO CENTRO (3... 2... 1...) */}
-                {countdownSecs !== null && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 bg-black/30 backdrop-blur-[2px]">
-                    <div className="w-28 h-28 rounded-full bg-emerald-500 flex items-center justify-center shadow-2xl animate-bounce">
-                      <span className="text-white text-6xl font-black font-heading">{countdownSecs}</span>
+                {cameraActive && countdownSecs !== null && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-30 bg-black/30 backdrop-blur-[2px]">
+                    <div className="w-24 h-24 rounded-full bg-black/80 border-4 border-amber-400 backdrop-blur-md flex items-center justify-center shadow-2xl animate-pulse">
+                      <span className="text-5xl font-black text-amber-400 font-mono tracking-tighter">{countdownSecs}</span>
                     </div>
                   </div>
                 )}
-
-                <div className="absolute top-3 left-3 right-3 z-10 bg-[#071B3A]/90 text-emerald-200 text-xs font-bold text-center py-2.5 px-3 rounded-xl backdrop-blur-sm flex items-center justify-center gap-2 font-heading">
+                <div className="absolute bottom-0 left-0 right-0 bg-[#071B3A]/90 text-emerald-300 text-xs font-bold text-center py-3 px-4 backdrop-blur-sm flex items-center justify-center gap-2 font-heading">
                   <span>{selfieInstruction}</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={startCountdown}
-                  disabled={capturingSelfie || !faceDetected || countdownSecs !== null}
-                  className="absolute z-20 bottom-3 left-3 right-3 min-h-12 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-[#071B3A] font-extrabold text-sm shadow-xl transition active:scale-[0.99] disabled:opacity-60"
-                >
-                  {countdownSecs !== null ? `Foto em ${countdownSecs}…` : 'Iniciar foto com contagem'}
-                </button>
               </div>
 
-              {/* Status em Tempo Real */}
-              <div className="flex items-center justify-center gap-2 text-[11px] font-bold font-heading">
-                <span className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 transition-all ${
-                  faceDetected ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-slate-100 border-slate-200 text-slate-500'
-                }`}>
-                  {faceDetected ? '✅ Rosto OK' : '⚪ Rosto'}
-                </span>
-                <span className="px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 flex items-center gap-1 transition-all">
-                  ✓ Conferência após a foto
-                </span>
-              </div>
-
-              {/* Botão de Captura Manual (fallback) */}
+              {/* Botão de Captura Manual Direta */}
               <button
                 type="button"
-                onClick={startCountdown}
-                disabled={capturingSelfie || checkingSelfieDocument || !faceDetected || countdownSecs !== null}
-                className="hidden"
+                onClick={handleManualCapture}
+                disabled={capturingSelfie}
+                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading"
               >
                 {capturingSelfie ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin text-white" /> Capturando Foto...
                   </>
-                ) : countdownSecs !== null ? (
-                  <>📸 Foto em {countdownSecs}...</>
                 ) : (
-                  <><Camera className="w-4 h-4 text-white" /> Iniciar contagem para foto</>
+                  <>
+                    <Camera className="w-4 h-4 text-white" />
+                    {'📸 Tirar Selfie'}
+                  </>
                 )}
               </button>
             </div>
 
-            {checkingSelfieDocument && !clientSelfieComplete && (
-              <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-center text-xs font-bold text-blue-800 flex items-center justify-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" /> Conferindo a qualidade e o documento na foto…
-              </div>
-            )}
-
             {clientSelfieComplete && (
               <div className="space-y-4 pt-1">
-                <div className="space-y-2 text-center">
-                  <div className="rounded-3xl overflow-hidden border-2 border-emerald-500 max-w-[320px] mx-auto bg-slate-950 relative shadow-md">
-                    <img src={selfieImages.center as string} alt="Selfie com documento" className="block w-full h-auto" />
-                    <span className="absolute top-2 right-2 bg-emerald-500 text-white rounded-full p-1 shadow-sm">
-                      <Check className="w-4 h-4 stroke-[3]" />
-                    </span>
-                  </div>
-                  <p className="text-xs font-bold text-emerald-700 font-heading flex items-center justify-center gap-1">
-                    <CheckCircle2 className="w-4 h-4" /> Foto com documento capturada com sucesso!
-                  </p>
+                <div className="grid grid-cols-1 gap-2.5 max-w-[220px] mx-auto">
+                  {LIVENESS_STEPS.map((s) => (
+                    <div key={s.key} className="space-y-1.5 text-center">
+                      <div className="rounded-2xl overflow-hidden border-2 border-emerald-500 aspect-[4/3] bg-black relative group shadow-sm">
+                        {selfieImages[s.key] && (
+                          <img src={selfieImages[s.key] as string} alt={s.label} className="w-full h-full object-contain" />
+                        )}
+                        <span className="absolute top-1.5 right-1.5 bg-emerald-500 text-white rounded-full p-0.5 shadow-sm">
+                          <Check className="w-3 h-3 stroke-[3]" />
+                        </span>
+                      </div>
+                      <p className="text-[10px] font-bold text-slate-700 font-heading">{s.label}</p>
+                    </div>
+                  ))}
                 </div>
 
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => startSelfieCamera(undefined, false, 'CLIENT')}
-                    className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl transition-all flex items-center justify-center gap-1.5 text-xs font-heading"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" /> Tirar Novamente
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isRogadoConsent) {
-                        setStep('ROGO_TRANSITION');
-                      } else {
-                        setStep('SIGN');
-                      }
-                    }}
-                    className="flex-1 py-3.5 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-1.5 text-xs font-heading"
-                  >
-                    Confirmar e Continuar <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isRogadoConsent) {
+                      setStep('ROGO_TRANSITION');
+                    } else {
+                      setStep('SIGN');
+                    }
+                  }}
+                  className="w-full py-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
+                >
+                  {isRogadoConsent ? 'Avançar para o Assinante a Rogo' : 'Continuar para Assinatura'} <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+                </button>
               </div>
             )}
             <canvas ref={selfieCanvasRef} className="hidden" />
@@ -1584,15 +1307,18 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           </div>
         )}
 
-        {/* ETAPA ROGO 1.5: Documento de Identificação do Assinante a Rogo */}
+        {/* ETAPA ROGO 1.5: Documento de Identificação do Assinante a Rogo (evidência complementar) */}
         {step === 'ROGO_DOCUMENT' && (
           <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
             <div className="text-center space-y-1">
+              <div className="w-10 h-10 bg-blue-50 border border-blue-200 text-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
+                <Camera className="w-5 h-5" />
+              </div>
               <h2 className="font-heading text-base font-extrabold text-[#071B3A]">
-                Documento de Identificação do Assinante a Rogo ({rogoDocumentSide === 'FRENTE' ? 'Frente' : 'Verso'})
+                🪪 Documento de Identificação do Assinante a Rogo ({rogoDocumentSide === 'FRENTE' ? 'Frente' : 'Verso'})
               </h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Fotografe a frente e o verso do RG ou da CNH de {rogoName || 'quem assina a rogo'} para continuar com segurança.
+                Fotografe o RG ou a CNH de {rogoName || 'quem assina a rogo'} como evidência complementar. Essa etapa não impede a assinatura.
               </p>
             </div>
 
@@ -1606,146 +1332,118 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               autoStart
             />
 
+            <button
+              type="button"
+              onClick={() => {
+                if (rogoDocumentSide === 'FRENTE') {
+                  setRogoDocumentSide('VERSO');
+                } else {
+                  setStep('ROGO_SELFIE');
+                  startSelfieCamera(undefined, false, 'ROGO');
+                }
+              }}
+              className="w-full py-3 text-slate-500 hover:text-slate-700 font-bold text-xs underline underline-offset-2 transition-colors"
+            >
+              Pular esta etapa por enquanto
+            </button>
           </div>
         )}
 
-        {/* ETAPA ROGO: Foto com Documento do Assinante a Rogo */}
+        {/* ETAPA ROGO: Fotos do Assinante a Rogo */}
         {step === 'ROGO_SELFIE' && (
           <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
             <div className="text-center space-y-1">
               <div className="w-10 h-10 bg-blue-50 border border-blue-200 text-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
                 <Camera className="w-5 h-5" />
               </div>
-              <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-blue-700">Confirmação do acompanhante</p>
-              <h2 className="font-heading text-lg font-extrabold text-[#071B3A]">Foto com documento</h2>
+              <h2 className="font-heading text-base font-extrabold text-[#071B3A]">🤳 Prova de Presença do Assinante a Rogo ({rogoName})</h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Segure o RG ou a CNH dentro da moldura, ao lado do rosto. Nós conferiremos a imagem antes de aceitar.
+                Agora registramos a selfie do acompanhante ({rogoName}) que assinará a rogo pelo cliente.
               </p>
             </div>
 
             {!cameraActive && !rogoSelfieComplete && (
               <button
                 type="button"
-                onClick={() => unlockAudioAndStartCamera('ROGO')}
+                onClick={() => startSelfieCamera(undefined, false, 'ROGO')}
                 className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
               >
-                <Camera className="w-4 h-4 text-white" /> Iniciar câmera ({rogoName.split(' ')[0]})
+                <Camera className="w-4 h-4 text-white" /> Abrir Câmera para {rogoName.split(' ')[0]}
               </button>
             )}
 
             <div className={cameraActive ? 'space-y-3' : 'hidden'}>
-              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[4/5] bg-black ${
+              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[3/4] sm:aspect-[4/3] bg-black ${
                 frameState === 'GREEN' ? 'border-emerald-500 shadow-emerald-500/50 shadow-xl'
                 : frameState === 'YELLOW' ? 'border-amber-400'
                 : frameState === 'FLASH' ? 'border-white animate-pulse'
                 : 'border-slate-600'
               }`}>
                 <video ref={selfieVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
-
-                {/* OVERLAY SEM OVAL: APENAS GUIA DISCRETA DE DOCUMENTO AO LADO */}
-                <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-2">
-                  <div className="w-full h-full relative">
-                    {/* Moldura Orientativa do Documento na lateral */}
-                    <div className="absolute top-[40%] left-[4%] w-[38%] aspect-[1.58/1] rounded-xl border-[2px] border-dashed border-white/80 bg-black/10 flex flex-col items-center justify-start pt-2 shadow-lg">
-                      <span className="text-[9px] font-bold uppercase font-heading px-2 py-0.5 rounded-full bg-black/60 text-white">
-                        Posicione o RG ou CNH aqui
-                      </span>
-                    </div>
-                  </div>
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                  <div className={`w-[70%] h-[75%] rounded-[50%] border-[3px] border-dashed transition-all duration-300 ${
+                    frameState === 'GREEN' ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' 
+                    : frameState === 'YELLOW' ? 'border-amber-400/70 bg-amber-500/5'
+                    : 'border-white/30'
+                  }`} />
                 </div>
-
-                {/* CONTAGEM REGRESSIVA GRANDE NO CENTRO (3... 2... 1...) */}
-                {countdownSecs !== null && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 bg-black/30 backdrop-blur-[2px]">
-                    <div className="w-28 h-28 rounded-full bg-blue-500 flex items-center justify-center shadow-2xl animate-bounce">
-                      <span className="text-white text-6xl font-black font-heading">{countdownSecs}</span>
+                {cameraActive && countdownSecs !== null && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-30 bg-black/30 backdrop-blur-[2px]">
+                    <div className="w-24 h-24 rounded-full bg-black/80 border-4 border-amber-400 backdrop-blur-md flex items-center justify-center shadow-2xl animate-pulse">
+                      <span className="text-5xl font-black text-amber-400 font-mono tracking-tighter">{countdownSecs}</span>
                     </div>
                   </div>
                 )}
-
-                <div className="absolute top-3 left-3 right-3 z-10 bg-[#071B3A]/90 text-blue-200 text-xs font-bold text-center py-2.5 px-3 rounded-xl backdrop-blur-sm flex items-center justify-center gap-2 font-heading">
+                <div className="absolute bottom-0 left-0 right-0 bg-[#071B3A]/90 text-blue-300 text-xs font-bold text-center py-3 px-4 backdrop-blur-sm flex items-center justify-center gap-2 font-heading">
                   <span>{selfieInstruction}</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={startCountdown}
-                  disabled={capturingSelfie || !faceDetected || countdownSecs !== null}
-                  className="absolute z-20 bottom-3 left-3 right-3 min-h-12 rounded-2xl bg-blue-500 hover:bg-blue-400 text-white font-extrabold text-sm shadow-xl transition active:scale-[0.99] disabled:opacity-60"
-                >
-                  {countdownSecs !== null ? `Foto em ${countdownSecs}…` : 'Iniciar foto com contagem'}
-                </button>
               </div>
 
-              {/* Status em Tempo Real */}
-              <div className="flex items-center justify-center gap-2 text-[11px] font-bold font-heading">
-                <span className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 transition-all ${
-                  faceDetected ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-slate-100 border-slate-200 text-slate-500'
-                }`}>
-                  {faceDetected ? '✅ Rosto OK' : '⚪ Rosto'}
-                </span>
-                <span className="px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 flex items-center gap-1 transition-all">
-                  ✓ Conferência após a foto
-                </span>
-              </div>
-
-              {/* Botão de Captura Manual (fallback) para o Assinante a Rogo */}
+              {/* Botão de Captura Manual Direta para o Assinante a Rogo */}
               <button
                 type="button"
-                onClick={startCountdown}
-                disabled={capturingSelfie || checkingSelfieDocument || !faceDetected || countdownSecs !== null}
-                className="hidden"
+                onClick={handleManualCapture}
+                disabled={capturingSelfie}
+                className="w-full py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading"
               >
                 {capturingSelfie ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin text-white" /> Capturando Foto...
                   </>
-                ) : countdownSecs !== null ? (
-                  <>📸 Foto em {countdownSecs}...</>
                 ) : (
                   <>
-                    <Camera className="w-4 h-4 text-white" /> Iniciar contagem para foto
+                    <Camera className="w-4 h-4 text-white" />
+                    {'📸 Tirar Selfie'}
                   </>
                 )}
               </button>
             </div>
 
-            {checkingSelfieDocument && !rogoSelfieComplete && (
-              <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-center text-xs font-bold text-blue-800 flex items-center justify-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" /> Conferindo a qualidade e o documento na foto…
-              </div>
-            )}
-
             {rogoSelfieComplete && (
               <div className="space-y-4 pt-1">
-                <div className="space-y-2 text-center">
-                  <div className="rounded-3xl overflow-hidden border-2 border-blue-500 max-w-[320px] mx-auto bg-slate-950 relative shadow-md">
-                    <img src={rogoSelfieImages.center as string} alt="Selfie com documento do acompanhante" className="block w-full h-auto" />
-                    <span className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-1 shadow-sm">
-                      <Check className="w-4 h-4 stroke-[3]" />
-                    </span>
-                  </div>
-                  <p className="text-xs font-bold text-blue-700 font-heading flex items-center justify-center gap-1">
-                    <CheckCircle2 className="w-4 h-4" /> Foto com documento capturada com sucesso!
-                  </p>
+                <div className="grid grid-cols-1 gap-2.5 max-w-[220px] mx-auto">
+                  {LIVENESS_STEPS.map((s) => (
+                    <div key={s.key} className="space-y-1.5 text-center">
+                      <div className="rounded-2xl overflow-hidden border-2 border-blue-500 aspect-[4/3] bg-black relative shadow-sm">
+                        {rogoSelfieImages[s.key] && (
+                          <img src={rogoSelfieImages[s.key] as string} alt={s.label} className="w-full h-full object-contain" />
+                        )}
+                        <span className="absolute top-1.5 right-1.5 bg-blue-600 text-white rounded-full p-0.5 shadow-sm">
+                          <Check className="w-3 h-3 stroke-[3]" />
+                        </span>
+                      </div>
+                      <p className="text-[10px] font-bold text-slate-700 font-heading">{s.label}</p>
+                    </div>
+                  ))}
                 </div>
 
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => startSelfieCamera(undefined, false, 'ROGO')}
-                    className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl transition-all flex items-center justify-center gap-1.5 text-xs font-heading"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" /> Tirar Novamente
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setStep('SIGN')}
-                    className="flex-1 py-3.5 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-1.5 text-xs font-heading"
-                  >
-                    Confirmar e Continuar <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setStep('SIGN')}
+                  className="w-full py-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
+                >
+                  Ir para Quadro de Assinatura a Rogo <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+                </button>
               </div>
             )}
             <canvas ref={selfieCanvasRef} className="hidden" />
@@ -1797,7 +1495,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   {isRogadoConsent ? `CPF Cliente: ${signer?.cpf ? formatFullCpf(signer.cpf) : ''} | CPF A Rogo: ${rogoCpf ? formatFullCpf(rogoCpf) : ''}` : `CPF: ${signer?.cpf ? formatFullCpf(signer.cpf) : ''}`}
                 </p>
                 <p className="text-[10px] text-emerald-700 font-extrabold uppercase">
-                  {isRogadoConsent ? '✓ FOTOS DE PRESENÇA DO CLIENTE E ACOMPANHANTE VINCULADAS' : '✓ PROVA DE PRESENÇA + GEOLOCALIZAÇÃO VINCULADOS'}
+                  {isRogadoConsent ? '✓ 6 FOTOS DE PRESENÇA (3 CLIENTE + 3 ACOMPANHANTE) VINCULADOS' : '✓ PROVA DE PRESENÇA + GEOLOCALIZAÇÃO VINCULADOS'}
                 </p>
               </div>
             </div>
@@ -1911,7 +1609,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         {step === 'NEXT_PARTICIPANT' && nextParticipant && (
           <div className="bg-white p-8 rounded-3xl border border-blue-200 shadow-2xl text-center space-y-6">
             <div className="w-16 h-16 bg-blue-50 border border-blue-200 text-blue-600 rounded-full flex items-center justify-center mx-auto shadow-xs"><Users className="w-9 h-9" /></div>
-            <div className="space-y-2"><span className="px-3.5 py-1 rounded-full bg-blue-50 text-blue-700 font-extrabold text-xs border border-blue-200 uppercase tracking-wider font-heading">Próxima etapa obrigatória</span><h2 className="font-heading text-xl font-extrabold text-[#071B3A]">Passe o celular para {nextParticipant.name}</h2><p className="text-sm text-slate-600 font-medium leading-relaxed">A etapa anterior foi registrada, mas o documento ainda não foi concluído. Agora a {nextParticipant.role.replace(/_/g, ' ').toLowerCase()} deverá confirmar o próprio CPF, tirar a foto com o documento de identificação e assinar.</p></div>
+            <div className="space-y-2"><span className="px-3.5 py-1 rounded-full bg-blue-50 text-blue-700 font-extrabold text-xs border border-blue-200 uppercase tracking-wider font-heading">Próxima etapa obrigatória</span><h2 className="font-heading text-xl font-extrabold text-[#071B3A]">Passe o celular para {nextParticipant.name}</h2><p className="text-sm text-slate-600 font-medium leading-relaxed">A etapa anterior foi registrada, mas o documento ainda não foi concluído. Agora a {nextParticipant.role.replace(/_/g, ' ').toLowerCase()} deverá confirmar o próprio CPF, fazer as três fotos e assinar.</p></div>
             <button type="button" onClick={() => window.location.assign(`/assinar/${nextParticipant.token}`)} className="w-full py-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg text-sm font-heading">Iniciar etapa de {nextParticipant.name}</button>
           </div>
         )}

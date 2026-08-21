@@ -324,7 +324,7 @@ export async function POST(
         documentId: signer.document.id,
         signerId: signer.id,
         eventType: 'LIVENESS_CAPTURED',
-        description: `Prova de presença ao vivo concluída com 3 fotos para ${signer.name}.`,
+        description: `Prova de presença ao vivo concluída (selfie) para ${signer.name}.`,
         ipAddress: clientIp,
         userAgent,
       },

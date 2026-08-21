@@ -17,8 +17,7 @@ export async function GET(req: Request) {
     const query = searchParams.get('q') || '';
     const legalArea = searchParams.get('legalArea') || '';
 
-    const [clients, processStats, documentStats, pendencyStats] = await Promise.all([
-      prisma.client.findMany({
+    const clients = await prisma.client.findMany({
       where: {
         officeId: user.officeId, // ISOLAMENTO RIGOROSO MULTI-TENANT
         AND: [
@@ -29,32 +28,6 @@ export async function GET(req: Request) {
                   { cpfCnpj: { contains: query, mode: 'insensitive' } },
                   { phone: { contains: query, mode: 'insensitive' } },
                   { email: { contains: query, mode: 'insensitive' } },
-                  { city: { contains: query, mode: 'insensitive' } },
-                  { notes: { contains: query, mode: 'insensitive' } },
-                  { processNumber: { contains: query, mode: 'insensitive' } },
-                  {
-                    processes: {
-                      some: {
-                        OR: [
-                          { title: { contains: query, mode: 'insensitive' } },
-                          { processNumber: { contains: query, mode: 'insensitive' } },
-                          { protocolNumber: { contains: query, mode: 'insensitive' } },
-                          { notes: { contains: query, mode: 'insensitive' } },
-                        ],
-                      },
-                    },
-                  },
-                  { documents: { some: { title: { contains: query, mode: 'insensitive' } } } },
-                  {
-                    pendencies: {
-                      some: {
-                        OR: [
-                          { title: { contains: query, mode: 'insensitive' } },
-                          { description: { contains: query, mode: 'insensitive' } },
-                        ],
-                      },
-                    },
-                  },
                 ],
               }
             : {},
@@ -65,139 +38,11 @@ export async function GET(req: Request) {
         lawyerInCharge: {
           select: { id: true, name: true, oabNumber: true },
         },
-        processes: {
-          select: {
-            id: true,
-            title: true,
-            legalArea: true,
-            status: true,
-            priority: true,
-            dueDate: true,
-            protocolNumber: true,
-            lastActivityAt: true,
-          },
-          orderBy: { lastActivityAt: 'desc' },
-          take: 6,
-        },
-        documents: {
-          select: {
-            id: true,
-            title: true,
-            status: true,
-            createdAt: true,
-            completedAt: true,
-          },
-          orderBy: { createdAt: 'desc' },
-          take: 8,
-        },
-        pendencies: {
-          where: { resolvedAt: null },
-          select: {
-            id: true,
-            title: true,
-            description: true,
-            status: true,
-            category: true,
-            priority: true,
-            dueDate: true,
-            createdAt: true,
-            updatedAt: true,
-            _count: { select: { history: true } },
-            responsible: { select: { id: true, name: true } },
-          },
-          orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }],
-          take: 6,
-        },
       },
       orderBy: { createdAt: 'desc' },
-      }),
-      prisma.legalProcess.findMany({
-        where: { officeId: user.officeId },
-        select: {
-          clientId: true,
-          status: true,
-          _count: { select: { activities: true } },
-        },
-      }),
-      prisma.document.findMany({
-        where: { officeId: user.officeId, clientId: { not: null } },
-        select: {
-          clientId: true,
-          status: true,
-          _count: { select: { events: true } },
-        },
-      }),
-      prisma.clientPendency.findMany({
-        where: { officeId: user.officeId, clientId: { not: null } },
-        select: {
-          clientId: true,
-          resolvedAt: true,
-          _count: { select: { history: true } },
-        },
-      }),
-    ]);
-
-    type MovementSummary = {
-      total: number;
-      processes: number;
-      activeProcesses: number;
-      processActivities: number;
-      documents: number;
-      pendingDocuments: number;
-      documentEvents: number;
-      alerts: number;
-      openAlerts: number;
-      alertChanges: number;
-    };
-
-    const movementByClient = new Map<string, MovementSummary>();
-    const summaryFor = (clientId: string) => {
-      const current = movementByClient.get(clientId);
-      if (current) return current;
-      const created: MovementSummary = {
-        total: 0,
-        processes: 0,
-        activeProcesses: 0,
-        processActivities: 0,
-        documents: 0,
-        pendingDocuments: 0,
-        documentEvents: 0,
-        alerts: 0,
-        openAlerts: 0,
-        alertChanges: 0,
-      };
-      movementByClient.set(clientId, created);
-      return created;
-    };
-
-    processStats.forEach((item) => {
-      const summary = summaryFor(item.clientId);
-      summary.processes += 1;
-      summary.processActivities += item._count.activities;
-      if (!['CONCLUIDO', 'ARQUIVADO', 'CANCELADO'].includes(String(item.status || '').toUpperCase())) summary.activeProcesses += 1;
-    });
-    documentStats.forEach((item) => {
-      if (!item.clientId) return;
-      const summary = summaryFor(item.clientId);
-      summary.documents += 1;
-      summary.documentEvents += item._count.events;
-      if (['ENVIADO', 'PENDENTE', 'PARCIALMENTE_ASSINADO'].includes(String(item.status || '').toUpperCase())) summary.pendingDocuments += 1;
-    });
-    pendencyStats.forEach((item) => {
-      if (!item.clientId) return;
-      const summary = summaryFor(item.clientId);
-      summary.alerts += 1;
-      summary.alertChanges += item._count.history;
-      if (!item.resolvedAt) summary.openAlerts += 1;
     });
 
-    const managedClients = clients.map((client) => {
-      const summary = summaryFor(client.id);
-      summary.total = summary.processes + summary.processActivities + summary.documents + summary.documentEvents + summary.alerts + summary.alertChanges;
-      return { ...client, movementSummary: summary };
-    });
-
-    return NextResponse.json({ clients: managedClients });
+    return NextResponse.json({ clients });
   } catch (error: any) {
     console.error('Erro ao listar clientes:', error);
     return NextResponse.json({ error: 'Erro ao buscar clientes.' }, { status: 500 });
@@ -274,11 +119,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Informe um telefone válido do representante legal.' }, { status: 400 });
     }
     // Endereço do próprio cliente (usado quando o representante mora com ele).
+    // O campo "address" do cadastro já é um texto único (rua, número e bairro
+    // digitados juntos ali mesmo) - não há campos separados editáveis de
+    // número/bairro nesta tela. Incluir também "number"/"neighborhood" aqui
+    // duplicava a informação (às vezes com um bairro antigo de um cadastro
+    // anterior, sem relação com o endereço atual digitado no campo acima).
     const ownAddressText = [
       address,
-      number && !String(address || '').includes(number) ? `nº ${number}` : '',
       complement,
-      neighborhood,
       [city, state].filter(Boolean).join('/'),
       cep ? `CEP ${cep}` : '',
     ].filter(Boolean).join(', ');
