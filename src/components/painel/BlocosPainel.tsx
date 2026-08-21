@@ -1695,7 +1695,11 @@ export function BlocoAcompanhamento({
   // portanto não recebem drag & drop no Kanban.
   const processosProtocolados = useMemo(() => {
     return [...processos]
-      .filter((processo) => Boolean(processo?.protocolNumber))
+      .filter((processo) => Boolean(
+        processo?.protocolNumber ||
+        processo?.processNumber ||
+        String(processo?.status || '').toUpperCase() === 'PROTOCOLADO'
+      ))
       .sort((a, b) => {
         const aDate = new Date(a.lastActivityAt || a.updatedAt || a.createdAt || 0).getTime();
         const bDate = new Date(b.lastActivityAt || b.updatedAt || b.createdAt || 0).getTime();
@@ -2174,7 +2178,7 @@ export function BlocoAcompanhamento({
                       </div>
                       <h4 className="mt-2 line-clamp-2 text-xs font-extrabold leading-4 text-[#071B3A] transition-colors group-hover:text-emerald-700">{processo.title || 'Processo sem título'}</h4>
                       <p className="mt-1 truncate text-[10px] font-medium text-slate-600">{processo.client?.name || 'Cliente não identificado'}</p>
-                      <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2 text-[9px] font-bold text-slate-400"><span className="truncate">Protocolo: <strong className="text-slate-700">{processo.protocolNumber}</strong></span><span className="inline-flex items-center gap-1 text-emerald-700">Abrir <ChevronRight className="h-3 w-3" /></span></div>
+                      <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2 text-[9px] font-bold text-slate-400"><span className="truncate">{processo.protocolNumber ? 'Protocolo' : 'Processo'}: <strong className="text-slate-700">{processo.protocolNumber || processo.processNumber || 'Registrado'}</strong></span><span className="inline-flex items-center gap-1 text-emerald-700">Abrir <ChevronRight className="h-3 w-3" /></span></div>
                     </button>
                   );
                 }) : col.items.map((item) => {
