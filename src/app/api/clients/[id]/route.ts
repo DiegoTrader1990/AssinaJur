@@ -32,7 +32,7 @@ export async function GET(
             dueDate: true,
             protocolNumber: true,
             lastActivityAt: true,
-            _count: { select: { documents: true, attachments: true } },
+            _count: { select: { documents: true, attachments: true, activities: true } },
           },
           orderBy: { lastActivityAt: 'desc' },
         },
@@ -43,6 +43,7 @@ export async function GET(
             status: true,
             completedAt: true,
             createdAt: true,
+            _count: { select: { events: true } },
             process: { select: { id: true, title: true } },
           },
           orderBy: { createdAt: 'desc' },
@@ -58,7 +59,9 @@ export async function GET(
             category: true,
             priority: true,
             dueDate: true,
+            createdAt: true,
             updatedAt: true,
+            _count: { select: { history: true } },
             responsible: { select: { id: true, name: true } },
           },
           orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }],
@@ -70,7 +73,36 @@ export async function GET(
       return NextResponse.json({ error: 'Cliente não encontrado.' }, { status: 404 });
     }
 
-    return NextResponse.json({ client });
+    const [processStats, documentStats, pendencyStats] = await Promise.all([
+      prisma.legalProcess.findMany({
+        where: { officeId: user.officeId, clientId: client.id },
+        select: { status: true, _count: { select: { activities: true } } },
+      }),
+      prisma.document.findMany({
+        where: { officeId: user.officeId, clientId: client.id },
+        select: { status: true, _count: { select: { events: true } } },
+      }),
+      prisma.clientPendency.findMany({
+        where: { officeId: user.officeId, clientId: client.id },
+        select: { resolvedAt: true, _count: { select: { history: true } } },
+      }),
+    ]);
+
+    const movementSummary = {
+      processes: processStats.length,
+      activeProcesses: processStats.filter((item) => !['CONCLUIDO', 'ARQUIVADO', 'CANCELADO'].includes(String(item.status || '').toUpperCase())).length,
+      processActivities: processStats.reduce((total, item) => total + item._count.activities, 0),
+      documents: documentStats.length,
+      pendingDocuments: documentStats.filter((item) => ['ENVIADO', 'PENDENTE', 'PARCIALMENTE_ASSINADO'].includes(String(item.status || '').toUpperCase())).length,
+      documentEvents: documentStats.reduce((total, item) => total + item._count.events, 0),
+      alerts: pendencyStats.length,
+      openAlerts: pendencyStats.filter((item) => !item.resolvedAt).length,
+      alertChanges: pendencyStats.reduce((total, item) => total + item._count.history, 0),
+      total: 0,
+    };
+    movementSummary.total = movementSummary.processes + movementSummary.processActivities + movementSummary.documents + movementSummary.documentEvents + movementSummary.alerts + movementSummary.alertChanges;
+
+    return NextResponse.json({ client: { ...client, movementSummary } });
   } catch (error: any) {
     console.error('Erro ao buscar cliente:', error);
     return NextResponse.json({ error: 'Erro ao carregar detalhes do cliente.' }, { status: 500 });

@@ -74,12 +74,43 @@ interface Client {
   legalArea?: string;
   processNumber?: string;
   lawyerInCharge?: { id: string; name: string; oabNumber?: string };
-  processes?: Array<{ id: string; title: string; legalArea?: string; status: string; priority: string; dueDate?: string | null; protocolNumber?: string | null; lastActivityAt: string; _count?: { documents: number; attachments: number } }>;
-  documents?: Array<{ id: string; title: string; status: string; createdAt: string; completedAt?: string | null; process?: { id: string; title: string } | null }>;
+  processes?: Array<{ id: string; title: string; legalArea?: string; status: string; priority: string; dueDate?: string | null; protocolNumber?: string | null; lastActivityAt: string; _count?: { documents: number; attachments: number; activities?: number } }>;
+  documents?: Array<{ id: string; title: string; status: string; createdAt: string; completedAt?: string | null; _count?: { events: number }; process?: { id: string; title: string } | null }>;
   pendencies?: Array<{ id: string; title?: string | null; description: string; status: string; category: string; priority: string; dueDate?: string | null; createdAt?: string; updatedAt: string; _count?: { history: number }; responsible?: { id: string; name: string } | null }>;
   movementSummary?: { total: number; processes: number; activeProcesses: number; processActivities: number; documents: number; pendingDocuments: number; documentEvents: number; alerts: number; openAlerts: number; alertChanges: number };
   createdAt: string;
   updatedAt?: string;
+}
+
+function clientTimeline(client: Client) {
+  const processItems = (client.processes || []).map((item) => ({
+    id: `process-${item.id}`,
+    date: item.lastActivityAt,
+    kind: 'PROCESSO',
+    title: item.title,
+    description: `${item.status.replaceAll('_', ' ')}${item._count?.activities ? ` · ${item._count.activities} registros no histórico` : ''}`,
+    color: 'bg-violet-500',
+  }));
+  const documentItems = (client.documents || []).map((item) => ({
+    id: `document-${item.id}`,
+    date: item.completedAt || item.createdAt,
+    kind: 'DOCUMENTO',
+    title: item.title,
+    description: `${item.status === 'CONCLUIDO' ? 'Documento assinado' : item.status.replaceAll('_', ' ')}${item._count?.events ? ` · ${item._count.events} eventos` : ''}`,
+    color: item.status === 'CONCLUIDO' ? 'bg-emerald-500' : 'bg-blue-500',
+  }));
+  const alertItems = (client.pendencies || []).map((item) => ({
+    id: `alert-${item.id}`,
+    date: item.updatedAt,
+    kind: 'ALERTA',
+    title: item.title || item.description,
+    description: `${item.status.replaceAll('_', ' ')}${item._count?.history ? ` · ${item._count.history} movimentações` : ''}`,
+    color: item.priority === 'URGENTE' ? 'bg-rose-500' : item.priority === 'ALTA' ? 'bg-orange-500' : item.priority === 'NORMAL' ? 'bg-[#c39a25]' : 'bg-slate-400',
+  }));
+  return [...processItems, ...documentItems, ...alertItems]
+    .filter((item) => item.date)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 10);
 }
 
 const EMPTY_CLIENT_FORM = {
@@ -1149,9 +1180,18 @@ export default function ClientsPage() {
                     <div className="space-y-2">{selectedClient.pendencies?.slice(0, 6).map((pendency) => <div key={pendency.id} className={`rounded-2xl border bg-white p-3.5 shadow-sm ${pendency.priority === 'URGENTE' ? 'border-rose-200' : pendency.priority === 'ALTA' ? 'border-orange-200' : pendency.priority === 'NORMAL' ? 'border-[#eadca9]' : 'border-slate-200'}`}><div className="flex items-start gap-3"><span className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${pendency.priority === 'URGENTE' ? 'bg-rose-500' : pendency.priority === 'ALTA' ? 'bg-orange-500' : pendency.priority === 'NORMAL' ? 'bg-[#c39a25]' : 'bg-slate-400'}`} /><div className="min-w-0 flex-1"><strong className="block text-[11px] font-black text-[#071B3A]">{pendency.title || pendency.description}</strong><p className="mt-1 line-clamp-2 text-[10px] leading-4 text-slate-500">{pendency.description}</p><div className="mt-2 flex flex-wrap items-center gap-2 text-[8px] font-bold uppercase tracking-wide text-slate-400">{pendency.dueDate && <span className={new Date(pendency.dueDate) < new Date() ? 'text-rose-600' : 'text-amber-700'}>Prazo {new Date(pendency.dueDate).toLocaleDateString('pt-BR')}</span>}{pendency.responsible && <span>Responsável: {pendency.responsible.name}</span>}{pendency._count?.history ? <span>{pendency._count.history} movimentações</span> : null}</div></div><button onClick={() => openFollowUp(selectedClient, pendency)} className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-2 text-[8px] font-black text-slate-500 transition hover:border-[#dec66e] hover:bg-[#fffaf0] hover:text-[#7d5f0d]"><Pencil className="h-3 w-3" /> Gerenciar</button></div></div>)}{!selectedClient.pendencies?.length && <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 text-[11px] font-bold text-emerald-700"><Check className="mr-2 inline h-4 w-4" />Nenhuma pendência aberta para este cliente.</div>}</div>
                   </section>
 
+                  <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {[
+                      ['Movimentações', selectedClient.movementSummary?.total || 0, 'text-[#a57e11]'],
+                      ['Processos ativos', selectedClient.movementSummary?.activeProcesses || 0, 'text-violet-600'],
+                      ['Documentos', selectedClient.movementSummary?.documents || 0, 'text-blue-600'],
+                      ['Alertas abertos', selectedClient.movementSummary?.openAlerts || 0, 'text-orange-600'],
+                    ].map(([label, value, color]) => <div key={String(label)} className="rounded-2xl border border-slate-200 bg-white px-3.5 py-3 shadow-sm"><strong className={`font-heading text-xl font-black ${color}`}>{value}</strong><span className="mt-1 block text-[8px] font-black uppercase tracking-[.1em] text-slate-400">{label}</span></div>)}
+                  </section>
+
                   <section className="grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Contato principal</p><div className="mt-3 flex items-center gap-2 font-black text-[#071B3A]"><Phone className="h-4 w-4 text-blue-600" />{maskPhone(selectedClient.phone)}</div><div className="mt-2 flex min-w-0 items-center gap-2 text-[10px] font-semibold text-slate-500"><Mail className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{selectedClient.email || 'E-mail não informado'}</span></div></div><div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Gestão jurídica</p><div className="mt-3 flex items-center gap-2 font-black text-[#071B3A]"><Scale className="h-4 w-4 text-blue-600" />{selectedClient.legalArea || 'Área geral'}</div><p className="mt-2 text-[10px] font-semibold text-slate-500">Responsável: {selectedClient.lawyerInCharge?.name || 'Não definido'}</p></div></section>
 
-                  <section><p className="mb-2.5 text-[9px] font-black uppercase tracking-[.14em] text-slate-400">Movimentações recentes</p><div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="space-y-4">{selectedClient.documents?.slice(0, 4).map((document, index) => <div key={document.id} className="relative flex gap-3"><span className={`relative z-10 mt-1.5 h-2 w-2 shrink-0 rounded-full ${document.status === 'CONCLUIDO' ? 'bg-emerald-500' : 'bg-blue-500'}`} />{index < Math.min((selectedClient.documents?.length || 0), 4) - 1 && <span className="absolute left-[3px] top-4 h-7 w-px bg-slate-200" />}<div className="min-w-0 flex-1"><strong className="block truncate text-[10px] font-extrabold text-slate-700">{document.title}</strong><span className="mt-1 block text-[9px] text-slate-400">{new Date(document.completedAt || document.createdAt).toLocaleDateString('pt-BR')} · {document.status === 'CONCLUIDO' ? 'Documento assinado' : document.status.replaceAll('_', ' ')}</span></div></div>)}{!selectedClient.documents?.length && <p className="text-[10px] text-slate-400">Nenhuma movimentação documental registrada.</p>}</div></div></section>
+                  <section><div className="mb-2.5 flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-[.14em] text-slate-400">Linha do tempo operacional</p><span className="text-[8px] font-bold text-slate-400">Processos, documentos e alertas</span></div><div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="space-y-4">{clientTimeline(selectedClient).map((movement, index, items) => <div key={movement.id} className="relative flex gap-3"><span className={`relative z-10 mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ring-4 ring-white ${movement.color}`} />{index < items.length - 1 && <span className="absolute left-[4px] top-4 h-[calc(100%+8px)] w-px bg-slate-200" />}<div className="min-w-0 flex-1 pb-1"><div className="flex items-start justify-between gap-3"><strong className="block truncate text-[10px] font-extrabold text-slate-700">{movement.title}</strong><span className="shrink-0 text-[8px] font-bold text-slate-400">{new Date(movement.date).toLocaleDateString('pt-BR')}</span></div><span className="mt-1 block text-[8px] font-black uppercase tracking-[.09em] text-slate-400">{movement.kind}</span><span className="mt-1 block text-[9px] text-slate-500">{movement.description}</span></div></div>)}{!clientTimeline(selectedClient).length && <p className="text-[10px] text-slate-400">Nenhuma movimentação operacional registrada.</p>}</div></div></section>
                 </div>
               )}
 
