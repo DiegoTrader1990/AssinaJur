@@ -27,6 +27,7 @@ import {
   UserPlus,
   UsersRound,
   X,
+  Zap,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
@@ -416,31 +417,50 @@ export default function ClientsCentral({
         ) : visible.length === 0 ? (
           <div className="flex min-h-[320px] flex-col items-center justify-center px-5 text-center"><span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400"><Search className="h-6 w-6" /></span><h3 className="font-heading text-base font-black text-[#071B3A]">Nenhum cliente encontrado</h3><p className="mt-1 max-w-sm text-xs leading-5 text-slate-500">Ajuste a busca ou limpe os filtros para visualizar outros cadastros.</p><button onClick={clearFilters} className="mt-4 text-xs font-extrabold text-blue-700">Limpar filtros</button></div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1120px] table-fixed text-left">
-              <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 text-[10px] font-black uppercase tracking-[.11em] text-slate-500 backdrop-blur">
-                <tr><th className="w-11 px-4 py-3.5"><input type="checkbox" checked={visible.length > 0 && visible.every(({ client }) => selected.has(client.id))} onChange={toggleAllVisible} className="h-4 w-4 rounded border-slate-300 text-blue-600" /></th><th className="w-[23%] px-2 py-3.5">Cliente</th><th className="w-[17%] px-3 py-3.5">Contato</th><th className="w-[18%] px-3 py-3.5">Área / Demanda</th><th className="w-[14%] px-3 py-3.5">Status</th><th className="w-[19%] px-3 py-3.5">Pendência / Próxima ação</th><th className="w-[14%] px-3 py-3.5">Última atividade</th><th className="w-28 px-4 py-3.5 text-right">Ações</th></tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {visible.map(({ client, info }) => {
-                  const statusInfo = STATUS[info.status];
-                  const due = dueLabel(info.due);
-                  const whatsapp = String(client.whatsapp || client.phone || '').replace(/\D/g, '');
-                  return (
-                    <tr key={client.id} onClick={() => onOpen(client)} className="group cursor-pointer bg-white transition hover:bg-[#f8fafc]">
-                      <td className="px-4 py-5" onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={selected.has(client.id)} onChange={() => setSelected((current) => { const next = new Set(current); next.has(client.id) ? next.delete(client.id) : next.add(client.id); return next; })} className="h-4 w-4 rounded border-slate-300 text-blue-600" /></td>
-                      <td className="px-2 py-5"><div className="flex items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 text-xs font-black text-[#071B3A]">{initials(client.name)}</span><span className="min-w-0"><strong className="block truncate font-heading text-[13px] font-black text-[#071B3A] group-hover:text-blue-700">{client.name}</strong><span className="mt-1 block truncate text-[11px] font-semibold text-slate-400">{maskCpfCnpj(client.cpfCnpj)}{client.city ? ` · ${client.city}${client.state ? `/${client.state}` : ''}` : ''}</span></span></div></td>
-                      <td className="px-3 py-5"><div className="flex items-center gap-2"><span className="min-w-0"><strong className="block truncate text-[12px] font-extrabold text-slate-700">{maskPhone(client.phone)}</strong><span className="mt-1 block truncate text-[11px] text-slate-400">{client.email || 'E-mail não informado'}</span></span>{whatsapp && <a href={`https://wa.me/${whatsapp.startsWith('55') ? whatsapp : `55${whatsapp}`}`} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 transition hover:bg-emerald-100" aria-label={`WhatsApp de ${client.name}`}><MessageCircle className="h-3.5 w-3.5" /></a>}</div></td>
-                      <td className="px-3 py-5"><strong className="block truncate text-[12px] font-extrabold text-[#071B3A]">{client.legalArea || info.currentProcess?.legalArea || 'Geral'}{info.currentProcess?.title ? ` · ${info.currentProcess.title}` : ''}</strong><div className="mt-1.5 flex flex-wrap gap-1">{info.currentProcess?.protocolNumber && <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">Protocolo {info.currentProcess.protocolNumber}</span>}{info.pendingDocuments.length > 0 && <span className="rounded-md bg-sky-50 px-1.5 py-0.5 text-[9px] font-bold text-sky-700">Assinatura pendente</span>}</div></td>
-                      <td className="px-3 py-5"><span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black ${statusInfo.classes}`}><span className={`h-1.5 w-1.5 rounded-full ${statusInfo.dot}`} />{statusInfo.label}</span>{client.lawyerInCharge && <span className="mt-1.5 block truncate text-[10px] font-semibold text-slate-400">Resp. {client.lawyerInCharge.name}</span>}</td>
-                      <td className="px-3 py-5"><strong className="line-clamp-2 text-[12px] font-extrabold leading-4 text-slate-700">{info.nextAction}</strong>{due && <span className={`mt-1 inline-flex items-center gap-1 text-[10px] font-bold ${due.overdue ? 'text-rose-600' : 'text-amber-700'}`}><CalendarClock className="h-3 w-3" />{due.text}</span>}</td>
-                      <td className="px-3 py-5"><strong className="block text-[11px] font-extrabold text-slate-600">{dateLabel(info.lastActivity)}</strong><span className="mt-1 block truncate text-[10px] text-slate-400">{info.activityDescription}</span></td>
-                      <td className="px-4 py-5 text-right" onClick={(event) => event.stopPropagation()}><div className="relative inline-flex items-center gap-1"><button onClick={() => onOpen(client)} className="rounded-lg bg-[#071B3A] px-3 py-2 text-[10px] font-black text-white transition hover:bg-[#12335e]">Ver cliente</button><button onClick={() => setMenuId(menuId === client.id ? null : client.id)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50"><MoreHorizontal className="h-4 w-4" /></button>{menuId === client.id && <ActionMenu menuRef={menuRef} client={client} onOpen={() => onOpen(client)} onEdit={() => onEdit(client)} onDelete={() => onDelete(client)} />}</div></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="bg-[#f6f8fb]">
+            <div className="flex flex-col gap-2 border-b border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <label className="inline-flex cursor-pointer items-center gap-2 text-[10px] font-extrabold text-slate-600"><input type="checkbox" checked={visible.length > 0 && visible.every(({ client }) => selected.has(client.id))} onChange={toggleAllVisible} className="h-4 w-4 rounded border-slate-300 text-blue-600" /> Selecionar clientes desta página</label>
+              <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[.13em] text-slate-400"><span className="h-px w-6 bg-[#d6b23f]" /> Carteira operacional</div>
+            </div>
+
+            <div className="grid gap-3 p-3 sm:p-4 lg:grid-cols-2 2xl:grid-cols-3">
+              {visible.map(({ client, info }) => {
+                const statusInfo = STATUS[info.status];
+                const due = dueLabel(info.due);
+                const whatsapp = String(client.whatsapp || client.phone || '').replace(/\D/g, '');
+                return (
+                  <article key={client.id} onClick={() => onOpen(client)} className="group relative cursor-pointer rounded-[20px] border border-slate-200 bg-white p-4 shadow-[0_12px_32px_-30px_rgba(7,27,58,.5)] transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_42px_-28px_rgba(7,27,58,.38)]">
+                    <span className={`absolute inset-y-5 left-0 w-[3px] rounded-r-full ${statusInfo.dot}`} />
+
+                    <div className="flex items-start gap-3">
+                      <div onClick={(event) => event.stopPropagation()} className="pt-1"><input type="checkbox" checked={selected.has(client.id)} onChange={() => setSelected((current) => { const next = new Set(current); next.has(client.id) ? next.delete(client.id) : next.add(client.id); return next; })} className="h-4 w-4 rounded border-slate-300 text-blue-600" /></div>
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-slate-200 bg-gradient-to-br from-[#f8fafc] to-[#eef2f7] font-heading text-xs font-black text-[#071B3A] transition group-hover:border-[#d7c06b]">{initials(client.name)}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0"><strong className="block truncate font-heading text-[13px] font-black text-[#071B3A]">{client.name}</strong><span className="mt-1 block truncate text-[10px] font-semibold text-slate-400">{maskCpfCnpj(client.cpfCnpj)}{client.city ? ` · ${client.city}${client.state ? `/${client.state}` : ''}` : ''}</span></div>
+                          <div className="relative shrink-0" onClick={(event) => event.stopPropagation()}><button onClick={() => setMenuId(menuId === client.id ? null : client.id)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-slate-400 transition hover:border-slate-200 hover:bg-slate-50 hover:text-[#071B3A]" aria-label={`Mais ações para ${client.name}`}><MoreHorizontal className="h-4 w-4" /></button>{menuId === client.id && <ActionMenu menuRef={menuRef} client={client} onOpen={() => onOpen(client)} onEdit={() => onEdit(client)} onDelete={() => onDelete(client)} />}</div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5"><span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[8px] font-black ${statusInfo.classes}`}><span className={`h-1.5 w-1.5 rounded-full ${statusInfo.dot}`} />{statusInfo.label}</span>{info.pendingDocuments.length > 0 && <span className="rounded-full border border-sky-100 bg-sky-50 px-2 py-1 text-[8px] font-black text-sky-700">Assinatura pendente</span>}</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-2 border-y border-slate-100 py-3">
+                      <div className="min-w-0"><span className="block text-[8px] font-black uppercase tracking-[.12em] text-slate-400">Demanda</span><strong className="mt-1 block truncate text-[10px] font-extrabold text-slate-700">{info.currentProcess?.title || client.legalArea || 'Sem demanda ativa'}</strong>{info.currentProcess?.protocolNumber && <span className="mt-0.5 block truncate text-[8px] text-slate-400">Prot. {info.currentProcess.protocolNumber}</span>}</div>
+                      <div className="min-w-0 border-l border-slate-100 pl-3"><span className="block text-[8px] font-black uppercase tracking-[.12em] text-slate-400">Responsável</span><strong className="mt-1 block truncate text-[10px] font-extrabold text-slate-700">{client.lawyerInCharge?.name || 'A definir'}</strong><span className="mt-0.5 block truncate text-[8px] text-slate-400">{client.legalArea || info.currentProcess?.legalArea || 'Área geral'}</span></div>
+                    </div>
+
+                    <div className="mt-3 rounded-xl border border-[#eadca9] bg-[#fffdf7] px-3 py-2.5">
+                      <div className="flex items-start gap-2"><span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-lg bg-[#f4e9bd] text-[#8c6910]"><Zap className="h-3 w-3" /></span><div className="min-w-0 flex-1"><span className="block text-[8px] font-black uppercase tracking-[.11em] text-[#9c7b24]">Próxima ação</span><strong className="mt-0.5 block line-clamp-2 text-[10px] font-black leading-4 text-[#071B3A]">{info.nextAction}</strong>{due && <span className={`mt-1 inline-flex items-center gap-1 text-[8px] font-bold ${due.overdue ? 'text-rose-600' : 'text-amber-700'}`}><CalendarClock className="h-3 w-3" />{due.text}</span>}</div></div>
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0"><strong className="block truncate text-[10px] font-extrabold text-slate-600">{maskPhone(client.phone)}</strong><span className="mt-0.5 block truncate text-[8px] text-slate-400">{dateLabel(info.lastActivity)} · {info.activityDescription}</span></div>
+                      <div className="flex shrink-0 items-center gap-1.5" onClick={(event) => event.stopPropagation()}>{whatsapp && <a href={`https://wa.me/${whatsapp.startsWith('55') ? whatsapp : `55${whatsapp}`}`} target="_blank" rel="noreferrer" className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-600 transition hover:bg-emerald-100" aria-label={`WhatsApp de ${client.name}`}><MessageCircle className="h-3.5 w-3.5" /></a>}<button onClick={() => onOpen(client)} className="h-8 rounded-lg bg-[#071B3A] px-3 text-[9px] font-black text-white transition hover:bg-[#12335e]">Abrir ficha</button></div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
           </div>
         )}
 
