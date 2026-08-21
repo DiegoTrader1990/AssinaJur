@@ -175,6 +175,20 @@ function playGoogleAudio(fileKey: 'intro' | 'step1' | 'step2' | 'step3', enabled
   } catch {}
 }
 
+// A câmera do documento usa a voz nativa do próprio celular. A selfie usa o
+// mesmo mecanismo para não alternar entre duas vozes diferentes durante um
+// único atendimento.
+function speakCaptureInstruction(text: string, enabled = true) {
+  if (!enabled || typeof window === 'undefined' || !window.speechSynthesis) return;
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'pt-BR';
+    utterance.rate = 1;
+    window.speechSynthesis.speak(utterance);
+  } catch {}
+}
+
 function playShutterSound(enabled = true) {
   if (!enabled || typeof window === 'undefined') return;
   try {
@@ -829,7 +843,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       await recordEvidence('CAMERA_PERMITTED');
       await recordEvidence('LIVENESS_STARTED');
       setFrameState('GRAY');
-      playGoogleAudio('intro', audioEnabledRef.current);
+      speakCaptureInstruction(
+        'Agora vamos tirar a foto com o documento. Posicione o rosto na câmera e segure o documento ao lado do rosto. Quando estiver pronto, toque no botão verde.',
+        audioEnabledRef.current,
+      );
       const fm = await initFaceMesh();
       if (fm) {
         fm.onResults(handleFaceMeshResults);
@@ -1282,11 +1299,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   </div>
                 )}
 
-                {/* Instrução, colada no rodapé da câmera. */}
-                <div className="absolute bottom-[92px] left-0 right-0 bg-gradient-to-t from-black/80 to-transparent pt-6 pb-2 px-4 text-center pointer-events-none">
-                  <span className="text-white text-xs font-bold drop-shadow font-heading">{selfieInstruction}</span>
-                </div>
-
                 {/* Botão de disparo estilo câmera, sempre visível dentro do próprio
                     quadro (sem precisar rolar a tela). Ao apertar, dispara uma
                     contagem regressiva de 5s antes de tirar a foto - dá tempo da
@@ -1310,8 +1322,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 </div>
               </div>
 
-              <p className="text-center text-[11px] text-slate-500 font-semibold">
-                Toque no botão verde e fique parado(a) - a foto é tirada automaticamente após a contagem de 5 segundos.
+              <p className="text-center text-[11px] text-slate-600 font-semibold leading-relaxed">
+                {selfieInstruction}<br />Toque no botão verde e fique parado(a): a foto é tirada após a contagem de 5 segundos.
               </p>
             </div>
 
@@ -1504,11 +1516,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                     </div>
                   </div>
                 )}
-                {/* Instrução, colada no rodapé da câmera. */}
-                <div className="absolute bottom-[92px] left-0 right-0 bg-gradient-to-t from-black/80 to-transparent pt-6 pb-2 px-4 text-center pointer-events-none">
-                  <span className="text-white text-xs font-bold drop-shadow font-heading">{selfieInstruction}</span>
-                </div>
-
                 {/* Botão de disparo estilo câmera, sempre visível dentro do próprio
                     quadro (sem precisar rolar a tela). Ao apertar, dispara uma
                     contagem regressiva de 5s antes de tirar a foto. */}
@@ -1531,8 +1538,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 </div>
               </div>
 
-              <p className="text-center text-[11px] text-slate-500 font-semibold">
-                Toque no botão azul e fique parado(a) - a foto é tirada automaticamente após a contagem de 5 segundos.
+              <p className="text-center text-[11px] text-slate-600 font-semibold leading-relaxed">
+                {selfieInstruction}<br />Toque no botão azul e fique parado(a): a foto é tirada após a contagem de 5 segundos.
               </p>
             </div>
 
