@@ -449,31 +449,14 @@ export async function generateFinalPdfCertificate(documentId: string) {
       const textTopY = nameTopY + 6;
       const textBottomY = goldLineY;
 
-      // Fundo de proteção leve: opaco o bastante para nunca deixar o
-      // clausulado do contrato "vazar" por trás do texto do selo, mas ainda
-      // discreto (sem borda), preservando o visual clean pedido.
-      // opacity 1 (antes 0.9): com 90%, texto em negrito do documento por trás do selo
-      // ainda "vazava" de forma legível através do fundo branco (foi o que apareceu como
-      // um nome fantasma atrás do selo da Nerci) - o objetivo do fundo é justamente nunca
-      // deixar o clausulado aparecer atrás do selo, então ele precisa continuar 100% opaco.
-      // O que mudou foi só a moldura: uma borda fina + um friso dourado no topo, para o
-      // retângulo branco parecer um selo desenhado de propósito (como um carimbo/etiqueta
-      // oficial) em vez de um recorte solto por cima do papel timbrado.
-      const stampPanelX = stampX - 4;
-      const stampPanelY = textBottomY - 5;
-      const stampPanelW = stampW + 8;
-      const stampPanelH = textTopY - textBottomY + 10;
-      p.drawRectangle({
-        x: stampPanelX,
-        y: stampPanelY,
-        width: stampPanelW,
-        height: stampPanelH,
-        color: rgb(1, 1, 1),
-        opacity: 1,
-        borderWidth: 0.7,
-        borderColor: panelBorder,
-      });
-      p.drawRectangle({ x: stampPanelX, y: stampPanelY + stampPanelH - 1.4, width: stampPanelW, height: 1.4, color: gold });
+      // Selo sem nenhum fundo: o texto é desenhado direto por cima do papel
+      // timbrado, sem retângulo branco/opaco atrás. Pedido explícito do
+      // escritório - mesmo sabendo que, se a posição automática do selo cair
+      // em cima de uma linha do contrato, o texto do contrato pode ficar
+      // visível atravessando o texto do selo (era exatamente o que o fundo
+      // opaco evitava, ex.: "nome fantasma atrás do selo da Nerci"). Se isso
+      // acontecer em algum documento, a posição do selo pode ser ajustada
+      // manualmente arrastando-o na prévia antes de enviar para assinatura.
 
       nameLines.forEach((line, lineIndex) => {
         p.drawText(line.toUpperCase(), { x: contentX, y: nameTopY - lineIndex * 8.0, size: 6.8, font: bold, color: navy });
