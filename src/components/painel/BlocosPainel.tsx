@@ -22,7 +22,10 @@ import NovoClienteModal from '@/components/clientes/NovoClienteModal';
 import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
+  ArrowRight,
+  Check,
   CheckCircle2,
+
   ChevronDown,
   Clock3,
   Copy,
@@ -121,6 +124,7 @@ export interface ClientePainel {
   phone?: string | null;
   whatsapp?: string | null;
   email?: string | null;
+  stage?: string;
 }
 
 export interface KitPainel {
@@ -1184,14 +1188,239 @@ export function IndicadoresEscritorio({
   );
 }
 
-/* ═════════════════════════ 3. ASSINATURAS EM ANDAMENTO ══════════════════════════════ */
+/* ═════════════════════════ 3. BLOCO HOJE (ESTILO EDITORIAL SAAS PREMIUM) ══════════════════════════ */
 
-/**
- * Especializada exclusivamente no fluxo de assinaturas.
- * Prioriza envios pendentes e parciais (0 de 6, 4 de 6).
- * Inclui barras de progresso reais, identificação de quem falta assinar e menu contextual `...`.
- */
-export function CardAssinaturas({
+export function BlocoHoje({
+  pendencies = [],
+  topPriorityCase,
+  onResolverPendencia,
+  onNovaPendencia,
+  onVerCliente,
+  onAbrirProcesso,
+  onGerarKit,
+  className = '',
+}: {
+  pendencies?: any[];
+  topPriorityCase?: any;
+  onResolverPendencia?: (id: string) => void;
+  onNovaPendencia?: () => void;
+  onVerCliente?: (clienteId: string, nome?: string) => void;
+  onAbrirProcesso?: (clientId: string) => void;
+  onGerarKit?: (clientId: string) => void;
+  className?: string;
+}) {
+  const [resolvendoId, setResolvendoId] = useState<string | null>(null);
+
+  // Ordena prioridades reais: (1) Vencidas, (2) Urgentes, (3) Hoje, (4) Próximo Passo do Sistema
+  const prioridades = useMemo(() => {
+    const lista: Array<{
+      id: string;
+      cliente: string;
+      clienteId?: string;
+      descricao: string;
+      temporal: string;
+      vencida: boolean;
+      acaoLabel: string;
+      tipoAcao: 'RESOLVER' | 'COBRAR' | 'KIT' | 'PROCESSO' | 'VER';
+      iniciais: string;
+      pendenciaId?: string;
+    }> = [];
+
+    // Pendências reais do banco
+    pendencies
+      .filter((p) => !p.resolvedAt)
+      .slice(0, 5)
+      .forEach((p) => {
+        const nomeCliente = p.client?.name || 'Escritório';
+        const partes = nomeCliente.trim().split(/\s+/);
+        const iniciais = (partes[0]?.[0] || 'E') + (partes[1]?.[0] || '');
+
+        let temporal = 'Hoje';
+        let vencida = false;
+        if (p.dueDate) {
+          const diffDias = Math.floor((Date.now() - new Date(p.dueDate).getTime()) / (1000 * 60 * 60 * 24));
+          if (diffDias > 0) {
+            temporal = `Vencida há ${diffDias} dia${diffDias > 1 ? 's' : ''}`;
+            vencida = true;
+          } else if (diffDias === 0) {
+            temporal = 'Vencida hoje';
+            vencida = true;
+          }
+        }
+
+        lista.push({
+          id: p.id,
+          cliente: nomeCliente,
+          clienteId: p.clientId || undefined,
+          descricao: p.description,
+          temporal,
+          vencida,
+          acaoLabel: 'Concluir',
+          tipoAcao: 'RESOLVER',
+          iniciais: iniciais.toUpperCase(),
+          pendenciaId: p.id,
+        });
+      });
+
+    // Se houver menos de 4 itens, inclui a prioridade do sistema se houver
+    if (lista.length < 4 && topPriorityCase && !lista.some((l) => l.clienteId === topPriorityCase.id)) {
+      const partes = topPriorityCase.name.trim().split(/\s+/);
+      const iniciais = (partes[0]?.[0] || 'C') + (partes[1]?.[0] || '');
+      lista.push({
+        id: `sys-${topPriorityCase.id}`,
+        cliente: topPriorityCase.name,
+        clienteId: topPriorityCase.id,
+        descricao: `${topPriorityCase.statusText} — ${topPriorityCase.nextActionText}`,
+        temporal: topPriorityCase.stageName || 'Próximo passo',
+        vencida: false,
+        acaoLabel: topPriorityCase.actionLabel || 'Ação',
+        tipoAcao: topPriorityCase.actionType === 'KIT' ? 'KIT' : topPriorityCase.actionType === 'CREATE_PROCESS' ? 'PROCESSO' : 'VER',
+        iniciais: iniciais.toUpperCase(),
+      });
+    }
+
+    return lista;
+  }, [pendencies, topPriorityCase]);
+
+  const handleResolver = async (id: string) => {
+    setResolvendoId(id);
+    await onResolverPendencia?.(id);
+    setResolvendoId(null);
+  };
+
+  return (
+    <Cartao className={`flex flex-col justify-between p-5 border border-slate-200/80 shadow-2xs hover:border-slate-300 transition-all ${className}`}>
+      <div>
+        {/* Cabeçalho Editorial Limpo */}
+        <div className="flex items-center justify-between gap-3 pb-3.5 border-b border-slate-100">
+          <div>
+            <h2 className="text-base font-extrabold text-[#071B3A] tracking-tight">Hoje</h2>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
+              {prioridades.length > 0
+                ? `${prioridades.length} ação${prioridades.length > 1 ? 'ões' : ''} precisa${prioridades.length > 1 ? 'm' : ''} da sua atenção`
+                : 'Tudo em dia por aqui'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNovaPendencia?.()}
+            className="text-xs font-bold text-[#071B3A] bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
+          >
+            <Plus className="w-3.5 h-3.5 text-[#B68B1C]" /> + Pendência
+          </button>
+        </div>
+
+        {/* Lista Editorial Enxuta */}
+        <div className="divide-y divide-slate-100/80">
+          {prioridades.length === 0 ? (
+            <div className="py-10 text-center space-y-1.5">
+              <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
+              <p className="text-xs font-extrabold text-[#071B3A]">Operação em dia!</p>
+              <p className="text-[11.5px] text-slate-400">Nenhuma ação urgente aguardando no momento.</p>
+            </div>
+          ) : (
+            prioridades.map((item) => (
+              <div key={item.id} className="py-3 flex items-center justify-between gap-3 group hover:bg-slate-50/50 rounded-xl px-2 -mx-2 transition-colors">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="w-8 h-8 rounded-full bg-slate-100 text-[#071B3A] text-xs font-black flex items-center justify-center shrink-0 group-hover:bg-[#071B3A] group-hover:text-white transition-colors">
+                    {item.iniciais}
+                  </span>
+                  <div className="min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => item.clienteId && onVerCliente?.(item.clienteId, item.cliente)}
+                      className="text-xs font-extrabold text-[#071B3A] hover:text-[#B68B1C] truncate block text-left"
+                    >
+                      {item.cliente}
+                    </button>
+                    <p className="text-[11.5px] font-medium text-slate-600 truncate mt-0.5">
+                      {item.descricao}
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-1 text-[11px]">
+                      {item.vencida ? (
+                        <span className="inline-flex items-center gap-1 font-bold text-rose-600">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                          {item.temporal}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-slate-500 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                          {item.temporal}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="shrink-0 flex items-center gap-2">
+                  {item.tipoAcao === 'RESOLVER' && item.pendenciaId && (
+                    <button
+                      type="button"
+                      disabled={resolvendoId === item.pendenciaId}
+                      onClick={() => handleResolver(item.pendenciaId!)}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11.5px] font-extrabold rounded-lg inline-flex items-center gap-1 shadow-2xs transition-colors disabled:opacity-50"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      {resolvendoId === item.pendenciaId ? 'Salvando...' : 'Concluir'}
+                    </button>
+                  )}
+                  {item.tipoAcao === 'KIT' && item.clienteId && (
+                    <button
+                      type="button"
+                      onClick={() => onGerarKit?.(item.clienteId!)}
+                      className="px-3 py-1.5 bg-[#071B3A] hover:bg-[#122c52] text-white text-[11.5px] font-extrabold rounded-lg transition-colors"
+                    >
+                      Gerar Kit
+                    </button>
+                  )}
+                  {item.tipoAcao === 'PROCESSO' && item.clienteId && (
+                    <button
+                      type="button"
+                      onClick={() => onAbrirProcesso?.(item.clienteId!)}
+                      className="px-3 py-1.5 bg-[#071B3A] hover:bg-[#122c52] text-white text-[11.5px] font-extrabold rounded-lg transition-colors"
+                    >
+                      Abrir processo
+                    </button>
+                  )}
+                  {item.tipoAcao === 'VER' && item.clienteId && (
+                    <button
+                      type="button"
+                      onClick={() => onVerCliente?.(item.clienteId!)}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11.5px] font-bold rounded-lg transition-colors"
+                    >
+                      Ver
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {pendencies.filter((p) => !p.resolvedAt).length > 5 && (
+        <div className="pt-3 border-t border-slate-100 mt-2 flex items-center justify-between text-xs">
+          <span className="text-slate-400 font-medium">
+            Exibindo 5 de {pendencies.filter((p) => !p.resolvedAt).length} prioridades
+          </span>
+          <button
+            type="button"
+            onClick={() => onNovaPendencia?.()}
+            className="font-bold text-[#B68B1C] hover:underline flex items-center gap-1"
+          >
+            Ver todas as prioridades <ArrowRight className="w-3 h-3" />
+          </button>
+        </div>
+      )}
+    </Cartao>
+  );
+}
+
+export const PrioridadesDoDia = BlocoHoje;
+
+/* ═════════════════════════ 4. BLOCO ASSINATURAS (SAAS PREMIUM) ══════════════════════════ */
+
+export function BlocoAssinaturas({
   assinaturas,
   className = '',
   onCobrar,
@@ -1219,88 +1448,117 @@ export function CardAssinaturas({
   );
 
   return (
-    <Cartao className={`flex flex-col ${className}`}>
-      <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <h3 className="text-[12px] font-black uppercase tracking-wide text-[#0B192C]">
-            Assinaturas em Andamento
-          </h3>
-          <span className="rounded-full bg-[#B68B1C] px-2 py-0.5 text-[10px] font-black text-white">
-            {pendentes.length}
-          </span>
-        </div>
-        <Link href="/documentos" className="text-[11px] font-bold text-[#B68B1C] hover:underline">
-          Ver todas
-        </Link>
-      </div>
-
-      <div className="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">
-        {pendentes.length === 0 ? (
-          <div className="px-5 py-8 text-center space-y-2">
-            <CheckCircle2 className="h-7 w-7 text-teal-500 mx-auto" />
-            <p className="text-[12px] font-extrabold text-slate-800">
-              Nenhuma assinatura aguardando
-            </p>
-            <p className="text-[11px] text-slate-400">
-              Use o fluxo rápido no topo para enviar documentos.
+    <Cartao className={`flex flex-col justify-between p-5 border border-slate-200/80 shadow-2xs hover:border-slate-300 transition-all ${className}`}>
+      <div>
+        {/* Cabeçalho */}
+        <div className="flex items-center justify-between gap-3 pb-3.5 border-b border-slate-100">
+          <div>
+            <h2 className="text-base font-extrabold text-[#071B3A] tracking-tight">Assinaturas</h2>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
+              {pendentes.length === 0
+                ? 'Tudo em dia'
+                : `${pendentes.length} precisa${pendentes.length > 1 ? 'm' : ''} de atenção`}
             </p>
           </div>
-        ) : (
-          pendentes.map((a) => {
-            const faltamCount = Math.max(0, a.total - a.assinados);
-            const percentual = Math.round((a.assinados / Math.max(1, a.total)) * 100);
+          <Link href="/documentos" className="text-xs font-bold text-[#B68B1C] hover:underline">
+            Ver histórico →
+          </Link>
+        </div>
 
-            return (
-              <div key={a.id} className="relative px-4 py-3 hover:bg-slate-50/60 transition-colors">
-                <div className="flex items-start gap-2.5">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#071B3A] text-[11px] font-black text-[#D4AF37]">
-                    {a.iniciais}
-                  </span>
+        {/* Conteúdo Principal */}
+        <div className="pt-3">
+          {pendentes.length === 0 ? (
+            <div className="py-10 text-center space-y-1.5">
+              <CheckCircle2 className="w-8 h-8 text-teal-500 mx-auto" />
+              <p className="text-xs font-extrabold text-[#071B3A]">Tudo assinado!</p>
+              <p className="text-[11.5px] text-slate-400">Nenhuma assinatura aguardando no momento.</p>
+            </div>
+          ) : (
+            pendentes.slice(0, 3).map((a) => {
+              const faltamCount = Math.max(0, a.total - a.assinados);
+              const percentual = Math.round((a.assinados / Math.max(1, a.total)) * 100);
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-1">
+              return (
+                <div key={a.id} className="py-3 border-b border-slate-100/80 last:border-0 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
                       <button
                         type="button"
                         onClick={() => a.clienteId && onVerCliente?.(a.clienteId)}
-                        className="truncate text-[12.5px] font-extrabold text-[#071B3A] hover:text-[#B68B1C] text-left"
+                        className="text-xs font-extrabold text-[#071B3A] hover:text-[#B68B1C] truncate block text-left"
                       >
                         {a.cliente}
                       </button>
-                      <span
-                        className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black uppercase ${
-                          a.estado === 'PARADO'
-                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                            : 'bg-amber-50 text-amber-700 border border-amber-200'
-                        }`}
+                      <p className="text-[11.5px] text-slate-500 font-medium truncate mt-0.5">
+                        {a.titulo} · Enviado há {a.diasDesdeEnvio} dia(s)
+                      </p>
+                    </div>
+
+                    <div className="relative shrink-0 flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => onCobrar?.(a)}
+                        className="px-2.5 py-1 bg-[#25D366] hover:bg-[#1fb855] text-white text-[11px] font-extrabold rounded-lg inline-flex items-center gap-1 shadow-2xs transition-colors"
                       >
-                        {a.assinados} de {a.total} ({percentual}%)
-                      </span>
-                    </div>
+                        <MessageSquare className="w-3 h-3 fill-white" /> Cobrar
+                      </button>
 
-                    <p className="mt-0.5 truncate text-[11px] text-slate-600 font-medium">
-                      {a.titulo}
-                      {a.pecas > 1 ? ` · ${a.pecas} peças` : ''}
-                    </p>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setMenuAbertoId(menuAbertoId === a.id ? null : a.id)}
+                          className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
+                        >
+                          <MoreHorizontal className="w-4 h-4" />
+                        </button>
 
-                    <div className="mt-1 flex items-center justify-between text-[10px]">
-                      <span className="text-slate-400">
-                        {a.estado === 'PARADO' ? (
-                          <span className="font-bold text-rose-600">
-                            parada há {a.diasDesdeEnvio} dias
-                          </span>
-                        ) : (
-                          `enviado há ${a.diasDesdeEnvio} dia(s)`
+                        {menuAbertoId === a.id && (
+                          <div className="absolute right-0 z-30 mt-1 w-40 rounded-xl bg-white p-1 shadow-lg border border-slate-200 text-[11px] font-semibold text-slate-700">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMenuAbertoId(null);
+                                onVerDocumento?.(a);
+                              }}
+                              className="w-full text-left px-2.5 py-1.5 hover:bg-slate-50 rounded-lg flex items-center gap-1.5"
+                            >
+                              <FileText className="w-3.5 h-3.5 text-slate-400" /> Abrir documento
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMenuAbertoId(null);
+                                onCopiarLink?.(a);
+                              }}
+                              className="w-full text-left px-2.5 py-1.5 hover:bg-slate-50 rounded-lg flex items-center gap-1.5"
+                            >
+                              <Copy className="w-3.5 h-3.5 text-slate-400" /> Copiar link
+                            </button>
+                            {a.clienteId && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMenuAbertoId(null);
+                                  onVerCliente?.(a.clienteId);
+                                }}
+                                className="w-full text-left px-2.5 py-1.5 hover:bg-slate-50 rounded-lg flex items-center gap-1.5"
+                              >
+                                <UserRound className="w-3.5 h-3.5 text-slate-400" /> Ver cliente
+                              </button>
+                            )}
+                          </div>
                         )}
-                      </span>
-                      {faltamCount > 0 && (
-                        <span className="font-bold text-slate-500">
-                          {faltamCount === 1 ? 'falta 1 assinatura' : `faltam ${faltamCount} assinaturas`}
-                        </span>
-                      )}
+                      </div>
                     </div>
+                  </div>
 
-                    {/* Barra de progresso real */}
-                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                  {/* Barra de Progresso Elegante */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600">
+                      <span>{a.assinados} de {a.total} concluídas ({percentual}%)</span>
+                      <span className="text-slate-400">{faltamCount > 0 ? `faltam ${faltamCount} assinaturas` : 'concluída'}</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-300 ${
                           a.estado === 'PARADO' ? 'bg-rose-500' : 'bg-teal-500'
@@ -1309,91 +1567,30 @@ export function CardAssinaturas({
                       />
                     </div>
                   </div>
-
-                  {/* Ações */}
-                  <div className="relative shrink-0 flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => onCobrar?.(a)}
-                      className="rounded-lg bg-teal-600 hover:bg-teal-700 px-2.5 py-1.5 text-[10.5px] font-extrabold text-white transition-colors"
-                    >
-                      Cobrar
-                    </button>
-
-                    {/* Botão Context Menu (...) */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setMenuAbertoId(menuAbertoId === a.id ? null : a.id)}
-                        className="p-1 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-colors"
-                        aria-label="Mais opções"
-                      >
-                        ⋯
-                      </button>
-
-                      {menuAbertoId === a.id && (
-                        <div className="absolute right-0 z-30 mt-1 w-40 rounded-xl bg-white p-1 shadow-lg border border-slate-200 text-[11px] font-semibold text-slate-700">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMenuAbertoId(null);
-                              onVerDocumento?.(a);
-                            }}
-                            className="w-full text-left px-2.5 py-1.5 hover:bg-slate-50 rounded-lg flex items-center gap-1.5"
-                          >
-                            <FileText className="w-3.5 h-3.5 text-slate-400" /> Abrir documento
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMenuAbertoId(null);
-                              onCopiarLink?.(a);
-                            }}
-                            className="w-full text-left px-2.5 py-1.5 hover:bg-slate-50 rounded-lg flex items-center gap-1.5"
-                          >
-                            <Copy className="w-3.5 h-3.5 text-slate-400" /> Copiar link
-                          </button>
-                          {a.clienteId && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setMenuAbertoId(null);
-                                onVerCliente?.(a.clienteId);
-                              }}
-                              className="w-full text-left px-2.5 py-1.5 hover:bg-slate-50 rounded-lg flex items-center gap-1.5"
-                            >
-                              <UserRound className="w-3.5 h-3.5 text-slate-400" /> Ver cliente
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
                 </div>
-              </div>
-            );
-          })
-        )}
+              );
+            })
+          )}
+        </div>
       </div>
 
-      {/* ÁREA INFERIOR SECUNDÁRIA — Concluídas Recentemente */}
       {concluidas.length > 0 && (
-        <div className="border-t border-slate-100 bg-slate-50/50 p-2.5">
+        <div className="pt-3 border-t border-slate-100 mt-2">
           <button
             type="button"
             onClick={() => setMostrarConcluidas((v) => !v)}
-            className="w-full flex items-center justify-between text-[11px] font-bold text-slate-600 hover:text-slate-900 px-1"
+            className="w-full flex items-center justify-between text-xs font-bold text-slate-500 hover:text-slate-800"
           >
             <span>Ver {concluidas.length} concluída(s) recentemente</span>
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${mostrarConcluidas ? 'rotate-180' : ''}`} />
           </button>
 
           {mostrarConcluidas && (
-            <div className="mt-2 space-y-1.5 max-h-36 overflow-y-auto divide-y divide-slate-100 pt-1">
+            <div className="mt-2 space-y-1.5 max-h-32 overflow-y-auto divide-y divide-slate-100 pt-1">
               {concluidas.map((c) => (
                 <div key={c.id} className="pt-1.5 flex items-center justify-between text-[11px]">
-                  <span className="truncate font-semibold text-slate-800">{c.cliente} — {c.titulo}</span>
-                  <span className="shrink-0 text-[10px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded">
+                  <span className="truncate font-semibold text-slate-700">{c.cliente} — {c.titulo}</span>
+                  <span className="shrink-0 text-[10px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded-md">
                     Concluído
                   </span>
                 </div>
@@ -1406,7 +1603,9 @@ export function CardAssinaturas({
   );
 }
 
-/* ═══════════════ 4. CENTRAL DE ACOMPANHAMENTO (QUEUE OPERACIONAL) ═══════════════ */
+export const CardAssinaturas = BlocoAssinaturas;
+
+/* ═══════════════ 5. BLOCO ACOMPANHAMENTO (SAAS PREMIUM — 4 COLUNAS COMPACTAS) ═══════════════ */
 
 export interface ItemCentralAcompanhamento {
   id: string;
@@ -1422,26 +1621,18 @@ export interface ItemCentralAcompanhamento {
   onAcao?: () => void;
 }
 
-/**
- * Central de Acompanhamento operando como Fila de Gestão do Escritório.
- * Organizada em 4 Abas Operacionais:
- *  - PARA FAZER (depende de nós)
- *  - AGUARDANDO (depende de cliente, órgão ou terceiro)
- *  - EM BREVE (prazos e acompanhamentos futuros)
- *  - CONCLUÍDOS (histórico recente)
- */
-export function AvisosAcompanhamentos({
-  avisosSistema,
-  clientes,
+export function BlocoAcompanhamento({
+  avisosSistema = [],
+  clientes = [],
   pendencies = [],
-  titulo = 'Central de Acompanhamento',
-  subtitulo = 'O que está acontecendo e qual é o próximo passo',
+  titulo = 'Acompanhamento',
+  subtitulo = 'Visão geral do fluxo do escritório e status dos clientes',
   className = '',
   onNovaPendencia,
   onVerCliente,
 }: {
-  avisosSistema: Aviso[];
-  clientes: ClientePainel[];
+  avisosSistema?: Aviso[];
+  clientes?: any[];
   pendencies?: any[];
   titulo?: string;
   subtitulo?: string;
@@ -1449,227 +1640,140 @@ export function AvisosAcompanhamentos({
   onNovaPendencia?: () => void;
   onVerCliente?: (clienteId: string) => void;
 }) {
-  const [aba, setAba] = useState<'FAZER' | 'AGUARDANDO' | 'EM_BREVE' | 'CONCLUIDOS'>('FAZER');
-
-  // Transforma pendências do banco + avisos de sistema no modelo operacional
-  const itensParaFazer = useMemo(() => {
-    const itens: ItemCentralAcompanhamento[] = [];
-
-    // Pendências manuais sem resolução
-    pendencies
+  // Filtra itens para as 4 colunas sem duplicação
+  const colunas = useMemo(() => {
+    // 1. Para fazer (pendências manuais não urgentes + avisos de sistema)
+    const paraFazer = pendencies
       .filter((p) => !p.resolvedAt)
-      .forEach((p) => {
-        itens.push({
-          id: p.id,
-          tipoResponsabilidade: 'NOS',
-          rotuloResponsabilidade: 'DEPENDE DE NÓS',
-          cliente: p.client?.name || 'Escritório',
-          clienteId: p.clientId || '',
-          titulo: p.description,
-          detalhe: p.priority === 'URGENTE' ? 'Prioridade urgente' : 'Ação pendente do escritório',
-
-          urgente: p.priority === 'URGENTE' || p.priority === 'ALTA',
-          acaoLabel: 'Concluir',
-        });
-      });
-
-    // Avisos de sistema que exigem ação do escritório (ex: abrir processo, completar cadastro)
-    avisosSistema.forEach((a) => {
-      itens.push({
-        id: a.id,
-        tipoResponsabilidade: 'NOS',
-        rotuloResponsabilidade: 'DEPENDE DE NÓS',
-        cliente: a.titulo,
-        titulo: a.detalhe,
-        detalhe: 'Identificado pelo sistema',
-        urgente: a.nivel === 'CRITICO',
-        acaoLabel: a.acao || 'Ver',
-      });
-    });
-
-    return itens;
-  }, [pendencies, avisosSistema]);
-
-  const itensAguardando = useMemo(() => {
-    const itens: ItemCentralAcompanhamento[] = [];
-    // Serão alimentados via documentos/assinaturas pendentes do escritório
-    return itens;
-  }, []);
-
-  const itensConcluidos = useMemo<ItemCentralAcompanhamento[]>(() => {
-    return pendencies
-      .filter((p) => Boolean(p.resolvedAt))
+      .slice(5) // Pula os 5 que já estão no Bloco Hoje! Eliminando a duplicação!
       .map((p) => ({
         id: p.id,
-        tipoResponsabilidade: 'NOS' as const,
-        rotuloResponsabilidade: 'CONCLUÍDO',
         cliente: p.client?.name || 'Escritório',
         clienteId: p.clientId || '',
-        titulo: p.description,
-        detalhe: `Resolvido em ${p.resolvedAt ? new Date(p.resolvedAt).toLocaleDateString('pt-BR') : ''}`,
-        acaoLabel: 'Resolvido',
+        detalhe: p.description,
       }));
-  }, [pendencies]);
 
+    // Se faltar itens, insere avisos do sistema
+    avisosSistema.forEach((a) => {
+      if (paraFazer.length < 4) {
+        paraFazer.push({
+          id: a.id,
+          cliente: a.titulo,
+          clienteId: '',
+          detalhe: a.detalhe,
+        });
+      }
+    });
 
-  const itensExibidos = useMemo(() => {
-    if (aba === 'FAZER') return itensParaFazer;
-    if (aba === 'AGUARDANDO') return itensAguardando;
-    if (aba === 'CONCLUIDOS') return itensConcluidos;
-    return [];
-  }, [aba, itensParaFazer, itensAguardando, itensConcluidos]);
+    // 2. Aguardando Cliente
+    const aguardandoCliente = clientes
+      .filter((c: any) => c.stage === 'DOCUMENTACAO' || c.stage === 'ASSINATURA')
+      .slice(0, 3)
+      .map((c: any) => ({
+        id: c.id,
+        cliente: c.name || c.cliente || 'Cliente',
+        clienteId: c.id,
+        detalhe: c.stage === 'ASSINATURA' ? 'Assinatura pendente' : 'Enviar documentos',
+      }));
+
+    // 3. Aguardando Terceiro
+    const aguardandoTerceiro = clientes
+      .filter((c: any) => c.stage === 'PROCESSO')
+      .slice(0, 3)
+      .map((c: any) => ({
+        id: c.id,
+        cliente: c.name || c.cliente || 'Cliente',
+        clienteId: c.id,
+        detalhe: 'Aguardando distribuição/INSS',
+      }));
+
+    // 4. Em breve
+    const emBreve = pendencies
+      .filter((p) => Boolean(p.dueDate) && !p.resolvedAt)
+      .slice(0, 3)
+      .map((p) => ({
+        id: p.id,
+        cliente: p.client?.name || 'Acompanhamento',
+        clienteId: p.clientId || '',
+        detalhe: `Retorno em ${new Date(p.dueDate).toLocaleDateString('pt-BR')}`,
+      }));
+
+    return [
+      { titulo: 'Para fazer', count: paraFazer.length, itens: paraFazer, link: '/clientes' },
+      { titulo: 'Aguardando cliente', count: aguardandoCliente.length, itens: aguardandoCliente, link: '/documentos' },
+      { titulo: 'Aguardando terceiro', count: aguardandoTerceiro.length, itens: aguardandoTerceiro, link: '/processos' },
+      { titulo: 'Em breve', count: emBreve.length, itens: emBreve, link: '/processos' },
+    ];
+  }, [pendencies, avisosSistema, clientes]);
 
   return (
-    <Cartao className={`flex flex-col ${className}`}>
-      <div className="border-b border-slate-100 px-4 pt-3 pb-2">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h3 className="truncate text-[12px] font-black uppercase tracking-wide text-[#0B192C]">
-              {titulo}
-            </h3>
-            <p className="mt-0.5 truncate text-[10px] font-medium text-slate-400">{subtitulo}</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onNovaPendencia?.()}
-            className="flex shrink-0 items-center gap-1 rounded-lg bg-[#071B3A] hover:bg-[#122c52] px-2.5 py-1.5 text-[11px] font-bold text-white transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5 text-[#D4AF37]" />
-            Novo aviso
-          </button>
+    <Cartao className={`p-5 border border-slate-200/80 shadow-2xs hover:border-slate-300 transition-all ${className}`}>
+      {/* Cabeçalho do Bloco */}
+      <div className="flex items-center justify-between gap-3 pb-4 border-b border-slate-100">
+        <div>
+          <h2 className="text-base font-extrabold text-[#071B3A] tracking-tight">{titulo}</h2>
+          <p className="text-xs text-slate-500 font-medium mt-0.5">
+            {subtitulo}
+          </p>
         </div>
-
-        {/* Abas Operacionais */}
-        <div className="mt-3 flex items-center gap-3 border-b border-slate-100 text-[11.5px] font-bold">
-          <button
-            type="button"
-            onClick={() => setAba('FAZER')}
-            className={`pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${
-              aba === 'FAZER'
-                ? 'border-[#B68B1C] text-[#071B3A] font-extrabold'
-                : 'border-transparent text-slate-400 hover:text-slate-700'
-            }`}
-          >
-            Para Fazer
-            <span
-              className={`rounded-full px-1.5 py-0.2 text-[9.5px] font-black ${
-                aba === 'FAZER' ? 'bg-[#071B3A] text-white' : 'bg-slate-100 text-slate-500'
-              }`}
-            >
-              {itensParaFazer.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setAba('AGUARDANDO')}
-            className={`pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${
-              aba === 'AGUARDANDO'
-                ? 'border-[#B68B1C] text-[#071B3A] font-extrabold'
-                : 'border-transparent text-slate-400 hover:text-slate-700'
-            }`}
-          >
-            Aguardando
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setAba('EM_BREVE')}
-            className={`pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${
-              aba === 'EM_BREVE'
-                ? 'border-[#B68B1C] text-[#071B3A] font-extrabold'
-                : 'border-transparent text-slate-400 hover:text-slate-700'
-            }`}
-          >
-            Em Breve
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setAba('CONCLUIDOS')}
-            className={`pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${
-              aba === 'CONCLUIDOS'
-                ? 'border-[#B68B1C] text-[#071B3A] font-extrabold'
-                : 'border-transparent text-slate-400 hover:text-slate-700'
-            }`}
-          >
-            Concluídos
-            <span className="rounded-full bg-slate-100 px-1.5 py-0.2 text-[9.5px] font-black text-slate-500">
-              {itensConcluidos.length}
-            </span>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => onNovaPendencia?.()}
+          className="text-xs font-bold text-white bg-[#071B3A] hover:bg-[#122c52] px-3.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs"
+        >
+          <Plus className="w-3.5 h-3.5 text-[#D4AF37]" /> + Adicionar acompanhamento
+        </button>
       </div>
 
-      {/* Fila de Itens */}
-      <div className="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">
-        {itensExibidos.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center px-4 py-8 text-center space-y-1">
-            <CheckCircle2 className="h-6 w-6 text-teal-500" />
-            <p className="text-[11.5px] font-bold text-slate-800">
-              {aba === 'FAZER'
-                ? 'Tudo em dia nesta fila.'
-                : aba === 'AGUARDANDO'
-                ? 'Nenhum item aguardando terceiro.'
-                : aba === 'EM_BREVE'
-                ? 'Nenhum acompanhamento futuro agendado.'
-                : 'Nenhum item concluído recentemente.'}
-            </p>
-            <p className="text-[10.5px] text-slate-400">
-              Use o botão "+ Novo aviso" para registrar pendências do escritório.
-            </p>
-          </div>
-        ) : (
-          itensExibidos.map((item) => (
-            <div key={item.id} className="flex items-start gap-2.5 px-4 py-2.5 hover:bg-slate-50/70 transition-colors">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className={`shrink-0 rounded px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wide ${
-                      item.tipoResponsabilidade === 'NOS'
-                        ? 'bg-[#071B3A] text-white'
-                        : item.tipoResponsabilidade === 'CLIENTE'
-                        ? 'bg-amber-100 text-amber-800'
-                        : item.tipoResponsabilidade === 'TERCEIRO'
-                        ? 'bg-purple-100 text-purple-800'
-                        : 'bg-teal-100 text-teal-800'
-                    }`}
-                  >
-                    {item.rotuloResponsabilidade}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => item.clienteId && onVerCliente?.(item.clienteId)}
-                    className="truncate text-[12px] font-extrabold text-[#071B3A] hover:text-[#B68B1C] text-left"
-                  >
-                    {item.cliente}
-                  </button>
-                </div>
-
-                <p className="mt-0.5 text-[11px] font-semibold text-slate-700 leading-snug">
-                  {item.titulo}
-                </p>
-                <p className="mt-0.5 text-[10px] text-slate-400 truncate">
-                  {item.detalhe}
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => item.onAcao?.()}
-                className="shrink-0 text-[10.5px] font-bold text-[#B68B1C] hover:underline pt-0.5"
-              >
-                {item.acaoLabel}
-              </button>
+      {/* Grid de 4 Colunas Enxutas */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 pt-4">
+        {colunas.map((col, idx) => (
+          <div key={idx} className="space-y-3 bg-slate-50/50 rounded-xl p-3.5 border border-slate-100">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-extrabold text-[#071B3A]">{col.titulo}</h3>
+              <span className="px-2 py-0.5 bg-slate-200/80 rounded-md text-[10.5px] font-black text-slate-600">
+                {col.count}
+              </span>
             </div>
-          ))
-        )}
+
+            <div className="space-y-2">
+              {col.itens.length === 0 ? (
+                <p className="text-[11.5px] text-slate-400 italic py-2">Nenhum item nesta fila</p>
+              ) : (
+                col.itens.map((item) => (
+                  <div key={item.id} className="bg-white rounded-lg p-2.5 border border-slate-200/70 shadow-2xs hover:border-slate-300 transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => item.clienteId && onVerCliente?.(item.clienteId)}
+                      className="text-xs font-bold text-[#071B3A] hover:text-[#B68B1C] truncate block text-left w-full"
+                    >
+                      {item.cliente}
+                    </button>
+                    <p className="text-[11px] text-slate-500 mt-0.5 truncate font-medium">
+                      {item.detalhe}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <Link
+              href={col.link}
+              className="text-[11px] font-bold text-[#B68B1C] hover:underline inline-flex items-center gap-1 pt-1"
+            >
+              Ver todos <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+        ))}
       </div>
     </Cartao>
   );
 }
 
+export const AvisosAcompanhamentos = BlocoAcompanhamento;
+
 /* ═════════════════════ 5. KITS MAIS USADOS (extra) ═════════════════════ */
+
 
 export function KitsMaisUsados({
   kits,
