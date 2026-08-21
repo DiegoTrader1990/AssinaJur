@@ -978,17 +978,10 @@ export function FluxoRapido({
   );
 }
 
-/* ═══════════════════════════ 2. INDICADORES OPERACIONAIS ════════════════════════════ */
-
-
-/**
- * Cinco indicadores exclusivamente OPERACIONAIS.
- * Métricas de vaidade ("Tempo até assinar", "Taxa de conclusão: 100%") foram removidas.
- * Todos os 5 cards são clicáveis para filtrar/navegar direto para os registros.
- */
 export function IndicadoresEscritorio({
   indicadores,
   documentosAPrepararCount = 0,
+  pendenciesCount = 0,
   pendenciasCount = 0,
   vencidasCount = 0,
   hojeCount = 0,
@@ -1001,6 +994,7 @@ export function IndicadoresEscritorio({
 }: {
   indicadores: IndicadoresPainel;
   documentosAPrepararCount?: number;
+  pendenciesCount?: number;
   pendenciasCount?: number;
   vencidasCount?: number;
   hojeCount?: number;
@@ -1013,176 +1007,154 @@ export function IndicadoresEscritorio({
 }) {
   const totalVencidos = vencidasCount || vencidos;
   const totalHoje = hojeCount || prazosHoje;
+  const totalPendencias = pendenciasCount || pendenciesCount;
 
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-5">
       {/* CARD 1 — AGUARDANDO ASSINATURA */}
       <button
         type="button"
         onClick={() => onCardClick?.('AGUARDANDO')}
-        className="group text-left transition-all duration-200 hover:-translate-y-0.5 focus:outline-none"
+        className="group text-left transition-all duration-200 hover:-translate-y-1 focus:outline-none"
       >
-        <Cartao className="p-4 transition-all duration-150 group-hover:border-[#071B3A] group-hover:shadow-md">
-          <div className="flex items-start justify-between">
-            <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 group-hover:text-[#071B3A]">
-              Aguardando assinatura
-            </p>
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50 group-hover:bg-amber-100 transition-colors">
-              <Clock3 className="h-3.5 w-3.5 text-amber-600" />
+        <div className="relative overflow-hidden rounded-2xl border border-amber-200/70 bg-gradient-to-b from-amber-50/40 via-white to-white p-4 shadow-xs group-hover:border-[#B68B1C] group-hover:shadow-md transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-800">
+              Aguardando Assinatura
+            </span>
+            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-amber-100/80 text-amber-700 group-hover:scale-110 transition-transform">
+              <Clock3 className="h-3.5 w-3.5" />
             </span>
           </div>
-          <p className="mt-2.5 text-[30px] font-black leading-none text-[#071B3A]">
+          <p className="mt-3 text-3xl font-black text-[#071B3A] tracking-tight">
             {indicadores.aguardando}
           </p>
-          <p className="mt-1.5 text-[11px]">
+          <p className="mt-1.5 text-[11px] text-slate-500 font-medium">
             {indicadores.aguardandoParados > 0 ? (
-              <>
-                <span className="font-bold text-amber-600">
-                  {indicadores.aguardandoParados} parada{indicadores.aguardandoParados === 1 ? '' : 's'}
-                </span>{' '}
-                <span className="text-slate-400">há mais de 2 dias</span>
-              </>
+              <span className="font-extrabold text-amber-700">
+                {indicadores.aguardandoParados} parada{indicadores.aguardandoParados === 1 ? '' : 's'} &gt; 2 dias
+              </span>
             ) : (
-              <span className="text-slate-400">todas dentro do prazo</span>
+              'Todas dentro do prazo'
             )}
           </p>
-        </Cartao>
+        </div>
       </button>
 
       {/* CARD 2 — DOCUMENTOS A PREPARAR */}
       <button
         type="button"
         onClick={() => onCardClick?.('PREPARAR')}
-        className="group text-left transition-all duration-200 hover:-translate-y-0.5 focus:outline-none"
+        className="group text-left transition-all duration-200 hover:-translate-y-1 focus:outline-none"
       >
-        <Cartao className="p-4 transition-all duration-150 group-hover:border-[#071B3A] group-hover:shadow-md">
-          <div className="flex items-start justify-between">
-            <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 group-hover:text-[#071B3A]">
-              Documentos a preparar
-            </p>
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 group-hover:bg-blue-100 transition-colors">
-              <FileText className="h-3.5 w-3.5 text-blue-600" />
+        <div className="relative overflow-hidden rounded-2xl border border-blue-200/70 bg-gradient-to-b from-blue-50/40 via-white to-white p-4 shadow-xs group-hover:border-blue-500 group-hover:shadow-md transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-800">
+              A Preparar
+            </span>
+            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-blue-100/80 text-blue-700 group-hover:scale-110 transition-transform">
+              <FileText className="h-3.5 w-3.5" />
             </span>
           </div>
-          <p className="mt-2.5 text-[30px] font-black leading-none text-[#071B3A]">
+          <p className="mt-3 text-3xl font-black text-[#071B3A] tracking-tight">
             {documentosAPrepararCount}
           </p>
-          <p className="mt-1.5 text-[11px] text-slate-400">
+          <p className="mt-1.5 text-[11px] text-slate-500 font-medium">
             {documentosAPrepararCount > 0 ? (
-              <span className="font-bold text-blue-600">clientes sem documentos gerados</span>
+              <span className="font-extrabold text-blue-700">Clientes aguardando Kit</span>
             ) : (
-              'nenhum documento pendente'
+              'Nenhum documento pendente'
             )}
           </p>
-        </Cartao>
+        </div>
       </button>
 
       {/* CARD 3 — AÇÕES / PENDÊNCIAS */}
       <button
         type="button"
         onClick={() => onCardClick?.('PENDENCIAS')}
-        className="group text-left transition-all duration-200 hover:-translate-y-0.5 focus:outline-none"
+        className="group text-left transition-all duration-200 hover:-translate-y-1 focus:outline-none"
       >
-        <Cartao className="p-4 transition-all duration-150 group-hover:border-[#071B3A] group-hover:shadow-md">
-          <div className="flex items-start justify-between">
-            <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 group-hover:text-[#071B3A]">
+        <div className="relative overflow-hidden rounded-2xl border border-rose-200/70 bg-gradient-to-b from-rose-50/40 via-white to-white p-4 shadow-xs group-hover:border-rose-500 group-hover:shadow-md transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-rose-800">
               Ações / Pendências
-            </p>
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50 group-hover:bg-rose-100 transition-colors">
-              <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
+            </span>
+            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-rose-100/80 text-rose-700 group-hover:scale-110 transition-transform">
+              <AlertTriangle className="h-3.5 w-3.5" />
             </span>
           </div>
-          <p
-            className={`mt-2.5 text-[30px] font-black leading-none ${
-              totalVencidos + totalHoje > 0 ? 'text-rose-600' : 'text-[#071B3A]'
-            }`}
-          >
-            {pendenciasCount}
+          <p className={`mt-3 text-3xl font-black tracking-tight ${totalVencidos + totalHoje > 0 ? 'text-rose-600' : 'text-[#071B3A]'}`}>
+            {totalPendencias}
           </p>
-          <p className="mt-1.5 text-[11px] text-slate-400">
+          <p className="mt-1.5 text-[11px] text-slate-500 font-medium">
             {totalVencidos > 0 || totalHoje > 0 ? (
-              <>
-                <span className="font-bold text-rose-600">{totalVencidos} vencidas</span>
-                <span className="text-slate-400"> · {totalHoje} para hoje</span>
-              </>
-            ) : pendenciasCount > 0 ? (
-              `${pendenciasCount} pendência(s) em dia`
+              <span className="font-extrabold text-rose-700">
+                {totalVencidos} vencidas · {totalHoje} hoje
+              </span>
             ) : (
-              'nenhuma pendência aberta'
+              'Nenhuma ação crítica'
             )}
           </p>
-
-        </Cartao>
+        </div>
       </button>
 
       {/* CARD 4 — PRAZOS PRÓXIMOS */}
       <button
         type="button"
         onClick={() => onCardClick?.('PRAZOS')}
-        className="group text-left transition-all duration-200 hover:-translate-y-0.5 focus:outline-none"
+        className="group text-left transition-all duration-200 hover:-translate-y-1 focus:outline-none"
       >
-        <Cartao className="p-4 transition-all duration-150 group-hover:border-[#071B3A] group-hover:shadow-md">
-          <div className="flex items-start justify-between">
-            <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 group-hover:text-[#071B3A]">
-              Prazos próximos
-            </p>
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 group-hover:bg-indigo-100 transition-colors">
-              <Scale className="h-3.5 w-3.5 text-indigo-600" />
+        <div className="relative overflow-hidden rounded-2xl border border-indigo-200/70 bg-gradient-to-b from-indigo-50/40 via-white to-white p-4 shadow-xs group-hover:border-indigo-500 group-hover:shadow-md transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-800">
+              Prazos Próximos
+            </span>
+            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-indigo-100/80 text-indigo-700 group-hover:scale-110 transition-transform">
+              <Scale className="h-3.5 w-3.5" />
             </span>
           </div>
-          <p className="mt-2.5 text-[30px] font-black leading-none text-[#071B3A]">
-            {temAlgumPrazoCadastrado ? prazosSeteDiasCount : '—'}
+          <p className="mt-3 text-3xl font-black text-[#071B3A] tracking-tight">
+            {temAlgumPrazoCadastrado ? prazosSeteDiasCount : '0'}
           </p>
-          <p className="mt-1.5 text-[11px] text-slate-400">
-            {temAlgumPrazoCadastrado ? (
-              prazosSeteDiasCount > 0 ? (
-                <span className="font-bold text-indigo-600">nos próximos 7 dias</span>
-              ) : (
-                'nenhum nos próx. 7 dias'
-              )
+          <p className="mt-1.5 text-[11px] text-slate-500 font-medium">
+            {prazosSeteDiasCount > 0 ? (
+              <span className="font-extrabold text-indigo-700">Próximos 7 dias</span>
             ) : (
-              'nenhum prazo cadastrado'
+              'Nenhum prazo cadastrado'
             )}
           </p>
-        </Cartao>
+        </div>
       </button>
 
       {/* CARD 5 — CONCLUÍDOS */}
       <button
         type="button"
         onClick={() => onCardClick?.('CONCLUIDOS')}
-        className="group text-left transition-all duration-200 hover:-translate-y-0.5 focus:outline-none"
+        className="group text-left transition-all duration-200 hover:-translate-y-1 focus:outline-none"
       >
-        <Cartao className="p-4 transition-all duration-150 group-hover:border-[#071B3A] group-hover:shadow-md">
-          <div className="flex items-start justify-between">
-            <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 group-hover:text-[#071B3A]">
-              Concluídos
-            </p>
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-50 group-hover:bg-teal-100 transition-colors">
-              <CheckCircle2 className="h-3.5 w-3.5 text-teal-600" />
+        <div className="relative overflow-hidden rounded-2xl border border-emerald-200/70 bg-gradient-to-b from-emerald-50/40 via-white to-white p-4 shadow-xs group-hover:border-emerald-500 group-hover:shadow-md transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">
+              Concluídos no Mês
+            </span>
+            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-emerald-100/80 text-emerald-700 group-hover:scale-110 transition-transform">
+              <CheckCircle2 className="h-3.5 w-3.5" />
             </span>
           </div>
-          <p className="mt-2.5 text-[30px] font-black leading-none text-[#071B3A]">
+          <p className="mt-3 text-3xl font-black text-[#071B3A] tracking-tight">
             {indicadores.assinadosNoMes}
           </p>
-          <p className="mt-1.5 text-[11px]">
+          <p className="mt-1.5 text-[11px] text-slate-500 font-medium">
             {indicadores.variacaoMes !== null ? (
-              <>
-                <span
-                  className={`font-bold ${
-                    indicadores.variacaoMes >= 0 ? 'text-teal-600' : 'text-amber-600'
-                  }`}
-                >
-                  {indicadores.variacaoMes >= 0 ? '+' : ''}
-                  {indicadores.variacaoMes}
-                </span>{' '}
-                <span className="text-slate-400">vs. mês anterior</span>
-              </>
+              <span className="font-extrabold text-emerald-700">
+                {indicadores.variacaoMes >= 0 ? '+' : ''}{indicadores.variacaoMes} vs. mês anterior
+              </span>
             ) : (
-              <span className="text-slate-400">neste mês</span>
+              'Finalizados neste mês'
             )}
           </p>
-        </Cartao>
+        </div>
       </button>
     </div>
   );

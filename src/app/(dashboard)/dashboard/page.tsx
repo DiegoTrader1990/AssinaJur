@@ -852,51 +852,54 @@ export default function DashboardPage() {
   return (
     <main className="space-y-4 max-w-[1600px] mx-auto pb-16">
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 1. CABEÇALHO OPERACIONAL SIMPLES                              */}
+      {/* 1. CABEÇALHO EXECUTIVO DE ALTA PERFORMANCE                    */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <header className="relative overflow-hidden rounded-[22px] border border-slate-200 bg-white px-5 py-4 lg:px-6 lg:py-4 shadow-[0_18px_55px_-42px_rgba(11,25,44,0.5)]">
-        <div className="absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b from-[#D4AF37] to-[#9E7515]" />
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <header className="relative overflow-hidden rounded-[24px] border border-slate-200/90 bg-gradient-to-r from-[#071B3A] via-[#0B254C] to-[#071B3A] px-6 py-5 text-white shadow-xl">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-[#D4AF37]/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="mb-2 flex items-center gap-2">
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#9E7515]">Central do escritório</span>
-              <span className="h-1 w-1 rounded-full bg-slate-300" />
-              <span className="text-[10px] font-bold text-slate-400">Operação em tempo real</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#D4AF37]/40 bg-[#D4AF37]/15 px-3 py-0.5 text-[9.5px] font-black uppercase tracking-widest text-[#E7C85E]">
+                Mesa de Comando Operacional
+              </span>
+              <span className="h-1 w-1 rounded-full bg-slate-400" />
+              <span className="text-[10.5px] font-bold text-slate-300">
+                {office?.name || 'Rodrigues & Soares Advocacia'}
+              </span>
             </div>
-            <h1 className="text-xl font-black tracking-[-0.03em] text-[#071B3A] lg:text-[26px]">
+            <h1 className="text-2xl font-black tracking-tight text-white lg:text-[28px]">
               {greeting}, {userFirstName}.
             </h1>
-            <div className="mt-2 flex items-center gap-2 text-xs font-semibold">
+            <div className="mt-2 flex items-center gap-2 text-xs font-semibold text-slate-200">
               {totalAttentionCount > 0 ? (
-                <span className="inline-flex items-center gap-2 text-amber-800">
-                  <span className="relative flex h-2.5 w-2.5">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-50" />
-                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500" />
+                <span className="inline-flex items-center gap-2 text-amber-300 font-bold bg-amber-950/40 border border-amber-500/30 px-3 py-1 rounded-full text-xs">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
                   </span>
-                  {totalAttentionCount} situação(ões) exigem análise hoje
+                  {totalAttentionCount} situação(ões) exigem atenção imediata hoje
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-2 text-emerald-700">
-                  <CheckCircle2 className="h-4 w-4" /> Operação em dia, sem pendências críticas
+                <span className="inline-flex items-center gap-2 text-emerald-300 font-bold bg-emerald-950/40 border border-emerald-500/30 px-3 py-1 rounded-full text-xs">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-400" /> Operação 100% em dia e sincronizada
                 </span>
               )}
             </div>
           </div>
 
-          <div className="hidden flex-col gap-2 sm:flex-row">
+          <div className="flex items-center gap-2.5 sm:flex-row">
             <button
               type="button"
               onClick={() => setActionModal('ATENDIMENTO')}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-extrabold text-[#071B3A] transition hover:border-slate-300 hover:bg-slate-50"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 px-4 py-2.5 text-xs font-extrabold text-white transition-all backdrop-blur-sm"
             >
-              <UserPlus className="h-4 w-4 text-[#B68B1C]" /> Novo atendimento
+              <UserPlus className="h-4 w-4 text-[#E7C85E]" /> Novo atendimento
             </button>
             <Link
-
               href="/documentos/novo"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#071B3A] px-4 py-2.5 text-xs font-extrabold text-white shadow-[0_12px_24px_-15px_rgba(7,27,58,0.95)] transition hover:bg-[#102D55]"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#D4AF37] to-[#B68B1C] hover:from-[#E7C85E] hover:to-[#D4AF37] px-4.5 py-2.5 text-xs font-black text-[#071B3A] shadow-md transition-all"
             >
-              <FileUp className="h-4 w-4 text-[#E0BD48]" /> Enviar documentos
+              <FileUp className="h-4 w-4 text-[#071B3A]" /> Enviar documentos
             </Link>
           </div>
         </div>
