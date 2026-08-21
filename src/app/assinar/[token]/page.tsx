@@ -811,8 +811,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     );
   };
 
-  const clientSelfieComplete = Boolean(selfieImages.center && selfieImages.left && selfieImages.right);
-  const rogoSelfieComplete = Boolean(rogoSelfieImages.center && rogoSelfieImages.left && rogoSelfieImages.right);
+  // Fluxo simplificado: só a foto central (frontal) é obrigatória agora - exigir
+  // left/right aqui também deixava essas flags eternamente "false" (a câmera não
+  // tira mais essas duas fotos), escondendo o grid de revisão e os botões de
+  // continuar que dependem delas.
+  const clientSelfieComplete = Boolean(selfieImages.center);
+  const rogoSelfieComplete = Boolean(rogoSelfieImages.center);
 
   const startDrawing = (e: any) => {
     const canvas = canvasRef.current;
@@ -857,6 +861,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   const handleSubmitSignature = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Fluxo de captura simplificado: só a foto central (frontal) é obrigatória
+    // agora. left/right continuam sendo lidos (podem existir em sessões antigas
+    // que já tinham capturado as 3), mas não bloqueiam mais o envio - exigir
+    // isso aqui travava TODA assinatura, já que a câmera não tira mais essas
+    // duas fotos.
     const clientCenter = selfieImages.center || selfieImagesRef.current.center;
     const clientLeft = selfieImages.left || selfieImagesRef.current.left;
     const clientRight = selfieImages.right || selfieImagesRef.current.right;
@@ -865,13 +874,13 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const rogoLeft = rogoSelfieImages.left || rogoSelfieImagesRef.current.left;
     const rogoRight = rogoSelfieImages.right || rogoSelfieImagesRef.current.right;
 
-    if (!clientCenter || !clientLeft || !clientRight) {
+    if (!clientCenter) {
       setError('É necessário concluir a prova de presença do cliente (selfie) antes de assinar.');
       return;
     }
 
     if (isRogadoConsent) {
-      if (!rogoCenter || !rogoLeft || !rogoRight) {
+      if (!rogoCenter) {
         setError('O Assinante a Rogo também deve concluir a prova de presença com a selfie no mesmo aparelho.');
         return;
       }
@@ -1173,7 +1182,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 <video ref={selfieVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
                 <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
                   <div className={`w-[70%] h-[75%] rounded-[50%] border-[3px] border-dashed transition-all duration-300 ${
-                    frameState === 'GREEN' ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20' 
+                    frameState === 'GREEN' ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20'
                     : frameState === 'YELLOW' ? 'border-amber-400/70 bg-amber-500/5'
                     : 'border-white/30'
                   }`} />
@@ -1185,29 +1194,36 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                     </div>
                   </div>
                 )}
-                <div className="absolute bottom-0 left-0 right-0 bg-[#071B3A]/90 text-emerald-300 text-xs font-bold text-center py-3 px-4 backdrop-blur-sm flex items-center justify-center gap-2 font-heading">
-                  <span>{selfieInstruction}</span>
+
+                {/* Instrução, colada no rodapé da câmera. */}
+                <div className="absolute bottom-[92px] left-0 right-0 bg-gradient-to-t from-black/80 to-transparent pt-6 pb-2 px-4 text-center pointer-events-none">
+                  <span className="text-white text-xs font-bold drop-shadow font-heading">{selfieInstruction}</span>
+                </div>
+
+                {/* Botão de disparo estilo câmera, sempre visível dentro do próprio
+                    quadro (sem precisar rolar a tela) - toque a qualquer momento,
+                    não é preciso esperar a contagem regressiva nem manter o rosto
+                    perfeitamente parado (importante para clientes idosos). */}
+                <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-8 pb-4">
+                  <button
+                    type="button"
+                    onClick={handleManualCapture}
+                    disabled={capturingSelfie}
+                    aria-label="Tirar foto"
+                    className="w-[72px] h-[72px] rounded-full bg-white border-[5px] border-white/40 shadow-2xl active:scale-90 transition-transform disabled:opacity-60 flex items-center justify-center"
+                  >
+                    {capturingSelfie ? (
+                      <Loader2 className="w-7 h-7 animate-spin text-[#071B3A]" />
+                    ) : (
+                      <span className="w-[56px] h-[56px] rounded-full bg-emerald-600" />
+                    )}
+                  </button>
                 </div>
               </div>
 
-              {/* Botão de Captura Manual Direta */}
-              <button
-                type="button"
-                onClick={handleManualCapture}
-                disabled={capturingSelfie}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading"
-              >
-                {capturingSelfie ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin text-white" /> Capturando Foto...
-                  </>
-                ) : (
-                  <>
-                    <Camera className="w-4 h-4 text-white" />
-                    {'📸 Tirar Selfie'}
-                  </>
-                )}
-              </button>
+              <p className="text-center text-[11px] text-slate-500 font-semibold">
+                Pode tocar no botão verde a qualquer momento para tirar a foto - não precisa esperar a contagem.
+              </p>
             </div>
 
             {clientSelfieComplete && (
@@ -1394,29 +1410,33 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                     </div>
                   </div>
                 )}
-                <div className="absolute bottom-0 left-0 right-0 bg-[#071B3A]/90 text-blue-300 text-xs font-bold text-center py-3 px-4 backdrop-blur-sm flex items-center justify-center gap-2 font-heading">
-                  <span>{selfieInstruction}</span>
+                {/* Instrução, colada no rodapé da câmera. */}
+                <div className="absolute bottom-[92px] left-0 right-0 bg-gradient-to-t from-black/80 to-transparent pt-6 pb-2 px-4 text-center pointer-events-none">
+                  <span className="text-white text-xs font-bold drop-shadow font-heading">{selfieInstruction}</span>
+                </div>
+
+                {/* Botão de disparo estilo câmera, sempre visível dentro do próprio
+                    quadro (sem precisar rolar a tela) - toque a qualquer momento. */}
+                <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-8 pb-4">
+                  <button
+                    type="button"
+                    onClick={handleManualCapture}
+                    disabled={capturingSelfie}
+                    aria-label="Tirar foto"
+                    className="w-[72px] h-[72px] rounded-full bg-white border-[5px] border-white/40 shadow-2xl active:scale-90 transition-transform disabled:opacity-60 flex items-center justify-center"
+                  >
+                    {capturingSelfie ? (
+                      <Loader2 className="w-7 h-7 animate-spin text-[#071B3A]" />
+                    ) : (
+                      <span className="w-[56px] h-[56px] rounded-full bg-blue-600" />
+                    )}
+                  </button>
                 </div>
               </div>
 
-              {/* Botão de Captura Manual Direta para o Assinante a Rogo */}
-              <button
-                type="button"
-                onClick={handleManualCapture}
-                disabled={capturingSelfie}
-                className="w-full py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-heading"
-              >
-                {capturingSelfie ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin text-white" /> Capturando Foto...
-                  </>
-                ) : (
-                  <>
-                    <Camera className="w-4 h-4 text-white" />
-                    {'📸 Tirar Selfie'}
-                  </>
-                )}
-              </button>
+              <p className="text-center text-[11px] text-slate-500 font-semibold">
+                Pode tocar no botão azul a qualquer momento para tirar a foto - não precisa esperar a contagem.
+              </p>
             </div>
 
             {rogoSelfieComplete && (
@@ -1495,7 +1515,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   {isRogadoConsent ? `CPF Cliente: ${signer?.cpf ? formatFullCpf(signer.cpf) : ''} | CPF A Rogo: ${rogoCpf ? formatFullCpf(rogoCpf) : ''}` : `CPF: ${signer?.cpf ? formatFullCpf(signer.cpf) : ''}`}
                 </p>
                 <p className="text-[10px] text-emerald-700 font-extrabold uppercase">
-                  {isRogadoConsent ? '✓ 6 FOTOS DE PRESENÇA (3 CLIENTE + 3 ACOMPANHANTE) VINCULADOS' : '✓ PROVA DE PRESENÇA + GEOLOCALIZAÇÃO VINCULADOS'}
+                  {isRogadoConsent ? '✓ SELFIES DE PRESENÇA (CLIENTE + ACOMPANHANTE) VINCULADAS' : '✓ PROVA DE PRESENÇA + GEOLOCALIZAÇÃO VINCULADOS'}
                 </p>
               </div>
             </div>
