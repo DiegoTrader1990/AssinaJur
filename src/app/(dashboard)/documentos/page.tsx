@@ -46,7 +46,8 @@ import {
   SortAsc,
   SortDesc,
   History,
-  Eye
+  Eye,
+  RotateCcw
 } from 'lucide-react';
 import { maskCpfCnpj } from '@/lib/formatters';
 
@@ -96,6 +97,8 @@ export default function DocumentsPage() {
   const searchParams = useSearchParams();
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isOfficeAdmin, setIsOfficeAdmin] = useState(false);
+  const [redoingIds, setRedoingIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '');
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('ALL');
   const [dateFilter, setDateFilter] = useState<DateFilter>('ALL');
@@ -120,6 +123,10 @@ export default function DocumentsPage() {
   useEffect(() => {
     fetchDocuments();
     fetchTags();
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((data) => setIsOfficeAdmin(data?.user?.role === 'OFFICE_ADMIN'))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -180,6 +187,40 @@ export default function DocumentsPage() {
       setSelectedDoc(null);
     } catch (err: any) {
       alert(err.message);
+    }
+  };
+
+  // Reabre a assinatura de um documento (ou do pacote inteiro) já concluído, para o caso
+  // de a prova de presença ter saído ruim (selo mal posicionado, selfie não aproveitável
+  // etc.). Reaproveita o mesmo link/token já enviado e todo o conteúdo do documento já
+  // revisado - a pessoa só refaz a etapa de assinar, não precisa de um link novo.
+  const handleRedoSignature = async (doc: DocumentItem, mode: 'redo-document' | 'redo-package') => {
+    const isPackage = mode === 'redo-package';
+    const confirmMsg = isPackage
+      ? `Reabrir TODO O PACOTE (${selectedPackageDocuments.length || 1} documentos) de ${doc.client?.name || 'este cliente'} para uma nova tentativa de assinatura? O mesmo link será reativado e o conteúdo já editado é mantido.`
+      : `Reabrir "${doc.title}" para uma nova tentativa de assinatura? O mesmo link será reativado e o conteúdo já editado é mantido.`;
+    if (!window.confirm(confirmMsg)) return;
+    const reason = window.prompt('Motivo (opcional, fica registrado na trilha de auditoria):') || '';
+
+    setRedoingIds((current) => new Set(current).add(doc.id));
+    try {
+      const res = await fetch(`/api/documents/${doc.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: mode, reason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Não foi possível reabrir a assinatura.');
+      await fetchDocuments();
+      setSelectedDoc(null);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setRedoingIds((current) => {
+        const next = new Set(current);
+        next.delete(doc.id);
+        return next;
+      });
     }
   };
 
@@ -553,6 +594,16 @@ export default function DocumentsPage() {
             </Link>
           )}
 
+          {isCompleted && isOfficeAdmin && (
+            <button
+              onClick={() => handleRedoSignature(doc, 'redo-document')}
+              disabled={redoingIds.has(doc.id)}
+              title="Reabrir para uma nova tentativa de assinatura, mantendo o mesmo link"
+              className="p-1 text-amber-600 hover:text-amber-700 disabled:opacity-50 rounded-lg border border-amber-200 transition-colors"
+            >
+              {redoingIds.has(doc.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+            </button>
+          )}
           <button
             onClick={() => setSelectedDoc(doc)}
             className="px-2.5 py-1 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-lg text-[10px] font-heading"
@@ -597,6 +648,18 @@ export default function DocumentsPage() {
         </div>
         <div className="p-3 border-t border-slate-100 flex flex-wrap gap-2">
           <button onClick={() => setSelectedDoc(lead)} className="flex-1 py-2 bg-[#071B3A] hover:bg-[#0B1D3D] text-white rounded-xl text-[10px] font-extrabold">Abrir dossiê do pacote</button>
+          {isCompleted && isOfficeAdmin && (
+            <button
+              type="button"
+              onClick={() => handleRedoSignature(lead, packageDocuments.length > 1 ? 'redo-package' : 'redo-document')}
+              disabled={redoingIds.has(lead.id)}
+              title="Reabrir para uma nova tentativa de assinatura, mantendo o mesmo link"
+              className="px-3 py-2 border border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100 disabled:opacity-50 rounded-xl text-[10px] font-extrabold inline-flex items-center gap-1"
+            >
+              {redoingIds.has(lead.id) ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+              Refazer
+            </button>
+          )}
           {isCompleted && (
             <button
               type="button"
@@ -929,13 +992,43 @@ export default function DocumentsPage() {
               {selectedPackageDocuments.some((item) => item.status === 'CONCLUIDO' || item.status === 'PARCIALMENTE_ASSINADO') && (
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-3 space-y-2">
                   <p className="text-xs font-extrabold text-emerald-900">Documentos do pacote</p>
-                  {selectedPackageDocuments.map((item) => <div key={item.id} className="flex items-center justify-between gap-2 bg-white rounded-xl border border-emerald-100 px-3 py-2"><span className="text-xs font-bold text-slate-700 truncate">{item.title}</span>{(item.status === 'CONCLUIDO' || item.status === 'PARCIALMENTE_ASSINADO') && <a href={`/api/documents/${item.id}/download`} download className="shrink-0 inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700"><Download className="w-3.5 h-3.5" /> Baixar PDF</a>}</div>)}
+                  {selectedPackageDocuments.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between gap-2 bg-white rounded-xl border border-emerald-100 px-3 py-2">
+                      <span className="text-xs font-bold text-slate-700 truncate">{item.title}</span>
+                      <div className="shrink-0 flex items-center gap-2">
+                        {(item.status === 'CONCLUIDO' || item.status === 'PARCIALMENTE_ASSINADO') && <a href={`/api/documents/${item.id}/download`} download className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700"><Download className="w-3.5 h-3.5" /> Baixar PDF</a>}
+                        {isOfficeAdmin && item.status === 'CONCLUIDO' && selectedPackageDocuments.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRedoSignature(item, 'redo-document')}
+                            disabled={redoingIds.has(item.id)}
+                            title="Refazer só este documento, mantendo o mesmo link"
+                            className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-700 hover:text-amber-800 disabled:opacity-50"
+                          >
+                            {redoingIds.has(item.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />} Refazer
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
               {selectedPackageDocuments.length > 1 && selectedDoc.status === 'CONCLUIDO' && selectedPackageDocuments.some((item) => item.status !== 'CONCLUIDO') && (
                 <button onClick={() => handleSyncPackageSignature(selectedDoc)} className="w-full py-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-xs font-extrabold">
                   Concluir os documentos restantes deste pacote
+                </button>
+              )}
+
+              {isOfficeAdmin && selectedDoc.status === 'CONCLUIDO' && (
+                <button
+                  type="button"
+                  onClick={() => handleRedoSignature(selectedDoc, selectedPackageDocuments.length > 1 ? 'redo-package' : 'redo-document')}
+                  disabled={redoingIds.has(selectedDoc.id)}
+                  className="w-full py-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-xs font-extrabold flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {redoingIds.has(selectedDoc.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                  {selectedPackageDocuments.length > 1 ? 'Refazer assinatura de todo o pacote' : 'Refazer assinatura deste documento'}
                 </button>
               )}
 

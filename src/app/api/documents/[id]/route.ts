@@ -107,6 +107,63 @@ export async function POST(
       return NextResponse.json({ success: true, synchronized });
     }
 
+    // Reabre um documento (ou um pacote inteiro) já concluído para uma nova tentativa de
+    // assinatura, reaproveitando o MESMO link/token e todo o conteúdo já revisado/editado -
+    // pensado para o caso de a captura da prova de presença ter saído ruim (selfie, selo mal
+    // posicionado etc.) e ser preciso que a pessoa refaça só a parte de assinar, sem o
+    // escritório precisar reeditar o documento nem gerar um link novo. Só o dono/admin do
+    // escritório pode acionar - o cliente nunca tem esse botão.
+    if (action === 'redo-document' || action === 'redo-package') {
+      if (user.role !== 'OFFICE_ADMIN') {
+        return NextResponse.json({ error: 'Apenas o administrador do escritório pode solicitar que a assinatura seja refeita.' }, { status: 403 });
+      }
+
+      const targets = action === 'redo-package' && document.kitBatchId
+        ? await prisma.document.findMany({
+            where: { officeId: user.officeId, kitBatchId: document.kitBatchId, clientId: document.clientId, status: 'CONCLUIDO' },
+          })
+        : [document];
+
+      const eligible = targets.filter((item) => item.status === 'CONCLUIDO');
+      if (!eligible.length) {
+        return NextResponse.json({ error: 'Só é possível refazer documentos que já estão concluídos.' }, { status: 400 });
+      }
+
+      const reason = typeof body.reason === 'string' ? body.reason.trim().slice(0, 500) : '';
+
+      for (const target of eligible) {
+        // Preserva a trilha da tentativa anterior antes de reabrir - exigência de auditoria
+        // da MP 2.200-2/Lei 14.063: nunca some silenciosamente com uma assinatura já
+        // registrada, só marca como descartada. As evidências (selfie, selo, geolocalização)
+        // do signatário continuam salvas até a nova assinatura sobrescrevê-las.
+        await prisma.documentEvent.create({
+          data: {
+            documentId: target.id,
+            userId: user.id,
+            eventType: 'SIGNATURE_RESET',
+            description: `Assinatura concluída${target.completedAt ? ` em ${target.completedAt.toLocaleString('pt-BR')}` : ''} foi reaberta para nova tentativa por ${user.name}${reason ? `. Motivo: ${reason}` : '.'} O mesmo link de assinatura foi reativado; as evidências da tentativa anterior permanecem preservadas nesta trilha.`,
+          },
+        });
+        await prisma.signer.updateMany({
+          where: { documentId: target.id },
+          data: { status: 'PENDENTE' },
+        });
+        await prisma.document.update({
+          where: { id: target.id },
+          data: { status: 'ENVIADO', completedAt: null },
+        });
+      }
+
+      await logAuditEvent({
+        officeId: user.officeId,
+        userId: user.id,
+        eventType: 'SIGNATURE_RESET',
+        description: `${eligible.length} documento(s) ${action === 'redo-package' ? `do pacote "${document.title}"` : `("${document.title}")`} foram reabertos por ${user.name} para nova tentativa de assinatura.`,
+      });
+
+      return NextResponse.json({ success: true, resetCount: eligible.length });
+    }
+
     if (action === 'send') {
       if (document.status === 'CONCLUIDO' || document.status === 'CANCELADO') {
         return NextResponse.json(
