@@ -1966,10 +1966,7 @@ export function BlocoAcompanhamento({
           {/* Botão Único "+ Novo acompanhamento" */}
           <button
             type="button"
-            onClick={() => {
-              if (onNovaPendencia) onNovaPendencia();
-              else setIsModalOpen(true);
-            }}
+            onClick={() => setIsModalOpen(true)}
             className="inline-flex items-center gap-1.5 rounded-xl bg-[#071B3A] hover:bg-[#122c52] px-4 py-2 text-xs font-extrabold text-white shadow-xs transition-all cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5 text-[#D4AF37]" /> Novo acompanhamento
