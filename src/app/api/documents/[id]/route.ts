@@ -150,6 +150,50 @@ export async function POST(
       return NextResponse.json({ success: true, approvedCount: approveEligible.length });
     }
 
+    // Desfazer aprovação: a aprovação esconde o botão Refazer de propósito, para evitar
+    // clique acidental num documento já conferido - mas isso também significa que, se o
+    // escritório aprovou por engano (ou aprovou antes de perceber que a prova de presença
+    // precisa ser refeita), não havia como voltar atrás sem mexer direto no banco. Esta
+    // ação simplesmente devolve o documento (ou pacote) ao estado "Aguardando revisão",
+    // liberando o Refazer de novo - não altera nenhuma evidência já registrada.
+    if (action === 'unapprove-document' || action === 'unapprove-package') {
+      if (user.role !== 'OFFICE_ADMIN') {
+        return NextResponse.json({ error: 'Apenas o administrador do escritório pode desfazer uma aprovação.' }, { status: 403 });
+      }
+
+      const unapproveTargets = action === 'unapprove-package' && document.kitBatchId
+        ? await prisma.document.findMany({
+            where: { officeId: user.officeId, kitBatchId: document.kitBatchId, clientId: document.clientId, status: 'CONCLUIDO', reviewStatus: 'APROVADO' },
+          })
+        : [document];
+
+      const unapproveEligible = unapproveTargets.filter((item) => item.status === 'CONCLUIDO' && item.reviewStatus === 'APROVADO');
+      if (!unapproveEligible.length) {
+        return NextResponse.json({ error: 'Não há documentos aprovados para desfazer aqui.' }, { status: 400 });
+      }
+
+      for (const target of unapproveEligible) {
+        await prisma.document.update({ where: { id: target.id }, data: { reviewStatus: 'PENDENTE_REVISAO' } });
+        await prisma.documentEvent.create({
+          data: {
+            documentId: target.id,
+            userId: user.id,
+            eventType: 'DOCUMENT_APPROVED',
+            description: `Aprovação desfeita por ${user.name}; documento voltou a aguardar revisão.`,
+          },
+        });
+      }
+
+      await logAuditEvent({
+        officeId: user.officeId,
+        userId: user.id,
+        eventType: 'DOCUMENT_APPROVED',
+        description: `${unapproveEligible.length} documento(s) ${action === 'unapprove-package' ? `do pacote "${document.title}"` : `("${document.title}")`} voltaram a aguardar revisão por ${user.name}.`,
+      });
+
+      return NextResponse.json({ success: true, unapprovedCount: unapproveEligible.length });
+    }
+
     // Reabre um documento (ou um pacote inteiro) já concluído para uma nova tentativa de
     // assinatura, reaproveitando o MESMO link/token e todo o conteúdo já revisado/editado -
     // pensado para o caso de a captura da prova de presença ter saído ruim (selfie, selo mal

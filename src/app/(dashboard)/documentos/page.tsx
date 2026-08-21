@@ -216,6 +216,32 @@ export default function DocumentsPage() {
     }
   };
 
+  // Desfaz uma aprovação feita por engano, devolvendo o documento (ou pacote) para
+  // "Aguardando revisão" - só assim o botão Refazer volta a aparecer. Nenhuma evidência
+  // já registrada é apagada, só o status de revisão muda.
+  const handleUnapproveSignature = async (doc: DocumentItem, mode: 'unapprove-document' | 'unapprove-package') => {
+    setRedoingIds((current) => new Set(current).add(doc.id));
+    try {
+      const res = await fetch(`/api/documents/${doc.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: mode }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Não foi possível desfazer a aprovação.');
+      await fetchDocuments();
+      setSelectedDoc(null);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setRedoingIds((current) => {
+        const next = new Set(current);
+        next.delete(doc.id);
+        return next;
+      });
+    }
+  };
+
   // Reabre a assinatura de um documento (ou do pacote inteiro) já concluído, para o caso
   // de a prova de presença ter saído ruim (selo mal posicionado, selfie não aproveitável
   // etc.). Reaproveita o mesmo link/token já enviado e todo o conteúdo do documento já
@@ -1083,8 +1109,19 @@ export default function DocumentsPage() {
               )}
 
               {isOfficeAdmin && selectedDoc.status === 'CONCLUIDO' && selectedDoc.reviewStatus === 'APROVADO' && (
-                <div className="w-full py-2.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-extrabold flex items-center justify-center gap-2">
-                  <CheckCircle2 className="w-4 h-4" /> Assinatura revisada e aprovada
+                <div className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs font-extrabold text-emerald-800">
+                  <div className="flex items-center justify-center gap-2">
+                    <CheckCircle2 className="w-4 h-4" /> Assinatura revisada e aprovada
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleUnapproveSignature(selectedDoc, selectedPackageDocuments.length > 1 ? 'unapprove-package' : 'unapprove-document')}
+                    disabled={redoingIds.has(selectedDoc.id)}
+                    title="Volta o documento (ou pacote) para Aguardando revisão, liberando o botão Refazer de novo"
+                    className="mx-auto mt-1.5 block text-[10px] font-bold text-emerald-700 underline decoration-dotted hover:text-emerald-900 disabled:opacity-50"
+                  >
+                    Aprovei por engano, desfazer aprovação
+                  </button>
                 </div>
               )}
 
