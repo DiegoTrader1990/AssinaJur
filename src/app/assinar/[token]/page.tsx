@@ -728,7 +728,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       if (key === 'center') {
         // Fluxo simplificado: 1 selfie frontal já basta para concluir a prova de presença.
         setSelfieInstruction('✓ Prova de presença concluída!');
-        playGoogleAudio('step3', audioEnabledRef.current);
+        speakCaptureInstruction('Foto registrada com sucesso. Vamos continuar para a assinatura.', audioEnabledRef.current);
         stopSelfieCamera();
 
         setTimeout(() => {
@@ -744,10 +744,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         centeredStartTimeRef.current = null;
         warmupUntilRef.current = Date.now() + 800;
         setSelfieInstruction('✓ Foto 2 Salva! Agora vire o rosto para a DIREITA →');
-        playGoogleAudio('step2', audioEnabledRef.current);
+        speakCaptureInstruction('Foto registrada. Agora vire o rosto para a direita.', audioEnabledRef.current);
       } else if (key === 'right') {
         setSelfieInstruction('✓ Prova de presença concluída com 3 fotos!'); // legado (ramo 'right' não é mais alcançado no fluxo de 1 selfie)
-        playGoogleAudio('step3', audioEnabledRef.current);
+        speakCaptureInstruction('Prova de presença concluída. Vamos continuar para a assinatura.', audioEnabledRef.current);
         stopSelfieCamera();
 
         setTimeout(() => {
@@ -1267,10 +1267,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
             <div className={cameraActive ? 'space-y-3' : 'hidden'}>
               <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[4/3] bg-black ${
-                frameState === 'GREEN' ? 'border-emerald-500 shadow-emerald-500/50 shadow-xl'
-                : frameState === 'YELLOW' ? 'border-amber-400'
+                frameState === 'YELLOW' ? 'border-amber-400'
                 : frameState === 'FLASH' ? 'border-white animate-pulse'
-                : 'border-slate-600'
+                : 'border-[#D4AF37]/70 shadow-lg'
               }`}>
                 <video ref={selfieVideoRef} autoPlay playsInline muted className="block w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
                 {/* Sem a marcação oval de rosto: agora só um quadrado do lado
@@ -1316,14 +1315,14 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                     ) : countdownSecs !== null ? (
                       <span className="text-xl font-black text-[#071B3A] font-mono">{countdownSecs}</span>
                     ) : (
-                      <span className="w-[56px] h-[56px] rounded-full bg-emerald-600" />
+                      <Camera className="w-7 h-7 text-[#071B3A]" />
                     )}
                   </button>
                 </div>
               </div>
 
               <p className="text-center text-[11px] text-slate-600 font-semibold leading-relaxed">
-                {selfieInstruction}<br />Toque no botão verde e fique parado(a): a foto é tirada após a contagem de 5 segundos.
+                {selfieInstruction}<br />Toque no botão e fique parado(a): a foto é tirada após a contagem de 5 segundos.
               </p>
             </div>
 
@@ -1493,10 +1492,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
             <div className={cameraActive ? 'space-y-3' : 'hidden'}>
               <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[4/3] bg-black ${
-                frameState === 'GREEN' ? 'border-emerald-500 shadow-emerald-500/50 shadow-xl'
-                : frameState === 'YELLOW' ? 'border-amber-400'
+                frameState === 'YELLOW' ? 'border-amber-400'
                 : frameState === 'FLASH' ? 'border-white animate-pulse'
-                : 'border-slate-600'
+                : 'border-[#D4AF37]/70 shadow-lg'
               }`}>
                 <video ref={selfieVideoRef} autoPlay playsInline muted className="block w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
                 <div className="absolute left-[5%] top-[15%] bottom-[104px] w-[31%] pointer-events-none flex items-center justify-center">
@@ -1532,14 +1530,14 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                     ) : countdownSecs !== null ? (
                       <span className="text-xl font-black text-[#071B3A] font-mono">{countdownSecs}</span>
                     ) : (
-                      <span className="w-[56px] h-[56px] rounded-full bg-blue-600" />
+                      <Camera className="w-7 h-7 text-[#071B3A]" />
                     )}
                   </button>
                 </div>
               </div>
 
               <p className="text-center text-[11px] text-slate-600 font-semibold leading-relaxed">
-                {selfieInstruction}<br />Toque no botão azul e fique parado(a): a foto é tirada após a contagem de 5 segundos.
+                {selfieInstruction}<br />Toque no botão e fique parado(a): a foto é tirada após a contagem de 5 segundos.
               </p>
             </div>
 
