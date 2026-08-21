@@ -712,11 +712,12 @@ export async function generateFinalPdfCertificate(documentId: string) {
       // em vez de um corte mais estreito - evita "zoom" excessivo no rosto,
       // preservando mais do enquadramento original da selfie.
       const embedded = await embedBase64Image(pdfDoc, imageData, { width: 560, height: 424 });
-      certificatePage.drawRectangle({ x: compactPhotoX - 2, y: 309, width: compactPhotoW + 4, height: compactPhotoH + 4, color: navy });
-      certificatePage.drawRectangle({ x: compactPhotoX - 2, y: 441, width: compactPhotoW + 4, height: 4, color: gold });
-
-      const imgFrameH = compactPhotoH - 26;
-      certificatePage.drawRectangle({ x: compactPhotoX, y: 335, width: compactPhotoW, height: imgFrameH, color: rgb(0.96, 0.96, 0.97), opacity: 0.55 });
+      // Friso dourado fino no topo + legenda como texto corrido embaixo, em vez
+      // do bloco navy sólido - mesmo ajuste feito no certificado completo, para
+      // a foto parecer parte do certificado e não um recorte colado por cima.
+      const imgFrameH = compactPhotoH - 18;
+      certificatePage.drawRectangle({ x: compactPhotoX, y: 327, width: compactPhotoW, height: imgFrameH, color: rgb(0.96, 0.96, 0.97), opacity: 0.55 });
+      certificatePage.drawRectangle({ x: compactPhotoX, y: 327 + imgFrameH - 1.4, width: compactPhotoW, height: 1.4, color: gold });
 
       if (embedded) {
         const imgW = embedded.width;
@@ -725,14 +726,14 @@ export async function generateFinalPdfCertificate(documentId: string) {
         const drawW = Math.round(imgW * scale);
         const drawH = Math.round(imgH * scale);
         const offsetX = compactPhotoX + (compactPhotoW - drawW) / 2;
-        const offsetY = 335 + (imgFrameH - drawH) / 2;
+        const offsetY = 327 + (imgFrameH - drawH) / 2;
 
         certificatePage.drawImage(embedded, { x: offsetX, y: offsetY, width: drawW, height: drawH });
       }
 
-      certificatePage.drawRectangle({ x: compactPhotoX, y: 309, width: compactPhotoW, height: 18, color: navy });
-      certificatePage.drawText(label, { x: compactPhotoX + 7, y: 315, size: 5.8, font: bold, color: rgb(1, 1, 1) });
-      certificatePage.drawText('VALIDADA', { x: compactPhotoX + compactPhotoW - 41, y: 315, size: 4.8, font: bold, color: gold });
+      certificatePage.drawText(label, { x: compactPhotoX, y: 313, size: 5.8, font: bold, color: muted });
+      const compactValidW = bold.widthOfTextAtSize('VALIDADA', 5.4);
+      certificatePage.drawText('VALIDADA', { x: compactPhotoX + compactPhotoW - compactValidW, y: 313, size: 5.4, font: bold, color: green });
       compactPhotoX += compactPhotoW + compactPhotoGap;
     }
 
@@ -1131,8 +1132,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
     if (hasPhotos) {
       // Cartão único, centralizado, maior que o antigo layout de 3 fotos lado a lado.
       const boxW = 180;
-      const boxH = 180;
-      const cardH = 202;
+      const boxH = 168;
+      const captionH = 20;
+      const cardH = boxH + captionH + 14;
       const gap = 20;
       const photosTotalWidth = boxW;
 
@@ -1174,27 +1176,27 @@ export async function generateFinalPdfCertificate(documentId: string) {
         // antes mesmo do encaixe final no quadro, dando a impressão de "zoom"
         // excessivo no rosto. Agora o corte só remove o estritamente necessário.
         const embedded = await embedBase64Image(pdfDoc, img, { width: 600, height: 600 });
-        const labelBarH = 18;
-        const imgFrameH = boxH - labelBarH;
-        const imgFrameY = cardY + labelBarH;
+        const imgFrameY = cardY + captionH;
 
-        // Moldura navy com friso dourado no topo e barra de rótulo navy embaixo -
-        // mesmo tratamento de "cartão" já usado no certificado compacto. Sem isso
-        // a foto ficava só solta em cima do papel timbrado, sem parecer parte do
-        // documento (era só a imagem + um texto embaixo, sem nenhuma borda).
-        page.drawRectangle({ x: photoX - 3, y: cardY - 3, width: boxW + 6, height: boxH + 6, color: navy });
-        page.drawRectangle({ x: photoX - 3, y: cardY + boxH - 1, width: boxW + 6, height: 4, color: gold });
-        page.drawRectangle({ x: photoX, y: imgFrameY, width: boxW, height: imgFrameH, color: rgb(0.96, 0.96, 0.97), opacity: 0.55 });
+        // Sem bloco de cor: só um friso dourado fino na borda superior da
+        // foto (mesmo tom das linhas divisórias do certificado) e a legenda
+        // como texto corrido logo abaixo, no mesmo padrão tipográfico do
+        // resto do documento (rótulo em cinza, valor em cor). O bloco navy
+        // sólido usado antes lia como uma etiqueta colada por cima do papel
+        // timbrado; este friso integra a foto ao certificado em vez de
+        // emoldurá-la como um objeto à parte.
+        page.drawRectangle({ x: photoX, y: imgFrameY, width: boxW, height: boxH, color: rgb(0.96, 0.96, 0.97), opacity: 0.55 });
+        page.drawRectangle({ x: photoX, y: imgFrameY + boxH - 1.4, width: boxW, height: 1.4, color: gold });
 
         if (embedded) {
           const imgW = embedded.width;
           const imgH = embedded.height;
-          const scale = Math.min(boxW / imgW, imgFrameH / imgH);
+          const scale = Math.min(boxW / imgW, boxH / imgH);
           const drawW = Math.round(imgW * scale);
           const drawH = Math.round(imgH * scale);
 
           const offsetX = photoX + (boxW - drawW) / 2;
-          const offsetY = imgFrameY + (imgFrameH - drawH) / 2;
+          const offsetY = imgFrameY + (boxH - drawH) / 2;
 
           page.drawImage(embedded, {
             x: offsetX,
@@ -1204,17 +1206,16 @@ export async function generateFinalPdfCertificate(documentId: string) {
           });
         }
 
-        page.drawRectangle({ x: photoX, y: cardY, width: boxW, height: labelBarH, color: navy });
         page.drawText(safeText(label, 40).toUpperCase(), {
-          x: photoX + 7,
+          x: photoX,
           y: cardY + 6,
           size: 6,
           font: bold,
-          color: rgb(1, 1, 1),
+          color: muted,
         });
         const validText = 'VALIDADA';
-        const validW = bold.widthOfTextAtSize(validText, 5.6);
-        page.drawText(validText, { x: photoX + boxW - validW - 7, y: cardY + 6, size: 5.6, font: bold, color: gold });
+        const validW = bold.widthOfTextAtSize(validText, 5.8);
+        page.drawText(validText, { x: photoX + boxW - validW, y: cardY + 6, size: 5.8, font: bold, color: green });
         photoX += boxW + gap;
       }
     }
@@ -1226,19 +1227,19 @@ export async function generateFinalPdfCertificate(documentId: string) {
   }
 
   // SEÇÃO 4: EVIDÊNCIA COMPLEMENTAR — DOCUMENTO DE IDENTIFICAÇÃO (FRENTE/VERSO)
-  // Em pagina propria, maior e com frente/verso empilhados verticalmente,
-  // para ficar bem legivel e nao dividir espaco com as selfies. Agora que mais
-  // de um signatário pode ter foto de documento (ex.: cliente + Assinante a
-  // Rogo), este bloco precisa paginar por signatário - antes só o cliente
-  // tinha essas fotos e um único signatário sempre cabia numa página só; com
-  // dois signatários o conteúdo do 2º ultrapassava o rodapé da página e
-  // colidia com a Seção 5 (Hash SHA-256) que vinha logo em seguida.
+  // Continua na página atual se houver espaço, em vez de sempre abrir uma
+  // página nova. Antes, essa seção forçava uma página em branco mesmo quando
+  // a seção anterior (dados/selfie) tinha terminado cedo, deixando um vão
+  // enorme no fim da página anterior - a checagem de espaço por foto, feita
+  // dentro do loop abaixo, já decide sozinha quando realmente precisa
+  // paginar (por exemplo, com 2 signatários, quando o conteúdo do 2º
+  // ultrapassaria o rodapé e colidiria com a Seção 5 / Hash SHA-256).
   if (docPhotoSigners.length > 0) {
     const docInnerWidth = CW - 28;
     const docBoxW = Math.min(docInnerWidth, 370);
     const docBoxH = 210;
     const docX = padX + (docInnerWidth - docBoxW) / 2;
-    let dCursor = 0;
+    let dCursor = y;
 
     const startDocPage = () => {
       page = pdfDoc.addPage([PAGE_W, PAGE_H]);
@@ -1246,7 +1247,6 @@ export async function generateFinalPdfCertificate(documentId: string) {
       drawFrame(page, `CERTIFICADO DE EVIDÊNCIAS JURÍDICAS (Continuação ${manifestPageCount})`);
       dCursor = 706;
     };
-    startDocPage();
 
     for (const signer of docPhotoSigners) {
       const docPhotoLabels: Array<[string, string | null]> = [
@@ -1275,19 +1275,18 @@ export async function generateFinalPdfCertificate(documentId: string) {
         // O cabeçalho da seção só entra na conta de espaço necessário quando
         // ainda não foi desenhado (na página atual) - assim ele nunca fica
         // "orfão" sozinho no fim de uma página, sem nenhuma foto embaixo.
-        const neededHeight = (sectionHeaderDrawn ? 0 : 34) + docBoxH + 48;
+        const neededHeight = (sectionHeaderDrawn ? 0 : 34) + docBoxH + 44;
         if (dCursor - neededHeight < 60) { startDocPage(); sectionHeaderDrawn = false; }
         if (!sectionHeaderDrawn) drawSectionHeader();
 
         const embedded = await embedBase64Image(pdfDoc, img, { width: 1400, height: 900 });
         const frameY = dCursor - docBoxH;
-        const docLabelBarH = 18;
+        const docCaptionH = 20;
 
-        // Mesma moldura navy + friso dourado + barra de rótulo usada na selfie,
-        // para as fotos de documento também parecerem parte do certificado, não
-        // recortes soltos coladas em cima do papel timbrado.
-        page.drawRectangle({ x: docX - 3, y: frameY - 3, width: docBoxW + 6, height: docBoxH + 6, color: navy });
-        page.drawRectangle({ x: docX - 3, y: frameY + docBoxH - 1, width: docBoxW + 6, height: 4, color: gold });
+        // Mesmo friso dourado fino + legenda em texto corrido usado na selfie,
+        // sem bloco de cor sólido - a foto do documento passa a parecer parte
+        // do certificado, não um recorte colado em cima do papel timbrado.
+        page.drawRectangle({ x: docX, y: frameY + docBoxH - 1.4, width: docBoxW, height: 1.4, color: gold });
 
         if (embedded) {
           const imgW = embedded.width;
@@ -1300,14 +1299,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
           page.drawImage(embedded, { x: offsetX, y: offsetY, width: drawW, height: drawH });
         }
 
-        page.drawRectangle({ x: docX, y: frameY - docLabelBarH - 6, width: docBoxW, height: docLabelBarH, color: navy });
         page.drawText(safeText(label, 40).toUpperCase(), {
-          x: docX + 7, y: frameY - docLabelBarH - 0.5, size: 6.6, font: bold, color: rgb(1, 1, 1),
+          x: docX, y: frameY - 13, size: 6.6, font: bold, color: muted,
         });
         const validText = 'EVIDÊNCIA COLETADA';
         const validW = bold.widthOfTextAtSize(validText, 5.8);
-        page.drawText(validText, { x: docX + docBoxW - validW - 7, y: frameY - docLabelBarH - 0.5, size: 5.8, font: bold, color: gold });
-        dCursor = frameY - docLabelBarH - 6 - 24;
+        page.drawText(validText, { x: docX + docBoxW - validW, y: frameY - 13, size: 5.8, font: bold, color: green });
+        dCursor = frameY - docCaptionH - 24;
       }
       dCursor -= 8;
     }
