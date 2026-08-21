@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
-import { ensureClientQualificationTokens } from '@/lib/kitTemplateNormalization';
+import { ensureClientQualificationTokens, removeDuplicateParagraphs } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +29,7 @@ export async function POST() {
 
     const updated: string[] = [];
     for (const template of templates) {
-      const fixedHtml = ensureClientQualificationTokens(template.contentHtml, template.title, template.documentType);
+      const fixedHtml = removeDuplicateParagraphs(ensureClientQualificationTokens(template.contentHtml, template.title, template.documentType));
       if (fixedHtml !== template.contentHtml) {
         await prisma.template.update({
           where: { id: template.id },

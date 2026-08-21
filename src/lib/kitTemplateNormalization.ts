@@ -75,6 +75,29 @@ export function removeStandaloneClientNameBeforeQualification(contentHtml: strin
   return result;
 }
 
+// Alguns modelos (principalmente declarações de hipossuficiência coladas do
+// Word) acumularam o mesmo parágrafo de qualificação colado duas ou três
+// vezes seguidas - por exemplo, o trecho "NOME, brasileiro(a)... declara, sob
+// as penas da lei, que não possui condições financeiras..." repetido logo
+// após o "considerando que:". Isso faz o documento final sair com o mesmo
+// texto triplicado. Removemos aqui qualquer parágrafo cujo texto visível seja
+// idêntico (ignorando maiúsculas/minúsculas e espaços) a um parágrafo já
+// visto antes no mesmo documento, mantendo apenas a primeira ocorrência.
+// Parágrafos curtos (títulos, rótulos, linhas de assinatura em branco) não
+// entram nessa checagem para não apagar repetições legítimas e curtas.
+export function removeDuplicateParagraphs(contentHtml: string): string {
+  const seen = new Set<string>();
+  const MIN_LENGTH_TO_DEDUPE = 60;
+  return contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attrs, inner) => {
+    const visibleText = String(inner).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
+    if (visibleText.length < MIN_LENGTH_TO_DEDUPE) return block;
+    const signature = visibleText.toLocaleLowerCase('pt-BR');
+    if (seen.has(signature)) return '';
+    seen.add(signature);
+    return block;
+  });
+}
+
 // Garante que dados pessoais nunca fiquem fixos em modelos usados dentro de um kit.
 export function ensureClientQualificationTokens(contentHtml: string, title: string, documentType = '') {
   let result = contentHtml;

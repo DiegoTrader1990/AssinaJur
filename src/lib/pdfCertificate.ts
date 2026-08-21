@@ -452,18 +452,28 @@ export async function generateFinalPdfCertificate(documentId: string) {
       // Fundo de proteção leve: opaco o bastante para nunca deixar o
       // clausulado do contrato "vazar" por trás do texto do selo, mas ainda
       // discreto (sem borda), preservando o visual clean pedido.
+      // opacity 1 (antes 0.9): com 90%, texto em negrito do documento por trás do selo
+      // ainda "vazava" de forma legível através do fundo branco (foi o que apareceu como
+      // um nome fantasma atrás do selo da Nerci) - o objetivo do fundo é justamente nunca
+      // deixar o clausulado aparecer atrás do selo, então ele precisa continuar 100% opaco.
+      // O que mudou foi só a moldura: uma borda fina + um friso dourado no topo, para o
+      // retângulo branco parecer um selo desenhado de propósito (como um carimbo/etiqueta
+      // oficial) em vez de um recorte solto por cima do papel timbrado.
+      const stampPanelX = stampX - 4;
+      const stampPanelY = textBottomY - 5;
+      const stampPanelW = stampW + 8;
+      const stampPanelH = textTopY - textBottomY + 10;
       p.drawRectangle({
-        // opacity 1 (antes 0.9): com 90%, texto em negrito do documento por trás do selo
-        // ainda "vazava" de forma legível através do fundo branco (foi o que apareceu como
-        // um nome fantasma atrás do selo da Nerci) - o objetivo do fundo é justamente nunca
-        // deixar o clausulado aparecer atrás do selo, então ele precisa ser 100% opaco.
-        x: stampX - 4,
-        y: textBottomY - 5,
-        width: stampW + 8,
-        height: textTopY - textBottomY + 10,
+        x: stampPanelX,
+        y: stampPanelY,
+        width: stampPanelW,
+        height: stampPanelH,
         color: rgb(1, 1, 1),
         opacity: 1,
+        borderWidth: 0.7,
+        borderColor: panelBorder,
       });
+      p.drawRectangle({ x: stampPanelX, y: stampPanelY + stampPanelH - 1.4, width: stampPanelW, height: 1.4, color: gold });
 
       nameLines.forEach((line, lineIndex) => {
         p.drawText(line.toUpperCase(), { x: contentX, y: nameTopY - lineIndex * 8.0, size: 6.8, font: bold, color: navy });
@@ -1161,8 +1171,17 @@ export async function generateFinalPdfCertificate(documentId: string) {
         // excessivo no rosto. Agora o corte só remove o estritamente necessário.
         const embedded = await embedBase64Image(pdfDoc, img, { width: 600, height: 600 });
         const cardY = cursor - cardH - 12;
-        const imgFrameH = boxH;
-        const imgFrameY = cardY + 20;
+        const labelBarH = 18;
+        const imgFrameH = boxH - labelBarH;
+        const imgFrameY = cardY + labelBarH;
+
+        // Moldura navy com friso dourado no topo e barra de rótulo navy embaixo -
+        // mesmo tratamento de "cartão" já usado no certificado compacto. Sem isso
+        // a foto ficava só solta em cima do papel timbrado, sem parecer parte do
+        // documento (era só a imagem + um texto embaixo, sem nenhuma borda).
+        page.drawRectangle({ x: photoX - 3, y: cardY - 3, width: boxW + 6, height: boxH + 6, color: navy });
+        page.drawRectangle({ x: photoX - 3, y: cardY + boxH - 1, width: boxW + 6, height: 4, color: gold });
+        page.drawRectangle({ x: photoX, y: imgFrameY, width: boxW, height: imgFrameH, color: rgb(0.96, 0.96, 0.97), opacity: 0.55 });
 
         if (embedded) {
           const imgW = embedded.width;
@@ -1182,16 +1201,17 @@ export async function generateFinalPdfCertificate(documentId: string) {
           });
         }
 
+        page.drawRectangle({ x: photoX, y: cardY, width: boxW, height: labelBarH, color: navy });
         page.drawText(safeText(label, 40).toUpperCase(), {
-          x: photoX,
-          y: cardY + 4,
+          x: photoX + 7,
+          y: cardY + 6,
           size: 6,
           font: bold,
-          color: navy,
+          color: rgb(1, 1, 1),
         });
-        const validText = 'OK validada';
+        const validText = 'VALIDADA';
         const validW = bold.widthOfTextAtSize(validText, 5.6);
-        page.drawText(validText, { x: photoX + boxW - validW, y: cardY + 4, size: 5.6, font: bold, color: green });
+        page.drawText(validText, { x: photoX + boxW - validW - 7, y: cardY + 6, size: 5.6, font: bold, color: gold });
         photoX += boxW + gap;
       }
     }
@@ -1231,7 +1251,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
       // Espaço necessário para o cabeçalho da seção + cada foto (frente e/ou
       // verso). Se não couber no que resta da página atual, começa outra.
-      const neededHeight = 34 + docPhotoLabels.length * (docBoxH + 30) + 8;
+      const neededHeight = 34 + docPhotoLabels.length * (docBoxH + 48) + 8;
       if (dCursor - neededHeight < 60) startDocPage();
 
       page.drawLine({ start: { x: CX, y: dCursor }, end: { x: CR, y: dCursor }, thickness: 1.3, color: gold });
@@ -1244,6 +1264,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
       for (const [label, img] of docPhotoLabels) {
         const embedded = await embedBase64Image(pdfDoc, img, { width: 1400, height: 900 });
         const frameY = dCursor - docBoxH;
+        const docLabelBarH = 18;
+
+        // Mesma moldura navy + friso dourado + barra de rótulo usada na selfie,
+        // para as fotos de documento também parecerem parte do certificado, não
+        // recortes soltos coladas em cima do papel timbrado.
+        page.drawRectangle({ x: docX - 3, y: frameY - 3, width: docBoxW + 6, height: docBoxH + 6, color: navy });
+        page.drawRectangle({ x: docX - 3, y: frameY + docBoxH - 1, width: docBoxW + 6, height: 4, color: gold });
 
         if (embedded) {
           const imgW = embedded.width;
@@ -1256,13 +1283,14 @@ export async function generateFinalPdfCertificate(documentId: string) {
           page.drawImage(embedded, { x: offsetX, y: offsetY, width: drawW, height: drawH });
         }
 
+        page.drawRectangle({ x: docX, y: frameY - docLabelBarH - 6, width: docBoxW, height: docLabelBarH, color: navy });
         page.drawText(safeText(label, 40).toUpperCase(), {
-          x: docX, y: frameY - 13, size: 6.6, font: bold, color: navy,
+          x: docX + 7, y: frameY - docLabelBarH - 0.5, size: 6.6, font: bold, color: rgb(1, 1, 1),
         });
-        const validText = 'OK evidência coletada';
+        const validText = 'EVIDÊNCIA COLETADA';
         const validW = bold.widthOfTextAtSize(validText, 5.8);
-        page.drawText(validText, { x: docX + docBoxW - validW, y: frameY - 13, size: 5.8, font: bold, color: green });
-        dCursor = frameY - 30;
+        page.drawText(validText, { x: docX + docBoxW - validW - 7, y: frameY - docLabelBarH - 0.5, size: 5.8, font: bold, color: gold });
+        dCursor = frameY - docLabelBarH - 6 - 24;
       }
       dCursor -= 8;
     }

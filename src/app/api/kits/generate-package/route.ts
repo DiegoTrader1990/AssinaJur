@@ -5,7 +5,7 @@ import { logAuditEvent } from '@/lib/audit';
 import { compileTemplateToPdf } from '@/lib/templateCompiler';
 import { getDocumentLetterheadBuffer } from '@/lib/documentLetterhead';
 import { randomUUID } from 'crypto';
-import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
+import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, removeDuplicateParagraphs, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -398,11 +398,12 @@ export async function POST(req: Request) {
         template.title,
         Boolean(client.legalRepresentative),
       );
-      const finalContentHtml = ensureJointAttorneyQualification(
+      const jointAttorneyContentHtml = ensureJointAttorneyQualification(
         clientContentHtml,
         template.documentType,
         template.title,
       );
+      const finalContentHtml = removeDuplicateParagraphs(jointAttorneyContentHtml);
 
       const compiledResult = await compileTemplateToPdf({
         officeId: user.officeId,
