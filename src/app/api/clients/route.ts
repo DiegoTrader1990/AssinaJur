@@ -28,6 +28,32 @@ export async function GET(req: Request) {
                   { cpfCnpj: { contains: query, mode: 'insensitive' } },
                   { phone: { contains: query, mode: 'insensitive' } },
                   { email: { contains: query, mode: 'insensitive' } },
+                  { city: { contains: query, mode: 'insensitive' } },
+                  { notes: { contains: query, mode: 'insensitive' } },
+                  { processNumber: { contains: query, mode: 'insensitive' } },
+                  {
+                    processes: {
+                      some: {
+                        OR: [
+                          { title: { contains: query, mode: 'insensitive' } },
+                          { processNumber: { contains: query, mode: 'insensitive' } },
+                          { protocolNumber: { contains: query, mode: 'insensitive' } },
+                          { notes: { contains: query, mode: 'insensitive' } },
+                        ],
+                      },
+                    },
+                  },
+                  { documents: { some: { title: { contains: query, mode: 'insensitive' } } } },
+                  {
+                    pendencies: {
+                      some: {
+                        OR: [
+                          { title: { contains: query, mode: 'insensitive' } },
+                          { description: { contains: query, mode: 'insensitive' } },
+                        ],
+                      },
+                    },
+                  },
                 ],
               }
             : {},
@@ -37,6 +63,47 @@ export async function GET(req: Request) {
       include: {
         lawyerInCharge: {
           select: { id: true, name: true, oabNumber: true },
+        },
+        processes: {
+          select: {
+            id: true,
+            title: true,
+            legalArea: true,
+            status: true,
+            priority: true,
+            dueDate: true,
+            protocolNumber: true,
+            lastActivityAt: true,
+          },
+          orderBy: { lastActivityAt: 'desc' },
+          take: 6,
+        },
+        documents: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            createdAt: true,
+            completedAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 8,
+        },
+        pendencies: {
+          where: { resolvedAt: null },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            status: true,
+            category: true,
+            priority: true,
+            dueDate: true,
+            updatedAt: true,
+            responsible: { select: { id: true, name: true } },
+          },
+          orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }],
+          take: 6,
         },
       },
       orderBy: { createdAt: 'desc' },

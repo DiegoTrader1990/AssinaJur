@@ -48,6 +48,21 @@ export async function GET(
           orderBy: { createdAt: 'desc' },
           take: 20,
         },
+        pendencies: {
+          where: { resolvedAt: null },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            status: true,
+            category: true,
+            priority: true,
+            dueDate: true,
+            updatedAt: true,
+            responsible: { select: { id: true, name: true } },
+          },
+          orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }],
+        },
       },
     });
 

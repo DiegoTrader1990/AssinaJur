@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
 import { createPortal } from 'react-dom';
+import ClientsCentral, { CentralClient } from '@/components/clientes/ClientsCentral';
 
 interface Client {
   id: string;
@@ -73,9 +74,11 @@ interface Client {
   legalArea?: string;
   processNumber?: string;
   lawyerInCharge?: { id: string; name: string; oabNumber?: string };
-  processes?: Array<{ id: string; title: string; legalArea?: string; status: string; priority: string; dueDate?: string | null; protocolNumber?: string | null; lastActivityAt: string; _count: { documents: number; attachments: number } }>;
+  processes?: Array<{ id: string; title: string; legalArea?: string; status: string; priority: string; dueDate?: string | null; protocolNumber?: string | null; lastActivityAt: string; _count?: { documents: number; attachments: number } }>;
   documents?: Array<{ id: string; title: string; status: string; createdAt: string; completedAt?: string | null; process?: { id: string; title: string } | null }>;
+  pendencies?: Array<{ id: string; title?: string | null; description: string; status: string; category: string; priority: string; dueDate?: string | null; updatedAt: string; responsible?: { id: string; name: string } | null }>;
   createdAt: string;
+  updatedAt?: string;
 }
 
 const EMPTY_CLIENT_FORM = {
@@ -135,8 +138,6 @@ export default function ClientsPage() {
   }, []);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [areaFilter, setAreaFilter] = useState('');
 
   // Modais
   const [showModal, setShowModal] = useState(false);
@@ -192,8 +193,6 @@ export default function ClientsPage() {
     try {
       const url = new URL('/api/clients', window.location.origin);
       url.searchParams.set('_t', Date.now().toString());
-      if (searchQuery) url.searchParams.set('q', searchQuery);
-      if (areaFilter) url.searchParams.set('legalArea', areaFilter);
 
       const res = await fetch(url.toString(), {
         cache: 'no-store',
@@ -208,11 +207,6 @@ export default function ClientsPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    fetchClients();
   };
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -507,143 +501,19 @@ export default function ClientsPage() {
 
   return (
     <div className="space-y-6 font-sans">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="font-heading text-2xl font-extrabold text-[#071B3A] tracking-tight">Cadastro de Clientes</h1>
-          <p className="text-xs text-slate-500 mt-1 font-medium">Gerencie os dados e documentos centralizados dos clientes do seu escritório.</p>
-        </div>
-
-        <button
-          onClick={openCreateClient}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md text-xs transition-all font-heading"
-        >
-          <UserPlus className="w-4 h-4" /> Novo Cliente
-        </button>
-      </div>
-
-      {/* Barra de Pesquisa e Filtros */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row gap-3">
-        <form onSubmit={handleSearchSubmit} className="flex-1 relative">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar por Nome, CPF/CNPJ ou Telefone..."
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600"
-          />
-        </form>
-
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <select
-              value={areaFilter}
-              onChange={(e) => setAreaFilter(e.target.value)}
-              className="appearance-none bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 pr-8 text-xs font-bold text-slate-700 focus:outline-none focus:border-blue-600 font-heading"
-            >
-              <option value="">Todas as Áreas</option>
-              <option value="Previdenciário">Previdenciário</option>
-              <option value="Trabalhista">Trabalhista</option>
-              <option value="Família">Família</option>
-              <option value="Cível">Cível</option>
-              <option value="Empresarial">Empresarial</option>
-            </select>
-            <Filter className="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          </div>
-
-          <button
-            onClick={fetchClients}
-            className="px-4 py-2 bg-[#071B3A] text-white rounded-xl text-xs font-bold font-heading hover:bg-[#0B1D3D] transition-colors"
-          >
-            Filtrar
-          </button>
-        </div>
-      </div>
-
-      {/* Tabela de Clientes */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="p-12 text-center text-slate-400 font-medium">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-blue-600" />
-            <p className="text-xs">Carregando lista de clientes...</p>
-          </div>
-        ) : clients.length === 0 ? (
-          <div className="p-12 text-center text-slate-500">
-            <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <h3 className="font-heading font-extrabold text-slate-800 text-base">Nenhum cliente cadastrado</h3>
-            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-              Cadastre seus clientes para reutilizar os dados em contratos, procurações e pacotes de documentos.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-heading font-extrabold text-[10px]">
-                <tr>
-                  <th className="px-6 py-3.5">Cliente</th>
-                  <th className="px-6 py-3.5">CPF / CNPJ</th>
-                  <th className="px-6 py-3.5">Contato</th>
-                  <th className="px-6 py-3.5">Área Jurídica</th>
-                  <th className="px-6 py-3.5 text-right">Ação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {clients.map((client) => (
-                  <tr key={client.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="font-bold text-slate-900 font-heading">{client.name}</div>
-                      {client.profession && <div className="text-xs text-slate-400 font-medium">{client.profession}</div>}
-                    </td>
-                    <td className="px-6 py-4 font-mono text-xs font-bold text-slate-700">
-                      {maskCpfCnpj(client.cpfCnpj)}
-                    </td>
-                    <td className="px-6 py-4 text-xs space-y-0.5 font-medium">
-                      <div className="font-bold text-slate-800">{maskPhone(client.phone)}</div>
-                      {client.email && <div className="text-slate-400">{client.email}</div>}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 font-bold text-[11px] border border-blue-100">
-                        {client.legalArea || 'Geral'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="inline-flex items-center gap-1.5">
-                        <button
-                          onClick={() => openClientDossier(client)}
-                          className="px-3.5 py-1.5 bg-slate-100 hover:bg-[#071B3A] hover:text-white text-slate-700 font-bold rounded-xl text-xs transition-all font-heading"
-                        >
-                          Abrir Ficha
-                        </button>
-                        <button
-                          onClick={() => openEditClient(client)}
-                          title="Editar cliente"
-                          aria-label={`Editar ${client.name}`}
-                          className="p-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl transition-colors"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setClientToDelete(client);
-                            setDeleteConfirmation('');
-                            setFormError('');
-                          }}
-                          title="Excluir cliente"
-                          aria-label={`Excluir ${client.name}`}
-                          className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <ClientsCentral
+        clients={clients as CentralClient[]}
+        loading={loading}
+        onRefresh={fetchClients}
+        onCreate={openCreateClient}
+        onOpen={(client) => openClientDossier(client as Client)}
+        onEdit={(client) => openEditClient(client as Client)}
+        onDelete={(client) => {
+          setClientToDelete(client as Client);
+          setDeleteConfirmation('');
+          setFormError('');
+        }}
+      />
 
       {/* Modal: Novo Cliente com OCR & Leitura por IA */}
       {showModal && mounted && typeof document !== 'undefined' && createPortal(
@@ -1145,156 +1015,58 @@ export default function ClientsPage() {
         document.body
       )}
 
-      {/* Modal: Ficha Detalhada do Cliente */}
+      {/* Client 360: painel lateral sem retirar o advogado da listagem */}
       {selectedClient && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4 overflow-y-auto font-sans">
-          <div className="bg-white rounded-3xl max-w-4xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative my-8">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 border border-blue-100 font-heading font-extrabold flex items-center justify-center text-base">
-                  {selectedClient.name.charAt(0)}
+        <div className="fixed inset-0 z-50 flex justify-end bg-[#071B3A]/45 font-sans backdrop-blur-[2px]" onMouseDown={(event) => { if (event.currentTarget === event.target) setSelectedClient(null); }}>
+          <aside className="flex h-full w-full max-w-2xl flex-col overflow-hidden border-l border-slate-200 bg-white shadow-[-24px_0_70px_-35px_rgba(7,27,58,.55)]">
+            <header className="relative overflow-hidden bg-[#071B3A] px-5 pb-5 pt-6 text-white sm:px-7">
+              <div className="pointer-events-none absolute -right-14 -top-20 h-52 w-52 rounded-full border border-white/10 bg-white/[.035]" />
+              <div className="relative flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-center gap-3.5">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10 font-heading text-sm font-black">{selectedClient.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()}</div>
+                  <div className="min-w-0"><div className="mb-1 flex flex-wrap items-center gap-1.5"><span className="rounded-full border border-[#d6b23f]/35 bg-[#d6b23f]/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-[#efd77f]">Client 360</span>{selectedClient.legalArea && <span className="rounded-full border border-white/15 px-2 py-0.5 text-[8px] font-bold text-slate-300">{selectedClient.legalArea}</span>}</div><h2 className="truncate font-heading text-lg font-black">{selectedClient.name}</h2><p className="mt-1 text-[10px] font-semibold text-slate-300">{maskCpfCnpj(selectedClient.cpfCnpj)}{selectedClient.city ? ` · ${selectedClient.city}${selectedClient.state ? `/${selectedClient.state}` : ''}` : ''}</p></div>
                 </div>
-                <div>
-                  <h2 className="font-heading text-lg font-extrabold text-[#071B3A]">{selectedClient.name}</h2>
-                  <p className="text-xs text-slate-400 font-medium">CPF/CNPJ: {maskCpfCnpj(selectedClient.cpfCnpj)}</p>
-                </div>
+                <button onClick={() => setSelectedClient(null)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[.06] text-slate-300 transition hover:bg-white/10 hover:text-white"><X className="h-4 w-4" /></button>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => openEditClient(selectedClient)}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold font-heading"
-                >
-                  <Pencil className="w-3.5 h-3.5" /> Editar
-                </button>
-                <button
-                  onClick={() => {
-                    setClientToDelete(selectedClient);
-                    setDeleteConfirmation('');
-                    setFormError('');
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold font-heading"
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> Excluir
-                </button>
-                <button onClick={() => setSelectedClient(null)} className="text-slate-400 hover:text-slate-600 font-bold p-1">
-                  <X className="w-5 h-5" />
-                </button>
+
+              <div className="relative mt-5 grid grid-cols-3 gap-2 sm:grid-cols-6">
+                <a href={`https://wa.me/${String(selectedClient.whatsapp || selectedClient.phone || '').replace(/\D/g, '').startsWith('55') ? String(selectedClient.whatsapp || selectedClient.phone || '').replace(/\D/g, '') : `55${String(selectedClient.whatsapp || selectedClient.phone || '').replace(/\D/g, '')}`}`} target="_blank" rel="noreferrer" className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-white/[.055] px-2 py-2.5 text-[8px] font-bold text-slate-200 transition hover:bg-white/10"><Phone className="h-3.5 w-3.5 text-emerald-400" /> WhatsApp</a>
+                <a href={`/documentos/novo?clientId=${selectedClient.id}`} className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-white/[.055] px-2 py-2.5 text-[8px] font-bold text-slate-200 transition hover:bg-white/10"><FileText className="h-3.5 w-3.5 text-sky-300" /> Documento</a>
+                <a href={`/kits/enviar?clientId=${selectedClient.id}`} className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-white/[.055] px-2 py-2.5 text-[8px] font-bold text-slate-200 transition hover:bg-white/10"><Sparkles className="h-3.5 w-3.5 text-[#efd77f]" /> Kit jurídico</a>
+                <a href={`/processos?clienteId=${selectedClient.id}`} className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-white/[.055] px-2 py-2.5 text-[8px] font-bold text-slate-200 transition hover:bg-white/10"><FolderOpen className="h-3.5 w-3.5 text-violet-300" /> Demanda</a>
+                <button onClick={() => openEditClient(selectedClient)} className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-white/[.055] px-2 py-2.5 text-[8px] font-bold text-slate-200 transition hover:bg-white/10"><Pencil className="h-3.5 w-3.5" /> Editar</button>
+                <a href={`/processos?clienteId=${selectedClient.id}`} className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-white/[.055] px-2 py-2.5 text-[8px] font-bold text-slate-200 transition hover:bg-white/10"><History className="h-3.5 w-3.5" /> Histórico</a>
               </div>
-            </div>
+            </header>
 
-            {/* Navegação de Abas da Ficha */}
-            <div className="flex border-b border-slate-200 mt-4 text-xs font-heading font-bold">
-              <button
-                onClick={() => setActiveTab('resumo')}
-                className={`py-2.5 px-4 border-b-2 transition-all ${
-                  activeTab === 'resumo' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                Resumo do Cliente
-              </button>
-              <button
-                onClick={() => setActiveTab('pessoais')}
-                className={`py-2.5 px-4 border-b-2 transition-all ${
-                  activeTab === 'pessoais' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                Dados Pessoais
-              </button>
-              <button
-                onClick={() => setActiveTab('documentos')}
-                className={`py-2.5 px-4 border-b-2 transition-all ${
-                  activeTab === 'documentos' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                Processos e documentos
-              </button>
-            </div>
+            <nav className="flex shrink-0 overflow-x-auto border-b border-slate-200 bg-white px-4 text-[10px] font-black text-slate-400 sm:px-6">
+              {[['resumo', 'Visão geral'], ['pessoais', 'Dados pessoais'], ['documentos', 'Processos e documentos']].map(([key, label]) => <button key={key} onClick={() => setActiveTab(key as typeof activeTab)} className={`whitespace-nowrap border-b-2 px-3 py-3.5 transition ${activeTab === key ? 'border-blue-600 text-blue-700' : 'border-transparent hover:text-slate-700'}`}>{label}</button>)}
+            </nav>
 
-            {/* Conteúdo da Aba */}
-            <div className="py-6 space-y-4 text-xs">
+            <div className="flex-1 overflow-y-auto bg-[#f7f9fc] px-5 py-5 text-xs sm:px-7">
               {activeTab === 'resumo' && (
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/60 space-y-2">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-heading">Contato Principal</div>
-                    <div className="flex items-center gap-2 text-slate-800 font-bold">
-                      <Phone className="w-4 h-4 text-blue-600" /> {maskPhone(selectedClient.phone)}
-                    </div>
-                    {selectedClient.email && (
-                      <div className="flex items-center gap-2 text-slate-600 font-medium">
-                        <Mail className="w-4 h-4 text-slate-400" /> {selectedClient.email}
-                      </div>
-                    )}
-                  </div>
+                <div className="space-y-5">
+                  <section><div className="mb-2.5 flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-[.14em] text-slate-400">Pendências e próxima ação</p><span className="rounded-full bg-white px-2 py-1 text-[9px] font-bold text-slate-500 shadow-sm">{selectedClient.pendencies?.length || 0} abertas</span></div>
+                    <div className="space-y-2">{selectedClient.pendencies?.slice(0, 4).map((pendency) => <div key={pendency.id} className={`rounded-2xl border bg-white p-3.5 shadow-sm ${pendency.priority === 'URGENTE' ? 'border-rose-200' : 'border-slate-200'}`}><div className="flex items-start gap-3"><span className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${pendency.priority === 'URGENTE' ? 'bg-rose-500' : pendency.status === 'AGUARDANDO_CLIENTE' ? 'bg-violet-500' : 'bg-amber-500'}`} /><div className="min-w-0 flex-1"><strong className="block text-[11px] font-black text-[#071B3A]">{pendency.title || pendency.description}</strong><p className="mt-1 line-clamp-2 text-[10px] leading-4 text-slate-500">{pendency.description}</p><div className="mt-2 flex flex-wrap items-center gap-2 text-[8px] font-bold uppercase tracking-wide text-slate-400">{pendency.dueDate && <span className={new Date(pendency.dueDate) < new Date() ? 'text-rose-600' : 'text-amber-700'}>Prazo {new Date(pendency.dueDate).toLocaleDateString('pt-BR')}</span>}{pendency.responsible && <span>Responsável: {pendency.responsible.name}</span>}</div></div></div></div>)}{!selectedClient.pendencies?.length && <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 text-[11px] font-bold text-emerald-700"><Check className="mr-2 inline h-4 w-4" />Nenhuma pendência aberta para este cliente.</div>}</div>
+                  </section>
 
-                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/60 space-y-2">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-heading">Classificação Jurídica</div>
-                    <div className="flex items-center gap-2 text-slate-800 font-bold">
-                      <Scale className="w-4 h-4 text-blue-600" /> Área: {selectedClient.legalArea || 'Geral'}
-                    </div>
-                    {selectedClient.profession && (
-                      <div className="flex items-center gap-2 text-slate-600 font-medium">
-                        <Briefcase className="w-4 h-4 text-slate-400" /> Profissão: {selectedClient.profession}
-                      </div>
-                    )}
-                  </div>
+                  <section className="grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Contato principal</p><div className="mt-3 flex items-center gap-2 font-black text-[#071B3A]"><Phone className="h-4 w-4 text-blue-600" />{maskPhone(selectedClient.phone)}</div><div className="mt-2 flex min-w-0 items-center gap-2 text-[10px] font-semibold text-slate-500"><Mail className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{selectedClient.email || 'E-mail não informado'}</span></div></div><div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Gestão jurídica</p><div className="mt-3 flex items-center gap-2 font-black text-[#071B3A]"><Scale className="h-4 w-4 text-blue-600" />{selectedClient.legalArea || 'Área geral'}</div><p className="mt-2 text-[10px] font-semibold text-slate-500">Responsável: {selectedClient.lawyerInCharge?.name || 'Não definido'}</p></div></section>
+
+                  <section><p className="mb-2.5 text-[9px] font-black uppercase tracking-[.14em] text-slate-400">Movimentações recentes</p><div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="space-y-4">{selectedClient.documents?.slice(0, 4).map((document, index) => <div key={document.id} className="relative flex gap-3"><span className={`relative z-10 mt-1.5 h-2 w-2 shrink-0 rounded-full ${document.status === 'CONCLUIDO' ? 'bg-emerald-500' : 'bg-blue-500'}`} />{index < Math.min((selectedClient.documents?.length || 0), 4) - 1 && <span className="absolute left-[3px] top-4 h-7 w-px bg-slate-200" />}<div className="min-w-0 flex-1"><strong className="block truncate text-[10px] font-extrabold text-slate-700">{document.title}</strong><span className="mt-1 block text-[9px] text-slate-400">{new Date(document.completedAt || document.createdAt).toLocaleDateString('pt-BR')} · {document.status === 'CONCLUIDO' ? 'Documento assinado' : document.status.replaceAll('_', ' ')}</span></div></div>)}{!selectedClient.documents?.length && <p className="text-[10px] text-slate-400">Nenhuma movimentação documental registrada.</p>}</div></div></section>
                 </div>
               )}
 
               {activeTab === 'pessoais' && (
-                <div className="grid md:grid-cols-3 gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-200/60">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">RG</span>
-                    <p className="font-bold text-slate-800 mt-0.5">{selectedClient.rg || 'Não informado'}</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Órgão Expedidor</span>
-                    <p className="font-bold text-slate-800 mt-0.5">{selectedClient.issuingOrgan || 'Não informado'}</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Estado Civil</span>
-                    <p className="font-bold text-slate-800 mt-0.5">{selectedClient.maritalStatus || 'Não informado'}</p>
-                  </div>
-                </div>
+                <div className="space-y-4"><section className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2"><DataItem label="CPF/CNPJ" value={maskCpfCnpj(selectedClient.cpfCnpj)} /><DataItem label="RG / Órgão expedidor" value={[selectedClient.rg, selectedClient.issuingOrgan].filter(Boolean).join(' · ') || 'Não informado'} /><DataItem label="Nascimento" value={selectedClient.birthDate ? new Date(`${selectedClient.birthDate}T12:00:00`).toLocaleDateString('pt-BR') : 'Não informado'} /><DataItem label="Estado civil" value={selectedClient.maritalStatus || 'Não informado'} /><DataItem label="Nacionalidade" value={selectedClient.nationality || 'Não informado'} /><DataItem label="Profissão" value={selectedClient.profession || 'Não informado'} /><DataItem label="Endereço" value={[selectedClient.address, selectedClient.number, selectedClient.neighborhood, selectedClient.city && `${selectedClient.city}/${selectedClient.state || ''}`, selectedClient.cep && `CEP ${selectedClient.cep}`].filter(Boolean).join(', ') || 'Não informado'} wide /></section>{selectedClient.legalRepresentative && <section className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4"><p className="text-[9px] font-black uppercase tracking-wider text-blue-700">Representante legal</p><p className="mt-2 text-[11px] font-black text-[#071B3A]">{selectedClient.legalRepresentative}</p><p className="mt-1 text-[10px] text-slate-500">{selectedClient.representativeRole || 'Representante'} · CPF {maskCpfCnpj(selectedClient.representativeCpf || '')}</p></section>}</div>
               )}
 
               {activeTab === 'documentos' && (
-                <div className="space-y-5">
-                  <div className="flex flex-col gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-[10px] font-extrabold uppercase tracking-wider text-blue-700">Visão 360º</p>
-                      <p className="mt-1 text-xs text-slate-600">Processos, arquivos e formalizações vinculados a este cliente.</p>
-                    </div>
-                    <a href={`/processos?clienteId=${selectedClient.id}`} className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#071B3A] px-3 py-2.5 text-xs font-bold text-white"><FolderOpen className="h-3.5 w-3.5" /> Novo processo</a>
-                  </div>
-
-                  <div>
-                    <div className="mb-2 flex items-center justify-between"><p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Processos</p><span className="text-[11px] font-bold text-slate-500">{selectedClient.processes?.length || 0} em acompanhamento</span></div>
-                    <div className="space-y-2">
-                      {selectedClient.processes?.map((process) => <a key={process.id} href={`/processos?clienteId=${selectedClient.id}`} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-blue-300 hover:bg-slate-50"><span className={`h-2.5 w-2.5 rounded-full ${process.status === 'CONCLUIDO' ? 'bg-emerald-500' : process.priority === 'ALTA' ? 'bg-rose-500' : 'bg-blue-500'}`} /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-extrabold text-[#071B3A]">{process.title}</span><span className="mt-0.5 block text-[11px] text-slate-500">{process.legalArea || 'Geral'} · {process._count.documents} documentos · {process._count.attachments} arquivos</span></span><span className="text-[10px] font-bold text-slate-400">{process.dueDate ? new Date(process.dueDate).toLocaleDateString('pt-BR') : process.status.replaceAll('_', ' ')}</span></a>)}
-                      {!selectedClient.processes?.length && <div className="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-center text-xs text-slate-500">Nenhum processo criado para este cliente.</div>}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="mb-2 flex items-center justify-between"><p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Documentos e assinaturas</p><a href="/documentos" className="text-[11px] font-bold text-blue-700">Abrir central</a></div>
-                    <div className="space-y-2">
-                      {selectedClient.documents?.map((document) => <a key={document.id} href="/documentos" className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-blue-300 hover:bg-slate-50"><FileText className={`h-4 w-4 shrink-0 ${document.status === 'CONCLUIDO' ? 'text-emerald-600' : 'text-amber-500'}`} /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-extrabold text-[#071B3A]">{document.title}</span><span className="mt-0.5 block truncate text-[11px] text-slate-500">{document.process?.title || 'Sem processo vinculado'}</span></span><span className={`rounded-full px-2 py-1 text-[9px] font-extrabold ${document.status === 'CONCLUIDO' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{document.status === 'CONCLUIDO' ? 'ASSINADO' : document.status.replaceAll('_', ' ')}</span></a>)}
-                      {!selectedClient.documents?.length && <div className="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-center text-xs text-slate-500">Nenhum documento vinculado a este cliente.</div>}
-                    </div>
-                  </div>
-                </div>
+                <div className="space-y-6"><section><div className="mb-2.5 flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-[.14em] text-slate-400">Processos e demandas</p><a href={`/processos?clienteId=${selectedClient.id}`} className="text-[9px] font-black text-blue-700">Abrir gestão</a></div><div className="space-y-2">{selectedClient.processes?.map((process) => <a key={process.id} href={`/processos?clienteId=${selectedClient.id}`} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200"><span className={`h-2.5 w-2.5 shrink-0 rounded-full ${process.status === 'CONCLUIDO' ? 'bg-emerald-500' : process.priority === 'ALTA' ? 'bg-rose-500' : 'bg-blue-500'}`} /><span className="min-w-0 flex-1"><strong className="block truncate text-[11px] font-black text-[#071B3A]">{process.title}</strong><span className="mt-1 block text-[9px] text-slate-400">{process.legalArea || 'Geral'} · {process._count?.documents || 0} documentos · {process._count?.attachments || 0} arquivos</span></span><span className="text-[9px] font-bold text-slate-400">{process.dueDate ? new Date(process.dueDate).toLocaleDateString('pt-BR') : process.status.replaceAll('_', ' ')}</span></a>)}{!selectedClient.processes?.length && <EmptyDrawer text="Nenhum processo criado para este cliente." />}</div></section><section><div className="mb-2.5 flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-[.14em] text-slate-400">Documentos e assinaturas</p><a href="/documentos" className="text-[9px] font-black text-blue-700">Abrir central</a></div><div className="space-y-2">{selectedClient.documents?.map((document) => <a key={document.id} href="/documentos" className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm transition hover:border-blue-200"><FileText className={`h-4 w-4 shrink-0 ${document.status === 'CONCLUIDO' ? 'text-emerald-600' : 'text-amber-500'}`} /><span className="min-w-0 flex-1"><strong className="block truncate text-[10px] font-black text-[#071B3A]">{document.title}</strong><span className="mt-1 block truncate text-[9px] text-slate-400">{document.process?.title || 'Sem processo vinculado'}</span></span><span className={`rounded-full px-2 py-1 text-[8px] font-black ${document.status === 'CONCLUIDO' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{document.status === 'CONCLUIDO' ? 'ASSINADO' : document.status.replaceAll('_', ' ')}</span></a>)}{!selectedClient.documents?.length && <EmptyDrawer text="Nenhum documento vinculado a este cliente." />}</div></section></div>
               )}
             </div>
 
-            <div className="pt-4 border-t border-slate-100 flex justify-end">
-              <button
-                onClick={() => setSelectedClient(null)}
-                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs font-heading"
-              >
-                Fechar Ficha
-              </button>
-            </div>
-          </div>
+            <footer className="flex shrink-0 items-center justify-between border-t border-slate-200 bg-white px-5 py-3 sm:px-7"><button onClick={() => { setClientToDelete(selectedClient); setDeleteConfirmation(''); setFormError(''); }} className="text-[9px] font-bold text-slate-400 transition hover:text-rose-600">Excluir cliente</button><button onClick={() => setSelectedClient(null)} className="rounded-xl bg-[#071B3A] px-5 py-2.5 text-[10px] font-black text-white">Fechar painel</button></footer>
+          </aside>
         </div>
       )}
 
@@ -1387,4 +1159,17 @@ export default function ClientsPage() {
       )}
     </div>
   );
+}
+
+function DataItem({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
+  return (
+    <div className={wide ? 'sm:col-span-2' : ''}>
+      <span className="text-[8px] font-black uppercase tracking-wider text-slate-400">{label}</span>
+      <p className="mt-1 text-[10px] font-extrabold leading-4 text-slate-700">{value}</p>
+    </div>
+  );
+}
+
+function EmptyDrawer({ text }: { text: string }) {
+  return <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-6 text-center text-[10px] font-semibold text-slate-400">{text}</div>;
 }
