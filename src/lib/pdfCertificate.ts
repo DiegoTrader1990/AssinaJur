@@ -1255,19 +1255,30 @@ export async function generateFinalPdfCertificate(documentId: string) {
       ].filter(([, img]) => Boolean(img)) as Array<[string, string | null]>;
       if (!docPhotoLabels.length) continue;
 
-      // Espaço necessário para o cabeçalho da seção + cada foto (frente e/ou
-      // verso). Se não couber no que resta da página atual, começa outra.
-      const neededHeight = 34 + docPhotoLabels.length * (docBoxH + 48) + 8;
-      if (dCursor - neededHeight < 60) startDocPage();
-
-      page.drawLine({ start: { x: CX, y: dCursor }, end: { x: CR, y: dCursor }, thickness: 1.3, color: gold });
-      page.drawText(`4. DOCUMENTO DE IDENTIFICAÇÃO — ${signerRoleLabel(signer.role).toUpperCase()} (EVIDÊNCIA COMPLEMENTAR)`, {
-        x: padX, y: dCursor - 14, size: 8, font: bold, color: navy,
-      });
-      page.drawLine({ start: { x: CX, y: dCursor - 20 }, end: { x: CR, y: dCursor - 20 }, thickness: 0.5, color: panelBorder });
-      dCursor -= 34;
+      // Cada foto (frente/verso) reserva o próprio espaço individualmente,
+      // em vez das duas exigirem caber juntas na mesma página - antes, se só
+      // a segunda foto não coubesse, as DUAS pulavam de página, deixando um
+      // vão do tamanho de duas fotos em branco no fim da página anterior.
+      // Assim, o pior caso de vão em branco cai pela metade.
+      let sectionHeaderDrawn = false;
+      const drawSectionHeader = () => {
+        page.drawLine({ start: { x: CX, y: dCursor }, end: { x: CR, y: dCursor }, thickness: 1.3, color: gold });
+        page.drawText(`4. DOCUMENTO DE IDENTIFICAÇÃO — ${signerRoleLabel(signer.role).toUpperCase()} (EVIDÊNCIA COMPLEMENTAR)`, {
+          x: padX, y: dCursor - 14, size: 8, font: bold, color: navy,
+        });
+        page.drawLine({ start: { x: CX, y: dCursor - 20 }, end: { x: CR, y: dCursor - 20 }, thickness: 0.5, color: panelBorder });
+        dCursor -= 34;
+        sectionHeaderDrawn = true;
+      };
 
       for (const [label, img] of docPhotoLabels) {
+        // O cabeçalho da seção só entra na conta de espaço necessário quando
+        // ainda não foi desenhado (na página atual) - assim ele nunca fica
+        // "orfão" sozinho no fim de uma página, sem nenhuma foto embaixo.
+        const neededHeight = (sectionHeaderDrawn ? 0 : 34) + docBoxH + 48;
+        if (dCursor - neededHeight < 60) { startDocPage(); sectionHeaderDrawn = false; }
+        if (!sectionHeaderDrawn) drawSectionHeader();
+
         const embedded = await embedBase64Image(pdfDoc, img, { width: 1400, height: 900 });
         const frameY = dCursor - docBoxH;
         const docLabelBarH = 18;
