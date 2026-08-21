@@ -384,6 +384,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const frontalEyeRatioRef = useRef<number | null>(null);
   const leftTurnDirRef = useRef<number | null>(null);
   const centeredStartTimeRef = useRef<number | null>(null);
+  // Contagem regressiva disparada ao apertar o botão de disparo (em vez de
+  // capturar na hora) - dá tempo da pessoa se ajustar após o toque, o que
+  // ajuda muito clientes idosos que não conseguem preparar a pose e apertar
+  // o botão ao mesmo tempo.
+  const manualCountdownActiveRef = useRef(false);
+  const manualCountdownTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     fetchSignatureData();
@@ -496,7 +502,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   };
 
   const handleFaceMeshResults = (results: any) => {
-    if (isCapturingRef.current || !streamRef.current) return;
+    if (isCapturingRef.current || manualCountdownActiveRef.current || !streamRef.current) return;
     const currentKey = activeKeyRef.current;
 
     if (Date.now() < warmupUntilRef.current) {
@@ -548,18 +554,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       frontalNoseXRef.current = noseRelOffset;
       frontalEyeRatioRef.current = eyeRatio;
       setFrameState('GREEN');
-      if (!centeredStartTimeRef.current) centeredStartTimeRef.current = Date.now();
-
-      const elapsed = Date.now() - centeredStartTimeRef.current;
-      const secsRemaining = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
-      setCountdownSecs(secsRemaining);
-      setSelfieInstruction(`Mantenha-se assim! Foto 1 em ${secsRemaining}s...`);
-
-      if (elapsed >= 3000) {
-        setCountdownSecs(null);
-        centeredStartTimeRef.current = null;
-        triggerAutomaticCapture('center');
-      }
+      // A captura NÃO é mais automática ao ficar centralizado - só serve de
+      // indicação visual (moldura verde). A foto só é tirada quando a pessoa
+      // aperta o botão de disparo, que então dispara a contagem de 5s. Isso
+      // evita que a foto seja tirada "sem querer" antes da pessoa estar
+      // pronta, e deixa o fluxo previsível para clientes idosos.
+      setSelfieInstruction('Perfeito! Toque no botão verde para tirar a foto.');
       return;
     }
 
@@ -732,9 +732,32 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
   };
 
+  // Apertar o botão de disparo NÃO tira a foto na hora - ele ativa uma
+  // contagem regressiva de 5 segundos (mesmo comportamento de antes), dando
+  // tempo da pessoa se posicionar depois de já ter apertado o botão.
+  const MANUAL_CAPTURE_COUNTDOWN_SECS = 5;
   const handleManualCapture = () => {
-    if (isCapturingRef.current) return;
-    triggerAutomaticCapture(activeKeyRef.current);
+    if (isCapturingRef.current || manualCountdownActiveRef.current) return;
+    manualCountdownActiveRef.current = true;
+    centeredStartTimeRef.current = null;
+    let secsLeft = MANUAL_CAPTURE_COUNTDOWN_SECS;
+    setCountdownSecs(secsLeft);
+    setFrameState('GREEN');
+    setSelfieInstruction(`Fique parado! Tirando a foto em ${secsLeft}s...`);
+    const tick = () => {
+      secsLeft -= 1;
+      if (secsLeft <= 0) {
+        setCountdownSecs(null);
+        manualCountdownActiveRef.current = false;
+        manualCountdownTimeoutRef.current = null;
+        triggerAutomaticCapture(activeKeyRef.current);
+        return;
+      }
+      setCountdownSecs(secsLeft);
+      setSelfieInstruction(`Fique parado! Tirando a foto em ${secsLeft}s...`);
+      manualCountdownTimeoutRef.current = window.setTimeout(tick, 1000);
+    };
+    manualCountdownTimeoutRef.current = window.setTimeout(tick, 1000);
   };
 
   const startSelfieCamera = async (targetKey?: SelfieKey, isSingleRetake: boolean = false, person: 'CLIENT' | 'ROGO' | 'WITNESS_1' | 'WITNESS_2' = activePersonRef.current) => {
@@ -787,6 +810,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       clearTimeout(livenessLoopRef.current);
       livenessLoopRef.current = null;
     }
+    if (manualCountdownTimeoutRef.current) {
+      clearTimeout(manualCountdownTimeoutRef.current);
+      manualCountdownTimeoutRef.current = null;
+    }
+    manualCountdownActiveRef.current = false;
+    setCountdownSecs(null);
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -1201,19 +1230,21 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 </div>
 
                 {/* Botão de disparo estilo câmera, sempre visível dentro do próprio
-                    quadro (sem precisar rolar a tela) - toque a qualquer momento,
-                    não é preciso esperar a contagem regressiva nem manter o rosto
-                    perfeitamente parado (importante para clientes idosos). */}
+                    quadro (sem precisar rolar a tela). Ao apertar, dispara uma
+                    contagem regressiva de 5s antes de tirar a foto - dá tempo da
+                    pessoa se posicionar (importante para clientes idosos). */}
                 <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-8 pb-4">
                   <button
                     type="button"
                     onClick={handleManualCapture}
-                    disabled={capturingSelfie}
+                    disabled={capturingSelfie || countdownSecs !== null}
                     aria-label="Tirar foto"
                     className="w-[72px] h-[72px] rounded-full bg-white border-[5px] border-white/40 shadow-2xl active:scale-90 transition-transform disabled:opacity-60 flex items-center justify-center"
                   >
                     {capturingSelfie ? (
                       <Loader2 className="w-7 h-7 animate-spin text-[#071B3A]" />
+                    ) : countdownSecs !== null ? (
+                      <span className="text-xl font-black text-[#071B3A] font-mono">{countdownSecs}</span>
                     ) : (
                       <span className="w-[56px] h-[56px] rounded-full bg-emerald-600" />
                     )}
@@ -1222,7 +1253,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </div>
 
               <p className="text-center text-[11px] text-slate-500 font-semibold">
-                Pode tocar no botão verde a qualquer momento para tirar a foto - não precisa esperar a contagem.
+                Toque no botão verde e fique parado(a) - a foto é tirada automaticamente após a contagem de 5 segundos.
               </p>
             </div>
 
@@ -1416,17 +1447,20 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 </div>
 
                 {/* Botão de disparo estilo câmera, sempre visível dentro do próprio
-                    quadro (sem precisar rolar a tela) - toque a qualquer momento. */}
+                    quadro (sem precisar rolar a tela). Ao apertar, dispara uma
+                    contagem regressiva de 5s antes de tirar a foto. */}
                 <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-8 pb-4">
                   <button
                     type="button"
                     onClick={handleManualCapture}
-                    disabled={capturingSelfie}
+                    disabled={capturingSelfie || countdownSecs !== null}
                     aria-label="Tirar foto"
                     className="w-[72px] h-[72px] rounded-full bg-white border-[5px] border-white/40 shadow-2xl active:scale-90 transition-transform disabled:opacity-60 flex items-center justify-center"
                   >
                     {capturingSelfie ? (
                       <Loader2 className="w-7 h-7 animate-spin text-[#071B3A]" />
+                    ) : countdownSecs !== null ? (
+                      <span className="text-xl font-black text-[#071B3A] font-mono">{countdownSecs}</span>
                     ) : (
                       <span className="w-[56px] h-[56px] rounded-full bg-blue-600" />
                     )}
@@ -1435,7 +1469,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </div>
 
               <p className="text-center text-[11px] text-slate-500 font-semibold">
-                Pode tocar no botão azul a qualquer momento para tirar a foto - não precisa esperar a contagem.
+                Toque no botão azul e fique parado(a) - a foto é tirada automaticamente após a contagem de 5 segundos.
               </p>
             </div>
 
