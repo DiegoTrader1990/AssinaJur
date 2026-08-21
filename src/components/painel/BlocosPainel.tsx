@@ -22,28 +22,37 @@ import NovoClienteModal from '@/components/clientes/NovoClienteModal';
 import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
+  AlertCircle,
   ArrowRight,
+  Calendar,
   Check,
   CheckCircle2,
-
   ChevronDown,
+  ChevronRight,
+  Clock,
   Clock3,
   Copy,
+  Edit3,
   ExternalLink,
   FileText,
   FileUp,
+  Filter,
+  GripVertical,
   Layers,
   Loader2,
   MessageSquare,
   MoreHorizontal,
   Plus,
-
   QrCode,
+  RotateCcw,
   Scale,
   Search,
   Send,
   Shield,
+  Tag,
+  Trash2,
   TrendingUp,
+  User,
   UserRound,
   Users,
   X,
@@ -1593,6 +1602,33 @@ export interface ItemCentralAcompanhamento {
   onAcao?: () => void;
 }
 
+/* ═════════════════════════ 4. CENTRAL OPERACIONAL DO ESCRITÓRIO ══════════════════════════ */
+
+interface AcompanhamentoItem {
+  id: string;
+  title?: string | null;
+  description: string;
+  category?: string;
+  status?: string;
+  priority?: string;
+  dueDate?: string | Date | null;
+  clientId?: string | null;
+  client?: { id?: string; name: string; phone?: string; whatsapp?: string } | null;
+  responsibleId?: string | null;
+  responsible?: { id?: string; name: string } | null;
+  createdById?: string | null;
+  createdBy?: { id?: string; name: string } | null;
+  resolvedAt?: string | Date | null;
+  resolvedBy?: { id?: string; name: string } | null;
+  history?: Array<{
+    id: string;
+    action: string;
+    description: string;
+    createdAt: string | Date;
+    user?: { name: string } | null;
+  }>;
+}
+
 export function BlocoAcompanhamento({
   avisosSistema = [],
   clientes = [],
@@ -1612,133 +1648,862 @@ export function BlocoAcompanhamento({
   onNovaPendencia?: () => void;
   onVerCliente?: (clienteId: string) => void;
 }) {
-  // Filtra itens para as 4 colunas sem duplicação
-  const colunas = useMemo(() => {
-    // 1. Para fazer (pendências manuais não urgentes + avisos de sistema)
-    const paraFazer = pendencies
-      .filter((p) => !p.resolvedAt)
-      .slice(5) // Pula os 5 que já estão no Bloco Hoje! Eliminando a duplicação!
-      .map((p) => ({
-        id: p.id,
-        cliente: p.client?.name || 'Escritório',
-        clienteId: p.clientId || '',
-        detalhe: p.description,
-      }));
+  const router = useRouter();
 
-    // Se faltar itens, insere avisos do sistema
-    avisosSistema.forEach((a) => {
-      if (paraFazer.length < 4) {
-        paraFazer.push({
-          id: a.id,
-          cliente: a.titulo,
-          clienteId: '',
-          detalhe: a.detalhe,
-        });
+  // Estados dos Filtros e Busca
+  const [search, setSearch] = useState('');
+  const [periodFilter, setPeriodFilter] = useState<'TODOS' | 'ATRASADO' | 'HOJE' | 'ESTA_SEMANA' | 'AGUARDANDO_TERCEIRO'>('TODOS');
+  const [categoryFilter, setCategoryFilter] = useState('TODAS');
+  const [responsibleFilter, setResponsibleFilter] = useState('TODOS');
+  const [showResolved, setShowResolved] = useState(false);
+
+  // Estados dos Modais e Drawer
+  const [selectedItem, setSelectedItem] = useState<AcompanhamentoItem | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Estado Local Mutável para Drag & Drop e Optimistic Updates
+  const [items, setItems] = useState<AcompanhamentoItem[]>([]);
+
+  // Sincroniza props iniciais com o estado local mantendo dados reais do banco
+  useEffect(() => {
+    if (pendencies && Array.isArray(pendencies)) {
+      const mapped: AcompanhamentoItem[] = pendencies.map((p) => ({
+        id: p.id,
+        title: p.title || p.description?.slice(0, 40) || 'Acompanhamento',
+        description: p.description || '',
+        category: p.category || 'OUTRO',
+        status: p.status || (p.dueDate && new Date(p.dueDate) < new Date() ? 'PARA_FAZER' : 'PARA_FAZER'),
+        priority: p.priority || 'NORMAL',
+        dueDate: p.dueDate,
+        clientId: p.clientId,
+        client: p.client,
+        responsibleId: p.responsibleId,
+        responsible: p.responsible || p.createdBy,
+        createdById: p.createdById,
+        createdBy: p.createdBy,
+        resolvedAt: p.resolvedAt,
+        history: p.history || [],
+      }));
+      setItems(mapped);
+    }
+  }, [pendencies]);
+
+  // Form de Novo Acompanhamento Modal State
+  const [formClientId, setFormClientId] = useState('');
+  const [formTitle, setFormTitle] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+  const [formCategory, setFormCategory] = useState('PROCESSO');
+  const [formStatus, setFormStatus] = useState('PARA_FAZER');
+  const [formPriority, setFormPriority] = useState('NORMAL');
+  const [formDueDate, setFormDueDate] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Funções Utilitárias de Data e Prazos
+  const isOverdue = (date?: string | Date | null) => {
+    if (!date) return false;
+    const d = new Date(date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return d < today;
+  };
+
+  const isToday = (date?: string | Date | null) => {
+    if (!date) return false;
+    const d = new Date(date);
+    const today = new Date();
+    return (
+      d.getDate() === today.getDate() &&
+      d.getMonth() === today.getMonth() &&
+      d.getFullYear() === today.getFullYear()
+    );
+  };
+
+  const formatDeadlineText = (date?: string | Date | null) => {
+    if (!date) return 'Sem prazo';
+    const d = new Date(date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffDays = Math.round((d.getTime() - today.getTime()) / (1000 * 3600 * 24));
+
+    if (diffDays < 0) return `Atrasado há ${Math.abs(diffDays)} dia(s)`;
+    if (diffDays === 0) return 'Hoje';
+    if (diffDays === 1) return 'Amanhã';
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+  };
+
+  // Cálculo de Métricas Reais do Resumo Operacional
+  const metrics = useMemo(() => {
+    const total = items.filter((i) => !i.resolvedAt).length;
+    const atrasadas = items.filter((i) => !i.resolvedAt && isOverdue(i.dueDate)).length;
+    const hoje = items.filter((i) => !i.resolvedAt && isToday(i.dueDate)).length;
+    const aguardandoTerceiros = items.filter((i) => !i.resolvedAt && i.status === 'AGUARDANDO_TERCEIRO').length;
+
+    return { total, atrasadas, hoje, aguardandoTerceiros };
+  }, [items]);
+
+  // Área "Precisa da sua Atenção" (Destaca 2 a 3 situações críticas reais)
+  const atencaoItems = useMemo(() => {
+    return items
+      .filter((i) => !i.resolvedAt && (isOverdue(i.dueDate) || i.priority === 'URGENTE' || i.priority === 'ALTA'))
+      .slice(0, 3);
+  }, [items]);
+
+  // Lista Filtrada por Busca e Controles
+  const filteredItems = useMemo(() => {
+    return items.filter((item) => {
+      if (!showResolved && item.resolvedAt) return false;
+
+      // Busca por Texto
+      if (search) {
+        const q = search.toLowerCase();
+        const matchTitle = (item.title || '').toLowerCase().includes(q);
+        const matchDesc = (item.description || '').toLowerCase().includes(q);
+        const matchClient = (item.client?.name || '').toLowerCase().includes(q);
+        const matchCategory = (item.category || '').toLowerCase().includes(q);
+        if (!matchTitle && !matchDesc && !matchClient && !matchCategory) return false;
       }
+
+      // Filtro por Período
+      if (periodFilter === 'ATRASADO' && !isOverdue(item.dueDate)) return false;
+      if (periodFilter === 'HOJE' && !isToday(item.dueDate)) return false;
+      if (periodFilter === 'AGUARDANDO_TERCEIRO' && item.status !== 'AGUARDANDO_TERCEIRO') return false;
+
+      // Filtro por Categoria
+      if (categoryFilter !== 'TODAS' && item.category !== categoryFilter) return false;
+
+      // Filtro por Responsável
+      if (responsibleFilter !== 'TODOS' && item.responsibleId !== responsibleFilter) return false;
+
+      return true;
     });
+  }, [items, search, periodFilter, categoryFilter, responsibleFilter, showResolved]);
 
-    // 2. Aguardando Cliente
-    const aguardandoCliente = clientes
-      .filter((c: any) => c.stage === 'DOCUMENTACAO' || c.stage === 'ASSINATURA')
-      .slice(0, 3)
-      .map((c: any) => ({
-        id: c.id,
-        cliente: c.name || c.cliente || 'Cliente',
-        clienteId: c.id,
-        detalhe: c.stage === 'ASSINATURA' ? 'Assinatura pendente' : 'Enviar documentos',
-      }));
-
-    // 3. Aguardando Terceiro
-    const aguardandoTerceiro = clientes
-      .filter((c: any) => c.stage === 'PROCESSO')
-      .slice(0, 3)
-      .map((c: any) => ({
-        id: c.id,
-        cliente: c.name || c.cliente || 'Cliente',
-        clienteId: c.id,
-        detalhe: 'Aguardando distribuição/INSS',
-      }));
-
-    // 4. Em breve
-    const emBreve = pendencies
-      .filter((p) => Boolean(p.dueDate) && !p.resolvedAt)
-      .slice(0, 3)
-      .map((p) => ({
-        id: p.id,
-        cliente: p.client?.name || 'Acompanhamento',
-        clienteId: p.clientId || '',
-        detalhe: `Retorno em ${new Date(p.dueDate).toLocaleDateString('pt-BR')}`,
-      }));
-
-    return [
-      { titulo: 'Para fazer', count: paraFazer.length, itens: paraFazer, link: '/clientes' },
-      { titulo: 'Aguardando cliente', count: aguardandoCliente.length, itens: aguardandoCliente, link: '/documentos' },
-      { titulo: 'Aguardando terceiro', count: aguardandoTerceiro.length, itens: aguardandoTerceiro, link: '/processos' },
-      { titulo: 'Em breve', count: emBreve.length, itens: emBreve, link: '/processos' },
+  // Agrupamento nas 4 Colunas Kanban Requeridas
+  const columnsData = useMemo(() => {
+    const cols = [
+      { id: 'PARA_FAZER', label: 'Para fazer', badgeBg: 'bg-blue-100 text-blue-800' },
+      { id: 'AGUARDANDO_CLIENTE', label: 'Aguardando cliente', badgeBg: 'bg-amber-100 text-amber-800' },
+      { id: 'AGUARDANDO_TERCEIRO', label: 'Aguardando terceiro', badgeBg: 'bg-indigo-100 text-indigo-800' },
+      { id: 'PROXIMOS_RETORNOS', label: 'Próximos retornos', badgeBg: 'bg-emerald-100 text-emerald-800' },
     ];
-  }, [pendencies, avisosSistema, clientes]);
+
+    return cols.map((col) => {
+      const colItems = filteredItems.filter((i) => (i.status || 'PARA_FAZER') === col.id);
+      return {
+        ...col,
+        items: colItems,
+      };
+    });
+  }, [filteredItems]);
+
+  // Mutações da API (Resolução, Drag & Drop e Reagendamento)
+  const handleResolve = async (id: string, currentResolved: boolean) => {
+    const newStatus = currentResolved ? 'PARA_FAZER' : 'CONCLUIDO';
+    setItems((prev) =>
+      prev.map((i) =>
+        i.id === id
+          ? {
+              ...i,
+              resolvedAt: currentResolved ? null : new Date(),
+              status: newStatus,
+            }
+          : i
+      )
+    );
+
+    try {
+      await fetch(`/api/pendencias/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolved: !currentResolved, status: newStatus }),
+      });
+    } catch (err) {
+      console.error('Erro ao resolver acompanhamento:', err);
+    }
+  };
+
+  const handleStatusChange = async (id: string, newStatus: string) => {
+    setItems((prev) =>
+      prev.map((i) => (i.id === id ? { ...i, status: newStatus } : i))
+    );
+
+    try {
+      await fetch(`/api/pendencias/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+    } catch (err) {
+      console.error('Erro ao atualizar status:', err);
+    }
+  };
+
+  const handleReschedule = async (id: string, daysAdd: number) => {
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() + daysAdd);
+    const dateStr = targetDate.toISOString();
+
+    setItems((prev) =>
+      prev.map((i) => (i.id === id ? { ...i, dueDate: dateStr } : i))
+    );
+
+    try {
+      await fetch(`/api/pendencias/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dueDate: dateStr }),
+      });
+    } catch (err) {
+      console.error('Erro ao reagendar acompanhamento:', err);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Deseja excluir este acompanhamento definitivamente?')) return;
+    setItems((prev) => prev.filter((i) => i.id !== id));
+
+    try {
+      await fetch(`/api/pendencias/${id}`, { method: 'DELETE' });
+    } catch (err) {
+      console.error('Erro ao excluir acompanhamento:', err);
+    }
+  };
+
+  // Handler do Form de Criação sem sair da tela
+  const handleCreateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formTitle && !formDescription) return;
+    setIsSaving(true);
+
+    try {
+      const res = await fetch('/api/pendencias', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: formClientId || undefined,
+          title: formTitle,
+          description: formDescription || formTitle,
+          category: formCategory,
+          status: formStatus,
+          priority: formPriority,
+          dueDate: formDueDate || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.pendency) {
+        setItems((prev) => [data.pendency, ...prev]);
+        setIsModalOpen(false);
+        setFormTitle('');
+        setFormDescription('');
+        setFormDueDate('');
+        setFormClientId('');
+      } else {
+        alert(data.error || 'Erro ao criar acompanhamento.');
+      }
+    } catch (err) {
+      console.error('Erro ao salvar acompanhamento:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Drag & Drop HTML5 Handlers
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.setData('text/plain', id);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetStatus: string) => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData('text/plain');
+    if (id) {
+      handleStatusChange(id, targetStatus);
+    }
+  };
 
   return (
-    <Cartao className={`p-5 border border-slate-200/80 shadow-2xs hover:border-slate-300 transition-all ${className}`}>
-      {/* Cabeçalho do Bloco */}
-      <div className="flex items-center justify-between gap-3 pb-4 border-b border-slate-100">
+    <div className={`space-y-4 rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs ${className}`}>
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* 3. CABEÇALHO COM BUSCA, FILTROS E BOTAO UNICO                 */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      <div className="flex flex-col gap-4 border-b border-slate-100 pb-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h2 className="text-base font-extrabold text-[#071B3A] tracking-tight">{titulo}</h2>
-          <p className="text-xs text-slate-500 font-medium mt-0.5">
-            {subtitulo}
-          </p>
+          <h2 className="text-lg font-black text-[#071B3A] tracking-tight">{titulo}</h2>
+          <p className="text-xs text-slate-500 font-medium mt-0.5">{subtitulo}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => onNovaPendencia?.()}
-          className="text-xs font-bold text-white bg-[#071B3A] hover:bg-[#122c52] px-3.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs"
-        >
-          <Plus className="w-3.5 h-3.5 text-[#D4AF37]" /> + Adicionar acompanhamento
-        </button>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Busca em Tempo Real */}
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar acompanhamento..."
+              className="w-48 sm:w-60 rounded-xl border border-slate-200 bg-slate-50/50 pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:border-[#D4AF37] focus:bg-white focus:outline-none transition-all"
+            />
+          </div>
+
+          {/* Filtro por Categoria */}
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-1.5 text-xs font-bold text-slate-700 focus:border-[#D4AF37] focus:outline-none transition-all cursor-pointer"
+          >
+            <option value="TODAS">Todas categorias</option>
+            <option value="PROCESSO">Processo</option>
+            <option value="CLIENTE">Cliente</option>
+            <option value="ASSINATURA">Assinatura</option>
+            <option value="KIT">Kit Jurídico</option>
+            <option value="INSS">INSS</option>
+            <option value="CARTORIO">Cartório</option>
+            <option value="FINANCEIRO">Financeiro</option>
+            <option value="OUTRO">Outro</option>
+          </select>
+
+          {/* Botão Único "+ Novo acompanhamento" */}
+          <button
+            type="button"
+            onClick={() => {
+              if (onNovaPendencia) onNovaPendencia();
+              else setIsModalOpen(true);
+            }}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#071B3A] hover:bg-[#122c52] px-4 py-2 text-xs font-extrabold text-white shadow-xs transition-all cursor-pointer"
+          >
+            <Plus className="h-3.5 w-3.5 text-[#D4AF37]" /> Novo acompanhamento
+          </button>
+        </div>
       </div>
 
-      {/* Grid de 4 Colunas Enxutas */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 pt-4">
-        {colunas.map((col, idx) => (
-          <div key={idx} className="space-y-3 bg-slate-50/50 rounded-xl p-3.5 border border-slate-100">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-extrabold text-[#071B3A]">{col.titulo}</h3>
-              <span className="px-2 py-0.5 bg-slate-200/80 rounded-md text-[10.5px] font-black text-slate-600">
-                {col.count}
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* 4. BARRAS DE RESUMO OPERACIONAL CLICAVEIS                     */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50/70 border border-slate-200/60 p-2 text-xs font-semibold text-slate-600">
+        <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mr-1">Filtro rápido:</span>
+
+        <button
+          type="button"
+          onClick={() => setPeriodFilter('TODOS')}
+          className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+            periodFilter === 'TODOS'
+              ? 'bg-[#071B3A] text-white shadow-xs'
+              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+          }`}
+        >
+          {metrics.total} pendência(s)
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setPeriodFilter(periodFilter === 'ATRASADO' ? 'TODOS' : 'ATRASADO')}
+          className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+            periodFilter === 'ATRASADO'
+              ? 'bg-rose-600 text-white shadow-xs'
+              : 'bg-rose-50 text-rose-700 border border-rose-200/70 hover:bg-rose-100'
+          }`}
+        >
+          {metrics.atrasadas} atrasada(s)
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setPeriodFilter(periodFilter === 'HOJE' ? 'TODOS' : 'HOJE')}
+          className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+            periodFilter === 'HOJE'
+              ? 'bg-amber-500 text-white shadow-xs'
+              : 'bg-amber-50 text-amber-800 border border-amber-200/70 hover:bg-amber-100'
+          }`}
+        >
+          {metrics.hoje} para hoje
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            setPeriodFilter(periodFilter === 'AGUARDANDO_TERCEIRO' ? 'TODOS' : 'AGUARDANDO_TERCEIRO')
+          }
+          className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+            periodFilter === 'AGUARDANDO_TERCEIRO'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'bg-indigo-50 text-indigo-700 border border-indigo-200/70 hover:bg-indigo-100'
+          }`}
+        >
+          {metrics.aguardandoTerceiros} aguardando terceiros
+        </button>
+
+        {periodFilter !== 'TODOS' && (
+          <button
+            type="button"
+            onClick={() => setPeriodFilter('TODOS')}
+            className="ml-auto text-[11px] font-bold text-slate-500 hover:text-slate-800 underline"
+          >
+            Limpar filtro
+          </button>
+        )}
+      </div>
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* 5. ÁREA "PRECISA DA SUA ATENÇÃO"                              */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      {atencaoItems.length > 0 && (
+        <div className="rounded-xl border border-rose-200/80 bg-gradient-to-r from-rose-50/60 via-white to-amber-50/40 p-3.5 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-extrabold uppercase tracking-wider text-rose-800 flex items-center gap-1.5">
+              <AlertTriangle className="h-4 w-4 text-rose-600 animate-pulse" /> Precisa da sua atenção
+            </span>
+            <span className="text-[11px] font-medium text-slate-500">
+              {atencaoItems.length} situação(ões) de alta prioridade
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+            {atencaoItems.map((item) => (
+              <div
+                key={item.id}
+                className="flex flex-col justify-between rounded-lg border border-rose-200 bg-white p-3 shadow-2xs hover:border-rose-300 transition-all"
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-1">
+                    <p className="text-xs font-black text-[#071B3A] truncate">
+                      {item.client?.name || 'Cliente'}
+                    </p>
+                    <span className="text-[9.5px] font-extrabold text-rose-700 bg-rose-100 px-1.5 py-0.2 rounded">
+                      {formatDeadlineText(item.dueDate)}
+                    </span>
+                  </div>
+                  <p className="text-[11.5px] text-slate-600 font-medium truncate mt-1">
+                    {item.title || item.description}
+                  </p>
+                </div>
+
+                <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-slate-100 pt-2 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => handleResolve(item.id, false)}
+                    className="font-bold text-emerald-700 hover:bg-emerald-50 px-2 py-0.5 rounded transition"
+                  >
+                    ✓ Concluir
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleReschedule(item.id, 1)}
+                    className="font-bold text-amber-700 hover:bg-amber-50 px-2 py-0.5 rounded transition"
+                  >
+                    ⏰ Reagendar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedItem(item);
+                      setIsDrawerOpen(true);
+                    }}
+                    className="font-bold text-[#071B3A] hover:bg-slate-100 px-2 py-0.5 rounded transition"
+                  >
+                    ↗ Detalhes
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* 1 & 2. GRID KANBAN DAS 4 COLUNAS COMPACTAS (DRAG & DROP)       */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 pt-2">
+        {columnsData.map((col) => (
+          <div
+            key={col.id}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => handleDrop(e, col.id)}
+            className="flex flex-col rounded-xl border border-slate-200/80 bg-slate-50/50 p-3 shadow-2xs min-h-[220px]"
+          >
+            {/* Header da Coluna */}
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-200/60 mb-2.5">
+              <h3 className="text-xs font-extrabold text-[#071B3A]">{col.label}</h3>
+              <span className={`px-2 py-0.5 rounded-md text-[10.5px] font-black ${col.badgeBg}`}>
+                {col.items.length}
               </span>
             </div>
 
-            <div className="space-y-2">
-              {col.itens.length === 0 ? (
-                <p className="text-[11.5px] text-slate-400 italic py-2">Nenhum item nesta fila</p>
+            {/* Lista de Cards da Coluna */}
+            <div className="space-y-2.5 flex-1 overflow-y-auto max-h-[600px] pr-0.5">
+              {col.items.length === 0 ? (
+                <div className="flex items-center justify-center h-28 border border-dashed border-slate-200 rounded-lg p-3 text-center">
+                  <p className="text-[11px] font-medium text-slate-400">
+                    Nenhum acompanhamento em &quot;{col.label.toLowerCase()}&quot;
+                  </p>
+                </div>
               ) : (
-                col.itens.map((item) => (
-                  <div key={item.id} className="bg-white rounded-lg p-2.5 border border-slate-200/70 shadow-2xs hover:border-slate-300 transition-colors">
-                    <button
-                      type="button"
-                      onClick={() => item.clienteId && onVerCliente?.(item.clienteId)}
-                      className="text-xs font-bold text-[#071B3A] hover:text-[#B68B1C] truncate block text-left w-full"
+                col.items.map((item) => {
+                  const overdue = isOverdue(item.dueDate);
+                  const today = isToday(item.dueDate);
+
+                  return (
+                    <div
+                      key={item.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, item.id)}
+                      onClick={() => {
+                        setSelectedItem(item);
+                        setIsDrawerOpen(true);
+                      }}
+                      className={`group relative rounded-xl border bg-white p-3 shadow-2xs hover:shadow-md transition-all cursor-pointer ${
+                        overdue
+                          ? 'border-l-4 border-l-rose-500 border-rose-200/70'
+                          : today
+                          ? 'border-l-4 border-l-amber-500 border-amber-200/70'
+                          : 'border-l-4 border-l-[#071B3A] border-slate-200/80 hover:border-slate-300'
+                      }`}
                     >
-                      {item.cliente}
-                    </button>
-                    <p className="text-[11px] text-slate-500 mt-0.5 truncate font-medium">
-                      {item.detalhe}
-                    </p>
-                  </div>
-                ))
+                      <div className="flex items-start justify-between gap-1.5">
+                        <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-500 bg-slate-100 px-1.5 py-0.3 rounded">
+                          {item.category || 'GERAL'}
+                        </span>
+                        <span
+                          className={`text-[9.5px] font-extrabold ${
+                            overdue
+                              ? 'text-rose-700 bg-rose-50 px-1.5 py-0.2 rounded'
+                              : today
+                              ? 'text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded'
+                              : 'text-slate-500'
+                          }`}
+                        >
+                          {formatDeadlineText(item.dueDate)}
+                        </span>
+                      </div>
+
+                      <h4 className="mt-1.5 text-xs font-extrabold text-[#071B3A] line-clamp-1 group-hover:text-[#B68B1C] transition-colors">
+                        {item.title || item.description}
+                      </h4>
+
+                      {item.client?.name && (
+                        <p className="mt-0.5 text-[11px] font-medium text-slate-600 truncate">
+                          {item.client.name}
+                        </p>
+                      )}
+
+                      <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2 text-[10px] font-medium text-slate-400">
+                        <span className="truncate">
+                          Resp: <strong className="text-slate-700">{item.responsible?.name?.split(' ')[0] || 'Diego'}</strong>
+                        </span>
+
+                        <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            title="Concluir"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleResolve(item.id, false);
+                            }}
+                            className="p-1 rounded hover:bg-emerald-50 hover:text-emerald-600 transition"
+                          >
+                            <Check className="h-3 w-3" />
+                          </button>
+                          <button
+                            type="button"
+                            title="Excluir"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(item.id);
+                            }}
+                            className="p-1 rounded hover:bg-rose-50 hover:text-rose-600 transition"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
               )}
             </div>
-
-            <Link
-              href={col.link}
-              className="text-[11px] font-bold text-[#B68B1C] hover:underline inline-flex items-center gap-1 pt-1"
-            >
-              Ver todos <ArrowRight className="w-3 h-3" />
-            </Link>
           </div>
         ))}
       </div>
-    </Cartao>
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* 9. DRAWER LATERAL PREMIUM (SHEET DE DETALHES & HISTÓRICO)      */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      {isDrawerOpen && selectedItem && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex justify-end">
+          <div className="bg-white w-full max-w-md h-full shadow-2xl p-6 overflow-y-auto space-y-5 animate-in slide-in-from-right duration-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-[#B68B1C]">
+                  {selectedItem.category || 'Acompanhamento'}
+                </span>
+                <h3 className="text-base font-black text-[#071B3A]">
+                  {selectedItem.client?.name || 'Detalhes da Tarefa'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDrawerOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Form de Edição Rápida */}
+            <div className="space-y-3.5">
+              <div>
+                <label className="text-[11px] font-extrabold uppercase text-slate-500">Título da Ação</label>
+                <input
+                  type="text"
+                  value={selectedItem.title || ''}
+                  onChange={(e) => setSelectedItem({ ...selectedItem, title: e.target.value })}
+                  className="w-full mt-1 rounded-xl border border-slate-200 p-2 text-xs font-bold text-[#071B3A]"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-extrabold uppercase text-slate-500">Observações / Detalhes</label>
+                <textarea
+                  rows={3}
+                  value={selectedItem.description || ''}
+                  onChange={(e) => setSelectedItem({ ...selectedItem, description: e.target.value })}
+                  className="w-full mt-1 rounded-xl border border-slate-200 p-2 text-xs text-slate-700 font-medium"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-extrabold uppercase text-slate-500">Status</label>
+                  <select
+                    value={selectedItem.status || 'PARA_FAZER'}
+                    onChange={(e) => {
+                      const ns = e.target.value;
+                      setSelectedItem({ ...selectedItem, status: ns });
+                      handleStatusChange(selectedItem.id, ns);
+                    }}
+                    className="w-full mt-1 rounded-xl border border-slate-200 p-2 text-xs font-bold text-slate-800"
+                  >
+                    <option value="PARA_FAZER">Para fazer</option>
+                    <option value="AGUARDANDO_CLIENTE">Aguardando cliente</option>
+                    <option value="AGUARDANDO_TERCEIRO">Aguardando terceiro</option>
+                    <option value="PROXIMOS_RETORNOS">Próximos retornos</option>
+                    <option value="CONCLUIDO">Concluído</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-extrabold uppercase text-slate-500">Prazo</label>
+                  <input
+                    type="date"
+                    value={
+                      selectedItem.dueDate
+                        ? new Date(selectedItem.dueDate).toISOString().split('T')[0]
+                        : ''
+                    }
+                    onChange={(e) => {
+                      const newD = e.target.value ? new Date(e.target.value).toISOString() : null;
+                      setSelectedItem({ ...selectedItem, dueDate: newD });
+                      if (newD) handleReschedule(selectedItem.id, 0);
+                    }}
+                    className="w-full mt-1 rounded-xl border border-slate-200 p-2 text-xs font-bold text-slate-800"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 12. Histórico e Trilha de Auditoria */}
+            <div className="border-t border-slate-100 pt-4 space-y-2.5">
+              <h4 className="text-xs font-extrabold uppercase text-slate-700 flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5 text-[#B68B1C]" /> Linha do Tempo / Histórico
+              </h4>
+
+              <div className="space-y-2 text-xs">
+                {selectedItem.history && selectedItem.history.length > 0 ? (
+                  selectedItem.history.map((h) => (
+                    <div key={h.id} className="border-l-2 border-slate-200 pl-3 py-1 text-[11px]">
+                      <p className="font-bold text-slate-800">{h.description}</p>
+                      <p className="text-[10px] text-slate-400">
+                        {new Date(h.createdAt).toLocaleString('pt-BR')}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-[11px] text-slate-400 italic">
+                    Acompanhamento registrado via sistema em{' '}
+                    {new Date().toLocaleDateString('pt-BR')}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Ações do Rodapé do Drawer */}
+            <div className="border-t border-slate-100 pt-4 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleResolve(selectedItem.id, Boolean(selectedItem.resolvedAt))}
+                className={`flex-1 py-2 rounded-xl text-xs font-extrabold transition ${
+                  selectedItem.resolvedAt
+                    ? 'bg-slate-200 text-slate-800 hover:bg-slate-300'
+                    : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs'
+                }`}
+              >
+                {selectedItem.resolvedAt ? 'Reabrir Acompanhamento' : '✓ Concluir'}
+              </button>
+
+              {selectedItem.clientId && (
+                <button
+                  type="button"
+                  onClick={() => onVerCliente?.(selectedItem.clientId!)}
+                  className="px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  Ver Cliente
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* 10. MODAL DE NOVO ACOMPANHAMENTO                              */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-5 max-w-lg w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-black text-[#071B3A] flex items-center gap-2">
+                <Plus className="h-4 w-4 text-[#D4AF37]" /> Novo Acompanhamento
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-500"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateSubmit} className="space-y-3">
+              <div>
+                <label className="text-[11px] font-extrabold uppercase text-slate-600">Cliente (opcional)</label>
+                <select
+                  value={formClientId}
+                  onChange={(e) => setFormClientId(e.target.value)}
+                  className="w-full mt-1 rounded-xl border border-slate-200 p-2 text-xs font-bold text-slate-800 focus:border-[#D4AF37]"
+                >
+                  <option value="">Nenhum cliente (Escritório / Geral)</option>
+                  {clientes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name || c.cliente}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-extrabold uppercase text-slate-600">Título do Acompanhamento *</label>
+                <input
+                  type="text"
+                  required
+                  value={formTitle}
+                  onChange={(e) => setFormTitle(e.target.value)}
+                  placeholder="Ex: Atualizar CadÚnico para ação de BPC"
+                  className="w-full mt-1 rounded-xl border border-slate-200 p-2 text-xs font-bold text-slate-800 focus:border-[#D4AF37]"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-extrabold uppercase text-slate-600">Descrição / Observações</label>
+                <textarea
+                  rows={2}
+                  value={formDescription}
+                  onChange={(e) => setFormDescription(e.target.value)}
+                  placeholder="Detalhes sobre os próximos passos ou pendências..."
+                  className="w-full mt-1 rounded-xl border border-slate-200 p-2 text-xs font-medium text-slate-700 focus:border-[#D4AF37]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-extrabold uppercase text-slate-600">Status Inicial</label>
+                  <select
+                    value={formStatus}
+                    onChange={(e) => setFormStatus(e.target.value)}
+                    className="w-full mt-1 rounded-xl border border-slate-200 p-2 text-xs font-bold text-slate-800"
+                  >
+                    <option value="PARA_FAZER">Para fazer</option>
+                    <option value="AGUARDANDO_CLIENTE">Aguardando cliente</option>
+                    <option value="AGUARDANDO_TERCEIRO">Aguardando terceiro</option>
+                    <option value="PROXIMOS_RETORNOS">Próximos retornos</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-extrabold uppercase text-slate-600">Categoria</label>
+                  <select
+                    value={formCategory}
+                    onChange={(e) => setFormCategory(e.target.value)}
+                    className="w-full mt-1 rounded-xl border border-slate-200 p-2 text-xs font-bold text-slate-800"
+                  >
+                    <option value="PROCESSO">Processo</option>
+                    <option value="CLIENTE">Cliente</option>
+                    <option value="ASSINATURA">Assinatura</option>
+                    <option value="KIT">Kit Jurídico</option>
+                    <option value="INSS">INSS</option>
+                    <option value="CARTORIO">Cartório</option>
+                    <option value="FINANCEIRO">Financeiro</option>
+                    <option value="OUTRO">Outro</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-extrabold uppercase text-slate-600">Prioridade</label>
+                  <select
+                    value={formPriority}
+                    onChange={(e) => setFormPriority(e.target.value)}
+                    className="w-full mt-1 rounded-xl border border-slate-200 p-2 text-xs font-bold text-slate-800"
+                  >
+                    <option value="NORMAL">Normal</option>
+                    <option value="ALTA">Alta</option>
+                    <option value="URGENTE">Urgente</option>
+                    <option value="BAIXA">Baixa</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-extrabold uppercase text-slate-600">Prazo / Retorno</label>
+                  <input
+                    type="date"
+                    value={formDueDate}
+                    onChange={(e) => setFormDueDate(e.target.value)}
+                    className="w-full mt-1 rounded-xl border border-slate-200 p-2 text-xs font-bold text-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 pt-3 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="px-5 py-2 rounded-xl text-xs font-black bg-[#071B3A] text-white hover:bg-[#122c52] shadow-xs"
+                >
+                  {isSaving ? 'Salvando...' : 'Criar Acompanhamento'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

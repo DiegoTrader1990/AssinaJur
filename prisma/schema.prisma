@@ -94,6 +94,8 @@ model User {
   createdDocuments Document[] @relation("UserCreatedDocuments")
   createdPendencies  ClientPendency[] @relation("PendencyCreatedBy")
   resolvedPendencies ClientPendency[] @relation("PendencyResolvedBy")
+  responsiblePendencies ClientPendency[] @relation("PendencyResponsible")
+  pendencyHistory PendencyHistory[]
 }
 
 // Permissões Granulares
@@ -159,22 +161,30 @@ model Client {
   @@unique([officeId, cpfCnpj])
 }
 
-// Pendência manual vinculada a um cliente (ex: "Cobrar atualização de senha do INSS").
-// Enquanto estiver aberta (resolvedAt == null), substitui o cálculo automático de
-// prioridade em "Sua Prioridade Agora" na Home - qualquer usuário do escritório vê
-// exatamente o que precisa ser feito.
+// Pendência manual ou automática vinculada ao escritório e cliente.
 model ClientPendency {
   id            String    @id @default(uuid())
   officeId      String
   office        Office    @relation(fields: [officeId], references: [id], onDelete: Cascade)
   clientId      String?
   client        Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  
+  title         String?
   description   String
-  priority      String    @default("NORMAL")
+  category      String    @default("OUTRO") // PROCESSO, CLIENTE, ASSINATURA, KIT, INSS, CARTORIO, FINANCEIRO, OUTRO
+  status        String    @default("PARA_FAZER") // PARA_FAZER, AGUARDANDO_CLIENTE, AGUARDANDO_TERCEIRO, PROXIMOS_RETORNOS, CONCLUIDO
+  priority      String    @default("NORMAL") // URGENTE, ALTA, NORMAL, BAIXA
   dueDate       DateTime?
+
+  source        String    @default("MANUAL") // MANUAL, AUTOMATIC
+  sourceType    String?   // SIGNATURE, KIT, PROCESS, CLIENT, SYSTEM
+  sourceEntityId String?
 
   createdById   String?
   createdBy     User?     @relation("PendencyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  responsibleId String?
+  responsible   User?     @relation("PendencyResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
 
   resolvedAt    DateTime?
   resolvedById  String?
@@ -182,6 +192,29 @@ model ClientPendency {
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  history       PendencyHistory[]
+
+  @@index([officeId, status])
+  @@index([officeId, clientId])
+  @@index([officeId, dueDate])
+}
+
+// Trilha de auditoria das pendências do escritório
+model PendencyHistory {
+  id           String         @id @default(uuid())
+  pendencyId   String
+  pendency     ClientPendency @relation(fields: [pendencyId], references: [id], onDelete: Cascade)
+  userId       String?
+  user         User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action       String         // CREATED, STATUS_CHANGED, REASSIGNED, RESCHEDULED, COMPLETED, REOPENED, EDITED
+  fromStatus   String?
+  toStatus     String?
+  description  String
+  metadata     String?
+  createdAt    DateTime       @default(now())
+
+  @@index([pendencyId, createdAt])
 }
 
 // Arquivos em Armazenamento Seguro
