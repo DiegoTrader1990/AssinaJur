@@ -301,6 +301,9 @@ export async function POST(
       data: {
         status: newDocStatus,
         completedAt: allCompleted ? new Date() : null,
+        // Toda conclusão de assinatura (inclusive depois de um "Refazer") volta a exigir
+        // revisão manual do escritório antes de liberar o botão Refazer de novo.
+        ...(allCompleted ? { reviewStatus: 'PENDENTE_REVISAO' } : {}),
       },
     });
 

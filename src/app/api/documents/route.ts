@@ -112,6 +112,10 @@ export async function POST(req: Request) {
       isIlliterate,
       rogoName,
       rogoCpf,
+      rogoRg,
+      rogoBirthDate,
+      rogoAddress,
+      rogoSameAddress,
       rogoRelationship,
       rogoPhone,
       rogoEmail,
@@ -169,6 +173,9 @@ export async function POST(req: Request) {
       if (!rogoName || !hasValidCpfCnpjCheckDigits(String(rogoCpf || ''))) {
         return NextResponse.json({ error: 'No fluxo a rogo, informe o nome e CPF válido do assinante a rogo.' }, { status: 400 });
       }
+      if (!String(rogoRg || '').trim() || !rogoBirthDate || !String(rogoAddress || '').trim()) {
+        return NextResponse.json({ error: 'No fluxo a rogo, informe também RG, data de nascimento e endereço do assinante a rogo.' }, { status: 400 });
+      }
       if (signers[0]?.role !== 'CLIENTE') {
         return NextResponse.json({ error: 'No fluxo a rogo, o primeiro participante deve ser o cliente titular.' }, { status: 400 });
       }
@@ -215,6 +222,10 @@ export async function POST(req: Request) {
           isIlliterate: !!isIlliterate,
           rogoName: rogoName || null,
           rogoCpf: rogoCpf ? rogoCpf.replace(/\D/g, '') : null,
+          rogoRg: isIlliterate ? (rogoRg || null) : null,
+          rogoBirthDate: isIlliterate ? (rogoBirthDate || null) : null,
+          rogoAddress: isIlliterate ? (rogoAddress || null) : null,
+          rogoSameAddress: isIlliterate ? !!rogoSameAddress : false,
           rogoRelationship: rogoRelationship || null,
         },
       });

@@ -98,7 +98,7 @@ export async function POST(
           if (!target) continue;
           await prisma.signer.update({ where: { id: target.id }, data: { status: 'ASSINADO', signatureType: source.signatureType, signatureImage: source.signatureImage, signedConsentText: source.signedConsentText, selfieCenterImage: source.selfieCenterImage, selfieLeftImage: source.selfieLeftImage, selfieRightImage: source.selfieRightImage, documentFrontImage: source.documentFrontImage, documentBackImage: source.documentBackImage, geoLat: source.geoLat, geoLng: source.geoLng, geoAccuracy: source.geoAccuracy, geoCity: source.geoCity, geoState: source.geoState, signedAt: source.signedAt || new Date(), ipAddress: source.ipAddress, userAgent: source.userAgent } });
         }
-        await prisma.document.update({ where: { id: companion.id }, data: { status: 'CONCLUIDO', completedAt: new Date() } });
+        await prisma.document.update({ where: { id: companion.id }, data: { status: 'CONCLUIDO', completedAt: new Date(), reviewStatus: 'PENDENTE_REVISAO' } });
         await prisma.documentEvent.create({ data: { documentId: companion.id, userId: user.id, eventType: 'PACKAGE_SIGNATURE_SYNCHRONIZED', description: `Assinatura do pacote sincronizada a partir de "${document.title}"; evidências dos participantes preservadas.` } });
         try { await generateFinalPdfCertificate(companion.id); await queueSignatureCompletionMessages(companion.id); } catch (error) { console.error('Erro ao emitir PDF do pacote sincronizado:', error); }
         synchronized += 1;
@@ -107,12 +107,57 @@ export async function POST(
       return NextResponse.json({ success: true, synchronized });
     }
 
+    // Aprovação manual: depois de conferir que a assinatura concluída saiu correta, o
+    // administrador marca o documento (ou o pacote inteiro) como "Aprovado". A partir daí
+    // o botão Refazer some para esse documento, evitando clique acidental num documento que
+    // já está certo. Documentos concluídos antes desse recurso existir já nascem aprovados
+    // (ver default do campo no schema); só passam a exigir essa revisão a partir de agora.
+    if (action === 'approve-document' || action === 'approve-package') {
+      if (user.role !== 'OFFICE_ADMIN') {
+        return NextResponse.json({ error: 'Apenas o administrador do escritório pode aprovar a assinatura.' }, { status: 403 });
+      }
+
+      const approveTargets = action === 'approve-package' && document.kitBatchId
+        ? await prisma.document.findMany({
+            where: { officeId: user.officeId, kitBatchId: document.kitBatchId, clientId: document.clientId, status: 'CONCLUIDO' },
+          })
+        : [document];
+
+      const approveEligible = approveTargets.filter((item) => item.status === 'CONCLUIDO');
+      if (!approveEligible.length) {
+        return NextResponse.json({ error: 'Só é possível aprovar documentos que já estão concluídos.' }, { status: 400 });
+      }
+
+      for (const target of approveEligible) {
+        await prisma.document.update({ where: { id: target.id }, data: { reviewStatus: 'APROVADO' } });
+        await prisma.documentEvent.create({
+          data: {
+            documentId: target.id,
+            userId: user.id,
+            eventType: 'DOCUMENT_APPROVED',
+            description: `Assinatura concluída revisada e aprovada por ${user.name}.`,
+          },
+        });
+      }
+
+      await logAuditEvent({
+        officeId: user.officeId,
+        userId: user.id,
+        eventType: 'DOCUMENT_APPROVED',
+        description: `${approveEligible.length} documento(s) ${action === 'approve-package' ? `do pacote "${document.title}"` : `("${document.title}")`} foram aprovados por ${user.name}.`,
+      });
+
+      return NextResponse.json({ success: true, approvedCount: approveEligible.length });
+    }
+
     // Reabre um documento (ou um pacote inteiro) já concluído para uma nova tentativa de
     // assinatura, reaproveitando o MESMO link/token e todo o conteúdo já revisado/editado -
     // pensado para o caso de a captura da prova de presença ter saído ruim (selfie, selo mal
     // posicionado etc.) e ser preciso que a pessoa refaça só a parte de assinar, sem o
     // escritório precisar reeditar o documento nem gerar um link novo. Só o dono/admin do
-    // escritório pode acionar - o cliente nunca tem esse botão.
+    // escritório pode acionar - o cliente nunca tem esse botão. Só é permitido enquanto o
+    // documento ainda está "Aguardando revisão" - depois de aprovado, o Refazer não fica
+    // mais disponível (evita clique acidental num documento que já foi conferido).
     if (action === 'redo-document' || action === 'redo-package') {
       if (user.role !== 'OFFICE_ADMIN') {
         return NextResponse.json({ error: 'Apenas o administrador do escritório pode solicitar que a assinatura seja refeita.' }, { status: 403 });
@@ -124,9 +169,9 @@ export async function POST(
           })
         : [document];
 
-      const eligible = targets.filter((item) => item.status === 'CONCLUIDO');
+      const eligible = targets.filter((item) => item.status === 'CONCLUIDO' && item.reviewStatus !== 'APROVADO');
       if (!eligible.length) {
-        return NextResponse.json({ error: 'Só é possível refazer documentos que já estão concluídos.' }, { status: 400 });
+        return NextResponse.json({ error: 'Só é possível refazer documentos concluídos que ainda não foram aprovados.' }, { status: 400 });
       }
 
       const reason = typeof body.reason === 'string' ? body.reason.trim().slice(0, 500) : '';

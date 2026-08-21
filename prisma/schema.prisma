@@ -289,6 +289,12 @@ model Document {
   verificationCode String?  @unique
   
   status           String   @default("RASCUNHO")
+  // Aprovação manual do escritório sobre a assinatura já concluída (evita o botão
+  // "Refazer" ficar disponível em documentos que já foram revisados e estão corretos,
+  // reduzindo risco de clique acidental). Só é relevante quando status = CONCLUIDO.
+  // Documentos que já existiam antes desse recurso entram como "APROVADO" (o padrão),
+  // e só passam a exigir revisão explícita a partir de uma nova conclusão de assinatura.
+  reviewStatus     String   @default("APROVADO") // APROVADO | PENDENTE_REVISAO
   expirationDate   DateTime?
   customMessage    String?
   

@@ -889,6 +889,7 @@ export default function DashboardPage() {
               <UserPlus className="h-4 w-4 text-[#B68B1C]" /> Novo atendimento
             </button>
             <Link
+
               href="/documentos/novo"
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#071B3A] px-4 py-2.5 text-xs font-extrabold text-white shadow-[0_12px_24px_-15px_rgba(7,27,58,0.95)] transition hover:bg-[#102D55]"
             >
@@ -909,112 +910,147 @@ export default function DashboardPage() {
         kitPreferidoId={painelKitPreferido}
         tempoMedioMinutos={painelIndicadores.tempoMedioMinutos}
         onClientCreated={(client) => {
-          // Cadastro feito pela caixa rapida do Fluxo Rapido - atualiza a lista
-          // aqui na Home sem precisar recarregar a pagina.
           setClients((prev) => [client, ...prev.filter((c) => c.id !== client.id)]);
         }}
       />
 
       <IndicadoresEscritorio
+
         indicadores={painelIndicadores}
-        vencidos={painelResumo.vencidos.length}
-        prazosHoje={painelResumo.hoje.length}
+        documentosAPrepararCount={mappedClients.filter((c) => c.stage === 'ENTRADA' || c.stage === 'PREPARACAO').length}
+        pendenciasCount={openPendencies.length + painelAvisosSistema.length}
+        vencidasCount={painelResumo.vencidos.length}
+        hojeCount={painelResumo.hoje.length}
+        prazosSeteDiasCount={painelResumo.semana.length}
         temAlgumPrazoCadastrado={painelResumo.temAlgumPrazoCadastrado}
-        processosSemPrazo={painelResumo.processosSemPrazo}
+        onCardClick={(tipo) => {
+          if (tipo === 'AGUARDANDO' || tipo === 'CONCLUIDOS') {
+            router.push('/documentos');
+          } else if (tipo === 'PREPARAR') {
+            router.push('/kits');
+          } else if (tipo === 'PENDENCIAS') {
+            setPendenciaFormOpen(true);
+          } else if (tipo === 'PRAZOS') {
+            router.push('/processos');
+          }
+        }}
       />
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 2. OPERAÇÃO INTELIGENTE: PRIORIDADE AGORA x RESUMO IA         */}
+      {/* 2. CENTRAL OPERACIONAL DO ESCRITÓRIO: 3 BLOCOS               */}
       {/* ───────────────────────────────────────────────────────────── */}
       <section className="grid grid-cols-1 gap-3 xl:grid-cols-3 xl:items-stretch">
-        {/* SUA PRIORIDADE AGORA */}
-        <div className="min-h-[264px] bg-gradient-to-br from-white via-slate-50/50 to-amber-50/20 border border-amber-200/90 rounded-2xl p-4 shadow-xs flex flex-col justify-between gap-3 relative overflow-hidden">
+        {/* BLOCO ESQUERDO — PRIORIDADES DO DIA */}
+        <div className="min-h-[280px] bg-gradient-to-br from-white via-slate-50/50 to-amber-50/20 border border-amber-200/90 rounded-2xl p-4 shadow-xs flex flex-col justify-between gap-3 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-28 h-28 bg-[#D4AF37]/10 rounded-full blur-xl pointer-events-none" />
 
-          {openPendencies.length > 0 ? (
-            <div className="flex flex-col h-full relative z-10">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                  <h2 className="text-xs font-black uppercase tracking-wider text-rose-800">
-                    Sua Prioridade Agora{openPendencies.length > 1 ? ` (${openPendencies.length})` : ''}
-                  </h2>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPendenciaFormOpen((v) => !v)}
-                  className="text-[10px] font-extrabold text-[#0B192C] bg-white border border-slate-200 hover:border-[#D4AF37] px-2 py-0.5 rounded-md transition-all"
-                >
-                  + Pendência
-                </button>
+          <div className="flex flex-col h-full relative z-10">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                <h2 className="text-xs font-black uppercase tracking-wider text-rose-800">
+                  Prioridades do Dia
+                </h2>
               </div>
+              <button
+                type="button"
+                onClick={() => setPendenciaFormOpen((v) => !v)}
+                className="text-[10px] font-extrabold text-[#0B192C] bg-white border border-slate-200 hover:border-[#D4AF37] px-2 py-0.5 rounded-md transition-all shadow-2xs"
+              >
+                + Pendência
+              </button>
+            </div>
+            <p className="text-[10.5px] text-slate-400 font-medium mt-0.5">
+              O que exige sua atenção imediata hoje
+            </p>
 
-              {pendenciaFormOpen && (
-                <div className="rounded-lg border border-slate-200 bg-white/80 p-2.5 space-y-1.5">
-                    <input
-                      value={pendenciaDescricao}
-                      onChange={(e) => setPendenciaDescricao(e.target.value)}
-                      placeholder="O que precisa ser feito?"
-                      className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700"
-                    />
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <select value={pendenciaPriority} onChange={(e) => setPendenciaPriority(e.target.value)} className="rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700">
-                        <option value="URGENTE">🔴 Urgente</option>
-                        <option value="ALTA">🟠 Alta</option>
-                        <option value="NORMAL">🟡 Normal</option>
-                        <option value="BAIXA">🔵 Baixa</option>
-                      </select>
-                      <input type="date" value={pendenciaDueDate} onChange={(e) => setPendenciaDueDate(e.target.value)} className="rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700" aria-label="Prazo" />
-                    </div>
-                    <select
-                      value={pendenciaClientId}
-                      onChange={(e) => setPendenciaClientId(e.target.value)}
-                      className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700"
-                    >
-                      <option value="">Vincular cliente (opcional)...</option>
-                    {clients.map((c: any) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
+            {pendenciaFormOpen && (
+              <div className="mt-2 rounded-xl border border-slate-200 bg-white p-3 space-y-2 shadow-md animate-in fade-in duration-150 z-20">
+                <p className="text-[11px] font-black uppercase text-[#071B3A]">Nova Pendência do Escritório</p>
+                <input
+                  value={pendenciaDescricao}
+                  onChange={(e) => setPendenciaDescricao(e.target.value)}
+                  placeholder="Ex.: Atualizar senha do Meu INSS do cliente"
+                  className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-[12px] font-semibold text-slate-700 outline-none focus:border-[#B68B1C]"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    value={pendenciaPriority}
+                    onChange={(e) => setPendenciaPriority(e.target.value)}
+                    className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700"
+                  >
+                    <option value="URGENTE">🔴 Urgente</option>
+                    <option value="ALTA">🟠 Alta</option>
+                    <option value="NORMAL">🟡 Normal</option>
+                    <option value="BAIXA">🔵 Baixa</option>
                   </select>
-                  <div className="flex justify-end gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setPendenciaFormOpen(false)}
-                      className="px-2.5 py-1 text-[10.5px] font-bold text-slate-500 hover:text-slate-700"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!pendenciaDescricao.trim() || savingPendencia}
-                      onClick={criarPendencia}
-                      className="px-2.5 py-1 text-[10.5px] font-extrabold text-white bg-[#0B192C] hover:bg-[#152a47] rounded-md disabled:opacity-40"
-                    >
-                      {savingPendencia ? 'Salvando...' : 'Salvar pendência'}
-                    </button>
-                  </div>
+                  <input
+                    type="date"
+                    value={pendenciaDueDate}
+                    onChange={(e) => setPendenciaDueDate(e.target.value)}
+                    className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700"
+                  />
                 </div>
-              )}
+                <select
+                  value={pendenciaClientId}
+                  onChange={(e) => setPendenciaClientId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700"
+                >
+                  <option value="">Vincular cliente (opcional)...</option>
+                  {clients.map((c: any) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setPendenciaFormOpen(false)}
+                    className="px-2.5 py-1 text-[11px] font-bold text-slate-500 hover:text-slate-700"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!pendenciaDescricao.trim() || savingPendencia}
+                    onClick={criarPendencia}
+                    className="px-3 py-1.5 text-[11px] font-extrabold text-white bg-[#071B3A] hover:bg-[#122c52] rounded-lg disabled:opacity-40"
+                  >
+                    {savingPendencia ? 'Salvando...' : 'Salvar aviso'}
+                  </button>
+                </div>
+              </div>
+            )}
 
-              <div className="mt-3 space-y-2 overflow-y-auto pr-1 -mr-1" style={{ maxHeight: 176 }}>
-                {openPendencies.map((p, idx) => {
+            <div className="mt-3 space-y-2 overflow-y-auto pr-1 -mr-1 flex-1 min-h-[160px]" style={{ maxHeight: 240 }}>
+              {openPendencies.length > 0 ? (
+                openPendencies.map((p, idx) => {
                   const urgencia = urgenciaPendencia(p);
                   return (
                     <div
                       key={p.id}
-                      className={`flex items-center justify-between gap-2.5 rounded-xl border-l-[3px] ${urgencia.cor} border border-slate-200/80 bg-white pl-2.5 pr-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]`}
+                      className={`flex items-center justify-between gap-2.5 rounded-xl border-l-[3px] ${urgencia.cor} border border-slate-200/80 bg-white pl-2.5 pr-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-slate-300 transition-colors`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="shrink-0 w-5 h-5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-black flex items-center justify-center">
+                        <span className="shrink-0 w-5 h-5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-black flex items-center justify-center">
                           {idx + 1}
                         </span>
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <p className="text-[12.5px] font-extrabold text-[#0B192C] truncate">
-                              {p.client?.name || 'Tarefa do escritório'}
-                            </p>
+                            {p.clientId ? (
+                              <button
+                                type="button"
+                                onClick={() => router.push(`/clientes?q=${encodeURIComponent(p.client?.name || '')}`)}
+                                className="text-[12.5px] font-extrabold text-[#071B3A] hover:text-[#B68B1C] truncate text-left"
+                              >
+                                {p.client?.name}
+                              </button>
+                            ) : (
+                              <p className="text-[12.5px] font-extrabold text-[#071B3A] truncate">
+                                Tarefa do escritório
+                              </p>
+                            )}
                             <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-md border ${urgencia.chip}`}>
                               {urgencia.texto}
                             </span>
@@ -1031,273 +1067,112 @@ export default function DashboardPage() {
                         className="shrink-0 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10.5px] font-extrabold rounded-lg flex items-center gap-1 disabled:opacity-50 transition-colors"
                       >
                         <CheckCircle2 className="w-3 h-3" />
-                        {resolvingPendenciaId === p.id ? 'Marcando...' : 'Resolver'}
+                        {resolvingPendenciaId === p.id ? 'Salvando...' : 'Concluir'}
                       </button>
                     </div>
                   );
-                })}
-              </div>
-
-              <div className="mt-auto pt-3 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-500">
-                  {openPendencies.length} pendência{openPendencies.length > 1 ? 's' : ''} aberta{openPendencies.length > 1 ? 's' : ''}
-                </span>
-                <span className="text-[10px] font-semibold text-slate-400">Visível para todo o escritório</span>
-              </div>
-            </div>
-          ) : topPriorityCase ? (
-            <>
-              <div className="space-y-2 relative z-10">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                    <h2 className="text-xs font-black uppercase tracking-wider text-rose-800">
-                      Sua Prioridade Agora
-                    </h2>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setPendenciaFormOpen((v) => !v)}
-                      className="text-[10px] font-extrabold text-[#0B192C] bg-white border border-slate-200 hover:border-[#D4AF37] px-2 py-0.5 rounded-md transition-all"
-                    >
-                      + Pendência
-                    </button>
-                    <span className="text-[10px] font-extrabold text-[#B68B1C] bg-[#B68B1C]/10 border border-[#B68B1C]/20 px-2 py-0.5 rounded-md">
-                      {topPriorityCase.legalArea}
+                })
+              ) : topPriorityCase ? (
+                <div className="rounded-xl border-l-[3px] border-[#D4AF37] border border-slate-200 bg-white p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold uppercase text-[#B68B1C] bg-amber-50 px-2 py-0.5 rounded-md">
+                      {topPriorityCase.stageName}
                     </span>
+                    <span className="text-[10px] font-bold text-slate-400">{topPriorityCase.legalArea}</span>
                   </div>
-                </div>
-
-                {pendenciaFormOpen && (
-                  <div className="rounded-lg border border-slate-200 bg-white/80 p-2.5 space-y-1.5">
-                    <input
-                      value={pendenciaDescricao}
-                      onChange={(e) => setPendenciaDescricao(e.target.value)}
-                      placeholder="O que precisa ser feito?"
-                      className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700"
-                    />
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <select value={pendenciaPriority} onChange={(e) => setPendenciaPriority(e.target.value)} className="rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700">
-                        <option value="URGENTE">🔴 Urgente</option>
-                        <option value="ALTA">🟠 Alta</option>
-                        <option value="NORMAL">🟡 Normal</option>
-                        <option value="BAIXA">🔵 Baixa</option>
-                      </select>
-                      <input type="date" value={pendenciaDueDate} onChange={(e) => setPendenciaDueDate(e.target.value)} className="rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700" aria-label="Prazo" />
-                    </div>
-                    <select
-                      value={pendenciaClientId}
-                      onChange={(e) => setPendenciaClientId(e.target.value)}
-                      className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-700"
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/clientes?q=${encodeURIComponent(topPriorityCase.name)}`)}
+                      className="text-[13px] font-extrabold text-[#071B3A] hover:text-[#B68B1C] text-left block truncate"
                     >
-                      <option value="">Vincular cliente (opcional)...</option>
-                      {clients.map((c: any) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="flex justify-end gap-1.5">
+                      {topPriorityCase.name}
+                    </button>
+                    <p className="text-[11px] font-semibold text-slate-600 mt-0.5">{topPriorityCase.statusText}</p>
+                    <p className="text-[11px] font-bold text-slate-900 mt-1">
+                      <span className="text-[9px] uppercase tracking-wide text-slate-400 mr-1">Próximo passo:</span>
+                      {topPriorityCase.nextActionText}
+                    </p>
+                  </div>
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                    {topPriorityCase.actionType === 'SIGN' && topPriorityCase.phone ? (
+                      <a
+                        href={`https://wa.me/55${topPriorityCase.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                          `Olá, ${topPriorityCase.name}! Passando para lembrar da assinatura digital dos seus documentos no escritório ${office?.name || 'AssinaJur'}.`
+                        )}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2.5 py-1.5 bg-[#25D366] hover:bg-[#1fb855] text-white text-[10.5px] font-extrabold rounded-lg inline-flex items-center gap-1"
+                      >
+                        <MessageSquare className="w-3 h-3 fill-white" /> Cobrar assinatura
+                      </a>
+                    ) : (
                       <button
                         type="button"
-                        onClick={() => setPendenciaFormOpen(false)}
-                        className="px-2.5 py-1 text-[10.5px] font-bold text-slate-500 hover:text-slate-700"
+                        onClick={() => {
+                          if (topPriorityCase.actionType === 'KIT') setActionModal('KIT');
+                          else if (topPriorityCase.actionType === 'CREATE_PROCESS') setActionModal('PROCESSO');
+                          else router.push(`/clientes?q=${encodeURIComponent(topPriorityCase.name)}`);
+                        }}
+                        className="px-2.5 py-1.5 bg-[#071B3A] hover:bg-[#122c52] text-white text-[10.5px] font-extrabold rounded-lg inline-flex items-center gap-1"
                       >
-                        Cancelar
+                        {topPriorityCase.actionLabel}
                       </button>
-                      <button
-                        type="button"
-                      disabled={!pendenciaDescricao.trim() || savingPendencia}
-                        onClick={criarPendencia}
-                        className="px-2.5 py-1 text-[10.5px] font-extrabold text-white bg-[#0B192C] hover:bg-[#152a47] rounded-md disabled:opacity-40"
-                      >
-                        {savingPendencia ? 'Salvando...' : 'Salvar pendência'}
-                      </button>
-                    </div>
+                    )}
                   </div>
-                )}
-
-                <div className="border-l-2 border-[#D4AF37] pl-3 py-0.5 space-y-1">
-                  <h3 className="text-[15px] font-extrabold text-[#0B192C]">
-                    {topPriorityCase.name}
-                  </h3>
-                  <p className="text-[11px] font-semibold text-slate-700 leading-snug">
-                    <span className="mr-1.5 text-emerald-700 font-extrabold">✓</span>{topPriorityCase.statusText}
-                  </p>
-                  <p className="text-[11px] font-bold text-slate-900 leading-snug">
-                    <span className="mr-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">Próxima ação</span>
-                    {topPriorityCase.nextActionText}
-                  </p>
                 </div>
-              </div>
-
-              {/* BOTÃO DE AÇÃO ÚNICO E COERENTE COM A ETAPA DO CLIENTE */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2.5 border-t border-slate-200/80">
-                <div className="flex items-center gap-2">
-                  {(topPriorityCase.actionType as any) === 'PENDENCIA' && (
-                    <button
-                      type="button"
-                      disabled={resolvingPendenciaId === topPriorityCase.pendenciaId}
-                      onClick={() => topPriorityCase.pendenciaId && resolverPendencia(topPriorityCase.pendenciaId)}
-                      className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-extrabold rounded-lg flex items-center gap-1.5 shadow-xs transition-all disabled:opacity-50"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      {resolvingPendenciaId === topPriorityCase.pendenciaId ? 'Marcando...' : topPriorityCase.actionLabel}
-                    </button>
-                  )}
-
-                  {topPriorityCase.actionType === 'SIGN' && topPriorityCase.phone && (
-                    <a
-                      href={`https://wa.me/55${topPriorityCase.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
-                        `Olá, ${topPriorityCase.name}! Passando para lembrar da assinatura digital dos seus documentos no escritório ${
-                          office?.name || 'Rodrigues & Soares'
-                        }. Podemos te ajudar a concluir?`
-                      )}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-3 py-2 bg-[#25D366] hover:bg-[#1fb855] text-white text-[11px] font-extrabold rounded-lg flex items-center gap-1.5 shadow-xs transition-all"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5 fill-white" /> {topPriorityCase.actionLabel}
-                    </a>
-                  )}
-
-                  {topPriorityCase.actionType === 'DOCS' && (
-                    <Link
-                      href={`/clientes?q=${encodeURIComponent(topPriorityCase.name)}`}
-                      className="px-3 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-[11px] font-extrabold rounded-lg flex items-center gap-1.5 shadow-xs transition-all"
-                    >
-                      <FolderPlus className="w-3.5 h-3.5 text-[#D4AF37]" /> {topPriorityCase.actionLabel}
-                    </Link>
-                  )}
-
-                  {topPriorityCase.actionType === 'KIT' && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFormClientId(topPriorityCase.id);
-                        setActionModal('KIT');
-                      }}
-                      className="px-3 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-[11px] font-extrabold rounded-lg flex items-center gap-1.5 shadow-xs transition-all"
-                    >
-                      <Layers className="w-3.5 h-3.5 text-[#D4AF37]" /> {topPriorityCase.actionLabel}
-                    </button>
-                  )}
-
-                  {topPriorityCase.actionType === 'CREATE_PROCESS' && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFormClientId(topPriorityCase.id);
-                        setActionModal('PROCESSO');
-                      }}
-                      className="px-3 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-[11px] font-extrabold rounded-lg flex items-center gap-1.5 shadow-xs transition-all"
-                    >
-                      <Briefcase className="w-3.5 h-3.5 text-[#D4AF37]" /> {topPriorityCase.actionLabel}
-                    </button>
-                  )}
-
-                  {topPriorityCase.actionType === 'VIEW_PROCESS' && (
-                    <Link
-                      href={`/processos?clienteId=${topPriorityCase.id}`}
-                      className="px-3 py-2 bg-[#0B192C] hover:bg-[#152a47] text-white text-[11px] font-extrabold rounded-lg flex items-center gap-1.5 shadow-xs transition-all"
-                    >
-                      <Briefcase className="w-3.5 h-3.5 text-[#D4AF37]" /> {topPriorityCase.actionLabel}
-                    </Link>
-                  )}
-
-                  {topPriorityCase.actionType !== 'VIEW_PROCESS' && (
-                    <Link
-                      href={`/processos?clienteId=${topPriorityCase.id}`}
-                      className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold rounded-lg transition-all"
-                    >
-                      Ver Dossiê
-                    </Link>
-                  )}
+              ) : (
+                <div className="py-8 text-center space-y-1">
+                  <CheckCircle2 className="w-7 h-7 text-emerald-500 mx-auto" />
+                  <p className="text-xs font-extrabold text-[#071B3A]">Tudo em dia por aqui!</p>
+                  <p className="text-[11px] text-slate-400">Nenhuma ação urgente necessária no momento.</p>
                 </div>
-
-                <span className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
-                  Etapa atual: <strong className="text-slate-800">{topPriorityCase.stageName}</strong>
-                </span>
-              </div>
-            </>
-          ) : (
-            <div className="py-6 text-center space-y-1">
-              <CheckCircle2 className="w-7 h-7 text-emerald-500 mx-auto" />
-              <h3 className="text-xs font-extrabold text-slate-800">Nenhuma Ação Crítica Pendente</h3>
-              <p className="text-[11px] text-slate-500">Nenhuma pendência crítica identificada.</p>
+              )}
             </div>
-          )}
+
+            <div className="mt-auto pt-2.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-medium">
+              <span>{openPendencies.length} prioridade(s) cadastrada(s)</span>
+              <span>Visível para todo o escritório</span>
+            </div>
+          </div>
         </div>
 
-        {/* CENTRAL DE ACOMPANHAMENTO — avisos seus + os derivados pelo sistema */}
+        {/* BLOCO CENTRAL — CENTRAL DE ACOMPANHAMENTO */}
         <AvisosAcompanhamentos
           avisosSistema={painelAvisosSistema}
           clientes={clients}
+          pendencies={pendencies}
           titulo="Central de Acompanhamento"
-          subtitulo="O que você anotou e o que o sistema achou"
-          className="min-h-[264px]"
+          subtitulo="O que está acontecendo e qual é o próximo passo"
+          className="min-h-[280px]"
+          onNovaPendencia={() => setPendenciaFormOpen(true)}
+          onVerCliente={(id) => router.push(`/clientes?q=${id}`)}
         />
 
-        {false && <div className="min-h-[264px] bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col justify-between gap-3">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <div className="flex items-center gap-1.5">
-                <div className="w-6 h-6 rounded-lg bg-[#0B192C] text-[#D4AF37] flex items-center justify-center">
-                  <Bot className="w-3.5 h-3.5" />
-                </div>
-                <h3 className="text-xs font-black uppercase text-[#0B192C] tracking-wide">
-                  Resumo do AssinaJur
-                </h3>
-              </div>
-              <span className="text-[9px] font-bold text-slate-400">Atualizado agora</span>
-            </div>
-
-            {aiSummary.length > 0 ? (
-              <div className="space-y-1.5">
-                <p className="text-[11px] font-bold text-slate-800">
-                  {aiSummary.length} ações dependem da sua atenção:
-                </p>
-
-                {aiSummary.map((item, i) => (
-                  <div
-                    key={i}
-                    className={`py-1.5 text-[11px] font-medium leading-snug flex items-start gap-1.5 ${
-                      item.urgent
-                        ? 'text-rose-900'
-                        : 'text-slate-700'
-                    }`}
-                  >
-                    <span className={`w-1.5 h-1.5 rounded-full mt-1 shrink-0 ${item.urgent ? 'bg-rose-500 animate-pulse' : 'bg-amber-500'}`} />
-                    <span>{item.text}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="py-2 text-center space-y-0.5">
-                <p className="text-[11px] font-bold text-emerald-900">✓ Tudo sob controle</p>
-                <p className="text-[10px] text-emerald-800">Nenhuma pendência crítica identificada.</p>
-              </div>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (topPriorityCase) {
-                setFormClientId(topPriorityCase.id);
-                setActionModal('KIT');
-              }
-            }}
-            className="self-start px-3 py-2 bg-slate-900 hover:bg-black text-white font-bold text-[11px] rounded-lg transition-all"
-          >
-            Ver pendências
-          </button>
-        </div>}
-        {/* ASSINATURAS — no lugar de "Próximos da Fila". As intimações ficam
-            dentro da Central de Acompanhamento, ao lado. */}
-        <CardAssinaturas assinaturas={painelAssinaturas} className="min-h-[264px]" />
+        {/* BLOCO DIREITO — ASSINATURAS EM ANDAMENTO */}
+        <CardAssinaturas
+          assinaturas={painelAssinaturas}
+          className="min-h-[280px]"
+          onCobrar={(ass) => {
+            const cl = clients.find((c) => c.id === ass.clienteId);
+            const f = cl?.phone || cl?.whatsapp;
+            if (f) {
+              window.open(
+                `https://wa.me/55${f.replace(/\D/g, '')}?text=${encodeURIComponent(
+                  `Olá, ${ass.cliente}! Lembrando sobre a assinatura do seu documento (${ass.titulo}) do escritório ${office?.name || 'AssinaJur'}.`
+                )}`,
+                '_blank'
+              );
+            } else {
+              router.push('/documentos');
+            }
+          }}
+          onCopiarLink={() => {
+            router.push('/documentos');
+          }}
+        />
       </section>
+
 
       {/* ───────────────────────────────────────────────────────────── */}
       {/* 3. CONTROLE DO ESCRITÓRIO: OPERAÇÃO DO ESCRITÓRIO (ETAPAS)    */}

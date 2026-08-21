@@ -74,6 +74,7 @@ interface DocumentItem {
   title: string;
   documentType: string;
   status: string;
+  reviewStatus?: string;
   verificationCode?: string;
   createdAt: string;
   completedAt?: string;
@@ -187,6 +188,31 @@ export default function DocumentsPage() {
       setSelectedDoc(null);
     } catch (err: any) {
       alert(err.message);
+    }
+  };
+
+  // Marca um documento (ou pacote inteiro) concluído como revisado e aprovado. A partir
+  // daí o botão Refazer some para ele, evitando clique acidental em algo que já está certo.
+  const handleApproveSignature = async (doc: DocumentItem, mode: 'approve-document' | 'approve-package') => {
+    setRedoingIds((current) => new Set(current).add(doc.id));
+    try {
+      const res = await fetch(`/api/documents/${doc.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: mode }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Não foi possível aprovar a assinatura.');
+      await fetchDocuments();
+      setSelectedDoc(null);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setRedoingIds((current) => {
+        const next = new Set(current);
+        next.delete(doc.id);
+        return next;
+      });
     }
   };
 
@@ -594,15 +620,25 @@ export default function DocumentsPage() {
             </Link>
           )}
 
-          {isCompleted && isOfficeAdmin && (
-            <button
-              onClick={() => handleRedoSignature(doc, 'redo-document')}
-              disabled={redoingIds.has(doc.id)}
-              title="Reabrir para uma nova tentativa de assinatura, mantendo o mesmo link"
-              className="p-1 text-amber-600 hover:text-amber-700 disabled:opacity-50 rounded-lg border border-amber-200 transition-colors"
-            >
-              {redoingIds.has(doc.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
-            </button>
+          {isCompleted && isOfficeAdmin && doc.reviewStatus !== 'APROVADO' && (
+            <>
+              <button
+                onClick={() => handleApproveSignature(doc, 'approve-document')}
+                disabled={redoingIds.has(doc.id)}
+                title="Aprovar - confirma que a assinatura está correta e remove o botão Refazer"
+                className="p-1 text-emerald-600 hover:text-emerald-700 disabled:opacity-50 rounded-lg border border-emerald-200 transition-colors"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => handleRedoSignature(doc, 'redo-document')}
+                disabled={redoingIds.has(doc.id)}
+                title="Reabrir para uma nova tentativa de assinatura, mantendo o mesmo link"
+                className="p-1 text-amber-600 hover:text-amber-700 disabled:opacity-50 rounded-lg border border-amber-200 transition-colors"
+              >
+                {redoingIds.has(doc.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+              </button>
+            </>
           )}
           <button
             onClick={() => setSelectedDoc(doc)}
@@ -628,6 +664,7 @@ export default function DocumentsPage() {
     const lead = packageDocuments[0];
     const allSelected = packageDocuments.every((item) => selectedDocIds.has(item.id));
     const isCompleted = packageDocuments.every((item) => item.status === 'CONCLUIDO');
+    const isPendingReview = isCompleted && packageDocuments.some((item) => item.reviewStatus !== 'APROVADO');
     const formattedDate = new Date(lead.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
     const togglePackage = () => setSelectedDocIds((current) => {
       const next = new Set(current);
@@ -648,17 +685,28 @@ export default function DocumentsPage() {
         </div>
         <div className="p-3 border-t border-slate-100 flex flex-wrap gap-2">
           <button onClick={() => setSelectedDoc(lead)} className="flex-1 py-2 bg-[#071B3A] hover:bg-[#0B1D3D] text-white rounded-xl text-[10px] font-extrabold">Abrir dossiê do pacote</button>
-          {isCompleted && isOfficeAdmin && (
-            <button
-              type="button"
-              onClick={() => handleRedoSignature(lead, packageDocuments.length > 1 ? 'redo-package' : 'redo-document')}
-              disabled={redoingIds.has(lead.id)}
-              title="Reabrir para uma nova tentativa de assinatura, mantendo o mesmo link"
-              className="px-3 py-2 border border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100 disabled:opacity-50 rounded-xl text-[10px] font-extrabold inline-flex items-center gap-1"
-            >
-              {redoingIds.has(lead.id) ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
-              Refazer
-            </button>
+          {isPendingReview && isOfficeAdmin && (
+            <>
+              <button
+                type="button"
+                onClick={() => handleApproveSignature(lead, 'approve-package')}
+                disabled={redoingIds.has(lead.id)}
+                title="Aprovar todo o pacote - confirma que as assinaturas estão corretas e remove o botão Refazer"
+                className="px-3 py-2 border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 disabled:opacity-50 rounded-xl text-[10px] font-extrabold inline-flex items-center gap-1"
+              >
+                <CheckCircle2 className="w-3 h-3" /> Aprovar
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRedoSignature(lead, 'redo-package')}
+                disabled={redoingIds.has(lead.id)}
+                title="Reabrir todo o pacote para uma nova tentativa de assinatura, mantendo o mesmo link"
+                className="px-3 py-2 border border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100 disabled:opacity-50 rounded-xl text-[10px] font-extrabold inline-flex items-center gap-1"
+              >
+                {redoingIds.has(lead.id) ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                Refazer
+              </button>
+            </>
           )}
           {isCompleted && (
             <button
@@ -997,16 +1045,30 @@ export default function DocumentsPage() {
                       <span className="text-xs font-bold text-slate-700 truncate">{item.title}</span>
                       <div className="shrink-0 flex items-center gap-2">
                         {(item.status === 'CONCLUIDO' || item.status === 'PARCIALMENTE_ASSINADO') && <a href={`/api/documents/${item.id}/download`} download className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700"><Download className="w-3.5 h-3.5" /> Baixar PDF</a>}
-                        {isOfficeAdmin && item.status === 'CONCLUIDO' && selectedPackageDocuments.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRedoSignature(item, 'redo-document')}
-                            disabled={redoingIds.has(item.id)}
-                            title="Refazer só este documento, mantendo o mesmo link"
-                            className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-700 hover:text-amber-800 disabled:opacity-50"
-                          >
-                            {redoingIds.has(item.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />} Refazer
-                          </button>
+                        {item.status === 'CONCLUIDO' && item.reviewStatus === 'APROVADO' && (
+                          <span title="Revisado e aprovado" className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5" /> Aprovado</span>
+                        )}
+                        {isOfficeAdmin && item.status === 'CONCLUIDO' && item.reviewStatus !== 'APROVADO' && selectedPackageDocuments.length > 1 && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleApproveSignature(item, 'approve-document')}
+                              disabled={redoingIds.has(item.id)}
+                              title="Aprovar só este documento - confirma que está correto e remove o botão Refazer"
+                              className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700 hover:text-emerald-800 disabled:opacity-50"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Aprovar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRedoSignature(item, 'redo-document')}
+                              disabled={redoingIds.has(item.id)}
+                              title="Refazer só este documento, mantendo o mesmo link"
+                              className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-700 hover:text-amber-800 disabled:opacity-50"
+                            >
+                              {redoingIds.has(item.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />} Refazer
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>
@@ -1020,16 +1082,33 @@ export default function DocumentsPage() {
                 </button>
               )}
 
-              {isOfficeAdmin && selectedDoc.status === 'CONCLUIDO' && (
-                <button
-                  type="button"
-                  onClick={() => handleRedoSignature(selectedDoc, selectedPackageDocuments.length > 1 ? 'redo-package' : 'redo-document')}
-                  disabled={redoingIds.has(selectedDoc.id)}
-                  className="w-full py-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-xs font-extrabold flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {redoingIds.has(selectedDoc.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
-                  {selectedPackageDocuments.length > 1 ? 'Refazer assinatura de todo o pacote' : 'Refazer assinatura deste documento'}
-                </button>
+              {isOfficeAdmin && selectedDoc.status === 'CONCLUIDO' && selectedDoc.reviewStatus === 'APROVADO' && (
+                <div className="w-full py-2.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-extrabold flex items-center justify-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" /> Assinatura revisada e aprovada
+                </div>
+              )}
+
+              {isOfficeAdmin && selectedDoc.status === 'CONCLUIDO' && selectedDoc.reviewStatus !== 'APROVADO' && (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleApproveSignature(selectedDoc, selectedPackageDocuments.length > 1 ? 'approve-package' : 'approve-document')}
+                    disabled={redoingIds.has(selectedDoc.id)}
+                    className="flex-1 py-3 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-extrabold flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    {selectedPackageDocuments.length > 1 ? 'Aprovar todo o pacote' : 'Aprovar assinatura'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRedoSignature(selectedDoc, selectedPackageDocuments.length > 1 ? 'redo-package' : 'redo-document')}
+                    disabled={redoingIds.has(selectedDoc.id)}
+                    className="flex-1 py-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-xs font-extrabold flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {redoingIds.has(selectedDoc.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                    {selectedPackageDocuments.length > 1 ? 'Refazer todo o pacote' : 'Refazer assinatura'}
+                  </button>
+                </div>
               )}
 
               <div>

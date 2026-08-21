@@ -25,12 +25,16 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock3,
+  Copy,
+  ExternalLink,
   FileText,
   FileUp,
   Layers,
   Loader2,
   MessageSquare,
+  MoreHorizontal,
   Plus,
+
   QrCode,
   Scale,
   Search,
@@ -970,517 +974,695 @@ export function FluxoRapido({
   );
 }
 
-/* ═══════════════════════════ 2. INDICADORES ════════════════════════════ */
+/* ═══════════════════════════ 2. INDICADORES OPERACIONAIS ════════════════════════════ */
+
 
 /**
- * Cinco números. Cada um mostra "—" quando não há base suficiente: um painel
- * que exibe 0% de conclusão no primeiro dia mente para o advogado.
+ * Cinco indicadores exclusivamente OPERACIONAIS.
+ * Métricas de vaidade ("Tempo até assinar", "Taxa de conclusão: 100%") foram removidas.
+ * Todos os 5 cards são clicáveis para filtrar/navegar direto para os registros.
  */
 export function IndicadoresEscritorio({
   indicadores,
-  vencidos,
-  prazosHoje,
-  temAlgumPrazoCadastrado,
-  processosSemPrazo,
+  documentosAPrepararCount = 0,
+  pendenciasCount = 0,
+  vencidasCount = 0,
+  hojeCount = 0,
+  prazosSeteDiasCount = 0,
+  temAlgumPrazoCadastrado = false,
+  vencidos = 0,
+  prazosHoje = 0,
+  processosSemPrazo = 0,
+  onCardClick,
 }: {
   indicadores: IndicadoresPainel;
-  vencidos: number;
-  prazosHoje: number;
-  temAlgumPrazoCadastrado: boolean;
-  processosSemPrazo: number;
+  documentosAPrepararCount?: number;
+  pendenciasCount?: number;
+  vencidasCount?: number;
+  hojeCount?: number;
+  prazosSeteDiasCount?: number;
+  temAlgumPrazoCadastrado?: boolean;
+  vencidos?: number;
+  prazosHoje?: number;
+  processosSemPrazo?: number;
+  onCardClick?: (tipo: 'AGUARDANDO' | 'PREPARAR' | 'PENDENCIAS' | 'PRAZOS' | 'CONCLUIDOS') => void;
 }) {
+  const totalVencidos = vencidasCount || vencidos;
+  const totalHoje = hojeCount || prazosHoje;
+
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-      <Cartao className="p-4">
-        <div className="flex items-start justify-between">
-          <p className="text-[11px] font-bold text-slate-500">Aguardando assinatura</p>
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50">
-            <Clock3 className="h-3.5 w-3.5 text-amber-600" />
-          </span>
-        </div>
-        <p className="mt-2.5 text-[30px] font-black leading-none text-[#071B3A]">
-          {indicadores.aguardando}
-        </p>
-        <p className="mt-1.5 text-[11px]">
-          {indicadores.aguardandoParados > 0 ? (
-            <>
-              <span className="font-bold text-amber-600">
-                {indicadores.aguardandoParados} parada{indicadores.aguardandoParados === 1 ? '' : 's'}
-              </span>{' '}
-              <span className="text-slate-400">há mais de 2 dias</span>
-            </>
-          ) : (
-            <span className="text-slate-400">nenhuma parada</span>
-          )}
-        </p>
-      </Cartao>
+      {/* CARD 1 — AGUARDANDO ASSINATURA */}
+      <button
+        type="button"
+        onClick={() => onCardClick?.('AGUARDANDO')}
+        className="group text-left transition-all duration-200 hover:-translate-y-0.5 focus:outline-none"
+      >
+        <Cartao className="p-4 transition-all duration-150 group-hover:border-[#071B3A] group-hover:shadow-md">
+          <div className="flex items-start justify-between">
+            <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 group-hover:text-[#071B3A]">
+              Aguardando assinatura
+            </p>
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50 group-hover:bg-amber-100 transition-colors">
+              <Clock3 className="h-3.5 w-3.5 text-amber-600" />
+            </span>
+          </div>
+          <p className="mt-2.5 text-[30px] font-black leading-none text-[#071B3A]">
+            {indicadores.aguardando}
+          </p>
+          <p className="mt-1.5 text-[11px]">
+            {indicadores.aguardandoParados > 0 ? (
+              <>
+                <span className="font-bold text-amber-600">
+                  {indicadores.aguardandoParados} parada{indicadores.aguardandoParados === 1 ? '' : 's'}
+                </span>{' '}
+                <span className="text-slate-400">há mais de 2 dias</span>
+              </>
+            ) : (
+              <span className="text-slate-400">todas dentro do prazo</span>
+            )}
+          </p>
+        </Cartao>
+      </button>
 
-      <Cartao className="p-4">
-        <div className="flex items-start justify-between">
-          <p className="text-[11px] font-bold text-slate-500">Assinados no mês</p>
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-50">
-            <CheckCircle2 className="h-3.5 w-3.5 text-teal-600" />
-          </span>
-        </div>
-        <p className="mt-2.5 text-[30px] font-black leading-none text-[#071B3A]">
-          {indicadores.assinadosNoMes}
-        </p>
-        <p className="mt-1.5 text-[11px]">
-          {indicadores.variacaoMes !== null ? (
-            <>
-              <span
-                className={`font-bold ${
-                  indicadores.variacaoMes >= 0 ? 'text-teal-600' : 'text-amber-600'
-                }`}
-              >
-                {indicadores.variacaoMes >= 0 ? '+' : ''}
-                {indicadores.variacaoMes}
-              </span>{' '}
-              <span className="text-slate-400">vs. mês anterior</span>
-            </>
-          ) : (
-            <span className="text-slate-400">primeiro mês de histórico</span>
-          )}
-        </p>
-      </Cartao>
+      {/* CARD 2 — DOCUMENTOS A PREPARAR */}
+      <button
+        type="button"
+        onClick={() => onCardClick?.('PREPARAR')}
+        className="group text-left transition-all duration-200 hover:-translate-y-0.5 focus:outline-none"
+      >
+        <Cartao className="p-4 transition-all duration-150 group-hover:border-[#071B3A] group-hover:shadow-md">
+          <div className="flex items-start justify-between">
+            <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 group-hover:text-[#071B3A]">
+              Documentos a preparar
+            </p>
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 group-hover:bg-blue-100 transition-colors">
+              <FileText className="h-3.5 w-3.5 text-blue-600" />
+            </span>
+          </div>
+          <p className="mt-2.5 text-[30px] font-black leading-none text-[#071B3A]">
+            {documentosAPrepararCount}
+          </p>
+          <p className="mt-1.5 text-[11px] text-slate-400">
+            {documentosAPrepararCount > 0 ? (
+              <span className="font-bold text-blue-600">clientes sem documentos gerados</span>
+            ) : (
+              'nenhum documento pendente'
+            )}
+          </p>
+        </Cartao>
+      </button>
 
-      <Cartao className="p-4">
-        <div className="flex items-start justify-between">
-          <p className="text-[11px] font-bold text-slate-500">Prazos críticos</p>
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50">
-            <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
-          </span>
-        </div>
-        <p
-          className={`mt-2.5 text-[30px] font-black leading-none ${
-            vencidos + prazosHoje > 0 ? 'text-rose-600' : 'text-[#071B3A]'
-          }`}
-        >
-          {temAlgumPrazoCadastrado ? vencidos + prazosHoje : '—'}
-        </p>
-        <p className="mt-1.5 text-[11px] text-slate-400">
-          {temAlgumPrazoCadastrado
-            ? `${vencidos} vencido${vencidos === 1 ? '' : 's'} · ${prazosHoje} vence${prazosHoje === 1 ? '' : 'm'} hoje`
-            : `${processosSemPrazo} processo(s) sem data`}
-        </p>
-      </Cartao>
+      {/* CARD 3 — AÇÕES / PENDÊNCIAS */}
+      <button
+        type="button"
+        onClick={() => onCardClick?.('PENDENCIAS')}
+        className="group text-left transition-all duration-200 hover:-translate-y-0.5 focus:outline-none"
+      >
+        <Cartao className="p-4 transition-all duration-150 group-hover:border-[#071B3A] group-hover:shadow-md">
+          <div className="flex items-start justify-between">
+            <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 group-hover:text-[#071B3A]">
+              Ações / Pendências
+            </p>
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50 group-hover:bg-rose-100 transition-colors">
+              <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
+            </span>
+          </div>
+          <p
+            className={`mt-2.5 text-[30px] font-black leading-none ${
+              totalVencidos + totalHoje > 0 ? 'text-rose-600' : 'text-[#071B3A]'
+            }`}
+          >
+            {pendenciasCount}
+          </p>
+          <p className="mt-1.5 text-[11px] text-slate-400">
+            {totalVencidos > 0 || totalHoje > 0 ? (
+              <>
+                <span className="font-bold text-rose-600">{totalVencidos} vencidas</span>
+                <span className="text-slate-400"> · {totalHoje} para hoje</span>
+              </>
+            ) : pendenciasCount > 0 ? (
+              `${pendenciasCount} pendência(s) em dia`
+            ) : (
+              'nenhuma pendência aberta'
+            )}
+          </p>
 
-      <Cartao className="p-4">
-        <div className="flex items-start justify-between">
-          <p className="text-[11px] font-bold text-slate-500">Tempo até assinar</p>
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50">
-            <Send className="h-3.5 w-3.5 text-indigo-600" />
-          </span>
-        </div>
-        <p className="mt-2.5 text-[30px] font-black leading-none text-[#071B3A]">
-          {indicadores.tempoMedioMinutos !== null
-            ? textoDuracao(indicadores.tempoMedioMinutos)
-            : '—'}
-        </p>
-        <p className="mt-1.5 text-[11px] text-slate-400">
-          {indicadores.tempoMedioMinutos !== null
-            ? 'do envio à assinatura, mediana'
-            : 'precisa de 3 assinaturas medidas'}
-        </p>
-      </Cartao>
+        </Cartao>
+      </button>
 
-      <Cartao className="p-4">
-        <div className="flex items-start justify-between">
-          <p className="text-[11px] font-bold text-slate-500">Taxa de conclusão</p>
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100">
-            <TrendingUp className="h-3.5 w-3.5 text-slate-500" />
-          </span>
-        </div>
-        <p className="mt-2.5 text-[30px] font-black leading-none text-[#071B3A]">
-          {indicadores.taxaConclusao !== null ? `${indicadores.taxaConclusao}%` : '—'}
-        </p>
-        <p className="mt-1.5 text-[11px] text-slate-400">
-          {indicadores.taxaConclusao !== null
-            ? 'dos envios são assinados'
-            : `precisa de 5 envios encerrados (tem ${indicadores.totalAvaliadoTaxa})`}
-        </p>
-      </Cartao>
+      {/* CARD 4 — PRAZOS PRÓXIMOS */}
+      <button
+        type="button"
+        onClick={() => onCardClick?.('PRAZOS')}
+        className="group text-left transition-all duration-200 hover:-translate-y-0.5 focus:outline-none"
+      >
+        <Cartao className="p-4 transition-all duration-150 group-hover:border-[#071B3A] group-hover:shadow-md">
+          <div className="flex items-start justify-between">
+            <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 group-hover:text-[#071B3A]">
+              Prazos próximos
+            </p>
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 group-hover:bg-indigo-100 transition-colors">
+              <Scale className="h-3.5 w-3.5 text-indigo-600" />
+            </span>
+          </div>
+          <p className="mt-2.5 text-[30px] font-black leading-none text-[#071B3A]">
+            {temAlgumPrazoCadastrado ? prazosSeteDiasCount : '—'}
+          </p>
+          <p className="mt-1.5 text-[11px] text-slate-400">
+            {temAlgumPrazoCadastrado ? (
+              prazosSeteDiasCount > 0 ? (
+                <span className="font-bold text-indigo-600">nos próximos 7 dias</span>
+              ) : (
+                'nenhum nos próx. 7 dias'
+              )
+            ) : (
+              'nenhum prazo cadastrado'
+            )}
+          </p>
+        </Cartao>
+      </button>
+
+      {/* CARD 5 — CONCLUÍDOS */}
+      <button
+        type="button"
+        onClick={() => onCardClick?.('CONCLUIDOS')}
+        className="group text-left transition-all duration-200 hover:-translate-y-0.5 focus:outline-none"
+      >
+        <Cartao className="p-4 transition-all duration-150 group-hover:border-[#071B3A] group-hover:shadow-md">
+          <div className="flex items-start justify-between">
+            <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 group-hover:text-[#071B3A]">
+              Concluídos
+            </p>
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-50 group-hover:bg-teal-100 transition-colors">
+              <CheckCircle2 className="h-3.5 w-3.5 text-teal-600" />
+            </span>
+          </div>
+          <p className="mt-2.5 text-[30px] font-black leading-none text-[#071B3A]">
+            {indicadores.assinadosNoMes}
+          </p>
+          <p className="mt-1.5 text-[11px]">
+            {indicadores.variacaoMes !== null ? (
+              <>
+                <span
+                  className={`font-bold ${
+                    indicadores.variacaoMes >= 0 ? 'text-teal-600' : 'text-amber-600'
+                  }`}
+                >
+                  {indicadores.variacaoMes >= 0 ? '+' : ''}
+                  {indicadores.variacaoMes}
+                </span>{' '}
+                <span className="text-slate-400">vs. mês anterior</span>
+              </>
+            ) : (
+              <span className="text-slate-400">neste mês</span>
+            )}
+          </p>
+        </Cartao>
+      </button>
     </div>
   );
 }
 
-/* ═════════════════════════ 3. ASSINATURAS ══════════════════════════════ */
+/* ═════════════════════════ 3. ASSINATURAS EM ANDAMENTO ══════════════════════════════ */
 
 /**
- * Uma linha = um ENVIO. Um kit de 3 peças aparece uma vez, não três — a
- * agregação acontece em painelExtra.derivarAssinaturasAndamento.
+ * Especializada exclusivamente no fluxo de assinaturas.
+ * Prioriza envios pendentes e parciais (0 de 6, 4 de 6).
+ * Inclui barras de progresso reais, identificação de quem falta assinar e menu contextual `...`.
  */
 export function CardAssinaturas({
   assinaturas,
   className = '',
+  onCobrar,
+  onCopiarLink,
+  onVerDocumento,
+  onVerCliente,
 }: {
   assinaturas: AssinaturaAndamento[];
   className?: string;
+  onCobrar?: (ass: AssinaturaAndamento) => void;
+  onCopiarLink?: (ass: AssinaturaAndamento) => void;
+  onVerDocumento?: (ass: AssinaturaAndamento) => void;
+  onVerCliente?: (clienteId: string) => void;
 }) {
+  const [mostrarConcluidas, setMostrarConcluidas] = useState(false);
+  const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
+
+  const pendentes = useMemo(
+    () => assinaturas.filter((a) => a.estado !== 'CONCLUIDO'),
+    [assinaturas]
+  );
+  const concluidas = useMemo(
+    () => assinaturas.filter((a) => a.estado === 'CONCLUIDO'),
+    [assinaturas]
+  );
+
   return (
     <Cartao className={`flex flex-col ${className}`}>
-      <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
+      <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
         <div className="flex items-center gap-2">
           <h3 className="text-[12px] font-black uppercase tracking-wide text-[#0B192C]">
-            Assinaturas
+            Assinaturas em Andamento
           </h3>
-          <span className="rounded-full bg-[#B68B1C] px-1.5 py-0.5 text-[9px] font-black text-white">
-            {assinaturas.length}
+          <span className="rounded-full bg-[#B68B1C] px-2 py-0.5 text-[10px] font-black text-white">
+            {pendentes.length}
           </span>
         </div>
-        <Link href="/documentos" className="text-[10px] font-bold text-[#B68B1C]">
+        <Link href="/documentos" className="text-[11px] font-bold text-[#B68B1C] hover:underline">
           Ver todas
         </Link>
       </div>
 
       <div className="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">
-        {assinaturas.length === 0 && (
-          <p className="px-5 py-8 text-center text-[11px] text-slate-400">
-            Nenhum envio em circulação. Use o fluxo rápido acima.
-          </p>
-        )}
-        {assinaturas.map((a) => (
-            <div key={a.id} className="px-4 py-2.5">
-              <div className="flex items-start gap-2.5">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-black text-slate-600">
-                  {a.iniciais}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate text-[12px] font-bold text-[#071B3A]">{a.cliente}</p>
-                    <span
-                      className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black uppercase ${
-                        a.estado === 'CONCLUIDO'
-                          ? 'bg-teal-50 text-teal-700'
-                          : a.estado === 'PARADO'
-                            ? 'bg-rose-50 text-rose-700'
-                            : 'bg-amber-50 text-amber-700'
-                      }`}
-                    >
-                      {a.assinados} de {a.total}
-                    </span>
-                  </div>
-                  <p className="mt-0.5 truncate text-[10.5px] text-slate-500">
-                    {a.titulo}
-                    {a.pecas > 1 ? ` · ${a.pecas} peças` : ''} ·{' '}
-                    {a.estado === 'CONCLUIDO' ? (
-                      'concluído'
-                    ) : a.estado === 'PARADO' ? (
-                      <span className="font-bold text-rose-600">
-                        parada há {a.diasDesdeEnvio} dias
-                      </span>
-                    ) : (
-                      `há ${a.diasDesdeEnvio} dia(s)`
-                    )}
-                  </p>
-                  <div className="mt-1.5 flex gap-[3px]">
-                    {Array.from({ length: a.total }).map((_, i) => (
+        {pendentes.length === 0 ? (
+          <div className="px-5 py-8 text-center space-y-2">
+            <CheckCircle2 className="h-7 w-7 text-teal-500 mx-auto" />
+            <p className="text-[12px] font-extrabold text-slate-800">
+              Nenhuma assinatura aguardando
+            </p>
+            <p className="text-[11px] text-slate-400">
+              Use o fluxo rápido no topo para enviar documentos.
+            </p>
+          </div>
+        ) : (
+          pendentes.map((a) => {
+            const faltamCount = Math.max(0, a.total - a.assinados);
+            const percentual = Math.round((a.assinados / Math.max(1, a.total)) * 100);
+
+            return (
+              <div key={a.id} className="relative px-4 py-3 hover:bg-slate-50/60 transition-colors">
+                <div className="flex items-start gap-2.5">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#071B3A] text-[11px] font-black text-[#D4AF37]">
+                    {a.iniciais}
+                  </span>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <button
+                        type="button"
+                        onClick={() => a.clienteId && onVerCliente?.(a.clienteId)}
+                        className="truncate text-[12.5px] font-extrabold text-[#071B3A] hover:text-[#B68B1C] text-left"
+                      >
+                        {a.cliente}
+                      </button>
                       <span
-                        key={i}
-                        className={`h-1.5 flex-1 rounded-full ${
-                          i < a.assinados ? 'bg-teal-500' : 'bg-slate-200'
+                        className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black uppercase ${
+                          a.estado === 'PARADO'
+                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                            : 'bg-amber-50 text-amber-700 border border-amber-200'
                         }`}
+                      >
+                        {a.assinados} de {a.total} ({percentual}%)
+                      </span>
+                    </div>
+
+                    <p className="mt-0.5 truncate text-[11px] text-slate-600 font-medium">
+                      {a.titulo}
+                      {a.pecas > 1 ? ` · ${a.pecas} peças` : ''}
+                    </p>
+
+                    <div className="mt-1 flex items-center justify-between text-[10px]">
+                      <span className="text-slate-400">
+                        {a.estado === 'PARADO' ? (
+                          <span className="font-bold text-rose-600">
+                            parada há {a.diasDesdeEnvio} dias
+                          </span>
+                        ) : (
+                          `enviado há ${a.diasDesdeEnvio} dia(s)`
+                        )}
+                      </span>
+                      {faltamCount > 0 && (
+                        <span className="font-bold text-slate-500">
+                          {faltamCount === 1 ? 'falta 1 assinatura' : `faltam ${faltamCount} assinaturas`}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Barra de progresso real */}
+                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className={`h-full rounded-full transition-all duration-300 ${
+                          a.estado === 'PARADO' ? 'bg-rose-500' : 'bg-teal-500'
+                        }`}
+                        style={{ width: `${percentual}%` }}
                       />
-                    ))}
+                    </div>
+                  </div>
+
+                  {/* Ações */}
+                  <div className="relative shrink-0 flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onCobrar?.(a)}
+                      className="rounded-lg bg-teal-600 hover:bg-teal-700 px-2.5 py-1.5 text-[10.5px] font-extrabold text-white transition-colors"
+                    >
+                      Cobrar
+                    </button>
+
+                    {/* Botão Context Menu (...) */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setMenuAbertoId(menuAbertoId === a.id ? null : a.id)}
+                        className="p-1 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-colors"
+                        aria-label="Mais opções"
+                      >
+                        ⋯
+                      </button>
+
+                      {menuAbertoId === a.id && (
+                        <div className="absolute right-0 z-30 mt-1 w-40 rounded-xl bg-white p-1 shadow-lg border border-slate-200 text-[11px] font-semibold text-slate-700">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMenuAbertoId(null);
+                              onVerDocumento?.(a);
+                            }}
+                            className="w-full text-left px-2.5 py-1.5 hover:bg-slate-50 rounded-lg flex items-center gap-1.5"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-slate-400" /> Abrir documento
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMenuAbertoId(null);
+                              onCopiarLink?.(a);
+                            }}
+                            className="w-full text-left px-2.5 py-1.5 hover:bg-slate-50 rounded-lg flex items-center gap-1.5"
+                          >
+                            <Copy className="w-3.5 h-3.5 text-slate-400" /> Copiar link
+                          </button>
+                          {a.clienteId && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMenuAbertoId(null);
+                                onVerCliente?.(a.clienteId);
+                              }}
+                              className="w-full text-left px-2.5 py-1.5 hover:bg-slate-50 rounded-lg flex items-center gap-1.5"
+                            >
+                              <UserRound className="w-3.5 h-3.5 text-slate-400" /> Ver cliente
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <Link
-                  href="/documentos"
-                  className={`shrink-0 rounded-lg px-2.5 py-1.5 text-[10px] font-bold ${
-                    a.estado === 'CONCLUIDO'
-                      ? 'border border-slate-200 text-slate-700'
-                      : 'bg-teal-600 text-white'
-                  }`}
-                >
-                  {a.estado === 'CONCLUIDO' ? 'Baixar' : 'Cobrar'}
-                </Link>
               </div>
-            </div>
-          ))}
+            );
+          })
+        )}
       </div>
+
+      {/* ÁREA INFERIOR SECUNDÁRIA — Concluídas Recentemente */}
+      {concluidas.length > 0 && (
+        <div className="border-t border-slate-100 bg-slate-50/50 p-2.5">
+          <button
+            type="button"
+            onClick={() => setMostrarConcluidas((v) => !v)}
+            className="w-full flex items-center justify-between text-[11px] font-bold text-slate-600 hover:text-slate-900 px-1"
+          >
+            <span>Ver {concluidas.length} concluída(s) recentemente</span>
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${mostrarConcluidas ? 'rotate-180' : ''}`} />
+          </button>
+
+          {mostrarConcluidas && (
+            <div className="mt-2 space-y-1.5 max-h-36 overflow-y-auto divide-y divide-slate-100 pt-1">
+              {concluidas.map((c) => (
+                <div key={c.id} className="pt-1.5 flex items-center justify-between text-[11px]">
+                  <span className="truncate font-semibold text-slate-800">{c.cliente} — {c.titulo}</span>
+                  <span className="shrink-0 text-[10px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded">
+                    Concluído
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </Cartao>
   );
 }
 
-/* ═══════════════ 4. CENTRAL DE ACOMPANHAMENTO (por caso) ═══════════════ */
+/* ═══════════════ 4. CENTRAL DE ACOMPANHAMENTO (QUEUE OPERACIONAL) ═══════════════ */
+
+export interface ItemCentralAcompanhamento {
+  id: string;
+  tipoResponsabilidade: 'NOS' | 'CLIENTE' | 'TERCEIRO' | 'FUTURO';
+  rotuloResponsabilidade: string;
+  cliente: string;
+  clienteId?: string;
+  titulo: string;
+  detalhe: string;
+  badgeData?: string;
+  urgente?: boolean;
+  acaoLabel: string;
+  onAcao?: () => void;
+}
 
 /**
- * Tudo que precisa de acompanhamento vive aqui, em duas abas:
- *
- *  - Avisos: duas origens marcadas na tela — VOCÊ (escrito à mão, ex.
- *    "atualizar o CadÚnico") e SISTEMA (derivado dos dados). O advogado precisa
- *    saber quem afirmou o quê antes de agir.
- *  - Intimações: as publicações do DJEN por número de OAB. Ficam nesta central
- *    porque são exatamente isso — caso que exige providência —, e não uma
- *    listagem à parte.
- *
- * Os avisos manuais ficam no navegador. Não é o destino final — quando virar
- * tabela no banco, só a leitura/gravação muda, o bloco continua igual.
+ * Central de Acompanhamento operando como Fila de Gestão do Escritório.
+ * Organizada em 4 Abas Operacionais:
+ *  - PARA FAZER (depende de nós)
+ *  - AGUARDANDO (depende de cliente, órgão ou terceiro)
+ *  - EM BREVE (prazos e acompanhamentos futuros)
+ *  - CONCLUÍDOS (histórico recente)
  */
 export function AvisosAcompanhamentos({
   avisosSistema,
   clientes,
-  titulo = 'Avisos e acompanhamentos',
-  subtitulo = 'O que você anotou e o que o sistema achou',
+  pendencies = [],
+  titulo = 'Central de Acompanhamento',
+  subtitulo = 'O que está acontecendo e qual é o próximo passo',
   className = '',
+  onNovaPendencia,
+  onVerCliente,
 }: {
   avisosSistema: Aviso[];
   clientes: ClientePainel[];
+  pendencies?: any[];
   titulo?: string;
   subtitulo?: string;
   className?: string;
+  onNovaPendencia?: () => void;
+  onVerCliente?: (clienteId: string) => void;
 }) {
-  const [aba, setAba] = useState<'AVISOS' | 'INTIMACOES'>('AVISOS');
-  const [avisosManuais, setAvisosManuais] = useState<AvisoManual[]>([]);
-  const [form, setForm] = useState(false);
-  const [novo, setNovo] = useState({
-    titulo: '',
-    clienteId: '',
-    detalhe: '',
-    acompanharEm: hojeIso(),
-  });
-  const agora = useMemo(() => new Date(), []);
+  const [aba, setAba] = useState<'FAZER' | 'AGUARDANDO' | 'EM_BREVE' | 'CONCLUIDOS'>('FAZER');
 
-  useEffect(() => {
-    setAvisosManuais(ordenarAvisosManuais(lerAvisosManuais()));
+  // Transforma pendências do banco + avisos de sistema no modelo operacional
+  const itensParaFazer = useMemo(() => {
+    const itens: ItemCentralAcompanhamento[] = [];
+
+    // Pendências manuais sem resolução
+    pendencies
+      .filter((p) => !p.resolvedAt)
+      .forEach((p) => {
+        itens.push({
+          id: p.id,
+          tipoResponsabilidade: 'NOS',
+          rotuloResponsabilidade: 'DEPENDE DE NÓS',
+          cliente: p.client?.name || 'Escritório',
+          clienteId: p.clientId || '',
+          titulo: p.description,
+          detalhe: p.priority === 'URGENTE' ? 'Prioridade urgente' : 'Ação pendente do escritório',
+
+          urgente: p.priority === 'URGENTE' || p.priority === 'ALTA',
+          acaoLabel: 'Concluir',
+        });
+      });
+
+    // Avisos de sistema que exigem ação do escritório (ex: abrir processo, completar cadastro)
+    avisosSistema.forEach((a) => {
+      itens.push({
+        id: a.id,
+        tipoResponsabilidade: 'NOS',
+        rotuloResponsabilidade: 'DEPENDE DE NÓS',
+        cliente: a.titulo,
+        titulo: a.detalhe,
+        detalhe: 'Identificado pelo sistema',
+        urgente: a.nivel === 'CRITICO',
+        acaoLabel: a.acao || 'Ver',
+      });
+    });
+
+    return itens;
+  }, [pendencies, avisosSistema]);
+
+  const itensAguardando = useMemo(() => {
+    const itens: ItemCentralAcompanhamento[] = [];
+    // Serão alimentados via documentos/assinaturas pendentes do escritório
+    return itens;
   }, []);
 
-  function salvar() {
-    const t = novo.titulo.trim();
-    if (!t) return;
-    const cli = clientes.find((c) => c.id === novo.clienteId);
-    const lista = ordenarAvisosManuais([
-      ...avisosManuais,
-      {
-        id: `m-${Date.now()}`,
-        titulo: t,
-        cliente: cli?.name || '',
-        clienteId: novo.clienteId,
-        detalhe: novo.detalhe.trim(),
-        acompanharEm: novo.acompanharEm,
-        criadoEm: new Date().toISOString(),
-      },
-    ]);
-    setAvisosManuais(lista);
-    gravarAvisosManuais(lista);
-    setNovo({ titulo: '', clienteId: '', detalhe: '', acompanharEm: hojeIso() });
-    setForm(false);
-  }
+  const itensConcluidos = useMemo<ItemCentralAcompanhamento[]>(() => {
+    return pendencies
+      .filter((p) => Boolean(p.resolvedAt))
+      .map((p) => ({
+        id: p.id,
+        tipoResponsabilidade: 'NOS' as const,
+        rotuloResponsabilidade: 'CONCLUÍDO',
+        cliente: p.client?.name || 'Escritório',
+        clienteId: p.clientId || '',
+        titulo: p.description,
+        detalhe: `Resolvido em ${p.resolvedAt ? new Date(p.resolvedAt).toLocaleDateString('pt-BR') : ''}`,
+        acaoLabel: 'Resolvido',
+      }));
+  }, [pendencies]);
 
-  function remover(id: string) {
-    const lista = avisosManuais.filter((a) => a.id !== id);
-    setAvisosManuais(lista);
-    gravarAvisosManuais(lista);
-  }
 
-  const total = avisosManuais.length + avisosSistema.length;
+  const itensExibidos = useMemo(() => {
+    if (aba === 'FAZER') return itensParaFazer;
+    if (aba === 'AGUARDANDO') return itensAguardando;
+    if (aba === 'CONCLUIDOS') return itensConcluidos;
+    return [];
+  }, [aba, itensParaFazer, itensAguardando, itensConcluidos]);
 
   return (
     <Cartao className={`flex flex-col ${className}`}>
-      <div className="border-b border-slate-100 px-4 pt-2.5">
+      <div className="border-b border-slate-100 px-4 pt-3 pb-2">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h3 className="truncate text-[12px] font-black uppercase tracking-wide text-[#0B192C]">
               {titulo}
             </h3>
-            <p className="mt-0.5 truncate text-[9.5px] font-medium text-slate-400">{subtitulo}</p>
+            <p className="mt-0.5 truncate text-[10px] font-medium text-slate-400">{subtitulo}</p>
           </div>
-          {aba === 'AVISOS' && (
-            <button
-              type="button"
-              onClick={() => setForm((v) => !v)}
-              className="flex shrink-0 items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1.5 text-[10.5px] font-bold text-slate-600 transition hover:bg-[#071B3A] hover:text-white"
-            >
-              <Plus className="h-3 w-3" />
-              Novo aviso
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => onNovaPendencia?.()}
+            className="flex shrink-0 items-center gap-1 rounded-lg bg-[#071B3A] hover:bg-[#122c52] px-2.5 py-1.5 text-[11px] font-bold text-white transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5 text-[#D4AF37]" />
+            Novo aviso
+          </button>
         </div>
 
-        <div className="mt-2 flex items-center gap-4">
+        {/* Abas Operacionais */}
+        <div className="mt-3 flex items-center gap-3 border-b border-slate-100 text-[11.5px] font-bold">
           <button
             type="button"
-            onClick={() => setAba('AVISOS')}
-            className={`flex items-center gap-1.5 border-b-2 px-0.5 pb-1.5 text-[11.5px] ${
-              aba === 'AVISOS'
-                ? 'border-[#B68B1C] font-extrabold text-[#071B3A]'
-                : 'border-transparent font-bold text-slate-400 hover:text-slate-600'
+            onClick={() => setAba('FAZER')}
+            className={`pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${
+              aba === 'FAZER'
+                ? 'border-[#B68B1C] text-[#071B3A] font-extrabold'
+                : 'border-transparent text-slate-400 hover:text-slate-700'
             }`}
           >
-            Avisos
+            Para Fazer
             <span
-              className={`rounded-full px-1.5 py-0.5 text-[9px] font-black ${
-                aba === 'AVISOS' ? 'bg-[#B68B1C] text-white' : 'bg-slate-100 text-slate-500'
+              className={`rounded-full px-1.5 py-0.2 text-[9.5px] font-black ${
+                aba === 'FAZER' ? 'bg-[#071B3A] text-white' : 'bg-slate-100 text-slate-500'
               }`}
             >
-              {total}
+              {itensParaFazer.length}
             </span>
           </button>
+
           <button
             type="button"
-            onClick={() => setAba('INTIMACOES')}
-            className={`flex items-center gap-1.5 border-b-2 px-0.5 pb-1.5 text-[11.5px] ${
-              aba === 'INTIMACOES'
-                ? 'border-[#B68B1C] font-extrabold text-[#071B3A]'
-                : 'border-transparent font-bold text-slate-400 hover:text-slate-600'
+            onClick={() => setAba('AGUARDANDO')}
+            className={`pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${
+              aba === 'AGUARDANDO'
+                ? 'border-[#B68B1C] text-[#071B3A] font-extrabold'
+                : 'border-transparent text-slate-400 hover:text-slate-700'
             }`}
           >
-            Intimações
-            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-slate-500">
-              em breve
+            Aguardando
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setAba('EM_BREVE')}
+            className={`pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${
+              aba === 'EM_BREVE'
+                ? 'border-[#B68B1C] text-[#071B3A] font-extrabold'
+                : 'border-transparent text-slate-400 hover:text-slate-700'
+            }`}
+          >
+            Em Breve
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setAba('CONCLUIDOS')}
+            className={`pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${
+              aba === 'CONCLUIDOS'
+                ? 'border-[#B68B1C] text-[#071B3A] font-extrabold'
+                : 'border-transparent text-slate-400 hover:text-slate-700'
+            }`}
+          >
+            Concluídos
+            <span className="rounded-full bg-slate-100 px-1.5 py-0.2 text-[9.5px] font-black text-slate-500">
+              {itensConcluidos.length}
             </span>
           </button>
         </div>
       </div>
 
-      {aba === 'INTIMACOES' && (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2.5 px-5 py-6 text-center">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
-            <Scale className="h-4 w-4 text-slate-400" />
-          </span>
-          <p className="text-[12px] font-extrabold text-[#071B3A]">
-            Intimações do DJEN ainda não conectadas
-          </p>
-          <p className="max-w-xs text-[10.5px] leading-relaxed text-slate-500">
-            O Diário de Justiça Eletrônico Nacional publica por número de OAB. Informando a OAB do
-            escritório, cada publicação aparece aqui já vinculada ao cliente pelo número do processo,
-            com um clique para virar prazo.
-          </p>
-          <Link
-            href="/configuracoes"
-            className="rounded-lg bg-[#071B3A] px-3 py-1.5 text-[11px] font-bold text-white"
-          >
-            Informar OAB
-          </Link>
-        </div>
-      )}
-
-      {aba === 'AVISOS' && form && (
-        <div className="space-y-2 border-b border-slate-100 bg-slate-50/70 px-4 py-3">
-          <input
-            value={novo.titulo}
-            onChange={(e) => setNovo({ ...novo, titulo: e.target.value })}
-            placeholder="Ex.: atualizar o CadÚnico"
-            className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#B68B1C]"
-          />
-          <div className="flex gap-2">
-            <select
-              value={novo.clienteId}
-              onChange={(e) => setNovo({ ...novo, clienteId: e.target.value })}
-              className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11.5px] outline-none focus:border-[#B68B1C]"
-            >
-              <option value="">Cliente (opcional)</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-            <input
-              type="date"
-              value={novo.acompanharEm}
-              onChange={(e) => setNovo({ ...novo, acompanharEm: e.target.value })}
-              className="shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11.5px] outline-none focus:border-[#B68B1C]"
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setForm(false)}
-              className="px-2.5 py-1.5 text-[11px] font-bold text-slate-500"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={salvar}
-              disabled={!novo.titulo.trim()}
-              className="rounded-lg bg-[#071B3A] px-3 py-1.5 text-[11px] font-bold text-white disabled:opacity-40"
-            >
-              Salvar
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div
-        className={`min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto ${
-          aba === 'AVISOS' ? '' : 'hidden'
-        }`}
-      >
-        {avisosManuais.map((a) => {
-          const q = textoAcompanhamento(a.acompanharEm, agora);
-          return (
-            <div key={a.id} className="flex items-start gap-2 px-4 py-2 hover:bg-slate-50/70">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="shrink-0 rounded bg-[#071B3A] px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wide text-[#D4AF37]">
-                    você
-                  </span>
-                  <p className="truncate text-[11.5px] font-extrabold text-[#071B3A]">{a.titulo}</p>
-                </div>
-                <p className="mt-0.5 truncate text-[10px] text-slate-500">
-                  {[a.cliente, a.detalhe].filter(Boolean).join(' · ') || 'sem cliente vinculado'}
-                </p>
-                <p
-                  className={`mt-0.5 text-[10px] font-bold ${
-                    q.atrasado ? 'text-rose-600' : 'text-slate-500'
-                  }`}
-                >
-                  {q.texto}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => remover(a.id)}
-                className="shrink-0 text-[10px] font-extrabold text-slate-300 hover:text-rose-600"
-              >
-                Concluir
-              </button>
-            </div>
-          );
-        })}
-
-        {avisosSistema.map((a) => (
-          <div key={a.id} className="flex items-start gap-2 px-4 py-2 hover:bg-slate-50/70">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wide text-slate-500">
-                  sistema
-                </span>
-                <p className="truncate text-[11.5px] font-extrabold text-[#071B3A]">{a.titulo}</p>
-              </div>
-              <p className="mt-0.5 truncate text-[10px] text-slate-500">{a.detalhe}</p>
-              <p
-                className={`mt-0.5 text-[10px] font-bold ${
-                  a.nivel === 'CRITICO'
-                    ? 'text-rose-600'
-                    : a.nivel === 'ATENCAO'
-                      ? 'text-amber-600'
-                      : 'text-slate-500'
-                }`}
-              >
-                {a.nivel === 'CRITICO'
-                  ? 'resolver hoje'
-                  : a.nivel === 'ATENCAO'
-                    ? 'acompanhar'
-                    : 'pendente'}
-              </p>
-            </div>
-            <Link href={a.destino} className="shrink-0 text-[10px] font-extrabold text-[#B68B1C]">
-              {a.acao}
-            </Link>
-          </div>
-        ))}
-
-        {total === 0 && (
-          <div className="flex flex-1 flex-col items-center justify-center px-4 py-8 text-center">
+      {/* Fila de Itens */}
+      <div className="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">
+        {itensExibidos.length === 0 ? (
+          <div className="flex flex-1 flex-col items-center justify-center px-4 py-8 text-center space-y-1">
             <CheckCircle2 className="h-6 w-6 text-teal-500" />
-            <p className="mt-2 text-[11px] font-bold text-teal-900">Nada pendente.</p>
-            <p className="mt-0.5 text-[10px] text-slate-500">
-              Use “Novo aviso” para anotar o que precisa acompanhar.
+            <p className="text-[11.5px] font-bold text-slate-800">
+              {aba === 'FAZER'
+                ? 'Tudo em dia nesta fila.'
+                : aba === 'AGUARDANDO'
+                ? 'Nenhum item aguardando terceiro.'
+                : aba === 'EM_BREVE'
+                ? 'Nenhum acompanhamento futuro agendado.'
+                : 'Nenhum item concluído recentemente.'}
+            </p>
+            <p className="text-[10.5px] text-slate-400">
+              Use o botão "+ Novo aviso" para registrar pendências do escritório.
             </p>
           </div>
+        ) : (
+          itensExibidos.map((item) => (
+            <div key={item.id} className="flex items-start gap-2.5 px-4 py-2.5 hover:bg-slate-50/70 transition-colors">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`shrink-0 rounded px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wide ${
+                      item.tipoResponsabilidade === 'NOS'
+                        ? 'bg-[#071B3A] text-white'
+                        : item.tipoResponsabilidade === 'CLIENTE'
+                        ? 'bg-amber-100 text-amber-800'
+                        : item.tipoResponsabilidade === 'TERCEIRO'
+                        ? 'bg-purple-100 text-purple-800'
+                        : 'bg-teal-100 text-teal-800'
+                    }`}
+                  >
+                    {item.rotuloResponsabilidade}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => item.clienteId && onVerCliente?.(item.clienteId)}
+                    className="truncate text-[12px] font-extrabold text-[#071B3A] hover:text-[#B68B1C] text-left"
+                  >
+                    {item.cliente}
+                  </button>
+                </div>
+
+                <p className="mt-0.5 text-[11px] font-semibold text-slate-700 leading-snug">
+                  {item.titulo}
+                </p>
+                <p className="mt-0.5 text-[10px] text-slate-400 truncate">
+                  {item.detalhe}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => item.onAcao?.()}
+                className="shrink-0 text-[10.5px] font-bold text-[#B68B1C] hover:underline pt-0.5"
+              >
+                {item.acaoLabel}
+              </button>
+            </div>
+          ))
         )}
       </div>
     </Cartao>
@@ -1562,3 +1744,4 @@ export function KitsMaisUsados({
     </Cartao>
   );
 }
+
