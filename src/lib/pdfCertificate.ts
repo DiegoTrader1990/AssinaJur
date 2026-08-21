@@ -177,12 +177,30 @@ async function embedBase64Image(
       // qualidade visual perceptível, sem perder nitidez para fins de evidência. PNG (sem
       // perdas) é desnecessário para fotos e foi o que deixava o certificado final na casa
       // de 10 a 15 MB por documento.
-      bytes = Buffer.from(await sharp(bytes)
-        .rotate()
-        .resize(cover.width, cover.height, { fit: 'cover', position: 'top' })
-        .jpeg({ quality: 85, mozjpeg: true })
-        .toBuffer());
-      return await pdfDoc.embedJpg(bytes);
+      //
+      // IMPORTANTE: o pdf-lib só sabe ler JPEG "baseline" - se o encoder (mozjpeg, em
+      // especial) decidir gravar um JPEG progressivo para alguma foto específica,
+      // pdfDoc.embedJpg lança erro para ESSA imagem e ela sumia silenciosamente do
+      // certificado (foi o que aconteceu com 2 das 3 selfies da Nerci: só a primeira
+      // "pegou"). Por isso, nunca dependemos de uma única tentativa: se o JPEG
+      // otimizado falhar ao ser incorporado, tentamos de novo sem o mozjpeg (forçando
+      // baseline) e, em último caso, caímos de volta no PNG original - a foto NUNCA
+      // pode sumir do certificado só porque a compressão mais agressiva falhou.
+      const resized = sharp(bytes).rotate().resize(cover.width, cover.height, { fit: 'cover', position: 'top' });
+      try {
+        const jpegBytes = Buffer.from(await resized.clone().jpeg({ quality: 85, mozjpeg: true }).toBuffer());
+        return await pdfDoc.embedJpg(jpegBytes);
+      } catch (mozErr) {
+        console.warn('JPEG (mozjpeg) falhou ao incorporar no certificado, tentando JPEG padrão:', mozErr);
+      }
+      try {
+        const jpegBytes = Buffer.from(await resized.clone().jpeg({ quality: 85, progressive: false, mozjpeg: false }).toBuffer());
+        return await pdfDoc.embedJpg(jpegBytes);
+      } catch (jpegErr) {
+        console.warn('JPEG padrão também falhou, caindo para PNG (sem perdas) nesta foto:', jpegErr);
+      }
+      const pngBytes = Buffer.from(await resized.clone().png({ compressionLevel: 9, adaptiveFiltering: true }).toBuffer());
+      return await pdfDoc.embedPng(pngBytes);
     }
     return await pdfDoc.embedJpg(bytes);
   } catch (err) {
