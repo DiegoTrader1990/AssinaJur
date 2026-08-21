@@ -806,61 +806,59 @@ export async function generateFinalPdfCertificate(documentId: string) {
       });
       timelinePage.drawText(`Código de Autenticidade: ${verificationCode}`, { x: CX, y: 718, size: 8, font: mono, color: muted });
 
-      const dateColX = CX + 6;
-      const dateColWidth = 106;
-      const eventColX = dateColX + dateColWidth + 8;
-      const eventColWidth = 126;
-      const descColX = eventColX + eventColWidth + 8;
-      const descColWidth = CR - descColX - 6;
-      const headerHeight = 18;
+      // Linha do tempo vertical (trilho fino + nós verdes), igual à seção 7
+      // do certificado completo - sem tabela, sem grade, papel timbrado do
+      // drawFrame por baixo sem nenhum retângulo de fundo extra.
+      const railX = CX + 9;
+      const textX = railX + 20;
+      const textWidth = CR - textX - 4;
 
-      const headerY = 690;
-      timelinePage.drawRectangle({ x: CX, y: headerY - 4, width: CW, height: headerHeight, color: navy });
-      timelinePage.drawText('DATA E HORA (BRT)', { x: dateColX, y: headerY, size: 7, font: bold, color: rgb(1, 1, 1) });
-      timelinePage.drawText('EVENTO', { x: eventColX, y: headerY, size: 7, font: bold, color: rgb(1, 1, 1) });
-      timelinePage.drawText('DESCRIÇÃO', { x: descColX, y: headerY, size: 7, font: bold, color: rgb(1, 1, 1) });
+      timelinePage.drawLine({ start: { x: CX, y: 696 }, end: { x: CR, y: 696 }, thickness: 1.1, color: gold });
 
-      let rowY = headerY - 4;
+      let rowY = 690;
+      let prevDotY: number | null = null;
       const rows = publicEvents.map((ev) => {
         const dateText = formatBrasiliaDateTime(ev.createdAt, true).replace(' (Horário de Brasília — UTC−3)', '');
         const eventLabel = PUBLIC_EVENT_LABELS[ev.eventType] || ev.eventType;
-        const dateLines = wrapTextToWidth(dateText, mono, 7, dateColWidth - 8);
-        const eventLines = wrapTextToWidth(eventLabel, bold, 7.2, eventColWidth - 8);
-        const descLines = wrapTextToWidth(ev.description, regular, 7, descColWidth - 6);
-        const lineCount = Math.max(1, dateLines.length, eventLines.length, descLines.length);
-        const height = Math.max(26, 15 + lineCount * 9.5);
-        return { dateLines, eventLines, descLines, height };
+        const titleLines = wrapTextToWidth(eventLabel, bold, 8.4, textWidth);
+        const descLines = wrapTextToWidth(ev.description, regular, 7.4, textWidth);
+        const height = 10 + 9.5 + titleLines.length * 11 + descLines.length * 9.8 + 12;
+        return { dateText, titleLines, descLines, height };
       });
 
-      rows.forEach((row, index) => {
+      rows.forEach((row) => {
         rowY -= row.height;
-        if (index % 2 === 1) {
-          timelinePage.drawRectangle({ x: CX, y: rowY, width: CW, height: row.height, color: panelBg });
+
+        const timeY = rowY + row.height - 10;
+        const titleY = timeY - 11;
+        const dotY = titleY + 2.5;
+
+        if (prevDotY !== null) {
+          timelinePage.drawLine({
+            start: { x: railX, y: prevDotY - 3 },
+            end: { x: railX, y: dotY + 3 },
+            thickness: 1,
+            color: rgb(0.78, 0.82, 0.78),
+          });
         }
-        let dateY = rowY + row.height - 13;
-        for (const line of row.dateLines) {
-          timelinePage.drawText(line, { x: dateColX, y: dateY, size: 7, font: mono, color: text });
-          dateY -= 9.5;
+        timelinePage.drawCircle({ x: railX, y: dotY, size: 3, color: green });
+        prevDotY = dotY;
+
+        timelinePage.drawText(row.dateText, { x: textX, y: timeY, size: 6.8, font: mono, color: muted });
+
+        let titleLineY = titleY;
+        for (const line of row.titleLines) {
+          timelinePage.drawText(line, { x: textX, y: titleLineY, size: 8.4, font: bold, color: navy });
+          titleLineY -= 11;
         }
 
-        let eventY = rowY + row.height - 13;
-        for (const line of row.eventLines) {
-          timelinePage.drawText(line, { x: eventColX, y: eventY, size: 7.2, font: bold, color: navy });
-          eventY -= 9.5;
-        }
-
-        let descY = rowY + row.height - 13;
+        let descLineY = titleLineY - 1.5;
         for (const line of row.descLines) {
-          timelinePage.drawText(line, { x: descColX, y: descY, size: 7, font: regular, color: text });
-          descY -= 9.5;
+          timelinePage.drawText(line, { x: textX, y: descLineY, size: 7.4, font: regular, color: text });
+          descLineY -= 9.8;
         }
-
-        timelinePage.drawLine({ start: { x: eventColX - 4, y: rowY }, end: { x: eventColX - 4, y: rowY + row.height }, thickness: 0.35, color: panelBorder });
-        timelinePage.drawLine({ start: { x: descColX - 4, y: rowY }, end: { x: descColX - 4, y: rowY + row.height }, thickness: 0.35, color: panelBorder });
-        timelinePage.drawLine({ start: { x: CX, y: rowY }, end: { x: CR, y: rowY }, thickness: 0.5, color: panelBorder });
       });
 
-      timelinePage.drawRectangle({ x: CX, y: 20, width: CW, height: 34, color: rgb(0.96, 0.97, 0.99), opacity: 0.4 });
       timelinePage.drawText(`Trilha de auditoria concluída com ${publicEvents.length} evento(s) registrado(s). MP 2.200-2/2001 | Lei 14.063/2020.`, { x: CX, y: 34, size: 6.6, font: italic, color: muted });
     }
 
@@ -1335,19 +1333,21 @@ export async function generateFinalPdfCertificate(documentId: string) {
   y = validationY - 14;
 
   // SEÇÃO DE TRILHA PÚBLICA DE EVENTOS (SEM OTP)
+  // Linha do tempo vertical (trilho fino + nós verdes) em vez da tabela com
+  // grade de antes - sem colunas, sem zebra, sem linhas de célula. O papel
+  // timbrado (marca d'água, brasão, moldura) continua vindo do drawFrame /
+  // da página reaproveitada do certificado - nada aqui desenha um fundo
+  // próprio por cima dele.
   if (publicEvents.length > 0) {
-    const dateColX = CX + 6;
-    const dateColWidth = 106;
-    const eventColX = dateColX + dateColWidth + 8;
-    const eventColWidth = 126;
-    const descColX = eventColX + eventColWidth + 8;
-    const descColWidth = CR - descColX - 6;
-    const headerHeight = 18;
+    const railX = CX + 9;
+    const textX = railX + 20;
+    const textWidth = CR - textX - 4;
     const tableBottom = 60;
 
     let timelinePage: PDFPage | null = null;
     let rowY = 0;
     let timelinePageCount = 0;
+    let prevDotY: number | null = null;
 
     const startTimelinePage = () => {
       timelinePageCount += 1;
@@ -1381,22 +1381,17 @@ export async function generateFinalPdfCertificate(documentId: string) {
           introY -= 9.5;
         }
       }
-      introY -= 6;
+      introY -= 10;
 
-      const headerY = introY - 6;
-      p.drawLine({ start: { x: CX, y: headerY + headerHeight - 4 }, end: { x: CR, y: headerY + headerHeight - 4 }, thickness: 1.1, color: gold });
-      p.drawText('DATA E HORA (BRT)', { x: dateColX, y: headerY, size: 7, font: bold, color: navy });
-      p.drawText('EVENTO', { x: eventColX, y: headerY, size: 7, font: bold, color: navy });
-      p.drawText('DESCRIÇÃO', { x: descColX, y: headerY, size: 7, font: bold, color: navy });
-      p.drawLine({ start: { x: CX, y: headerY - 4 }, end: { x: CR, y: headerY - 4 }, thickness: 0.6, color: panelBorder });
+      p.drawLine({ start: { x: CX, y: introY + 6 }, end: { x: CR, y: introY + 6 }, thickness: 1.1, color: gold });
 
       timelinePage = p;
-      rowY = headerY - 4;
+      rowY = introY - 6;
+      prevDotY = null;
     };
 
     const closeTimelinePage = (note: string) => {
       if (!timelinePage) return;
-      timelinePage.drawRectangle({ x: CX, y: 20, width: CW, height: 34, color: rgb(0.96, 0.97, 0.99), opacity: 0.4 });
       timelinePage.drawText(note, { x: CX, y: 34, size: 6.6, font: italic, color: muted });
     };
 
@@ -1405,46 +1400,52 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const rows = publicEvents.map((ev) => {
       const dateText = formatBrasiliaDateTime(ev.createdAt, true).replace(' (Horário de Brasília — UTC−3)', '');
       const eventLabel = PUBLIC_EVENT_LABELS[ev.eventType] || ev.eventType;
-      const dateLines = wrapTextToWidth(dateText, mono, 7, dateColWidth - 8);
-      const eventLines = wrapTextToWidth(eventLabel, bold, 7.2, eventColWidth - 8);
-      const descLines = wrapTextToWidth(ev.description, regular, 7, descColWidth - 6);
-      const lineCount = Math.max(1, dateLines.length, eventLines.length, descLines.length);
-      const height = Math.max(26, 15 + lineCount * 9.5);
-      return { dateLines, eventLines, descLines, height };
+      const titleLines = wrapTextToWidth(eventLabel, bold, 8.4, textWidth);
+      const descLines = wrapTextToWidth(ev.description, regular, 7.4, textWidth);
+      // topo (respiro) + hora + título(s) + descrição + respiro de baixo
+      const height = 10 + 9.5 + titleLines.length * 11 + descLines.length * 9.8 + 12;
+      return { dateText, titleLines, descLines, height };
     });
 
-    rows.forEach((row, index) => {
+    rows.forEach((row) => {
       if (!timelinePage) return;
       if (rowY - row.height < tableBottom) {
         closeTimelinePage('Continua na próxima página.');
         startTimelinePage();
       }
       rowY -= row.height;
-      if (index % 2 === 1) {
-        timelinePage.drawRectangle({ x: CX, y: rowY, width: CW, height: row.height, color: panelBg, opacity: 0.35 });
+
+      const timeY = rowY + row.height - 10;
+      const titleY = timeY - 11;
+      const dotY = titleY + 2.5;
+
+      // Trilho: liga o nó anterior a este, sem depender de altura fixa de
+      // linha - cada trecho do trilho é desenhado ao vivo, entre os dois
+      // nós reais, então nunca "sobra" nem "falta" traço.
+      if (prevDotY !== null) {
+        timelinePage.drawLine({
+          start: { x: railX, y: prevDotY - 3 },
+          end: { x: railX, y: dotY + 3 },
+          thickness: 1,
+          color: rgb(0.78, 0.82, 0.78),
+        });
       }
-      let dateY = rowY + row.height - 13;
-      for (const line of row.dateLines) {
-        timelinePage.drawText(line, { x: dateColX, y: dateY, size: 7, font: mono, color: text });
-        dateY -= 9.5;
+      timelinePage.drawCircle({ x: railX, y: dotY, size: 3, color: green });
+      prevDotY = dotY;
+
+      timelinePage.drawText(row.dateText, { x: textX, y: timeY, size: 6.8, font: mono, color: muted });
+
+      let titleLineY = titleY;
+      for (const line of row.titleLines) {
+        timelinePage.drawText(line, { x: textX, y: titleLineY, size: 8.4, font: bold, color: navy });
+        titleLineY -= 11;
       }
 
-      let eventY = rowY + row.height - 13;
-      for (const line of row.eventLines) {
-        timelinePage.drawText(line, { x: eventColX, y: eventY, size: 7.2, font: bold, color: navy });
-        eventY -= 9.5;
-      }
-
-      let descY = rowY + row.height - 13;
+      let descLineY = titleLineY - 1.5;
       for (const line of row.descLines) {
-        timelinePage.drawText(line, { x: descColX, y: descY, size: 7, font: regular, color: text });
-        descY -= 9.5;
+        timelinePage.drawText(line, { x: textX, y: descLineY, size: 7.4, font: regular, color: text });
+        descLineY -= 9.8;
       }
-
-      timelinePage.drawLine({ start: { x: eventColX - 4, y: rowY }, end: { x: eventColX - 4, y: rowY + row.height }, thickness: 0.35, color: panelBorder });
-      timelinePage.drawLine({ start: { x: descColX - 4, y: rowY }, end: { x: descColX - 4, y: rowY + row.height }, thickness: 0.35, color: panelBorder });
-
-      timelinePage.drawLine({ start: { x: CX, y: rowY }, end: { x: CR, y: rowY }, thickness: 0.5, color: panelBorder });
     });
 
     closeTimelinePage(`Trilha de auditoria concluída com ${publicEvents.length} evento(s) registrado(s).`);

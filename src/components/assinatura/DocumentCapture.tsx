@@ -11,10 +11,6 @@
  * é salvo. A moldura ocupa a tela inteira (câmera recortada por CSS), e o
  * recorte da captura usa esse mesmo retângulo - sem medição de DOM e sem
  * divergência entre a prévia e o arquivo final.
- *
- * Visual: o componente vive DENTRO do card branco padrão do fluxo de
- * assinatura (mesmo estilo da etapa de prova de presença) - nunca assume a
- * tela inteira nem troca a identidade visual clara do restante da página.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -24,6 +20,7 @@ import {
   buildQualityReport,
   captureQualityMessage,
   captureQualityStatus,
+  firstBlockingMessage,
   type QualityReport,
 } from '@/lib/assinatura/documentQuality';
 
@@ -63,6 +60,8 @@ interface DocumentCaptureProps {
 }
 
 type Phase = 'IDLE' | 'STARTING' | 'LIVE' | 'REVIEW';
+type LiveReadiness = 'ANALYSING' | 'ADJUST' | 'READY';
+type VisionCheck = 'IDLE' | 'CHECKING' | 'VALID' | 'REJECTED' | 'ERROR';
 
 /**
  * Retângulo de recorte, em pixels do vídeo. É a única fonte de verdade:
@@ -92,11 +91,27 @@ export default function DocumentCapture({
   const [frameWidth, setFrameWidth] = useState(0);
   const emitRef = useRef(onEvent);
   const autoStartedRef = useRef<CaptureSide | null>(null);
+  const autoCaptureRef = useRef(false);
+  const stableFramesRef = useRef(0);
 
   const [phase, setPhase] = useState<Phase>('IDLE');
   const [error, setError] = useState('');
   const [pending, setPending] = useState<CaptureResult | null>(null);
   const [videoDims, setVideoDims] = useState<{ w: number; h: number } | null>(null);
+  const [liveReadiness, setLiveReadiness] = useState<LiveReadiness>('ANALYSING');
+  const [liveHint, setLiveHint] = useState('Preparando a validação da imagem...');
+  const [visionCheck, setVisionCheck] = useState<VisionCheck>('IDLE');
+  const [visionReason, setVisionReason] = useState('');
+  const [validationRetry, setValidationRetry] = useState(0);
+  // Contagem regressiva ao apertar o botão de disparo (mesmo comportamento
+  // da câmera de selfie) - dá tempo da pessoa reposicionar o documento
+  // depois de já ter apertado, em vez de fotografar no instante do toque.
+  const [countdownSecs, setCountdownSecs] = useState<number | null>(null);
+  const countdownTimeoutRef = useRef<number | null>(null);
+  // Instrução falada UMA VEZ por lado (frente/verso), quando a câmera abre -
+  // nunca em loop. Usa a Web Speech API (não depende de arquivo de áudio
+  // pré-gravado, então funciona para qualquer texto sem gerar novo asset).
+  const spokenSideRef = useRef<CaptureSide | null>(null);
 
   useEffect(() => {
     emitRef.current = onEvent;
@@ -115,10 +130,20 @@ export default function DocumentCapture({
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    if (countdownTimeoutRef.current) {
+      clearTimeout(countdownTimeoutRef.current);
+      countdownTimeoutRef.current = null;
+    }
+    setCountdownSecs(null);
   }, []);
 
   useEffect(() => {
-    return () => stopCamera();
+    return () => {
+      stopCamera();
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        try { window.speechSynthesis.cancel(); } catch {}
+      }
+    };
   }, [stopCamera]);
 
   useEffect(() => {
@@ -165,6 +190,26 @@ export default function DocumentCapture({
     };
   }, [phase]);
 
+  // Fala a instrução da etapa (frente/verso) uma única vez, assim que a
+  // câmera fica pronta para aquele lado - nunca de novo, nem se a pessoa
+  // refizer a foto do mesmo lado.
+  useEffect(() => {
+    if (phase !== 'LIVE') return;
+    if (spokenSideRef.current === side) return;
+    spokenSideRef.current = side;
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    try {
+      window.speechSynthesis.cancel();
+      const text = side === 'FRENTE'
+        ? 'Agora vamos fotografar a frente do documento. Aperte o botão quando estiver pronto.'
+        : 'Agora vamos fotografar o verso do documento. Aperte o botão quando estiver pronto.';
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'pt-BR';
+      utterance.rate = 1;
+      window.speechSynthesis.speak(utterance);
+    } catch {}
+  }, [phase, side]);
+
   // Ao trocar de lado, reinicia o componente para o estado inicial.
   useEffect(() => {
     stopCamera();
@@ -172,6 +217,13 @@ export default function DocumentCapture({
     setPending(null);
     setError('');
     setVideoDims(null);
+    setVisionCheck('IDLE');
+    setVisionReason('');
+    if (countdownTimeoutRef.current) {
+      clearTimeout(countdownTimeoutRef.current);
+      countdownTimeoutRef.current = null;
+    }
+    setCountdownSecs(null);
   }, [side, stopCamera]);
 
   const startCamera = useCallback(async () => {
@@ -204,16 +256,19 @@ export default function DocumentCapture({
       const name = (err as { name?: string })?.name || '';
       setPhase('IDLE');
       emit('CAMERA_DENIED', 'Permissão da câmera negada ou indisponível');
-      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        setError('Permissão de câmera negada. Toque no ícone de cadeado/câmera na barra do navegador e permita o acesso para continuar.');
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        setError(
+          'A câmera foi bloqueada pelo navegador. Abra este endereço diretamente no Chrome ou Safari, permita a câmera para o AssinaJur e toque novamente em "Abrir câmera".'
+        );
       } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
-        setError('Não encontramos uma câmera disponível neste aparelho.');
+        setError('Nenhuma câmera compatível foi encontrada neste aparelho.');
       } else {
-        setError('Não foi possível abrir a câmera. Tente novamente.');
+        setError('Não foi possível abrir a câmera. Toque em "Abrir câmera" para tentar de novo.');
       }
     }
   }, [emit, side, stopCamera]);
 
+  // Abertura automática, uma única vez por lado.
   useEffect(() => {
     if (!autoStart) return;
     if (autoStartedRef.current === side) return;
@@ -221,58 +276,234 @@ export default function DocumentCapture({
     void startCamera();
   }, [autoStart, side, startCamera]);
 
-  const crop = videoDims ? computeCropRect(videoDims.w, videoDims.h) : null;
-
   const takePhoto = useCallback(() => {
     const video = videoRef.current;
-    if (!video || !video.videoWidth || !video.videoHeight) return;
-    const cropRect = computeCropRect(video.videoWidth, video.videoHeight);
-    const longSide = Math.max(cropRect.w, cropRect.h);
-    const scale = longSide > MAX_LONG_SIDE ? MAX_LONG_SIDE / longSide : 1;
-    const outW = Math.round(cropRect.w * scale);
-    const outH = Math.round(cropRect.h * scale);
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      setError('A câmera ainda está carregando. Aguarde um instante e tente novamente.');
+      return;
+    }
+
+    const nativeW = video.videoWidth;
+    const nativeH = video.videoHeight;
+
+    // Recorta exatamente a área da moldura que o usuário viu.
+    const crop = computeCropRect(nativeW, nativeH);
+    const escala = Math.min(1, MAX_LONG_SIDE / Math.max(crop.w, crop.h));
+    const targetW = Math.round(crop.w * escala);
+    const targetH = Math.round(crop.h * escala);
 
     const canvas = document.createElement('canvas');
-    canvas.width = outW;
-    canvas.height = outH;
+    canvas.width = targetW;
+    canvas.height = targetH;
+
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(video, cropRect.x, cropRect.y, cropRect.w, cropRect.h, 0, 0, outW, outH);
+    if (!ctx) {
+      setError('Não foi possível processar a imagem neste navegador.');
+      return;
+    }
+    ctx.drawImage(video, crop.x, crop.y, crop.w, crop.h, 0, 0, targetW, targetH);
 
     const dataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
-    const bytes = Math.round((dataUrl.length * 3) / 4);
-    const { meanLuminance, sharpness } = analyseCanvas(canvas);
-    const quality = buildQualityReport({ width: outW, height: outH, bytes, meanLuminance, sharpness });
+    const base64Length = dataUrl.length - (dataUrl.indexOf(',') + 1);
+    const bytes = Math.round(base64Length * 0.75);
 
-    stopCamera();
+    const { meanLuminance, sharpness } = analyseCanvas(canvas);
+    const quality = buildQualityReport({
+      width: targetW,
+      height: targetH,
+      bytes,
+      meanLuminance,
+      sharpness,
+    });
+
+    if (!quality.acceptable) {
+      setError(firstBlockingMessage(quality));
+      emit(
+        side === 'FRENTE' ? 'FRONT_REJECTED' : 'BACK_REJECTED',
+        `Captura ${side === 'FRENTE' ? 'da frente' : 'do verso'} recusada pela validação de qualidade`
+      );
+      return;
+    }
+
+    setError('');
     setPending({
       side,
       dataUrl,
-      width: outW,
-      height: outH,
+      width: targetW,
+      height: targetH,
       bytes,
       capturedAt: new Date().toISOString(),
       source: 'camera',
       quality,
     });
     setPhase('REVIEW');
-    emit(side === 'FRENTE' ? 'FRONT_CAPTURED' : 'BACK_CAPTURED', `Foto ${side === 'FRENTE' ? 'da frente' : 'do verso'} capturada`);
+    stopCamera();
+    emit(
+      side === 'FRENTE' ? 'FRONT_CAPTURED' : 'BACK_CAPTURED',
+      `${side === 'FRENTE' ? 'Frente' : 'Verso'} capturado`
+    );
   }, [emit, side, stopCamera]);
+
+  const DOCUMENT_CAPTURE_COUNTDOWN_SECS = 5;
+
+  // Apertar "Tirar foto" não fotografa na hora - dispara uma contagem
+  // regressiva de 5s (mesmo comportamento da câmera de selfie), dando tempo
+  // da pessoa reposicionar o documento na moldura depois de já ter apertado.
+  const handleShutterPress = useCallback(() => {
+    if (countdownTimeoutRef.current) return;
+    let secsLeft = DOCUMENT_CAPTURE_COUNTDOWN_SECS;
+    setCountdownSecs(secsLeft);
+    const tick = () => {
+      secsLeft -= 1;
+      if (secsLeft <= 0) {
+        setCountdownSecs(null);
+        countdownTimeoutRef.current = null;
+        takePhoto();
+        return;
+      }
+      setCountdownSecs(secsLeft);
+      countdownTimeoutRef.current = window.setTimeout(tick, 1000);
+    };
+    countdownTimeoutRef.current = window.setTimeout(tick, 1000);
+  }, [takePhoto]);
+
+  // A análise ocorre na área exata da moldura, só para dar feedback de
+  // qualidade em tempo real - a captura em si é sempre manual (botão).
+  useEffect(() => {
+    if (phase !== 'LIVE' || !videoDims) return;
+    autoCaptureRef.current = false;
+    stableFramesRef.current = 0;
+    setLiveReadiness('ANALYSING');
+    setLiveHint('Posicione o documento inteiro dentro da moldura.');
+
+    const evaluate = () => {
+      const video = videoRef.current;
+      if (!video || !video.videoWidth || !video.videoHeight || autoCaptureRef.current) return;
+      const crop = computeCropRect(video.videoWidth, video.videoHeight);
+      const scale = Math.min(1, 480 / crop.w);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(crop.w * scale);
+      canvas.height = Math.round(crop.h * scale);
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return;
+      ctx.drawImage(video, crop.x, crop.y, crop.w, crop.h, 0, 0, canvas.width, canvas.height);
+      const { meanLuminance, sharpness } = analyseCanvas(canvas);
+      const clearEnough = meanLuminance >= 65 && meanLuminance <= 245 && sharpness >= 90;
+
+      if (!clearEnough) {
+        stableFramesRef.current = 0;
+        setLiveReadiness('ADJUST');
+        setLiveHint(
+          meanLuminance < 65
+            ? 'Aproxime-se de uma luz melhor antes de fotografar.'
+            : sharpness < 90
+              ? 'Aguarde o foco ficar nítido e mantenha o celular parado.'
+              : 'Reduza o reflexo sobre o documento.'
+        );
+        return;
+      }
+
+      stableFramesRef.current += 1;
+      setLiveReadiness('READY');
+      setLiveHint('Imagem legível. Toque em "Tirar foto" quando quiser.');
+    };
+
+    const interval = window.setInterval(evaluate, 300);
+    return () => window.clearInterval(interval);
+  }, [phase, takePhoto, videoDims]);
+
+  // Validação por IA (evidência complementar, nunca bloqueia): confirma se a
+  // foto parece um RG/CNH. Se falhar ou não identificar com certeza, o
+  // cliente ainda pode continuar - o escritório confere a foto depois.
+  useEffect(() => {
+    if (phase !== 'REVIEW' || !pending) return;
+    const controller = new AbortController();
+    let active = true;
+    setVisionCheck('CHECKING');
+    setVisionReason('');
+
+    void fetch('/api/sign/documento/validar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: pending.dataUrl, side }),
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok || !data?.success) throw new Error(data?.error || 'Não foi possível validar a imagem.');
+        return data.validation as { isDocument: boolean; readable: boolean; confidence: number; reason?: string };
+      })
+      .then((validation) => {
+        if (!active) return;
+        const accepted = validation.isDocument && validation.confidence >= 55;
+        setVisionCheck(accepted ? 'VALID' : 'REJECTED');
+        setVisionReason(
+          accepted
+            ? ''
+            : validation.reason || 'Não identificamos um documento de identidade legível nesta imagem.'
+        );
+        emit(
+          accepted ? (side === 'FRENTE' ? 'FRONT_DOCUMENT_VALIDATED' : 'BACK_DOCUMENT_VALIDATED') : (side === 'FRENTE' ? 'FRONT_DOCUMENT_REJECTED' : 'BACK_DOCUMENT_REJECTED'),
+          accepted ? 'Documento identificado pela validação automática' : 'Imagem recusada pela validação automática'
+        );
+      })
+      .catch((validationError) => {
+        if (!active || validationError?.name === 'AbortError') return;
+        setVisionCheck('ERROR');
+        setVisionReason(validationError instanceof Error ? validationError.message : 'Não foi possível validar a imagem.');
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [emit, pending, phase, side, validationRetry]);
 
   const retake = useCallback(() => {
     setPending(null);
+    setError('');
+    setVisionCheck('IDLE');
+    setVisionReason('');
+    emit(
+      side === 'FRENTE' ? 'FRONT_RETAKE' : 'BACK_RETAKE',
+      `Usuário optou por refazer ${side === 'FRENTE' ? 'a frente' : 'o verso'}`
+    );
     void startCamera();
-  }, [startCamera]);
+  }, [emit, side, startCamera]);
 
   const confirm = useCallback(() => {
     if (!pending) return;
+    emit(
+      side === 'FRENTE' ? 'FRONT_APPROVED' : 'BACK_APPROVED',
+      `${side === 'FRENTE' ? 'Frente' : 'Verso'} aprovado`
+    );
     onConfirm(pending);
-  }, [onConfirm, pending]);
+  }, [emit, onConfirm, pending, side]);
+
+  // Evidência complementar: nunca trava a assinatura. Se a validação por IA
+  // não confirmar (ou falhar), o cliente ainda pode seguir - o escritório
+  // confere a foto manualmente depois, no dossiê do documento.
+  const continueAnyway = useCallback(() => {
+    if (!pending) return;
+    emit(
+      side === 'FRENTE' ? 'FRONT_CONTINUED_UNVALIDATED' : 'BACK_CONTINUED_UNVALIDATED',
+      `${side === 'FRENTE' ? 'Frente' : 'Verso'} confirmado sem validação automática`
+    );
+    onConfirm(pending);
+  }, [emit, onConfirm, pending, side]);
+
+  const crop = videoDims ? computeCropRect(videoDims.w, videoDims.h) : null;
+  const reviewStatus = pending ? captureQualityStatus(pending.quality) : null;
 
   // Antes de abrir a camera: cartao compacto no fluxo normal da pagina.
   if (phase === 'IDLE' || phase === 'STARTING') {
     return (
       <div className="flex flex-col gap-3">
+        <div className="space-y-0.5 text-center">
+          <h2 className="font-heading text-base font-extrabold text-[#071B3A]">{title}</h2>
+          <p className="text-xs text-slate-500">{helperText}</p>
+        </div>
+
         <div className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-3 rounded-2xl bg-slate-900 text-center">
           {phase === 'STARTING' ? (
             <>
@@ -308,112 +539,191 @@ export default function DocumentCapture({
     );
   }
 
-  // Camera aberta ou revisao: continua dentro do card branco padrao da
-  // pagina de assinatura, sem tomar a tela inteira nem trocar a identidade
-  // visual clara do restante do fluxo.
+  // Camera aberta ou revisao: ocupa a tela inteira, sem rolagem possivel.
+
   return (
-    <div className="flex flex-col gap-3">
-      <div
-        ref={setFrameEl}
-        className="relative mx-auto w-full max-w-sm overflow-hidden rounded-2xl border-4 border-[#D4AF37]/70 bg-slate-900"
-        style={{ aspectRatio: String(CROP_ASPECT) }}
-      >
+    <div className="fixed inset-0 z-40 flex flex-col bg-slate-950">
+      <div className="shrink-0 px-4 pb-2 pt-4 text-center">
+        <h2 className="text-sm font-extrabold text-white">{title}</h2>
+        <p className="mt-0.5 text-[11px] text-slate-300">{helperText}</p>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2">
+        <div
+          ref={setFrameEl}
+          className="relative w-full max-w-sm overflow-hidden rounded-2xl border-4 border-[#D4AF37]/70 bg-slate-900"
+          style={{ aspectRatio: String(CROP_ASPECT) }}
+        >
+          {phase === 'LIVE' && (
+            <video
+              ref={videoRef}
+              playsInline
+              muted
+              autoPlay
+              onLoadedMetadata={(e) => {
+                const v = e.currentTarget;
+                if (v.videoWidth) setVideoDims({ w: v.videoWidth, h: v.videoHeight });
+              }}
+              style={
+                videoDims && crop && frameWidth
+                  ? {
+                      position: 'absolute' as const,
+                      top: 0,
+                      left: 0,
+                      width: `${videoDims.w * (frameWidth / crop.w)}px`,
+                      height: `${videoDims.h * (frameWidth / crop.w)}px`,
+                      transform: `translate(${-crop.x * (frameWidth / crop.w)}px, ${-crop.y * (frameWidth / crop.w)}px)`,
+                      maxWidth: 'none',
+                    }
+                  : { opacity: 0 }
+              }
+              className="block"
+            />
+          )}
+
+          {phase === 'REVIEW' && pending && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={pending.dataUrl}
+              alt={`Pre-visualizacao d${side === 'FRENTE' ? 'a frente' : 'o verso'} do documento`}
+              className="absolute inset-0 h-full w-full object-contain"
+            />
+          )}
+
+          {phase === 'LIVE' && (
+            <>
+              {/* Aviso de qual etapa está ativa, sempre visível dentro do
+                  próprio quadro da câmera - a mesma mensagem que é falada
+                  uma vez ao abrir, para quem está sem som ou perdeu o áudio. */}
+              <div className="absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/85 to-transparent px-4 pb-6 pt-3 text-center">
+                <span className="text-xs font-extrabold text-white drop-shadow">
+                  {side === 'FRENTE' ? '📄 Fotografe a FRENTE do documento' : '📄 Fotografe o VERSO do documento'}
+                </span>
+              </div>
+
+              <div className="absolute inset-x-0 top-14 z-10 flex justify-center px-4">
+                <div
+                  className={`rounded-xl border px-3 py-2 text-center text-xs font-extrabold shadow-lg ${
+                    liveReadiness === 'READY'
+                      ? 'border-emerald-300/70 bg-emerald-950/80 text-emerald-50'
+                      : liveReadiness === 'ADJUST'
+                        ? 'border-amber-300/70 bg-amber-950/80 text-amber-50'
+                        : 'border-[#D4AF37]/60 bg-slate-950/80 text-white'
+                  }`}
+                >
+                  {liveReadiness === 'READY'
+                    ? 'Qualidade aprovada'
+                    : liveReadiness === 'ADJUST'
+                      ? 'Ajuste antes de fotografar'
+                      : 'Analisando a imagem'}
+                </div>
+              </div>
+
+              {/* Botão de disparo estilo câmera, dentro do próprio quadro
+                  (mesmo padrão da câmera de selfie). Ao apertar, dispara a
+                  contagem regressiva de 5s antes de fotografar. */}
+              <div className="absolute inset-x-0 bottom-0 z-10 flex items-center justify-center bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-8 pb-4">
+                <button
+                  type="button"
+                  onClick={handleShutterPress}
+                  disabled={countdownSecs !== null}
+                  aria-label="Tirar foto"
+                  className="flex h-[72px] w-[72px] items-center justify-center rounded-full border-[5px] border-white/40 bg-white shadow-2xl transition-transform active:scale-90 disabled:opacity-70"
+                >
+                  {countdownSecs !== null ? (
+                    <span className="font-mono text-xl font-black text-[#071B3A]">{countdownSecs}</span>
+                  ) : (
+                    <Camera className="h-7 w-7 text-[#071B3A]" />
+                  )}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
         {phase === 'LIVE' && (
-          <video
-            ref={videoRef}
-            playsInline
-            muted
-            autoPlay
-            onLoadedMetadata={(e) => {
-              const v = e.currentTarget;
-              if (v.videoWidth) setVideoDims({ w: v.videoWidth, h: v.videoHeight });
-            }}
-            style={
-              videoDims && crop && frameWidth
-                ? {
-                    position: 'absolute' as const,
-                    top: 0,
-                    left: 0,
-                    width: `${videoDims.w * (frameWidth / crop.w)}px`,
-                    height: `${videoDims.h * (frameWidth / crop.w)}px`,
-                    transform: `translate(${-crop.x * (frameWidth / crop.w)}px, ${-crop.y * (frameWidth / crop.w)}px)`,
-                    maxWidth: 'none',
-                  }
-                : { opacity: 0 }
-            }
-            className="block"
-          />
+          <p className="w-full max-w-sm px-2 pt-2 text-center text-[11px] font-semibold text-slate-400">
+            Toque no botão e fique com o documento parado - a foto é tirada automaticamente após a contagem de 5 segundos.
+          </p>
         )}
 
         {phase === 'REVIEW' && pending && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={pending.dataUrl}
-            alt={`Pre-visualizacao d${side === 'FRENTE' ? 'a frente' : 'o verso'} do documento`}
-            className="absolute inset-0 h-full w-full object-contain"
-          />
-        )}
-      </div>
-
-      {phase === 'LIVE' && (
-        <div className="mx-auto w-full max-w-sm">
-          <button
-            type="button"
-            onClick={takePhoto}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#071B3A] py-4 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.99]"
-          >
-            <Camera className="h-4 w-4 text-[#D4AF37]" /> Tirar foto
-          </button>
-        </div>
-      )}
-
-      {phase === 'REVIEW' && pending && (
-        <div className="mx-auto w-full max-w-sm space-y-2">
-          {(() => {
-            const status = captureQualityStatus(pending.quality);
-            const approved = status === 'GOOD';
-            const caution = status === 'CAUTION';
-            return (
-              <div className={`rounded-xl border p-3 ${approved ? 'border-emerald-200 bg-emerald-50' : caution ? 'border-amber-200 bg-amber-50' : 'border-rose-200 bg-rose-50'}`}>
-                <p className={`text-xs font-extrabold ${approved ? 'text-emerald-800' : caution ? 'text-amber-900' : 'text-rose-800'}`}>
-                  {approved ? '✓ Qualidade aprovada' : caution ? 'Atenção à qualidade' : 'Foto precisa ser refeita'}
-                </p>
-                <p className={`mt-1 text-[11px] font-medium ${approved ? 'text-emerald-700' : caution ? 'text-amber-800' : 'text-rose-700'}`}>
-                  {captureQualityMessage(pending.quality)}
-                </p>
+          <div className="w-full max-w-sm space-y-2 px-2 pt-2">
+            {reviewStatus === 'CAUTION' && (
+              <div className="rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-2.5 text-center text-xs font-bold text-amber-100">
+                <p>Confira antes de continuar</p>
+                <p className="mt-0.5 text-[11px] font-medium opacity-90">{captureQualityMessage(pending.quality)}</p>
               </div>
-            );
-          })()}
-          <button
-            type="button"
-            onClick={captureQualityStatus(pending.quality) === 'GOOD' ? confirm : retake}
-            className={`flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-extrabold shadow-lg transition active:scale-[0.99] ${
-              captureQualityStatus(pending.quality) === 'GOOD'
-                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                : 'bg-rose-600 text-white hover:bg-rose-700'
-            }`}
-          >
-            {captureQualityStatus(pending.quality) === 'GOOD' ? <Check className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
-            {captureQualityStatus(pending.quality) === 'GOOD' ? 'Continuar' : 'Tirar outra foto'}
-          </button>
-          {captureQualityStatus(pending.quality) === 'GOOD' && (
+            )}
+            {visionCheck === 'CHECKING' && (
+              <div className="flex items-center justify-center gap-2 rounded-xl border border-sky-400/40 bg-sky-500/15 px-3 py-3 text-center text-xs font-bold text-sky-100">
+                <Loader2 className="h-4 w-4 animate-spin" /> Confirmando se é um documento...
+              </div>
+            )}
+            {visionCheck === 'REJECTED' && (
+              <div className="space-y-2">
+                <div className="rounded-xl border border-rose-400/50 bg-rose-500/15 px-3 py-3 text-center text-xs font-bold text-rose-100">
+                  <p>Não identificamos um documento nesta foto.</p>
+                  {visionReason && <p className="mt-1 text-[11px] font-medium opacity-90">{visionReason}</p>}
+                </div>
+                <button
+                  type="button"
+                  onClick={continueAnyway}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white shadow-lg transition hover:bg-emerald-500 active:scale-[0.99]"
+                >
+                  <Check className="h-4 w-4" /> Usar esta foto assim mesmo
+                </button>
+              </div>
+            )}
+            {visionCheck === 'ERROR' && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setValidationRetry((value) => value + 1)}
+                  className="w-full rounded-xl border border-amber-400/50 bg-amber-500/15 px-3 py-3 text-center text-xs font-bold text-amber-100"
+                >
+                  Não foi possível validar agora. Toque para tentar novamente.
+                </button>
+                <button
+                  type="button"
+                  onClick={continueAnyway}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white shadow-lg transition hover:bg-emerald-500 active:scale-[0.99]"
+                >
+                  <Check className="h-4 w-4" /> Continuar sem validação automática
+                </button>
+              </div>
+            )}
+            {visionCheck === 'VALID' && (
+              <button
+                type="button"
+                onClick={confirm}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-sm font-extrabold text-white shadow-lg transition hover:bg-emerald-500 active:scale-[0.99]"
+              >
+                <Check className="h-4 w-4" /> Continuar
+              </button>
+            )}
             <button
               type="button"
               onClick={retake}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white py-3 text-sm font-extrabold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 active:scale-[0.99]"
+              className={`flex w-full items-center justify-center gap-2 py-2 text-xs font-semibold transition active:scale-[0.99] ${visionCheck === 'REJECTED' ? 'rounded-xl bg-white/10 py-3 text-white' : 'text-slate-300 hover:text-white'}`}
             >
-              <RefreshCw className="h-4 w-4" /> Tirar outra foto
+              <RefreshCw className="h-3.5 w-3.5" /> Tirar outra foto
             </button>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
-      {error && (
-        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-          <p className="text-xs font-semibold text-amber-900">{error}</p>
-        </div>
-      )}
+      <div
+        className="shrink-0 space-y-2 px-4 pt-2"
+        style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
+      >
+        {error && (
+          <div className="flex items-start gap-2 rounded-xl border border-amber-400/40 bg-amber-500/15 p-2.5">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+            <p className="text-[11px] font-semibold text-amber-100">{error}</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

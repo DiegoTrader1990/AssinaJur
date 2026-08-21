@@ -33,6 +33,7 @@ import {
 import BrazilOperationsMap from '@/components/BrazilOperationsMap';
 import {
   AvisosAcompanhamentos,
+  BlocoAcompanhamento,
   CardAssinaturas,
   FluxoRapido,
   IndicadoresEscritorio,
@@ -198,19 +199,21 @@ export default function PainelNovoPage() {
   const [kits, setKits] = useState<any[]>([]);
   const [documentos, setDocumentos] = useState<any[]>([]);
   const [processos, setProcessos] = useState<any[]>([]);
+  const [pendencias, setPendencias] = useState<any[]>([]);
   const [resumo, setResumo] = useState<ResumoPainel | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
     setErro('');
     try {
-      const [me, esc, cli, doc, pro, kit] = await Promise.all([
+      const [me, esc, cli, doc, pro, kit, pend] = await Promise.all([
         fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)),
         fetch('/api/office').then((r) => (r.ok ? r.json() : null)),
         fetch('/api/clients').then((r) => (r.ok ? r.json() : null)),
         fetch('/api/documents').then((r) => (r.ok ? r.json() : null)),
         fetch('/api/processos').then((r) => (r.ok ? r.json() : null)),
         fetch('/api/kits').then((r) => (r.ok ? r.json() : null)),
+        fetch('/api/pendencias').then((r) => (r.ok ? r.json() : null)),
       ]);
 
       if (!me?.user) {
@@ -229,6 +232,7 @@ export default function PainelNovoPage() {
       setDocumentos(listaDocumentos);
       setProcessos(listaProcessos);
       setKits(kit?.kits || []);
+      setPendencias(pend?.pendencies || []);
       setResumo(
         montarResumo(
           { clientes: listaClientes, documentos: listaDocumentos, processos: listaProcessos },
@@ -342,12 +346,21 @@ export default function PainelNovoPage() {
       )}
 
       {modoEscritorio && (
-        <CentroGestao
-          clientes={clientes}
-          processos={processos}
-          documentos={documentos}
-          assinaturasPendentes={indicadores.aguardando}
-        />
+        <>
+          <CentroGestao
+            clientes={clientes}
+            processos={processos}
+            documentos={documentos}
+            assinaturasPendentes={indicadores.aguardando}
+          />
+          <BlocoAcompanhamento
+            titulo="Agenda jurídica e prioridades"
+            subtitulo="Registre tarefas, atribua responsáveis, controle prazos e acompanhe os processos protocolados em um único lugar."
+            clientes={clientes}
+            pendencies={pendencias}
+            processos={processos}
+          />
+        </>
       )}
 
       <IndicadoresEscritorio
