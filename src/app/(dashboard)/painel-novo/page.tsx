@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Loader2, Scale } from 'lucide-react';
 import BrazilOperationsMap from '@/components/BrazilOperationsMap';
 import {
@@ -88,6 +89,9 @@ function Cartao({ children, className = '' }: { children: React.ReactNode; class
 }
 
 export default function PainelNovoPage() {
+  const pathname = usePathname();
+  const modoEscritorio = pathname === '/escritorio';
+  const mostrarFluxoRapido = !modoEscritorio;
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
   const [nome, setNome] = useState('');
@@ -191,11 +195,14 @@ export default function PainelNovoPage() {
       <div className="flex items-end justify-between gap-4">
         <div className="min-w-0">
           <h1 className="font-heading text-2xl font-extrabold leading-none tracking-tight text-[#071B3A]">
-            {saudacao(agora.getHours())}
-            {nome ? `, ${nome}` : ''}
+            {modoEscritorio
+              ? 'Gestão do escritório'
+              : `${saudacao(agora.getHours())}${nome ? `, ${nome}` : ''}`}
           </h1>
           <p className="mt-2 text-[13px] text-slate-500">
-            {dataExtensa(agora)}
+            {modoEscritorio
+              ? 'Acompanhe a operação, as prioridades e os próximos movimentos do escritório.'
+              : dataExtensa(agora)}
             {vencidos.length + prazosHoje.length > 0 && (
               <>
                 {' · '}
@@ -226,14 +233,16 @@ export default function PainelNovoPage() {
         )}
       </div>
 
-      <FluxoRapido
-        clientes={clientes}
-        kits={kits}
-        processos={processos}
-        documentos={documentos}
-        kitPreferidoId={kitsUsados[0]?.id}
-        tempoMedioMinutos={indicadores.tempoMedioMinutos}
-      />
+      {mostrarFluxoRapido && (
+        <FluxoRapido
+          clientes={clientes}
+          kits={kits}
+          processos={processos}
+          documentos={documentos}
+          kitPreferidoId={kitsUsados[0]?.id}
+          tempoMedioMinutos={indicadores.tempoMedioMinutos}
+        />
+      )}
 
       <IndicadoresEscritorio
         indicadores={indicadores}
@@ -432,10 +441,7 @@ export default function PainelNovoPage() {
           e validade jurídica (MP 2.200-2/2001)
         </p>
         <p className="text-[10.5px] text-slate-400">
-          Versão completa da proposta · a Home fica em{' '}
-          <Link href="/dashboard" className="font-bold text-[#B68B1C]">
-            /dashboard
-          </Link>
+          {modoEscritorio ? 'Central de gestão operacional do escritório' : 'Painel operacional completo'}
         </p>
       </div>
     </div>

@@ -108,6 +108,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       group: 'PRINCIPAL',
       items: [
         { label: 'Início', href: '/dashboard', icon: LayoutDashboard },
+        { label: 'Escritório', href: '/escritorio', icon: Building2 },
       ],
     },
     {

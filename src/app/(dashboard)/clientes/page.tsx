@@ -510,6 +510,7 @@ export default function ClientsPage() {
         onCreate={openCreateClient}
         onOpen={(client) => openClientDossier(client as Client)}
         onEdit={(client) => openEditClient(client as Client)}
+        onCreateFollowUp={(client) => openClientDossier(client as Client)}
         onDelete={(client) => {
           setClientToDelete(client as Client);
           setDeleteConfirmation('');
