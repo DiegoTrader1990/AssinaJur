@@ -20,7 +20,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Loader2, Scale } from 'lucide-react';
+import {
+  ArrowUpRight,
+  ClipboardCheck,
+  FileCheck2,
+  FileText,
+  FolderKanban,
+  Loader2,
+  Scale,
+  Users,
+} from 'lucide-react';
 import BrazilOperationsMap from '@/components/BrazilOperationsMap';
 import {
   AvisosAcompanhamentos,
@@ -85,6 +94,94 @@ function Cartao({ children, className = '' }: { children: React.ReactNode; class
     >
       {children}
     </div>
+  );
+}
+
+function CentroGestao({
+  clientes,
+  processos,
+  documentos,
+  assinaturasPendentes,
+}: {
+  clientes: any[];
+  processos: any[];
+  documentos: any[];
+  assinaturasPendentes: number;
+}) {
+  const processosAtivos = processos.filter((processo) => {
+    const status = String(processo?.status || '').toUpperCase();
+    return status !== 'CONCLUIDO' && status !== 'CANCELADO' && status !== 'ARQUIVADO';
+  }).length;
+  const documentosAssinados = documentos.filter(
+    (documento) => String(documento?.status || '').toUpperCase() === 'CONCLUIDO'
+  ).length;
+
+  const areas = [
+    {
+      titulo: 'Carteira de clientes',
+      descricao: 'Cadastros, alertas e histórico de cada atendimento.',
+      valor: clientes.length,
+      unidade: clientes.length === 1 ? 'cliente cadastrado' : 'clientes cadastrados',
+      href: '/clientes',
+      Icon: Users,
+      cor: 'bg-blue-50 text-blue-700 ring-blue-100',
+    },
+    {
+      titulo: 'Processos em condução',
+      descricao: 'Dossiês, prazos, protocolos e documentos vinculados.',
+      valor: processosAtivos,
+      unidade: processosAtivos === 1 ? 'processo ativo' : 'processos ativos',
+      href: '/processos',
+      Icon: FolderKanban,
+      cor: 'bg-violet-50 text-violet-700 ring-violet-100',
+    },
+    {
+      titulo: 'Assinaturas a concluir',
+      descricao: 'Envios que ainda dependem de uma ação do signatário.',
+      valor: assinaturasPendentes,
+      unidade: assinaturasPendentes === 1 ? 'envio aguardando' : 'envios aguardando',
+      href: '/documentos',
+      Icon: ClipboardCheck,
+      cor: 'bg-amber-50 text-amber-700 ring-amber-100',
+    },
+    {
+      titulo: 'Acervo jurídico',
+      descricao: 'Documentos assinados e prontos para consulta no escritório.',
+      valor: documentosAssinados,
+      unidade: documentosAssinados === 1 ? 'documento assinado' : 'documentos assinados',
+      href: '/documentos',
+      Icon: FileCheck2,
+      cor: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+    },
+  ];
+
+  return (
+    <section className="overflow-hidden rounded-[26px] border border-[#dbe4f2] bg-white shadow-[0_12px_35px_rgba(7,27,58,.06)]">
+      <div className="flex flex-col justify-between gap-4 border-b border-slate-100 bg-[linear-gradient(115deg,#071B3A_0%,#0d2d59_68%,#173f70_100%)] px-5 py-5 sm:flex-row sm:items-center sm:px-6">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[.18em] text-[#e4bd47]">Centro de comando</p>
+          <h2 className="mt-1 font-heading text-xl font-extrabold tracking-tight text-white">Gestão integral do escritório</h2>
+          <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-300">Cada área abre o espaço certo para administrar a carteira, os processos e os documentos — sem iniciar um novo envio.</p>
+        </div>
+        <Link href="/entrada" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-white/15">
+          <FileText className="h-4 w-4 text-[#e4bd47]" /> Central de entrada
+        </Link>
+      </div>
+      <div className="grid divide-y divide-slate-100 sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
+        {areas.map(({ titulo, descricao, valor, unidade, href, Icon, cor }) => (
+          <Link key={titulo} href={href} className="group relative min-h-[172px] p-5 transition hover:bg-slate-50/80">
+            <div className="flex items-start justify-between gap-3">
+              <span className={`flex h-10 w-10 items-center justify-center rounded-xl ring-1 ${cor}`}><Icon className="h-5 w-5" /></span>
+              <ArrowUpRight className="h-4 w-4 text-slate-300 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-[#071B3A]" />
+            </div>
+            <p className="mt-5 text-2xl font-black leading-none tracking-tight text-[#071B3A]">{valor}</p>
+            <p className="mt-1 text-[10px] font-bold uppercase tracking-[.08em] text-slate-400">{unidade}</p>
+            <h3 className="mt-4 text-[13px] font-extrabold text-[#071B3A]">{titulo}</h3>
+            <p className="mt-1 text-[11px] leading-4 text-slate-500">{descricao}</p>
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -241,6 +338,15 @@ export default function PainelNovoPage() {
           documentos={documentos}
           kitPreferidoId={kitsUsados[0]?.id}
           tempoMedioMinutos={indicadores.tempoMedioMinutos}
+        />
+      )}
+
+      {modoEscritorio && (
+        <CentroGestao
+          clientes={clientes}
+          processos={processos}
+          documentos={documentos}
+          assinaturasPendentes={indicadores.aguardando}
         />
       )}
 
