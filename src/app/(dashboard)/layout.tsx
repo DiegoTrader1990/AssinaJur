@@ -226,7 +226,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         e.preventDefault();
                         e.stopPropagation();
                         setSidebarOpen(false);
-                        router.push(item.href);
+                        // Cada área do painel tem estado e carregamentos próprios.
+                        // Uma troca completa evita reaproveitar a tela anterior em
+                        // navegadores móveis, que fazia o menu parecer não responder.
+                        window.location.assign(item.href);
                       }}
                       className={`w-full text-left flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                         isActive
