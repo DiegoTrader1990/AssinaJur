@@ -81,13 +81,15 @@ interface SignerInput {
 // Mesma composição de endereço usada em /api/kits/generate-package/route.ts
 // (cliente_endereco), reaproveitada aqui só para preencher a opção "mesmo
 // endereço da cliente" do assinante a rogo sem esperar o servidor.
+// "address" já é o texto único (rua, número e bairro juntos) digitado no
+// cadastro do cliente - "number"/"neighborhood" são colunas legadas (às
+// vezes de uma extração automática antiga) que podem duplicar/contradizer o
+// endereço atual, então não entram mais aqui.
 function formatClientAddress(client: Client | undefined): string {
   if (!client) return '';
   return [
     client.address,
-    client.number && !String(client.address || '').includes(client.number) ? `nº ${client.number}` : '',
     client.complement,
-    client.neighborhood,
     [client.city, client.state].filter(Boolean).join('/'),
     client.cep ? `CEP ${client.cep}` : '',
   ].filter(Boolean).join(', ');

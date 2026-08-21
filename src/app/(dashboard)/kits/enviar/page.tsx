@@ -42,13 +42,15 @@ interface SignerInput {
 // Mesma composição de endereço usada em /api/kits/generate-package/route.ts
 // (cliente_endereco), reaproveitada aqui só para preencher a opção "mesmo
 // endereço da cliente" do assinante a rogo sem esperar o servidor.
+// "address" já é o texto único (rua, número e bairro juntos) digitado no
+// cadastro do cliente - "number"/"neighborhood" são colunas legadas (às
+// vezes de uma extração automática antiga) que podem duplicar/contradizer o
+// endereço atual, então não entram mais aqui.
 function formatClientAddress(client: Client | undefined): string {
   if (!client) return '';
   return [
     client.address,
-    client.number && !String(client.address || '').includes(client.number) ? `nº ${client.number}` : '',
     client.complement,
-    client.neighborhood,
     [client.city, client.state].filter(Boolean).join('/'),
     client.cep ? `CEP ${client.cep}` : '',
   ].filter(Boolean).join(', ');
@@ -339,7 +341,7 @@ export default function DispatchKitPage() {
       const residenteDomiciliadoWord = client.gender === 'FEMININO' ? 'residente e domiciliada' : client.gender === 'MASCULINO' ? 'residente e domiciliado' : 'residente e domiciliado(a)';
       setReviewClientData({
         cliente_nome: client.name || '', cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '—', cliente_nacionalidade: client.nationality || 'Brasileira',
-        cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—', cliente_nascimento_qualificacao: client.birthDate ? `, ${nascidoWord} em ${formatBirthDate(client.birthDate)}` : '', cliente_portador: portadorWord, cliente_residente_domiciliado: residenteDomiciliadoWord, cliente_endereco: [client.address, client.number, client.complement, client.neighborhood, [client.city, client.state].filter(Boolean).join('/'), client.cep ? `CEP ${client.cep}` : ''].filter(Boolean).join(', ') || '—', cidade: [client.city, client.state].filter(Boolean).join('/') || '—',
+        cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—', cliente_nascimento_qualificacao: client.birthDate ? `, ${nascidoWord} em ${formatBirthDate(client.birthDate)}` : '', cliente_portador: portadorWord, cliente_residente_domiciliado: residenteDomiciliadoWord, cliente_endereco: [client.address, client.complement, [client.city, client.state].filter(Boolean).join('/'), client.cep ? `CEP ${client.cep}` : ''].filter(Boolean).join(', ') || '—', cidade: [client.city, client.state].filter(Boolean).join('/') || '—',
         advogado_nome: lawyer.name || 'Advogado responsável', advogado_oab: lawyer.oabNumber || '—', escritorio_nome: officePayload.office?.tradeName || officePayload.office?.name || '—',
         patronos_qualificacao_conjunta: patronos ? `${patronos}, com escritório profissional na ${officeAddress}` : 'Advogado responsável',
         patronos_nomes: activeLawyers.map((member: any) => member.name).join('|'),
