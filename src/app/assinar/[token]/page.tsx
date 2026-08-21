@@ -1187,7 +1187,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </div>
               <h2 className="font-heading text-base font-extrabold text-[#071B3A]">🤳 Prova de Presença do Cliente ({signer?.name})</h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Registramos 1 selfie frontal para confirmar a presença do cliente titular.
+                Registramos 1 selfie frontal para confirmar a presença do cliente titular. Segure o documento de identidade ao lado do rosto, dentro do quadrado indicado.
               </p>
             </div>
 
@@ -1209,12 +1209,18 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 : 'border-slate-600'
               }`}>
                 <video ref={selfieVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
-                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                  <div className={`w-[70%] h-[75%] rounded-[50%] border-[3px] border-dashed transition-all duration-300 ${
+                {/* Sem a marcação oval de rosto: agora só um quadrado do lado
+                    direito do quadro, indicando onde segurar o documento ao
+                    lado do rosto na mesma selfie (evidência de identidade
+                    mais forte que só o rosto sozinho). */}
+                <div className="absolute inset-y-0 right-0 w-[38%] pointer-events-none flex items-center justify-center pr-3">
+                  <div className={`w-full aspect-[3/4] rounded-xl border-[3px] border-dashed transition-all duration-300 flex items-end justify-center pb-2 ${
                     frameState === 'GREEN' ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20'
                     : frameState === 'YELLOW' ? 'border-amber-400/70 bg-amber-500/5'
-                    : 'border-white/30'
-                  }`} />
+                    : 'border-white/40'
+                  }`}>
+                    <span className="text-[9px] font-extrabold text-white/80 bg-black/40 rounded-full px-2 py-0.5">📄 Documento aqui</span>
+                  </div>
                 </div>
                 {cameraActive && countdownSecs !== null && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-30 bg-black/30 backdrop-blur-[2px]">
@@ -1405,7 +1411,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </div>
               <h2 className="font-heading text-base font-extrabold text-[#071B3A]">🤳 Prova de Presença do Assinante a Rogo ({rogoName})</h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Agora registramos a selfie do acompanhante ({rogoName}) que assinará a rogo pelo cliente.
+                Agora registramos a selfie do acompanhante ({rogoName}) que assinará a rogo pelo cliente. Segure o documento de identidade ao lado do rosto, dentro do quadrado indicado.
               </p>
             </div>
 
