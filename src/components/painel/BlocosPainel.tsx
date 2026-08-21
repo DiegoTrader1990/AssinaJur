@@ -1633,6 +1633,7 @@ export function BlocoAcompanhamento({
   avisosSistema = [],
   clientes = [],
   pendencies = [],
+  processos = [],
   titulo = 'Acompanhamento',
   subtitulo = 'Visão geral do fluxo do escritório e status dos clientes',
   className = '',
@@ -1642,6 +1643,7 @@ export function BlocoAcompanhamento({
   avisosSistema?: Aviso[];
   clientes?: any[];
   pendencies?: any[];
+  processos?: any[];
   titulo?: string;
   subtitulo?: string;
   className?: string;
@@ -1688,6 +1690,19 @@ export function BlocoAcompanhamento({
       setItems(mapped);
     }
   }, [pendencies]);
+
+  // Processos protocolados são uma visão de consulta: não são pendências e
+  // portanto não recebem drag & drop no Kanban.
+  const processosProtocolados = useMemo(() => {
+    return [...processos]
+      .filter((processo) => Boolean(processo?.protocolNumber))
+      .sort((a, b) => {
+        const aDate = new Date(a.lastActivityAt || a.updatedAt || a.createdAt || 0).getTime();
+        const bDate = new Date(b.lastActivityAt || b.updatedAt || b.createdAt || 0).getTime();
+        return bDate - aDate;
+      })
+      .slice(0, 12);
+  }, [processos]);
 
   // Form de Novo Acompanhamento Modal State
   const [formClientId, setFormClientId] = useState('');
@@ -1779,23 +1794,32 @@ export function BlocoAcompanhamento({
     });
   }, [items, search, periodFilter, categoryFilter, responsibleFilter, showResolved]);
 
-  // Agrupamento nas 4 Colunas Kanban Requeridas
-  const columnsData = useMemo(() => {
-    const cols = [
-      { id: 'PARA_FAZER', label: 'Para fazer', badgeBg: 'bg-blue-100 text-blue-800' },
-      { id: 'AGUARDANDO_CLIENTE', label: 'Aguardando cliente', badgeBg: 'bg-amber-100 text-amber-800' },
-      { id: 'AGUARDANDO_TERCEIRO', label: 'Aguardando terceiro', badgeBg: 'bg-indigo-100 text-indigo-800' },
-      { id: 'PROXIMOS_RETORNOS', label: 'Próximos retornos', badgeBg: 'bg-emerald-100 text-emerald-800' },
-    ];
+   // Três colunas de acompanhamento e uma visão dos últimos processos
+   // protocolados. Pendências antigas em "PROXIMOS_RETORNOS" permanecem
+   // visíveis em "Para fazer", evitando que algo desapareça do painel.
+   const columnsData = useMemo(() => {
+     const cols = [
+       { id: 'PARA_FAZER', label: 'Para fazer', badgeBg: 'bg-blue-100 text-blue-800' },
+       { id: 'AGUARDANDO_CLIENTE', label: 'Aguardando cliente', badgeBg: 'bg-amber-100 text-amber-800' },
+       { id: 'AGUARDANDO_TERCEIRO', label: 'Aguardando terceiro', badgeBg: 'bg-indigo-100 text-indigo-800' },
+       { id: 'PROCESSOS', label: 'Processos', badgeBg: 'bg-emerald-100 text-emerald-800', isProcessColumn: true },
+     ];
 
-    return cols.map((col) => {
-      const colItems = filteredItems.filter((i) => (i.status || 'PARA_FAZER') === col.id);
-      return {
-        ...col,
-        items: colItems,
-      };
-    });
-  }, [filteredItems]);
+     return cols.map((col) => {
+       const colItems = col.id === 'PROCESSOS'
+         ? processosProtocolados
+         : filteredItems.filter((i) => {
+             const itemStatus = i.status || 'PARA_FAZER';
+             return col.id === 'PARA_FAZER'
+               ? itemStatus === 'PARA_FAZER' || itemStatus === 'PROXIMOS_RETORNOS'
+               : itemStatus === col.id;
+           });
+       return {
+         ...col,
+         items: colItems,
+       };
+     });
+   }, [filteredItems, processosProtocolados]);
 
   // Mutações da API (Resolução, Drag & Drop e Reagendamento)
   const handleResolve = async (id: string, currentResolved: boolean) => {
@@ -2114,8 +2138,8 @@ export function BlocoAcompanhamento({
         {columnsData.map((col) => (
           <div
             key={col.id}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => handleDrop(e, col.id)}
+            onDragOver={(e) => { if (!col.isProcessColumn) e.preventDefault(); }}
+            onDrop={(e) => { if (!col.isProcessColumn) handleDrop(e, col.id); }}
             className="flex flex-col rounded-xl border border-slate-200/80 bg-slate-50/50 p-3 shadow-2xs min-h-[220px]"
           >
             {/* Header da Coluna */}
@@ -2131,11 +2155,29 @@ export function BlocoAcompanhamento({
               {col.items.length === 0 ? (
                 <div className="flex items-center justify-center h-28 border border-dashed border-slate-200 rounded-lg p-3 text-center">
                   <p className="text-[11px] font-medium text-slate-400">
-                    Nenhum acompanhamento em &quot;{col.label.toLowerCase()}&quot;
+                    {col.isProcessColumn ? 'Nenhum processo protocolado ainda.' : `Nenhum acompanhamento em "${col.label.toLowerCase()}"`}
                   </p>
                 </div>
               ) : (
-                col.items.map((item) => {
+                col.isProcessColumn ? col.items.map((processo: any) => {
+                  const processDate = processo.lastActivityAt || processo.updatedAt || processo.createdAt;
+                  return (
+                    <button
+                      key={processo.id}
+                      type="button"
+                      onClick={() => router.push(`/processos?clienteId=${processo.clientId || processo.client?.id || ''}`)}
+                      className="group w-full rounded-xl border border-emerald-100 bg-white p-3 text-left shadow-2xs transition-all hover:border-emerald-300 hover:shadow-md"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-emerald-700"><Scale className="h-3 w-3" /> Protocolado</span>
+                        <span className="shrink-0 text-[9px] font-bold text-slate-400">{processDate ? new Date(processDate).toLocaleDateString('pt-BR') : ''}</span>
+                      </div>
+                      <h4 className="mt-2 line-clamp-2 text-xs font-extrabold leading-4 text-[#071B3A] transition-colors group-hover:text-emerald-700">{processo.title || 'Processo sem título'}</h4>
+                      <p className="mt-1 truncate text-[10px] font-medium text-slate-600">{processo.client?.name || 'Cliente não identificado'}</p>
+                      <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2 text-[9px] font-bold text-slate-400"><span className="truncate">Protocolo: <strong className="text-slate-700">{processo.protocolNumber}</strong></span><span className="inline-flex items-center gap-1 text-emerald-700">Abrir <ChevronRight className="h-3 w-3" /></span></div>
+                    </button>
+                  );
+                }) : col.items.map((item) => {
                   const overdue = isOverdue(item.dueDate);
                   const today = isToday(item.dueDate);
 
@@ -2283,7 +2325,6 @@ export function BlocoAcompanhamento({
                     <option value="PARA_FAZER">Para fazer</option>
                     <option value="AGUARDANDO_CLIENTE">Aguardando cliente</option>
                     <option value="AGUARDANDO_TERCEIRO">Aguardando terceiro</option>
-                    <option value="PROXIMOS_RETORNOS">Próximos retornos</option>
                     <option value="CONCLUIDO">Concluído</option>
                   </select>
                 </div>
@@ -2431,7 +2472,6 @@ export function BlocoAcompanhamento({
                     <option value="PARA_FAZER">Para fazer</option>
                     <option value="AGUARDANDO_CLIENTE">Aguardando cliente</option>
                     <option value="AGUARDANDO_TERCEIRO">Aguardando terceiro</option>
-                    <option value="PROXIMOS_RETORNOS">Próximos retornos</option>
                   </select>
                 </div>
 
@@ -2582,4 +2622,3 @@ export function KitsMaisUsados({
     </Cartao>
   );
 }
-
