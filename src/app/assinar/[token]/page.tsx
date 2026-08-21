@@ -830,25 +830,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       await recordEvidence('LIVENESS_STARTED');
       setFrameState('GRAY');
       playGoogleAudio('intro', audioEnabledRef.current);
-      // O áudio "intro" pré-gravado é de antes do quadrado de documento
-      // existir, então não menciona segurar o documento ao lado do rosto.
-      // Como não é possível gravar um novo áudio aqui, falamos essa parte
-      // extra por síntese de voz do navegador, com um pequeno atraso para
-      // não sobrepor o áudio pré-gravado - dispara só uma vez por abertura
-      // de câmera (não a cada foto/retomada).
-      if (audioEnabledRef.current && typeof window !== 'undefined' && window.speechSynthesis) {
-        window.setTimeout(() => {
-          try {
-            window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance(
-              'Centralize seu rosto na câmera e segure seu documento de identidade ao lado do rosto, dentro do quadrado indicado. Toque no botão verde quando estiver pronto.'
-            );
-            utterance.lang = 'pt-BR';
-            utterance.rate = 1;
-            window.speechSynthesis.speak(utterance);
-          } catch {}
-        }, 2600);
-      }
       const fm = await initFaceMesh();
       if (fm) {
         fm.onResults(handleFaceMeshResults);
@@ -861,6 +842,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   };
 
   const stopSelfieCamera = () => {
+    // Evita que uma locução iniciada antes da troca de etapa continue tocando
+    // sobre a nova tela (situação especialmente confusa no celular).
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch {}
+    }
     if (livenessLoopRef.current) {
       clearTimeout(livenessLoopRef.current);
       livenessLoopRef.current = null;
@@ -1269,7 +1255,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 : frameState === 'FLASH' ? 'border-white animate-pulse'
                 : 'border-slate-600'
               }`}>
-                <video ref={selfieVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
+                <video ref={selfieVideoRef} autoPlay playsInline muted className="block w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
                 {/* Sem a marcação oval de rosto: agora só um quadrado do lado
                     esquerdo do quadro, indicando onde segurar o documento ao
                     lado do rosto na mesma selfie (evidência de identidade
@@ -1500,7 +1486,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 : frameState === 'FLASH' ? 'border-white animate-pulse'
                 : 'border-slate-600'
               }`}>
-                <video ref={selfieVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
+                <video ref={selfieVideoRef} autoPlay playsInline muted className="block w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
                 <div className="absolute left-[5%] top-[15%] bottom-[104px] w-[31%] pointer-events-none flex items-center justify-center">
                   <div className={`w-full aspect-[3/4] rounded-xl border-[3px] border-dashed transition-all duration-300 flex items-end justify-center pb-2 ${
                     frameState === 'GREEN' ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/20'
