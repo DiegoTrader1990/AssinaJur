@@ -1015,10 +1015,10 @@ export default function ClientsPage() {
         document.body
       )}
 
-      {/* Client 360: painel lateral sem retirar o advogado da listagem */}
+      {/* Client 360: box centralizado (ficha completa do cliente) */}
       {selectedClient && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-[#071B3A]/45 font-sans backdrop-blur-[2px]" onMouseDown={(event) => { if (event.currentTarget === event.target) setSelectedClient(null); }}>
-          <aside className="flex h-full w-full max-w-2xl flex-col overflow-hidden border-l border-slate-200 bg-white shadow-[-24px_0_70px_-35px_rgba(7,27,58,.55)]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#071B3A]/55 p-3 font-sans backdrop-blur-[3px] sm:p-6" onMouseDown={(event) => { if (event.currentTarget === event.target) setSelectedClient(null); }}>
+          <aside className="flex h-full max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_90px_-25px_rgba(7,27,58,.55)]">
             <header className="relative overflow-hidden bg-[#071B3A] px-5 pb-5 pt-6 text-white sm:px-7">
               <div className="pointer-events-none absolute -right-14 -top-20 h-52 w-52 rounded-full border border-white/10 bg-white/[.035]" />
               <div className="relative flex items-start justify-between gap-4">
@@ -1065,7 +1065,7 @@ export default function ClientsPage() {
               )}
             </div>
 
-            <footer className="flex shrink-0 items-center justify-between border-t border-slate-200 bg-white px-5 py-3 sm:px-7"><button onClick={() => { setClientToDelete(selectedClient); setDeleteConfirmation(''); setFormError(''); }} className="text-[9px] font-bold text-slate-400 transition hover:text-rose-600">Excluir cliente</button><button onClick={() => setSelectedClient(null)} className="rounded-xl bg-[#071B3A] px-5 py-2.5 text-[10px] font-black text-white">Fechar painel</button></footer>
+            <footer className="flex shrink-0 items-center justify-between border-t border-slate-200 bg-white px-5 py-3 sm:px-7"><button onClick={() => { setClientToDelete(selectedClient); setDeleteConfirmation(''); setFormError(''); }} className="text-[9px] font-bold text-slate-400 transition hover:text-rose-600">Excluir cliente</button><button onClick={() => setSelectedClient(null)} className="rounded-xl bg-[#071B3A] px-5 py-2.5 text-[10px] font-black text-white">Fechar</button></footer>
           </aside>
         </div>
       )}
