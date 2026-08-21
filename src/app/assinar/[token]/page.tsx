@@ -1094,8 +1094,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     );
   }
 
+  const isSelfieCameraFlow = ['SELFIE', 'ROGO_SELFIE'].includes(step);
+
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col justify-between font-sans">
+    <div className={`min-h-screen flex flex-col justify-between font-sans ${isSelfieCameraFlow ? 'bg-slate-950 text-white' : 'bg-[#F8FAFC] text-slate-800'}`}>
       {/* O cabeçalho fixo some nas telas de câmera (documento/selfie): nelas
           já não sobra espaço de sobra na tela, e ele forçava a pessoa a
           rolar para ver o botão de disparo inteiro. Nas demais etapas ele
@@ -1124,7 +1126,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         </header>
       )}
 
-      <main className="max-w-md mx-auto w-full mt-4 mb-auto p-4 sm:p-6 space-y-4">
+      <main className={`max-w-md mx-auto w-full mb-auto space-y-4 ${isSelfieCameraFlow ? 'mt-0 p-2 sm:p-3' : 'mt-4 p-4 sm:p-6'}`}>
         {error && (
           <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-3 font-medium">
             <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
@@ -1204,7 +1206,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         {step === 'DOCUMENT' && (
           <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
             <div className="text-center space-y-1">
-              <div className="w-10 h-10 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
+              <div className="w-10 h-10 bg-[#D4AF37]/15 border border-[#D4AF37]/50 text-[#E4C35A] rounded-2xl flex items-center justify-center mx-auto shadow-xs">
                 <Camera className="w-5 h-5" />
               </div>
               <h2 className="font-heading text-base font-extrabold text-[#071B3A]">
@@ -1244,13 +1246,13 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
         {/* ETAPA 2: Prova de Presença do Cliente */}
         {step === 'SELFIE' && (
-          <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
+          <div className="bg-slate-950 p-4 sm:p-5 rounded-3xl border border-slate-700/80 shadow-2xl space-y-4">
             <div className="text-center space-y-1">
-              <div className="w-10 h-10 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
+              <div className="w-10 h-10 bg-[#D4AF37]/15 border border-[#D4AF37]/50 text-[#E4C35A] rounded-2xl flex items-center justify-center mx-auto shadow-xs">
                 <Eye className="w-5 h-5" />
               </div>
-              <h2 className="font-heading text-base font-extrabold text-[#071B3A]">🤳 Prova de Presença do Cliente ({signer?.name})</h2>
-              <p className="text-xs text-slate-500 font-medium leading-snug">
+              <h2 className="font-heading text-base font-extrabold text-white">Prova de presença ({signer?.name})</h2>
+              <p className="text-xs text-slate-300 font-medium leading-snug">
                 Registramos 1 selfie frontal para confirmar a presença do cliente titular. Segure o documento de identidade ao lado do rosto, dentro do quadrado indicado.
               </p>
             </div>
@@ -1259,7 +1261,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               <button
                 type="button"
                 onClick={() => startSelfieCamera(undefined, false, 'CLIENT')}
-                className="w-full py-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
+                className="w-full py-4 bg-[#D4AF37] hover:bg-[#E4C35A] text-[#071B3A] font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
               >
                 <Camera className="w-4 h-4 text-blue-400" /> Abrir Câmera do Celular
               </button>
@@ -1429,7 +1431,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         {step === 'ROGO_DOCUMENT' && (
           <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
             <div className="text-center space-y-1">
-              <div className="w-10 h-10 bg-blue-50 border border-blue-200 text-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
+              <div className="w-10 h-10 bg-[#D4AF37]/15 border border-[#D4AF37]/50 text-[#E4C35A] rounded-2xl flex items-center justify-center mx-auto shadow-xs">
                 <Camera className="w-5 h-5" />
               </div>
               <h2 className="font-heading text-base font-extrabold text-[#071B3A]">
@@ -1469,13 +1471,13 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
         {/* ETAPA ROGO: Fotos do Assinante a Rogo */}
         {step === 'ROGO_SELFIE' && (
-          <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
+          <div className="bg-slate-950 p-4 sm:p-5 rounded-3xl border border-slate-700/80 shadow-2xl space-y-4">
             <div className="text-center space-y-1">
-              <div className="w-10 h-10 bg-blue-50 border border-blue-200 text-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
+              <div className="w-10 h-10 bg-[#D4AF37]/15 border border-[#D4AF37]/50 text-[#E4C35A] rounded-2xl flex items-center justify-center mx-auto shadow-xs">
                 <Camera className="w-5 h-5" />
               </div>
-              <h2 className="font-heading text-base font-extrabold text-[#071B3A]">🤳 Prova de Presença do Assinante a Rogo ({rogoName})</h2>
-              <p className="text-xs text-slate-500 font-medium leading-snug">
+              <h2 className="font-heading text-base font-extrabold text-white">Prova de presença ({rogoName})</h2>
+              <p className="text-xs text-slate-300 font-medium leading-snug">
                 Agora registramos a selfie do acompanhante ({rogoName}) que assinará a rogo pelo cliente. Segure o documento de identidade ao lado do rosto, dentro do quadrado indicado.
               </p>
             </div>
@@ -1484,7 +1486,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               <button
                 type="button"
                 onClick={() => startSelfieCamera(undefined, false, 'ROGO')}
-                className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
+                className="w-full py-4 bg-[#D4AF37] hover:bg-[#E4C35A] text-[#071B3A] font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
               >
                 <Camera className="w-4 h-4 text-white" /> Abrir Câmera para {rogoName.split(' ')[0]}
               </button>
@@ -1833,9 +1835,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         )}
       </main>
 
-      <footer className="max-w-md mx-auto w-full text-center text-[11px] text-slate-500 py-4 border-t border-slate-200/60 font-medium">
+      {!isSelfieCameraFlow && <footer className="max-w-md mx-auto w-full text-center text-[11px] text-slate-500 py-4 border-t border-slate-200/60 font-medium">
         © 2026 {document?.officeName || 'AssinaJur'}. Respaldado pela MP 2.200-2/2001 e Lei 14.063/2020.
-      </footer>
+      </footer>}
     </div>
   );
 }
