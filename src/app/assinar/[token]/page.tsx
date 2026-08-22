@@ -670,14 +670,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
 
     try {
-      // A moldura na tela é mais larga (proporção ~4:3 / 3:4) do que era o
-      // canvas de captura (560x520, quase quadrado). Isso fazia o recorte
-      // horizontal do vídeo (feito abaixo, mantendo a altura e cortando as
-      // laterais) descartar boa parte do enquadramento que a pessoa via ao
-      // vivo, resultando numa foto final "mais de perto" do que a prévia.
-      // Usar 4:3 aqui mantém bem mais do enquadramento original.
-      canvas.width = 640;
-      canvas.height = 480;
+      // A evidência é uma selfie, portanto a captura precisa ser vertical.
+      // O formato anterior 640×480 era horizontal e chegava ao certificado
+      // como uma foto quase quadrada. O 4:5 mantém rosto e documento no
+      // enquadramento natural de um celular, sem criar faixas brancas no PDF.
+      canvas.width = 480;
+      canvas.height = 600;
       const ctx = canvas.getContext('2d');
       if (ctx) {
         const sourceWidth = video.videoWidth;
@@ -1252,7 +1250,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             <div className="text-center space-y-0.5 shrink-0">
               <h2 className="font-heading text-base font-extrabold text-[#071B3A]">Prova de presença ({signer?.name})</h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Registramos 1 selfie frontal para confirmar a presença do cliente titular. Segure o documento de identidade ao lado do rosto, dentro do quadrado indicado.
+                Registramos 1 selfie frontal para confirmar a presença do cliente titular. Segure o documento de identidade ao lado do rosto, dentro da moldura indicada.
               </p>
               {cameraActive && <button type="button" onClick={() => speakCaptureInstruction(SELFIE_VOICE_INSTRUCTION, true)} className="inline-flex items-center gap-1 pt-1 text-[11px] font-bold text-[#071B3A] underline underline-offset-2"><Volume2 className="w-3.5 h-3.5" /> Ouvir instruções</button>}
             </div>
@@ -1268,7 +1266,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             )}
 
             <div className={cameraActive ? 'flex flex-1 min-h-0 flex-col justify-start space-y-2' : 'hidden'}>
-              <div className={`relative w-full max-w-sm mx-auto rounded-3xl overflow-hidden border-4 transition-colors aspect-[4/3] bg-black ${
+              <div className={`relative w-full max-w-sm mx-auto rounded-3xl overflow-hidden border-4 transition-colors aspect-[4/5] bg-black ${
                 frameState === 'YELLOW' ? 'border-amber-400'
                 : frameState === 'FLASH' ? 'border-white animate-pulse'
                 : 'border-[#D4AF37]/70 shadow-lg'
@@ -1335,7 +1333,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 <div className="grid grid-cols-1 gap-2.5">
                   {LIVENESS_STEPS.map((s) => (
                     <div key={s.key} className="space-y-1.5 text-center">
-                      <div className="rounded-xl overflow-hidden border-2 border-emerald-500 aspect-[4/3] bg-slate-950 relative group shadow-sm">
+                      <div className="rounded-xl overflow-hidden border-2 border-emerald-500 aspect-[4/5] bg-slate-950 relative group shadow-sm">
                         {selfieImages[s.key] && (
                           <img src={selfieImages[s.key] as string} alt={s.label} className="w-full h-full object-contain" />
                         )}
@@ -1474,7 +1472,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             <div className="text-center space-y-0.5 shrink-0">
               <h2 className="font-heading text-base font-extrabold text-[#071B3A]">Prova de presença ({rogoName})</h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Agora registramos a selfie do acompanhante ({rogoName}) que assinará a rogo pelo cliente. Segure o documento de identidade ao lado do rosto, dentro do quadrado indicado.
+                Agora registramos a selfie do acompanhante ({rogoName}) que assinará a rogo pelo cliente. Segure o documento de identidade ao lado do rosto, dentro da moldura indicada.
               </p>
               {cameraActive && <button type="button" onClick={() => speakCaptureInstruction(SELFIE_VOICE_INSTRUCTION, true)} className="inline-flex items-center gap-1 pt-1 text-[11px] font-bold text-[#071B3A] underline underline-offset-2"><Volume2 className="w-3.5 h-3.5" /> Ouvir instruções</button>}
             </div>
@@ -1490,7 +1488,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             )}
 
             <div className={cameraActive ? 'flex flex-1 min-h-0 flex-col justify-start space-y-2' : 'hidden'}>
-              <div className={`relative w-full max-w-sm mx-auto rounded-3xl overflow-hidden border-4 transition-colors aspect-[4/3] bg-black ${
+              <div className={`relative w-full max-w-sm mx-auto rounded-3xl overflow-hidden border-4 transition-colors aspect-[4/5] bg-black ${
                 frameState === 'YELLOW' ? 'border-amber-400'
                 : frameState === 'FLASH' ? 'border-white animate-pulse'
                 : 'border-[#D4AF37]/70 shadow-lg'
@@ -1547,7 +1545,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 <div className="grid grid-cols-1 gap-2.5">
                   {LIVENESS_STEPS.map((s) => (
                     <div key={s.key} className="space-y-1.5 text-center">
-                      <div className="rounded-xl overflow-hidden border-2 border-blue-500 aspect-[4/3] bg-slate-950 relative shadow-sm">
+                      <div className="rounded-xl overflow-hidden border-2 border-blue-500 aspect-[4/5] bg-slate-950 relative shadow-sm">
                         {rogoSelfieImages[s.key] && (
                           <img src={rogoSelfieImages[s.key] as string} alt={s.label} className="w-full h-full object-contain" />
                         )}
