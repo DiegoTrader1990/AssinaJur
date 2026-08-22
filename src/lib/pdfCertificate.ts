@@ -186,8 +186,15 @@ async function embedBase64Image(
       // otimizado falhar ao ser incorporado, tentamos de novo sem o mozjpeg (forçando
       // baseline) e, em último caso, caímos de volta no PNG original - a foto NUNCA
       // pode sumir do certificado só porque a compressão mais agressiva falhou.
-      const resized = sharp(bytes).rotate().resize(cover.width, cover.height, {
-        fit: cover.fit || 'cover',
+      // Em "contain", o Sharp precisa usar "inside" para manter as dimensões
+      // naturais da foto. O antigo contain criava uma tela fixa com fundo
+      // branco; no PDF isso fazia a selfie parecer quadrada e parcialmente
+      // vazia, mesmo quando a captura original era vertical.
+      const keepFullPhoto = cover.fit === 'contain';
+      const resized = sharp(bytes).rotate().resize({
+        width: cover.width,
+        height: cover.height,
+        fit: keepFullPhoto ? 'inside' : 'cover',
         position: 'top',
         background: { r: 248, g: 250, b: 252, alpha: 1 },
       });
@@ -710,10 +717,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
     // Quadro vertical próximo de 4:5: para selfie com documento, esta
     // proporção mostra mais do rosto, do braço e do documento sem cortar as
     // laterais como acontecia no antigo quadro horizontal.
-    const compactPhotoW = 110;
+    const compactPhotoSlotW = 110;
     const compactPhotoH = 142;
     const compactPhotoGap = 27;
-    let compactPhotoX = CX + (CW - compactPhotoW) / 2;
+    let compactPhotoX = CX + (CW - compactPhotoSlotW) / 2;
     for (const [label, imageData] of compactPhotos) {
       // 'contain' preserva a foto original inteira. O fundo neutro preenche
       // apenas eventual sobra de proporção, sem zoom, distorção ou recorte.
@@ -722,8 +729,14 @@ export async function generateFinalPdfCertificate(documentId: string) {
       // do bloco navy sólido - mesmo ajuste feito no certificado completo, para
       // a foto parecer parte do certificado e não um recorte colado por cima.
       const imgFrameH = compactPhotoH - 18;
-      certificatePage.drawRectangle({ x: compactPhotoX, y: 327, width: compactPhotoW, height: imgFrameH, color: rgb(0.96, 0.96, 0.97), opacity: 0.55 });
-      certificatePage.drawRectangle({ x: compactPhotoX, y: 327 + imgFrameH - 1.4, width: compactPhotoW, height: 1.4, color: gold });
+      // A moldura acompanha a proporção real da captura. Assim uma selfie
+      // vertical não ganha faixas brancas laterais para caber em um quadrado.
+      const compactPhotoW = embedded
+        ? Math.max(66, Math.min(compactPhotoSlotW, Math.round((imgFrameH * embedded.width) / embedded.height)))
+        : compactPhotoSlotW;
+      const compactFrameX = compactPhotoX + (compactPhotoSlotW - compactPhotoW) / 2;
+      certificatePage.drawRectangle({ x: compactFrameX, y: 327, width: compactPhotoW, height: imgFrameH, color: rgb(0.96, 0.96, 0.97), opacity: 0.55 });
+      certificatePage.drawRectangle({ x: compactFrameX, y: 327 + imgFrameH - 1.4, width: compactPhotoW, height: 1.4, color: gold });
 
       if (embedded) {
         const imgW = embedded.width;
@@ -731,16 +744,16 @@ export async function generateFinalPdfCertificate(documentId: string) {
         const scale = Math.min(compactPhotoW / imgW, imgFrameH / imgH);
         const drawW = Math.round(imgW * scale);
         const drawH = Math.round(imgH * scale);
-        const offsetX = compactPhotoX + (compactPhotoW - drawW) / 2;
+        const offsetX = compactFrameX + (compactPhotoW - drawW) / 2;
         const offsetY = 327 + (imgFrameH - drawH) / 2;
 
         certificatePage.drawImage(embedded, { x: offsetX, y: offsetY, width: drawW, height: drawH });
       }
 
-      certificatePage.drawText(label, { x: compactPhotoX, y: 313, size: 5.8, font: bold, color: muted });
+      certificatePage.drawText(label, { x: compactFrameX, y: 313, size: 5.8, font: bold, color: muted });
       const compactValidW = bold.widthOfTextAtSize('VALIDADA', 5.4);
-      certificatePage.drawText('VALIDADA', { x: compactPhotoX + compactPhotoW - compactValidW, y: 313, size: 5.4, font: bold, color: green });
-      compactPhotoX += compactPhotoW + compactPhotoGap;
+      certificatePage.drawText('VALIDADA', { x: compactFrameX + compactPhotoW - compactValidW, y: 313, size: 5.4, font: bold, color: green });
+      compactPhotoX += compactPhotoSlotW + compactPhotoGap;
     }
 
     const integrityX = CX;
@@ -1203,9 +1216,14 @@ export async function generateFinalPdfCertificate(documentId: string) {
         page.drawRectangle({ x: photoX, y: imgFrameY, width: boxW, height: boxH, color: rgb(0.96, 0.97, 0.985), opacity: 0.82, borderColor: rgb(0.82, 0.86, 0.92), borderWidth: 0.8 });
         page.drawRectangle({ x: photoX, y: imgFrameY + boxH - 1.4, width: boxW, height: 1.4, color: gold });
 
-        const photoFrameW = 112;
+        const photoFrameMaxW = 112;
         const photoFrameH = 128;
-        const photoFrameX = photoX + 13;
+        // Moldura variável, sempre limitada ao espaço do cartão: a proporção
+        // é a da foto original e não a de um quadrado imposto pelo layout.
+        const photoFrameW = embedded
+          ? Math.max(74, Math.min(photoFrameMaxW, Math.round(((photoFrameH - 8) * embedded.width) / embedded.height + 8)))
+          : photoFrameMaxW;
+        const photoFrameX = photoX + 13 + (photoFrameMaxW - photoFrameW) / 2;
         const photoFrameY = imgFrameY + 14;
         page.drawRectangle({ x: photoFrameX, y: photoFrameY, width: photoFrameW, height: photoFrameH, color: rgb(1, 1, 1), borderColor: rgb(0.8, 0.84, 0.9), borderWidth: 0.7 });
 
