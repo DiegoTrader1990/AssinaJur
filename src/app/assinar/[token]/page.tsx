@@ -95,6 +95,8 @@ const LIVENESS_STEPS: SelfieStepConfig[] = [
   { key: 'center', label: 'Foto Frontal', instruction: 'Olhe diretamente para a câmera e centralize seu rosto.', targetYaw: 'CENTER' },
 ];
 
+const SELFIE_VOICE_INSTRUCTION = 'Agora vamos tirar a foto com o documento. Posicione o rosto na câmera e segure o documento ao lado do rosto. Quando estiver pronto, toque no botão.';
+
 function computeFaceOrientation(landmarks: any[]) {
   const nose = landmarks[1];
   const leftEye = landmarks[133] || landmarks[33];
@@ -828,10 +830,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     // Fala antes de qualquer await: no Safari do iPhone a síntese de voz só
     // é liberada quando ainda está diretamente vinculada ao toque no botão.
     stopSelfieCamera();
-    speakCaptureInstruction(
-      'Agora vamos tirar a foto com o documento. Posicione o rosto na câmera e segure o documento ao lado do rosto. Quando estiver pronto, toque no botão.',
-      audioEnabledRef.current,
-    );
+    speakCaptureInstruction(SELFIE_VOICE_INSTRUCTION, audioEnabledRef.current);
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -1251,14 +1250,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         {/* ETAPA 2: Prova de Presença do Cliente */}
         {step === 'SELFIE' && (
           <div className={cameraActive ? 'h-full flex flex-col bg-white p-3 rounded-none border-0 shadow-none space-y-3' : 'bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4'}>
-            <div className="text-center space-y-1 shrink-0">
-              <div className="w-10 h-10 bg-[#D4AF37]/15 border border-[#D4AF37]/50 text-[#E4C35A] rounded-2xl flex items-center justify-center mx-auto shadow-xs">
-                <Eye className="w-5 h-5" />
-              </div>
+            <div className="text-center space-y-0.5 shrink-0">
               <h2 className="font-heading text-base font-extrabold text-[#071B3A]">Prova de presença ({signer?.name})</h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
                 Registramos 1 selfie frontal para confirmar a presença do cliente titular. Segure o documento de identidade ao lado do rosto, dentro do quadrado indicado.
               </p>
+              {cameraActive && <button type="button" onClick={() => speakCaptureInstruction(SELFIE_VOICE_INSTRUCTION, true)} className="inline-flex items-center gap-1 pt-1 text-[11px] font-bold text-[#071B3A] underline underline-offset-2"><Volume2 className="w-3.5 h-3.5" /> Ouvir instruções</button>}
             </div>
 
             {!cameraActive && !clientSelfieComplete && (
@@ -1271,7 +1268,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </button>
             )}
 
-            <div className={cameraActive ? 'flex flex-1 min-h-0 flex-col justify-center space-y-2' : 'hidden'}>
+            <div className={cameraActive ? 'flex flex-1 min-h-0 flex-col justify-start space-y-2' : 'hidden'}>
               <div className={`relative w-full max-w-sm mx-auto rounded-3xl overflow-hidden border-4 transition-colors aspect-[4/3] bg-black ${
                 frameState === 'YELLOW' ? 'border-amber-400'
                 : frameState === 'FLASH' ? 'border-white animate-pulse'
@@ -1476,14 +1473,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         {/* ETAPA ROGO: Fotos do Assinante a Rogo */}
         {step === 'ROGO_SELFIE' && (
           <div className={cameraActive ? 'h-full flex flex-col bg-white p-3 rounded-none border-0 shadow-none space-y-3' : 'bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4'}>
-            <div className="text-center space-y-1 shrink-0">
-              <div className="w-10 h-10 bg-[#D4AF37]/15 border border-[#D4AF37]/50 text-[#E4C35A] rounded-2xl flex items-center justify-center mx-auto shadow-xs">
-                <Camera className="w-5 h-5" />
-              </div>
+            <div className="text-center space-y-0.5 shrink-0">
               <h2 className="font-heading text-base font-extrabold text-[#071B3A]">Prova de presença ({rogoName})</h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
                 Agora registramos a selfie do acompanhante ({rogoName}) que assinará a rogo pelo cliente. Segure o documento de identidade ao lado do rosto, dentro do quadrado indicado.
               </p>
+              {cameraActive && <button type="button" onClick={() => speakCaptureInstruction(SELFIE_VOICE_INSTRUCTION, true)} className="inline-flex items-center gap-1 pt-1 text-[11px] font-bold text-[#071B3A] underline underline-offset-2"><Volume2 className="w-3.5 h-3.5" /> Ouvir instruções</button>}
             </div>
 
             {!cameraActive && !rogoSelfieComplete && (
@@ -1496,7 +1491,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </button>
             )}
 
-            <div className={cameraActive ? 'flex flex-1 min-h-0 flex-col justify-center space-y-2' : 'hidden'}>
+            <div className={cameraActive ? 'flex flex-1 min-h-0 flex-col justify-start space-y-2' : 'hidden'}>
               <div className={`relative w-full max-w-sm mx-auto rounded-3xl overflow-hidden border-4 transition-colors aspect-[4/3] bg-black ${
                 frameState === 'YELLOW' ? 'border-amber-400'
                 : frameState === 'FLASH' ? 'border-white animate-pulse'
