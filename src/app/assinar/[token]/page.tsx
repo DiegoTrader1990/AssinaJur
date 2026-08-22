@@ -1227,7 +1227,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               helperText="Posicione o documento dentro da moldura, com boa iluminação."
               onConfirm={handleDocumentConfirm}
               onEvent={(code) => recordEvidence(code)}
-              autoStart
             />
 
             <button
@@ -1450,7 +1449,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               helperText="Posicione o documento dentro da moldura, com boa iluminação."
               onConfirm={handleRogoDocumentConfirm}
               onEvent={(code) => recordEvidence(code)}
-              autoStart
             />
 
             <button
