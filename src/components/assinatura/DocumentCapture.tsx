@@ -190,26 +190,6 @@ export default function DocumentCapture({
     };
   }, [phase]);
 
-  // Fala a instrução da etapa (frente/verso) uma única vez, assim que a
-  // câmera fica pronta para aquele lado - nunca de novo, nem se a pessoa
-  // refizer a foto do mesmo lado.
-  useEffect(() => {
-    if (phase !== 'LIVE') return;
-    if (spokenSideRef.current === side) return;
-    spokenSideRef.current = side;
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
-    try {
-      window.speechSynthesis.cancel();
-      const text = side === 'FRENTE'
-        ? 'Agora vamos fotografar a frente do documento. Aperte o botão quando estiver pronto.'
-        : 'Agora vamos fotografar o verso do documento. Aperte o botão quando estiver pronto.';
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'pt-BR';
-      utterance.rate = 1;
-      window.speechSynthesis.speak(utterance);
-    } catch {}
-  }, [phase, side]);
-
   // Ao trocar de lado, reinicia o componente para o estado inicial.
   useEffect(() => {
     stopCamera();
@@ -226,6 +206,22 @@ export default function DocumentCapture({
 
   const startCamera = useCallback(async () => {
     setError('');
+    // Fala antes de abrir a câmera. No Safari, falar depois do await da
+    // permissão pode ser bloqueado por não estar mais ligado ao toque.
+    if (spokenSideRef.current !== side && typeof window !== 'undefined' && window.speechSynthesis) {
+      spokenSideRef.current = side;
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(
+          side === 'FRENTE'
+            ? 'Agora vamos fotografar a frente do documento. Aperte o botão quando estiver pronto.'
+            : 'Agora vamos fotografar o verso do documento. Aperte o botão quando estiver pronto.'
+        );
+        utterance.lang = 'pt-BR';
+        utterance.rate = 1;
+        window.speechSynthesis.speak(utterance);
+      } catch {}
+    }
     setPhase('STARTING');
     try {
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
@@ -498,10 +494,10 @@ export default function DocumentCapture({
   // Camera aberta ou revisao: ocupa a tela inteira, sem rolagem possivel.
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-slate-950">
+    <div className="fixed inset-0 z-40 flex flex-col bg-white">
       <div className="shrink-0 px-4 pb-2 pt-4 text-center">
-        <h2 className="text-sm font-extrabold text-white">{title}</h2>
-        <p className="mt-0.5 text-[11px] text-slate-300">{helperText}</p>
+        <h2 className="text-sm font-extrabold text-[#071B3A]">{title}</h2>
+        <p className="mt-0.5 text-[11px] text-slate-500">{helperText}</p>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2">
@@ -598,7 +594,7 @@ export default function DocumentCapture({
         </div>
 
         {phase === 'LIVE' && (
-          <p className="w-full max-w-sm px-2 pt-2 text-center text-[11px] font-semibold text-slate-400">
+          <p className="w-full max-w-sm px-2 pt-2 text-center text-[11px] font-semibold text-slate-600">
             Toque no botão e fique com o documento parado - a foto é tirada automaticamente após a contagem de 5 segundos.
           </p>
         )}
@@ -621,7 +617,7 @@ export default function DocumentCapture({
             <button
               type="button"
               onClick={retake}
-              className="flex w-full items-center justify-center gap-2 py-2 text-xs font-semibold text-slate-300 transition hover:text-white active:scale-[0.99]"
+              className="flex w-full items-center justify-center gap-2 py-2 text-xs font-semibold text-slate-500 transition hover:text-[#071B3A] active:scale-[0.99]"
             >
               <RefreshCw className="h-3.5 w-3.5" /> Tirar outra foto
             </button>

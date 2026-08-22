@@ -825,8 +825,15 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       }
     }
 
+    // Fala antes de qualquer await: no Safari do iPhone a síntese de voz só
+    // é liberada quando ainda está diretamente vinculada ao toque no botão.
+    stopSelfieCamera();
+    speakCaptureInstruction(
+      'Agora vamos tirar a foto com o documento. Posicione o rosto na câmera e segure o documento ao lado do rosto. Quando estiver pronto, toque no botão.',
+      audioEnabledRef.current,
+    );
+
     try {
-      stopSelfieCamera();
       const stream = await navigator.mediaDevices.getUserMedia({
         // 4:3 preserva melhor o rosto e o documento ao lado. O formato
         // vertical anterior ampliava demais a imagem em celulares e cortava
@@ -843,10 +850,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       await recordEvidence('CAMERA_PERMITTED');
       await recordEvidence('LIVENESS_STARTED');
       setFrameState('GRAY');
-      speakCaptureInstruction(
-        'Agora vamos tirar a foto com o documento. Posicione o rosto na câmera e segure o documento ao lado do rosto. Quando estiver pronto, toque no botão verde.',
-        audioEnabledRef.current,
-      );
       const fm = await initFaceMesh();
       if (fm) {
         fm.onResults(handleFaceMeshResults);
@@ -1095,9 +1098,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   }
 
   const isSelfieCameraFlow = ['SELFIE', 'ROGO_SELFIE'].includes(step);
+  const isActiveSelfieCamera = isSelfieCameraFlow && cameraActive;
 
   return (
-    <div className={`min-h-screen flex flex-col justify-between font-sans ${isSelfieCameraFlow ? 'bg-slate-950 text-white' : 'bg-[#F8FAFC] text-slate-800'}`}>
+    <div className={`flex flex-col justify-between font-sans bg-white text-slate-800 ${isActiveSelfieCamera ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'}`}>
       {/* O cabeçalho fixo some nas telas de câmera (documento/selfie): nelas
           já não sobra espaço de sobra na tela, e ele forçava a pessoa a
           rolar para ver o botão de disparo inteiro. Nas demais etapas ele
@@ -1126,7 +1130,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         </header>
       )}
 
-      <main className={`max-w-md mx-auto w-full mb-auto space-y-4 ${isSelfieCameraFlow ? 'mt-0 p-2 sm:p-3' : 'mt-4 p-4 sm:p-6'}`}>
+      <main className={`max-w-md mx-auto w-full mb-auto space-y-4 ${isActiveSelfieCamera ? 'h-full overflow-hidden mt-0 p-0' : 'mt-4 p-4 sm:p-6'}`}>
         {error && (
           <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-3 font-medium">
             <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
@@ -1246,13 +1250,13 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
         {/* ETAPA 2: Prova de Presença do Cliente */}
         {step === 'SELFIE' && (
-          <div className="bg-slate-950 p-4 sm:p-5 rounded-3xl border border-slate-700/80 shadow-2xl space-y-4">
-            <div className="text-center space-y-1">
+          <div className={cameraActive ? 'h-full flex flex-col bg-white p-3 rounded-none border-0 shadow-none space-y-3' : 'bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4'}>
+            <div className="text-center space-y-1 shrink-0">
               <div className="w-10 h-10 bg-[#D4AF37]/15 border border-[#D4AF37]/50 text-[#E4C35A] rounded-2xl flex items-center justify-center mx-auto shadow-xs">
                 <Eye className="w-5 h-5" />
               </div>
-              <h2 className="font-heading text-base font-extrabold text-white">Prova de presença ({signer?.name})</h2>
-              <p className="text-xs text-slate-300 font-medium leading-snug">
+              <h2 className="font-heading text-base font-extrabold text-[#071B3A]">Prova de presença ({signer?.name})</h2>
+              <p className="text-xs text-slate-500 font-medium leading-snug">
                 Registramos 1 selfie frontal para confirmar a presença do cliente titular. Segure o documento de identidade ao lado do rosto, dentro do quadrado indicado.
               </p>
             </div>
@@ -1267,8 +1271,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </button>
             )}
 
-            <div className={cameraActive ? 'space-y-3' : 'hidden'}>
-              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[4/3] bg-black ${
+            <div className={cameraActive ? 'flex flex-1 min-h-0 flex-col justify-center space-y-2' : 'hidden'}>
+              <div className={`relative w-full max-w-sm mx-auto rounded-3xl overflow-hidden border-4 transition-colors aspect-[4/3] bg-black ${
                 frameState === 'YELLOW' ? 'border-amber-400'
                 : frameState === 'FLASH' ? 'border-white animate-pulse'
                 : 'border-[#D4AF37]/70 shadow-lg'
@@ -1471,13 +1475,13 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
         {/* ETAPA ROGO: Fotos do Assinante a Rogo */}
         {step === 'ROGO_SELFIE' && (
-          <div className="bg-slate-950 p-4 sm:p-5 rounded-3xl border border-slate-700/80 shadow-2xl space-y-4">
-            <div className="text-center space-y-1">
+          <div className={cameraActive ? 'h-full flex flex-col bg-white p-3 rounded-none border-0 shadow-none space-y-3' : 'bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4'}>
+            <div className="text-center space-y-1 shrink-0">
               <div className="w-10 h-10 bg-[#D4AF37]/15 border border-[#D4AF37]/50 text-[#E4C35A] rounded-2xl flex items-center justify-center mx-auto shadow-xs">
                 <Camera className="w-5 h-5" />
               </div>
-              <h2 className="font-heading text-base font-extrabold text-white">Prova de presença ({rogoName})</h2>
-              <p className="text-xs text-slate-300 font-medium leading-snug">
+              <h2 className="font-heading text-base font-extrabold text-[#071B3A]">Prova de presença ({rogoName})</h2>
+              <p className="text-xs text-slate-500 font-medium leading-snug">
                 Agora registramos a selfie do acompanhante ({rogoName}) que assinará a rogo pelo cliente. Segure o documento de identidade ao lado do rosto, dentro do quadrado indicado.
               </p>
             </div>
@@ -1492,8 +1496,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </button>
             )}
 
-            <div className={cameraActive ? 'space-y-3' : 'hidden'}>
-              <div className={`relative rounded-3xl overflow-hidden border-4 transition-colors aspect-[4/3] bg-black ${
+            <div className={cameraActive ? 'flex flex-1 min-h-0 flex-col justify-center space-y-2' : 'hidden'}>
+              <div className={`relative w-full max-w-sm mx-auto rounded-3xl overflow-hidden border-4 transition-colors aspect-[4/3] bg-black ${
                 frameState === 'YELLOW' ? 'border-amber-400'
                 : frameState === 'FLASH' ? 'border-white animate-pulse'
                 : 'border-[#D4AF37]/70 shadow-lg'
@@ -1835,7 +1839,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         )}
       </main>
 
-      {!isSelfieCameraFlow && <footer className="max-w-md mx-auto w-full text-center text-[11px] text-slate-500 py-4 border-t border-slate-200/60 font-medium">
+      {!isActiveSelfieCamera && <footer className="max-w-md mx-auto w-full text-center text-[11px] text-slate-500 py-4 border-t border-slate-200/60 font-medium">
         © 2026 {document?.officeName || 'AssinaJur'}. Respaldado pela MP 2.200-2/2001 e Lei 14.063/2020.
       </footer>}
     </div>
