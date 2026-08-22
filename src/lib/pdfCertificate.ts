@@ -707,15 +707,17 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const compactPhotos: Array<[string, string | null]> = [
       ['FRONTAL', signer.selfieCenterImage],
     ];
-    const compactPhotoW = 140;
-    const compactPhotoH = 132;
+    // Quadro vertical próximo de 4:5: para selfie com documento, esta
+    // proporção mostra mais do rosto, do braço e do documento sem cortar as
+    // laterais como acontecia no antigo quadro horizontal.
+    const compactPhotoW = 110;
+    const compactPhotoH = 142;
     const compactPhotoGap = 27;
     let compactPhotoX = CX + (CW - compactPhotoW) / 2;
     for (const [label, imageData] of compactPhotos) {
-      // Alvo de corte alinhado à proporção real do quadro de exibição (140x106)
-      // em vez de um corte mais estreito - evita "zoom" excessivo no rosto,
-      // preservando mais do enquadramento original da selfie.
-      const embedded = await embedBase64Image(pdfDoc, imageData, { width: 560, height: 424 });
+      // 'contain' preserva a foto original inteira. O fundo neutro preenche
+      // apenas eventual sobra de proporção, sem zoom, distorção ou recorte.
+      const embedded = await embedBase64Image(pdfDoc, imageData, { width: 480, height: 600, fit: 'contain' });
       // Friso dourado fino no topo + legenda como texto corrido embaixo, em vez
       // do bloco navy sólido - mesmo ajuste feito no certificado completo, para
       // a foto parecer parte do certificado e não um recorte colado por cima.
@@ -1186,7 +1188,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
         // anterior (540x620, retrato) recortava boa parte das laterais da selfie
         // antes mesmo do encaixe final no quadro, dando a impressão de "zoom"
         // excessivo no rosto. Agora o corte só remove o estritamente necessário.
-        const embedded = await embedBase64Image(pdfDoc, img, { width: 560, height: 560, fit: 'contain' });
+        // Canvas vertical 4:5 em modo contain: preserva todo o enquadramento
+        // capturado, inclusive rosto e documento, sem nenhuma deformação.
+        const embedded = await embedBase64Image(pdfDoc, img, { width: 480, height: 600, fit: 'contain' });
         const imgFrameY = cardY + captionH;
 
         // Sem bloco de cor: só um friso dourado fino na borda superior da
