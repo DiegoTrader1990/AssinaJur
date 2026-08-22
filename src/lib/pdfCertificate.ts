@@ -940,7 +940,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
       page = pdfDoc.addPage([PAGE_W, PAGE_H]);
       manifestPageCount += 1;
       drawFrame(page, `CERTIFICADO DE EVIDÊNCIAS JURÍDICAS (Continuação ${manifestPageCount})`);
-      y = 694;
+      // A continuação usa melhor a área útil do papel timbrado, mantendo uma
+      // margem de segurança confortável para a moldura inferior.
+      y = 706;
     }
   };
 
@@ -1006,7 +1008,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
   drawFieldBlock(padX, documentCursor, documentHalfWidth, 'Tipo de documento', doc.documentType || 'Não informado', { font: bold, size: 8.2 });
   drawFieldBlock(documentCol2X, documentCursor, documentHalfWidth, 'Data de conclusão', formatBrasiliaDateTime(doc.completedAt || new Date()), { font: bold, size: 7.2, lineHeight: 9.2, color: green });
 
-  y = docPanelY - 10;
+  y = docPanelY - 6;
 
   // SEÇÃO 3 & 4: DADOS DO SIGNATÁRIO E EVIDÊNCIAS COLETADAS
   const docPhotoSigners: any[] = [];
@@ -1052,8 +1054,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
     // para a próxima, deixando um vão enorme em branco no fim da página
     // anterior. Agora os dados do signatário reservam espaço próprio e a
     // selfie reserva o dela separadamente, logo antes de ser desenhada.
-    const panelH = 32 + dataHeight + 8;
-    ensureSpace(panelH + 10);
+    const panelH = 28 + dataHeight + 5;
+    ensureSpace(panelH + 6);
     let selfieCardBottomY: number | null = null;
 
     const pTop = y;
@@ -1070,7 +1072,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
     const col2X = padX + halfWidth + gapWidth;
     // Respiro entre o cabeçalho e o primeiro campo do signatário.
-    let cursor = pTop - 40;
+    let cursor = pTop - 34;
 
     const drawTwoColumns = (
       left: { label: string; value: any; options?: any },
@@ -1138,11 +1140,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
       // Um cartão de evidência, e não uma foto solta: a imagem é preservada
       // por inteiro (sem zoom/corte do rosto) e acompanhada de informações
       // que explicam o seu vínculo probatório.
-      const boxW = 300;
-      const boxH = 172;
+      // Cartão compacto: mantém a foto em tamanho útil, mas evita uma página
+      // com grandes áreas vazias depois da evidência.
+      const boxW = 280;
+      const boxH = 156;
       const captionH = 0;
-      const cardH = boxH + captionH + 14;
-      const gap = 20;
+      const cardH = boxH + captionH + 10;
+      const gap = 16;
       const photosTotalWidth = boxW;
 
       // Reserva espaço só para o cartão da selfie (cardH + o título da seção
@@ -1151,7 +1155,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       // desenhados acima, ficam na página anterior mesmo, sem deixar um vão
       // enorme em branco como acontecia quando dados+foto eram uma coisa só.
       y = cursor;
-      ensureSpace(cardH + 12 + 24);
+      ensureSpace(cardH + 8 + 20);
       cursor = y;
       page.drawText('3. PROVA DE PRESENÇA AO VIVO (REGISTRO FACIAL HD)', {
         x: padX,
@@ -1169,7 +1173,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       // Guardado fora do bloco "if (hasPhotos)" (via selfieCardBottomY) para
       // continuar acessível depois dele, ao posicionar o restante do
       // certificado logo abaixo do cartão da selfie.
-      const cardY = cursor - cardH - 12;
+      const cardY = cursor - cardH - 8;
       selfieCardBottomY = cardY;
 
       for (const [label, img] of photoLabels) {
@@ -1195,10 +1199,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
         page.drawRectangle({ x: photoX, y: imgFrameY, width: boxW, height: boxH, color: rgb(0.96, 0.97, 0.985), opacity: 0.82, borderColor: rgb(0.82, 0.86, 0.92), borderWidth: 0.8 });
         page.drawRectangle({ x: photoX, y: imgFrameY + boxH - 1.4, width: boxW, height: 1.4, color: gold });
 
-        const photoFrameW = 128;
-        const photoFrameH = 142;
-        const photoFrameX = photoX + 14;
-        const photoFrameY = imgFrameY + 15;
+        const photoFrameW = 112;
+        const photoFrameH = 128;
+        const photoFrameX = photoX + 13;
+        const photoFrameY = imgFrameY + 14;
         page.drawRectangle({ x: photoFrameX, y: photoFrameY, width: photoFrameW, height: photoFrameH, color: rgb(1, 1, 1), borderColor: rgb(0.8, 0.84, 0.9), borderWidth: 0.7 });
 
         if (embedded) {
@@ -1219,16 +1223,16 @@ export async function generateFinalPdfCertificate(documentId: string) {
           });
         }
 
-        const infoX = photoFrameX + photoFrameW + 18;
-        page.drawText('EVIDÊNCIA FOTOGRÁFICA', { x: infoX, y: imgFrameY + 124, size: 6.4, font: bold, color: navy });
-        page.drawText('SELFIE COM DOCUMENTO', { x: infoX, y: imgFrameY + 108, size: 5.7, font: bold, color: muted });
-        page.drawLine({ start: { x: infoX, y: imgFrameY + 99 }, end: { x: photoX + boxW - 16, y: imgFrameY + 99 }, thickness: 0.5, color: rgb(0.8, 0.84, 0.9) });
-        page.drawText('Identidade e presença', { x: infoX, y: imgFrameY + 77, size: 5.8, font: regular, color: muted });
-        page.drawText('confirmadas na sessão', { x: infoX, y: imgFrameY + 63, size: 8.1, font: bold, color: navy });
-        page.drawText('Imagem original preservada', { x: infoX, y: imgFrameY + 39, size: 5.8, font: regular, color: muted });
-        page.drawText('junto aos registros técnicos.', { x: infoX, y: imgFrameY + 28, size: 5.8, font: regular, color: muted });
-        page.drawRectangle({ x: infoX, y: imgFrameY + 8, width: 118, height: 14, borderColor: green, borderWidth: 0.7 });
-        page.drawText('EVIDÊNCIA VINCULADA', { x: infoX + 10, y: imgFrameY + 12.5, size: 5.2, font: bold, color: green });
+        const infoX = photoFrameX + photoFrameW + 16;
+        page.drawText('EVIDÊNCIA FOTOGRÁFICA', { x: infoX, y: imgFrameY + 112, size: 6.2, font: bold, color: navy });
+        page.drawText('SELFIE COM DOCUMENTO', { x: infoX, y: imgFrameY + 97, size: 5.5, font: bold, color: muted });
+        page.drawLine({ start: { x: infoX, y: imgFrameY + 89 }, end: { x: photoX + boxW - 14, y: imgFrameY + 89 }, thickness: 0.5, color: rgb(0.8, 0.84, 0.9) });
+        page.drawText('Identidade e presença', { x: infoX, y: imgFrameY + 69, size: 5.6, font: regular, color: muted });
+        page.drawText('confirmadas na sessão', { x: infoX, y: imgFrameY + 56, size: 7.6, font: bold, color: navy });
+        page.drawText('Imagem original preservada', { x: infoX, y: imgFrameY + 35, size: 5.6, font: regular, color: muted });
+        page.drawText('junto aos registros técnicos.', { x: infoX, y: imgFrameY + 25, size: 5.6, font: regular, color: muted });
+        page.drawRectangle({ x: infoX, y: imgFrameY + 7, width: 110, height: 13, borderColor: green, borderWidth: 0.7 });
+        page.drawText('EVIDÊNCIA VINCULADA', { x: infoX + 9, y: imgFrameY + 11, size: 5, font: bold, color: green });
         photoX += boxW + gap;
       }
     }
@@ -1236,7 +1240,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     // Usa a posição final real do cursor (depois dos dados e, se houve, da
     // selfie) em vez do antigo "pY" fixo - que representava o fim de um
     // painel de altura pré-calculada que não existe mais como bloco único.
-    y = (selfieCardBottomY ?? cursor) - 14;
+    y = (selfieCardBottomY ?? cursor) - 8;
   }
 
   // SEÇÃO 4: EVIDÊNCIA COMPLEMENTAR — DOCUMENTO DE IDENTIFICAÇÃO (FRENTE/VERSO)
@@ -1250,7 +1254,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
   if (docPhotoSigners.length > 0) {
     const docInnerWidth = CW - 28;
     const docBoxW = Math.min(docInnerWidth, 370);
-    const docBoxH = 210;
+    const docBoxH = 184;
     const docX = padX + (docInnerWidth - docBoxW) / 2;
     let dCursor = y;
 
@@ -1280,7 +1284,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
           x: padX, y: dCursor - 14, size: 8, font: bold, color: navy,
         });
         page.drawLine({ start: { x: CX, y: dCursor - 20 }, end: { x: CR, y: dCursor - 20 }, thickness: 0.5, color: panelBorder });
-        dCursor -= 34;
+        dCursor -= 30;
         sectionHeaderDrawn = true;
       };
 
@@ -1288,13 +1292,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
         // O cabeçalho da seção só entra na conta de espaço necessário quando
         // ainda não foi desenhado (na página atual) - assim ele nunca fica
         // "orfão" sozinho no fim de uma página, sem nenhuma foto embaixo.
-        const neededHeight = (sectionHeaderDrawn ? 0 : 34) + docBoxH + 44;
+        const neededHeight = (sectionHeaderDrawn ? 0 : 30) + docBoxH + 32;
         if (dCursor - neededHeight < 60) { startDocPage(); sectionHeaderDrawn = false; }
         if (!sectionHeaderDrawn) drawSectionHeader();
 
         const embedded = await embedBase64Image(pdfDoc, img, { width: 1400, height: 900 });
         const frameY = dCursor - docBoxH;
-        const docCaptionH = 20;
+        const docCaptionH = 16;
 
         // Mesmo friso dourado fino + legenda em texto corrido usado na selfie,
         // sem bloco de cor sólido - a foto do documento passa a parecer parte
@@ -1318,9 +1322,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
         const validText = 'EVIDÊNCIA COLETADA';
         const validW = bold.widthOfTextAtSize(validText, 5.8);
         page.drawText(validText, { x: docX + docBoxW - validW, y: frameY - 13, size: 5.8, font: bold, color: green });
-        dCursor = frameY - docCaptionH - 24;
+        dCursor = frameY - docCaptionH - 14;
       }
-      dCursor -= 8;
+      dCursor -= 4;
     }
 
     // A Seção 5 (Hash SHA-256) é desenhada logo em seguida usando `page`/`y`.
@@ -1456,10 +1460,11 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const rows = publicEvents.map((ev) => {
       const dateText = formatBrasiliaDateTime(ev.createdAt, true).replace(' (Horário de Brasília — UTC−3)', '');
       const eventLabel = PUBLIC_EVENT_LABELS[ev.eventType] || ev.eventType;
-      const titleLines = wrapTextToWidth(eventLabel, bold, 8.4, textWidth);
-      const descLines = wrapTextToWidth(ev.description, regular, 7.4, textWidth);
-      // topo (respiro) + hora + título(s) + descrição + respiro de baixo
-      const height = 10 + 9.5 + titleLines.length * 11 + descLines.length * 9.8 + 12;
+      const titleLines = wrapTextToWidth(eventLabel, bold, 7.8, textWidth);
+      const descLines = wrapTextToWidth(ev.description, regular, 6.9, textWidth);
+      // Blocos mais próximos: a trilha deixa de ter aspecto de tabela
+      // esparsa, sem comprometer a leitura dos registros técnicos.
+      const height = 7 + 8 + titleLines.length * 9.5 + descLines.length * 8.4 + 7;
       return { dateText, titleLines, descLines, height };
     });
 
@@ -1471,9 +1476,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
       }
       rowY -= row.height;
 
-      const timeY = rowY + row.height - 10;
-      const titleY = timeY - 11;
-      const dotY = titleY + 2.5;
+      const timeY = rowY + row.height - 7;
+      const titleY = timeY - 9;
+      const dotY = titleY + 2;
 
       // Trilho: liga o nó anterior a este, sem depender de altura fixa de
       // linha - cada trecho do trilho é desenhado ao vivo, entre os dois
@@ -1493,14 +1498,14 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
       let titleLineY = titleY;
       for (const line of row.titleLines) {
-        timelinePage.drawText(line, { x: textX, y: titleLineY, size: 8.4, font: bold, color: navy });
-        titleLineY -= 11;
+        timelinePage.drawText(line, { x: textX, y: titleLineY, size: 7.8, font: bold, color: navy });
+        titleLineY -= 9.5;
       }
 
-      let descLineY = titleLineY - 1.5;
+      let descLineY = titleLineY - 1;
       for (const line of row.descLines) {
-        timelinePage.drawText(line, { x: textX, y: descLineY, size: 7.4, font: regular, color: text });
-        descLineY -= 9.8;
+        timelinePage.drawText(line, { x: textX, y: descLineY, size: 6.9, font: regular, color: text });
+        descLineY -= 8.4;
       }
     });
 
