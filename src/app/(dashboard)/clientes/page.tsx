@@ -122,10 +122,14 @@ const EMPTY_CLIENT_FORM = {
 // data.number/data.neighborhood aqui duplicava informação (às vezes com um
 // bairro antigo, de um cadastro anterior, que não tem mais nada a ver com o
 // endereço atual digitado no campo acima) - por isso não entram mais aqui.
+// data.complement também não entra mais aqui: é um campo legado sem input
+// editável nesta tela (não existe "Complemento" no formulário) - igual ao
+// caso de number/neighborhood, ele guarda valores antigos (ex.: "Casa 2" de
+// um cadastro anterior) que não têm mais nada a ver com o endereço atual
+// digitado no campo acima, e apareciam duplicados/contraditórios nos kits.
 function formatOwnAddress(data: typeof EMPTY_CLIENT_FORM): string {
   return [
     data.address,
-    data.complement,
     [data.city, data.state].filter(Boolean).join('/'),
     data.cep ? `CEP ${data.cep}` : '',
   ].filter(Boolean).join(', ');
@@ -510,7 +514,6 @@ export default function ClientsPage() {
         onCreate={openCreateClient}
         onOpen={(client) => openClientDossier(client as Client)}
         onEdit={(client) => openEditClient(client as Client)}
-        onCreateFollowUp={(client) => openClientDossier(client as Client)}
         onDelete={(client) => {
           setClientToDelete(client as Client);
           setDeleteConfirmation('');

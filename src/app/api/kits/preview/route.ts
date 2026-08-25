@@ -78,7 +78,10 @@ export async function POST(req: Request) {
     // "address" já é o texto único (rua, número e bairro juntos) digitado no
     // cadastro - "number"/"neighborhood" são colunas legadas que podem vir de
     // extração automática antiga e duplicar/contradizer o endereço atual.
-    const clienteEnderecoText = [client.address, client.complement, [client.city, client.state].filter(Boolean).join('/'), client.cep ? `CEP ${client.cep}` : ''].filter(Boolean).join(', ') || '—';
+    // client.complement é coluna legada sem input editável no cadastro
+    // (guardava valores antigos, ex.: "Casa 2", sem relação com o endereço
+    // atual) - também não entra aqui.
+    const clienteEnderecoText = [client.address, [client.city, client.state].filter(Boolean).join('/'), client.cep ? `CEP ${client.cep}` : ''].filter(Boolean).join(', ') || '—';
     const representativeAddressPhrase = (client as any).representativeSameAddress
       ? `ambos residentes e domiciliados em ${clienteEnderecoText}`
       : (client as any).representativeAddress

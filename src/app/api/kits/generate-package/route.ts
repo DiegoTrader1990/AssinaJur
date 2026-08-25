@@ -274,9 +274,11 @@ export async function POST(req: Request) {
     // com o endereço atual. Incluí-las aqui duplicava/contradizia o endereço
     // certo já digitado em "address" (ex.: bairro errado aparecendo no
     // documento gerado, mesmo sem estar no campo de endereço do cadastro).
+    // client.complement segue o mesmo caso: coluna legada sem input editável
+    // no cadastro, que guardava valores antigos (ex.: "Casa 2") sem relação
+    // com o endereço atual - por isso também não entra aqui.
     const clienteEnderecoText = [
       client.address,
-      client.complement,
       [client.city, client.state].filter(Boolean).join('/'),
       client.cep ? `CEP ${client.cep}` : '',
     ].filter(Boolean).join(', ') || '—';

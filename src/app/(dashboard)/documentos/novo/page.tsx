@@ -85,11 +85,14 @@ interface SignerInput {
 // cadastro do cliente - "number"/"neighborhood" são colunas legadas (às
 // vezes de uma extração automática antiga) que podem duplicar/contradizer o
 // endereço atual, então não entram mais aqui.
+// client.complement também não entra: é uma coluna legada sem input editável
+// no cadastro (não existe campo "Complemento" na tela de cliente) - guarda
+// valores antigos (ex.: "Casa 2") que não têm mais nada a ver com o endereço
+// atual digitado no campo acima.
 function formatClientAddress(client: Client | undefined): string {
   if (!client) return '';
   return [
     client.address,
-    client.complement,
     [client.city, client.state].filter(Boolean).join('/'),
     client.cep ? `CEP ${client.cep}` : '',
   ].filter(Boolean).join(', ');

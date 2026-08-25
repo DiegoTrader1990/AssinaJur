@@ -977,13 +977,15 @@ export default function ProcessosPage() {
                     </h4>
                     <p><b>WhatsApp / Telefone:</b> {selected.client.whatsapp || selected.client.phone || "Não informado"}</p>
                     <p><b>E-mail:</b> {selected.client.email || "Não informado"}</p>
+                    {/* number/complement/neighborhood são colunas legadas sem
+                        input editável no cadastro do cliente - guardam
+                        valores antigos (ex.: "Casa 2", um bairro de um
+                        cadastro anterior) sem relação com o endereço atual
+                        digitado em "address", então não entram mais aqui. */}
                     <p>
                       <b>Endereço:</b>{" "}
-                      {selected.client.address
-                        ? `${selected.client.address}, nº ${selected.client.number || "S/N"}${selected.client.complement ? ` (${selected.client.complement})` : ""}`
-                        : "Não informado"}
+                      {selected.client.address || "Não informado"}
                     </p>
-                    <p><b>Bairro:</b> {selected.client.neighborhood || "Não informado"}</p>
                     <p>
                       <b>Cidade/UF:</b>{" "}
                       {selected.client.city
