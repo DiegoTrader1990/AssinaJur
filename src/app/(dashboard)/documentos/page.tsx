@@ -67,6 +67,10 @@ interface Signer {
   documentFrontImage?: string | null;
   documentBackImage?: string | null;
   selfieCenterImage?: string | null;
+  // Presença do evento LIVENESS_STARTED - a câmera da selfie chegou a ser
+  // aberta, mesmo que a pessoa tenha fechado antes de confirmar a foto (por
+  // isso ainda sem selfieCenterImage).
+  events?: { id: string }[];
 }
 
 interface Tag {
@@ -184,6 +188,9 @@ export default function DocumentsPage() {
   // verso → selfie), do menos avançado para o mais avançado.
   const signerProgressDetail = (signer: Signer) => {
     if (signer.selfieCenterImage) return 'parou na prova de presença (selfie)';
+    // Chegou a abrir a câmera da selfie (evento LIVENESS_STARTED já
+    // registrado), mas fechou antes de confirmar a foto.
+    if (signer.events && signer.events.length > 0) return 'parou na etapa de selfie, sem concluir a foto';
     if (signer.documentBackImage) return 'parou após o verso do documento';
     if (signer.documentFrontImage) return 'parou no verso do documento';
     return 'ainda não iniciou a captura';

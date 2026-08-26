@@ -74,6 +74,18 @@ export async function GET(req: Request) {
         },
         signers: {
           orderBy: { signatureOrder: 'asc' },
+          // "events" traz só se já existe o evento LIVENESS_STARTED (câmera da
+          // selfie foi aberta) - usado no painel só para refinar em qual etapa
+          // um signatário "Em andamento" parou, mesmo quando ele abriu a
+          // câmera da prova de presença mas fechou antes de confirmar a foto
+          // (e por isso ainda não tem selfieCenterImage salva).
+          include: {
+            events: {
+              where: { eventType: 'LIVENESS_STARTED' },
+              select: { id: true },
+              take: 1,
+            },
+          },
         },
         createdBy: {
           select: { id: true, name: true },
