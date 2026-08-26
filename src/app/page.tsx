@@ -520,7 +520,7 @@ export default function LandingPage() {
               </div>
               <div className="flex flex-col items-center text-center px-4">
                 <Eye className="w-8 h-8 text-brand-600 mb-3" />
-                <div className="font-bold text-navy-900 mb-1">3 registros faciais</div>
+                <div className="font-bold text-navy-900 mb-1">Selfie + Documento</div>
                 <div className="text-caption text-muted">Prova de presença</div>
               </div>
               <div className="flex flex-col items-center text-center px-4">
