@@ -67,10 +67,10 @@ interface Signer {
   documentFrontImage?: string | null;
   documentBackImage?: string | null;
   selfieCenterImage?: string | null;
-  // Presença do evento LIVENESS_STARTED - a câmera da selfie chegou a ser
-  // aberta, mesmo que a pessoa tenha fechado antes de confirmar a foto (por
-  // isso ainda sem selfieCenterImage).
-  events?: { id: string }[];
+  // LIVENESS_STARTED (câmera da selfie chegou a ser aberta, mesmo sem foto
+  // confirmada) e PHOTO_REDO_REQUESTED (pedido de refazer uma foto, com o
+  // campo pedido em metadata) - ver getPendingRedoField.
+  events?: { id: string; eventType: string; metadata?: string | null }[];
 }
 
 interface Tag {
@@ -187,20 +187,52 @@ export default function DocumentsPage() {
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };
   const signerRoleLabel = (role: string) => ({ CLIENTE: 'Cliente', ASSINANTE_A_ROGO: 'Assinante a rogo', TESTEMUNHA_1: '1ª testemunha', TESTEMUNHA_2: '2ª testemunha', TESTEMUNHA: 'Testemunha' }[role] || role.replace(/_/g, ' '));
+
+  const REDOABLE_FIELD_LABELS: Record<string, string> = {
+    documentFrontImage: 'frente do documento',
+    documentBackImage: 'verso do documento',
+    selfieCenterImage: 'selfie (prova de presença)',
+  };
+
+  // Campo pedido para refazer que AINDA não foi reenviado (o pedido mais
+  // recente cujo campo continua vazio no signatário) - independe do status
+  // atual dele (ASSINADO ou EM_ANDAMENTO), porque limpar um campo "anterior"
+  // (ex: verso) não muda os campos "posteriores" que já existiam de uma
+  // tentativa passada (ex: selfie) - por isso não dá pra confiar só na ordem
+  // normal de progresso para saber que há um pedido pendente.
+  const getPendingRedoField = (signer: Signer): string | null => {
+    const lastRedo = signer.events?.find((e) => e.eventType === 'PHOTO_REDO_REQUESTED');
+    if (!lastRedo?.metadata) return null;
+    try {
+      const field = JSON.parse(lastRedo.metadata)?.field;
+      if (field && !(signer as any)[field]) return field;
+    } catch {
+      // metadata mal formado - ignora.
+    }
+    return null;
+  };
+
   // Traduz o progresso salvo (frente/verso do documento, selfie) na etapa em
   // que a pessoa efetivamente parou, para exibir junto do badge "Em
   // andamento" - segue a mesma ordem real do fluxo de captura (frente →
-  // verso → selfie), do menos avançado para o mais avançado.
+  // verso → selfie), do menos avançado para o mais avançado. Um pedido de
+  // refazer pendente tem prioridade sobre essa ordem normal.
   const signerProgressDetail = (signer: Signer) => {
+    const pendingRedoField = getPendingRedoField(signer);
+    if (pendingRedoField) return `aguardando novo envio: ${REDOABLE_FIELD_LABELS[pendingRedoField]}`;
     if (signer.selfieCenterImage) return 'parou na prova de presença (selfie)';
     // Chegou a abrir a câmera da selfie (evento LIVENESS_STARTED já
     // registrado), mas fechou antes de confirmar a foto.
-    if (signer.events && signer.events.length > 0) return 'parou na etapa de selfie, sem concluir a foto';
+    if (signer.events?.some((e) => e.eventType === 'LIVENESS_STARTED')) return 'parou na etapa de selfie, sem concluir a foto';
     if (signer.documentBackImage) return 'parou após o verso do documento';
     if (signer.documentFrontImage) return 'parou no verso do documento';
     return 'ainda não iniciou a captura';
   };
   const signerProgress = (signer: Signer) => {
+    // Pedido de refazer pendente tem prioridade visual sobre qualquer outro
+    // status - inclusive sobre "Assinou", já que a assinatura em si continua
+    // válida, mas o escritório está esperando uma foto nova específica.
+    if (getPendingRedoField(signer)) return <span title={signerProgressDetail(signer)} className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-extrabold text-amber-700"><RotateCcw className="w-3 h-3" /> Aguardando novo envio</span>;
     if (signer.status === 'ASSINADO') return <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700"><CheckCircle2 className="w-3 h-3" /> Assinou</span>;
     // "Em andamento" - a pessoa já abriu o link e começou a capturar (foto do
     // documento e/ou selfie já salvas), mas ainda não terminou de assinar.
@@ -309,12 +341,6 @@ export default function DocumentsPage() {
         return next;
       });
     }
-  };
-
-  const REDOABLE_FIELD_LABELS: Record<string, string> = {
-    documentFrontImage: 'frente do documento',
-    documentBackImage: 'verso do documento',
-    selfieCenterImage: 'selfie (prova de presença)',
   };
 
   // Pede para o signatário refazer só UMA foto específica, sem reabrir toda
@@ -1231,9 +1257,9 @@ export default function DocumentsPage() {
                 <p className="mb-2 text-[11px] text-slate-500">Acompanhe se cada pessoa abriu o link e reenvie-o sem precisar copiar manualmente.</p>
                 <div className="space-y-2">
                   {selectedDoc.signers.map((s) => (
-                    <div key={s.id} className={`p-3 rounded-xl border text-xs ${s.status === 'ASSINADO' ? 'bg-emerald-50/40 border-emerald-200' : s.status === 'EM_ANDAMENTO' ? 'bg-amber-50/40 border-amber-200' : s.status === 'VISUALIZADO' ? 'bg-blue-50/40 border-blue-200' : 'bg-slate-50 border-slate-200/80'}`}>
+                    <div key={s.id} className={`p-3 rounded-xl border text-xs ${getPendingRedoField(s) ? 'bg-amber-50/40 border-amber-200' : s.status === 'ASSINADO' ? 'bg-emerald-50/40 border-emerald-200' : s.status === 'EM_ANDAMENTO' ? 'bg-amber-50/40 border-amber-200' : s.status === 'VISUALIZADO' ? 'bg-blue-50/40 border-blue-200' : 'bg-slate-50 border-slate-200/80'}`}>
                       <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0"><div className="font-extrabold text-slate-900 truncate">{s.name}</div><div className="mt-1 flex flex-wrap gap-1.5 items-center"><span className="text-slate-500 text-[10px]">{signerRoleLabel(s.role)}</span>{signerProgress(s)}{s.signingMode === 'SAME_DEVICE' && <span className="text-[10px] font-bold text-violet-700">Mesmo celular</span>}</div>{s.status === 'EM_ANDAMENTO' && <div className="text-amber-700 text-[10px] font-bold mt-0.5 capitalize">{signerProgressDetail(s)}</div>}<div className="text-slate-400 font-mono text-[10px] mt-1">CPF: {maskCpfCnpj(s.cpf)}</div>
+                        <div className="min-w-0"><div className="font-extrabold text-slate-900 truncate">{s.name}</div><div className="mt-1 flex flex-wrap gap-1.5 items-center"><span className="text-slate-500 text-[10px]">{signerRoleLabel(s.role)}</span>{signerProgress(s)}{s.signingMode === 'SAME_DEVICE' && <span className="text-[10px] font-bold text-violet-700">Mesmo celular</span>}</div>{(s.status === 'EM_ANDAMENTO' || getPendingRedoField(s)) && <div className="text-amber-700 text-[10px] font-bold mt-0.5 capitalize">{signerProgressDetail(s)}</div>}<div className="text-slate-400 font-mono text-[10px] mt-1">CPF: {maskCpfCnpj(s.cpf)}</div>
                           {/* "Pedir para refazer" por foto - disponível para qualquer
                               signatário (Cliente Titular, Assinante a Rogo, testemunhas)
                               que já tenha essa foto capturada. Cada signatário sempre tem

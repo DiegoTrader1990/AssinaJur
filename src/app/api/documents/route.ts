@@ -80,10 +80,16 @@ export async function GET(req: Request) {
           // câmera da prova de presença mas fechou antes de confirmar a foto
           // (e por isso ainda não tem selfieCenterImage salva).
           include: {
+            // "PHOTO_REDO_REQUESTED" também é buscado aqui, com o metadata
+            // (qual campo foi pedido) - usado no painel para mostrar
+            // "aguardando novo envio: <foto>" enquanto o pedido não é
+            // atendido, no lugar da última etapa concluída (que pode estar
+            // desatualizada depois de um campo anterior ser limpo pelo pedido).
             events: {
-              where: { eventType: 'LIVENESS_STARTED' },
-              select: { id: true },
-              take: 1,
+              where: { eventType: { in: ['LIVENESS_STARTED', 'PHOTO_REDO_REQUESTED'] } },
+              select: { id: true, eventType: true, metadata: true },
+              orderBy: { createdAt: 'desc' },
+              take: 5,
             },
           },
         },

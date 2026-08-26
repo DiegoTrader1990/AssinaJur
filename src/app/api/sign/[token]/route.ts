@@ -79,14 +79,18 @@ export async function GET(
       : [];
 
     // Se o escritório pediu para o signatário refazer uma foto específica
-    // (ver action "redo-photo" em /api/documents/[id]) DEPOIS da assinatura
-    // já concluída, o campo correspondente foi limpo mas o status continua
-    // "ASSINADO" - sem isso, o link simplesmente mostraria a tela de sucesso
-    // de novo e não deixaria a pessoa enviar a foto nova. Localiza o pedido
-    // mais recente e, se o campo pedido ainda estiver vazio (ou seja, a foto
-    // nova ainda não chegou), devolve qual campo retomar.
+    // (ver action "redo-photo" em /api/documents/[id]), o campo correspondente
+    // foi limpo. Isso é verificado independente do status atual - inclusive
+    // quando o signatário ainda está "EM_ANDAMENTO" (não apenas "ASSINADO"):
+    // se ele já tinha, por exemplo, a selfie capturada de uma tentativa
+    // anterior e o escritório pediu para refazer o VERSO do documento, a
+    // ordem normal de retomada (que assume selfie feita ⇒ documento inteiro
+    // feito) erraria e mandaria direto para a assinatura, ignorando o pedido.
+    // Localiza o pedido mais recente e, se o campo pedido ainda estiver vazio
+    // (ou seja, a foto nova ainda não chegou), devolve qual campo retomar -
+    // com prioridade sobre a ordem normal (ver handleConfirmCpf no front-end).
     let redoPendingField: string | null = null;
-    if (signer.status === 'ASSINADO') {
+    {
       const lastRedoRequest = await prisma.documentEvent.findFirst({
         where: { signerId: signer.id, eventType: 'PHOTO_REDO_REQUESTED' },
         orderBy: { createdAt: 'desc' },
