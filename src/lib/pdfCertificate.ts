@@ -1306,11 +1306,29 @@ export async function generateFinalPdfCertificate(documentId: string) {
       if (!isFirstDocPhotoSigner) startDocPage();
       isFirstDocPhotoSigner = false;
 
+      // Sempre que a frente E o verso do MESMO signatário cabem juntos numa
+      // página cheia (o caso normal - juntos ocupam bem menos que uma
+      // página inteira), força a virada ANTES de desenhar a frente quando
+      // o espaço restante na página atual não é suficiente para as duas.
+      // Sem isso, a frente podia caber sozinha no fim de uma página e o
+      // verso "sobrar" para o topo da próxima, partindo o documento de UMA
+      // mesma pessoa em duas páginas sem necessidade - visualmente parece
+      // o mesmo problema de "embolado" resolvido para signatários
+      // diferentes, mas ainda incomodava dentro do documento de uma só
+      // pessoa. Isso não se aplica ao caso raro em que nem as duas juntas
+      // cabem numa página inteira - aí o corte por foto abaixo continua
+      // sendo o fallback necessário.
+      const wholeSignerBlockHeight = 52 + docPhotoLabels.length * (docBoxH + 32);
+      if (dCursor - wholeSignerBlockHeight < 60 && wholeSignerBlockHeight <= 706 - 60) {
+        startDocPage();
+      }
+
       // Cada foto (frente/verso) reserva o próprio espaço individualmente,
       // em vez das duas exigirem caber juntas na mesma página - antes, se só
       // a segunda foto não coubesse, as DUAS pulavam de página, deixando um
       // vão do tamanho de duas fotos em branco no fim da página anterior.
-      // Assim, o pior caso de vão em branco cai pela metade.
+      // Assim, o pior caso de vão em branco cai pela metade. (Isso agora só
+      // entra em ação no caso raro de excesso citado acima.)
       let sectionHeaderDrawn = false;
       const drawSectionHeader = () => {
         page.drawLine({ start: { x: CX, y: dCursor }, end: { x: CR, y: dCursor }, thickness: 1.3, color: gold });
