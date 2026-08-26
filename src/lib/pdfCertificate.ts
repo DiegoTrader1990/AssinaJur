@@ -1319,6 +1319,15 @@ export async function generateFinalPdfCertificate(documentId: string) {
         });
         page.drawLine({ start: { x: CX, y: dCursor - 20 }, end: { x: CR, y: dCursor - 20 }, thickness: 0.5, color: panelBorder });
         dCursor -= 30;
+        // Além da separação por página entre signatários, o nome do
+        // titular do documento fica escrito por extenso logo abaixo do
+        // título da seção - assim, mesmo folheando rápido, fica claro de
+        // quem é aquele documento sem precisar voltar à página anterior
+        // para conferir. Reforça a leitura de que cada bloco pertence a
+        // uma pessoa específica, não a um conjunto solto de fotos.
+        page.drawText('TITULAR DESTE DOCUMENTO', { x: padX, y: dCursor, size: 5.6, font: bold, color: muted });
+        page.drawText(String(signer.name || '').toUpperCase(), { x: padX, y: dCursor - 11, size: 8.6, font: bold, color: navy });
+        dCursor -= 22;
         sectionHeaderDrawn = true;
       };
 
@@ -1326,7 +1335,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
         // O cabeçalho da seção só entra na conta de espaço necessário quando
         // ainda não foi desenhado (na página atual) - assim ele nunca fica
         // "orfão" sozinho no fim de uma página, sem nenhuma foto embaixo.
-        const neededHeight = (sectionHeaderDrawn ? 0 : 30) + docBoxH + 32;
+        const neededHeight = (sectionHeaderDrawn ? 0 : 52) + docBoxH + 32;
         if (dCursor - neededHeight < 60) { startDocPage(); sectionHeaderDrawn = false; }
         if (!sectionHeaderDrawn) drawSectionHeader();
 
