@@ -1167,26 +1167,30 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
   // SEÇÃO 3: PROVA DE PRESENÇA AO VIVO (REGISTRO FACIAL HD)
   // Um cartão de evidência por signatário, todos aqui reunidos depois da
-  // Seção 2 (dados). Ao contrário dos documentos de identidade (fotos
-  // grandes que podiam se tocar sem nenhuma separação visual entre duas
-  // pessoas diferentes), o cartão de presença é compacto e já vem com
-  // moldura própria, friso dourado e o nome do titular escrito acima -
-  // então não precisa de página nova por signatário: um cartão simplesmente
-  // continua logo abaixo do anterior quando cabe, evitando desperdiçar uma
-  // página quase em branco por pessoa. Só pula de página quando realmente
-  // não há espaço (ensureSpace cuida disso, como em qualquer outra seção).
+  // Seção 2 (dados). O cartão é grande (380x210) para dar destaque à selfie
+  // - dois cartões grandes na mesma página ficavam com pouco respiro entre
+  // eles ("embolado"), então, como na Seção 4 (documentos), cada signatário
+  // sempre começa sua prova de presença numa página nova quando há mais de
+  // um. Um cartão grande e bem respirado por página lê como mais premium do
+  // que economizar papel espremendo dois juntos.
   if (presenceSigners.length > 0) {
     const presenceInnerWidth = CW - 28;
-    // Cartão ~35% maior que a versão anterior (280x156 -> 380x210) - como a
-    // Seção 3 agora deixa os cartões seguirem na mesma página em vez de
-    // forçar uma página por signatário, sobra espaço de sobra; um cartão
-    // maior aproveita melhor esse espaço e deixa a selfie (e o texto ao
-    // lado) bem mais visível/premium, em vez de pequena no meio da folha.
     const boxW = 380;
     const boxH = 210;
     const cardH = boxH + 10;
 
+    const startPresencePage = () => {
+      page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+      manifestPageCount += 1;
+      drawFrame(page, `CERTIFICADO DE EVIDÊNCIAS JURÍDICAS (Continuação ${manifestPageCount})`);
+      y = 706;
+    };
+
+    let isFirstPresenceSigner = true;
     for (const signer of presenceSigners) {
+      if (!isFirstPresenceSigner) startPresencePage();
+      isFirstPresenceSigner = false;
+
       // Cabeçalho da seção + nome do titular sempre cabendo juntos com o
       // cartão da foto - se não houver espaço no que resta da página atual,
       // tudo pula junto para a próxima (nunca deixa um título "órfão"
