@@ -1250,17 +1250,27 @@ export async function generateFinalPdfCertificate(documentId: string) {
       }
 
       const infoX = photoX + 18 + photoFrameMaxW + 14;
-      page.drawText('EVIDÊNCIA FOTOGRÁFICA', { x: infoX, y: imgFrameY + 151, size: 8.4, font: bold, color: navy });
-      page.drawText('SELFIE COM DOCUMENTO', { x: infoX, y: imgFrameY + 131, size: 7.4, font: bold, color: muted });
-      page.drawLine({ start: { x: infoX, y: imgFrameY + 120 }, end: { x: photoX + boxW - 19, y: imgFrameY + 120 }, thickness: 0.5, color: rgb(0.8, 0.84, 0.9) });
-      page.drawText('Identidade e presença', { x: infoX, y: imgFrameY + 93, size: 7.6, font: regular, color: muted });
-      page.drawText('confirmadas na sessão', { x: infoX, y: imgFrameY + 76, size: 10.3, font: bold, color: navy });
-      page.drawText('Imagem original preservada', { x: infoX, y: imgFrameY + 47, size: 7.6, font: regular, color: muted });
-      page.drawText('junto aos registros técnicos.', { x: infoX, y: imgFrameY + 34, size: 7.6, font: regular, color: muted });
-      page.drawRectangle({ x: infoX, y: imgFrameY + 9, width: 149, height: 18, borderColor: green, borderWidth: 0.7 });
-      page.drawText('EVIDÊNCIA VINCULADA', { x: infoX + 12, y: imgFrameY + 14, size: 6.8, font: bold, color: green });
+      // Bloco de texto alinhado ao TOPO da moldura da foto (não mais
+      // centralizado mais abaixo no cartão) - com a foto maior, o texto
+      // "flutuava" visualmente bem abaixo do topo da foto, dando a
+      // impressão de desalinhamento entre os dois lados do cartão.
+      const photoFrameTop = photoFrameY + photoFrameH;
+      page.drawText('EVIDÊNCIA FOTOGRÁFICA', { x: infoX, y: photoFrameTop - 7, size: 8.4, font: bold, color: navy });
+      page.drawText('SELFIE COM DOCUMENTO', { x: infoX, y: photoFrameTop - 27, size: 7.4, font: bold, color: muted });
+      page.drawLine({ start: { x: infoX, y: photoFrameTop - 38 }, end: { x: photoX + boxW - 19, y: photoFrameTop - 38 }, thickness: 0.5, color: rgb(0.8, 0.84, 0.9) });
+      page.drawText('Identidade e presença', { x: infoX, y: photoFrameTop - 65, size: 7.6, font: regular, color: muted });
+      page.drawText('confirmadas na sessão', { x: infoX, y: photoFrameTop - 82, size: 10.3, font: bold, color: navy });
+      page.drawText('Imagem original preservada', { x: infoX, y: photoFrameTop - 111, size: 7.6, font: regular, color: muted });
+      page.drawText('junto aos registros técnicos.', { x: infoX, y: photoFrameTop - 124, size: 7.6, font: regular, color: muted });
+      page.drawRectangle({ x: infoX, y: photoFrameTop - 149, width: 149, height: 18, borderColor: green, borderWidth: 0.7 });
+      page.drawText('EVIDÊNCIA VINCULADA', { x: infoX + 12, y: photoFrameTop - 144, size: 6.8, font: bold, color: green });
 
-      y = imgFrameY - 8;
+      // Respiro maior entre o fim de um cartão e o início do próximo (8pt
+      // era pouco e deixava o selo "EVIDÊNCIA VINCULADA" quase colado na
+      // linha dourada do cabeçalho seguinte, quando há mais de um
+      // signatário na mesma página) - agora os dois cartões respiram bem
+      // separados, mesmo sem página nova entre eles.
+      y = imgFrameY - 26;
     }
   }
 
