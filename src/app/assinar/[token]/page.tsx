@@ -605,6 +605,19 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         // sucesso mostrar o texto certo (assinatura concluída, não "foto
         // atualizada").
         setSigner((prev) => (prev ? { ...prev, redoPendingField: null } : prev));
+        // Pula direto para a etapa real que ainda falta - se o verso (ou até
+        // a selfie) já tinham sido capturados numa tentativa anterior, NÃO
+        // pede para refazer essas etapas de novo só porque a frente estava
+        // sendo refeita; sem isso, o fluxo parecia estar "recomeçando tudo".
+        if (selfieImages.center) {
+          setStep(isRogadoConsent ? 'ROGO_TRANSITION' : 'SIGN');
+          return;
+        }
+        if (documentBackImage) {
+          setStep('SELFIE');
+          setActivePerson('CLIENT');
+          return;
+        }
       }
       setDocumentSide('VERSO');
     } else {
@@ -616,6 +629,13 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           return;
         }
         setSigner((prev) => (prev ? { ...prev, redoPendingField: null } : prev));
+        // Mesmo raciocínio do bloco da frente acima - se a selfie já tinha
+        // sido capturada numa tentativa anterior, pula direto para a
+        // assinatura em vez de pedir a selfie de novo.
+        if (selfieImages.center) {
+          setStep(isRogadoConsent ? 'ROGO_TRANSITION' : 'SIGN');
+          return;
+        }
       }
       setStep('SELFIE');
       setActivePerson('CLIENT');
