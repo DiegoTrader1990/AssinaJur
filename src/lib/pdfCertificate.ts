@@ -1216,36 +1216,41 @@ export async function generateFinalPdfCertificate(documentId: string) {
         page.drawRectangle({ x: photoX, y: imgFrameY, width: boxW, height: boxH, color: rgb(0.96, 0.97, 0.985), opacity: 0.82, borderColor: rgb(0.82, 0.86, 0.92), borderWidth: 0.8 });
         page.drawRectangle({ x: photoX, y: imgFrameY + boxH - 1.4, width: boxW, height: 1.4, color: gold });
 
-        const photoFrameMaxW = 112;
-        const photoFrameH = 128;
-        // Moldura variável, sempre limitada ao espaço do cartão: a proporção
-        // é a da foto original e não a de um quadrado imposto pelo layout.
-        const photoFrameW = embedded
-          ? Math.max(74, Math.min(photoFrameMaxW, Math.round(((photoFrameH - 8) * embedded.width) / embedded.height + 8)))
-          : photoFrameMaxW;
+        const photoFrameMaxW = 124;
+        const photoFrameMaxH = 128;
+        const photoSlotY = imgFrameY + 14;
+        // A moldura antiga tinha largura máxima fixa em 112pt (calculada só a
+        // partir da ALTURA de 128pt) - para uma selfie real, capturada em
+        // formato paisagem 4:3 pela câmera (640x480), a largura "correta"
+        // para preencher 128pt de altura mantendo a proporção passava bem de
+        // 112pt e ficava cortada nesse teto, então a foto final era escalada
+        // pela LARGURA em vez da altura, sobrando uma faixa branca enorme
+        // em cima e embaixo dela dentro da moldura - dava a impressão de
+        // foto "flutuando", cortada ou incompleta dentro do quadro (esse é o
+        // mesmo formato que a evidência real de qualquer cliente sai hoje,
+        // não só um placeholder de teste). Agora a moldura é calculada para
+        // caber exatamente do tamanho da foto já escalada dentro do espaço
+        // disponível (até 140x128), então a moldura sempre encosta nas
+        // quatro bordas da imagem, landscape ou retrato, sem sobra.
+        const photoScale = embedded
+          ? Math.min(photoFrameMaxW / embedded.width, photoFrameMaxH / embedded.height)
+          : 1;
+        const photoFrameW = embedded ? Math.round(embedded.width * photoScale) : photoFrameMaxW;
+        const photoFrameH = embedded ? Math.round(embedded.height * photoScale) : photoFrameMaxH;
         const photoFrameX = photoX + 13 + (photoFrameMaxW - photoFrameW) / 2;
-        const photoFrameY = imgFrameY + 14;
+        const photoFrameY = photoSlotY + (photoFrameMaxH - photoFrameH) / 2;
         page.drawRectangle({ x: photoFrameX, y: photoFrameY, width: photoFrameW, height: photoFrameH, color: rgb(1, 1, 1), borderColor: rgb(0.8, 0.84, 0.9), borderWidth: 0.7 });
 
         if (embedded) {
-          const imgW = embedded.width;
-          const imgH = embedded.height;
-          const scale = Math.min((photoFrameW - 8) / imgW, (photoFrameH - 8) / imgH);
-          const drawW = Math.round(imgW * scale);
-          const drawH = Math.round(imgH * scale);
-
-          const offsetX = photoFrameX + (photoFrameW - drawW) / 2;
-          const offsetY = photoFrameY + (photoFrameH - drawH) / 2;
-
           page.drawImage(embedded, {
-            x: offsetX,
-            y: offsetY,
-            width: drawW,
-            height: drawH,
+            x: photoFrameX,
+            y: photoFrameY,
+            width: photoFrameW,
+            height: photoFrameH,
           });
         }
 
-        const infoX = photoFrameX + photoFrameW + 16;
+        const infoX = photoX + 13 + photoFrameMaxW + 10;
         page.drawText('EVIDÊNCIA FOTOGRÁFICA', { x: infoX, y: imgFrameY + 112, size: 6.2, font: bold, color: navy });
         page.drawText('SELFIE COM DOCUMENTO', { x: infoX, y: imgFrameY + 97, size: 5.5, font: bold, color: muted });
         page.drawLine({ start: { x: infoX, y: imgFrameY + 89 }, end: { x: photoX + boxW - 14, y: imgFrameY + 89 }, thickness: 0.5, color: rgb(0.8, 0.84, 0.9) });
