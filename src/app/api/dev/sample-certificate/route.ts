@@ -207,7 +207,7 @@ export async function GET(req: Request) {
     const finalBuffer = await getFileBuffer(user.officeId, result.signedStorageFile.storageKey);
     if (!finalBuffer) throw new Error('Certificado gerado, mas não foi possível lê-lo de volta do armazenamento.');
 
-    return new NextResponse(finalBuffer, {
+    return new NextResponse(new Uint8Array(finalBuffer), {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="certificado-exemplo${withRogo ? '-com-rogo' : ''}.pdf"`,
