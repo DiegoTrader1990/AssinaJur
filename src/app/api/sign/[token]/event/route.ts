@@ -42,7 +42,16 @@ export async function POST(req: Request, { params }: { params: { token: string }
     // mesma entrada na trilha de auditoria.
     if (eventType && !EVENT_DESCRIPTIONS[eventType]) return NextResponse.json({ error: 'Evento inválido.' }, { status: 400 });
     const signer = await prisma.signer.findUnique({ where: { token: params.token }, include: { document: true } });
-    if (!signer?.document || signer.status === 'ASSINADO') return NextResponse.json({ success: true });
+    if (!signer?.document) return NextResponse.json({ success: true });
+
+    // Uma foto pode ser reenviada mesmo com a assinatura já concluída, mas
+    // SÓ se o escritório explicitamente pediu para refazer aquele campo
+    // específico (o que já limpa o valor anterior - ver action "redo-photo"
+    // em /api/documents/[id]). Nunca sobrescreve uma foto que ainda está
+    // presente, então uma assinatura concluída continua protegida contra
+    // alteração indevida fora desse fluxo.
+    const isPhotoRedo = signer.status === 'ASSINADO' && !forRogo && imageField && SAVABLE_IMAGE_FIELDS.has(imageField) && !(signer as any)[imageField];
+    if (signer.status === 'ASSINADO' && !isPhotoRedo) return NextResponse.json({ success: true });
     const ipAddress = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '127.0.0.1';
     const userAgent = req.headers.get('user-agent') || 'Navegador Mobile';
     if (eventType) {
@@ -67,7 +76,8 @@ export async function POST(req: Request, { params }: { params: { token: string }
       const targetSignerId = forRogo
         ? (await prisma.signer.findFirst({ where: { documentId: signer.document.id, role: 'ASSINANTE_A_ROGO' }, select: { id: true, status: true } }))
         : { id: signer.id, status: signer.status };
-      if (targetSignerId && targetSignerId.status !== 'ASSINADO') {
+      const allowSave = targetSignerId && (targetSignerId.status !== 'ASSINADO' || isPhotoRedo);
+      if (allowSave && targetSignerId) {
         await prisma.signer.update({
           where: { id: targetSignerId.id },
           data: {
@@ -75,6 +85,13 @@ export async function POST(req: Request, { params }: { params: { token: string }
             status: targetSignerId.status === 'PENDENTE' || targetSignerId.status === 'VISUALIZADO' ? 'EM_ANDAMENTO' : targetSignerId.status,
           },
         });
+        // Se a assinatura já estava concluída (caso de refazer uma foto
+        // específica), o certificado em PDF já gerado fica desatualizado -
+        // limpa para ser regenerado sob demanda na próxima vez que alguém
+        // baixar ou visualizar o certificado, agora com a foto nova.
+        if (targetSignerId.status === 'ASSINADO') {
+          await prisma.document.update({ where: { id: signer.document.id }, data: { signedFileId: null } }).catch(() => {});
+        }
       }
     }
 

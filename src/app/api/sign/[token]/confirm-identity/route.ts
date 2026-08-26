@@ -24,7 +24,32 @@ export async function POST(
     }
 
     if (signer.status === 'ASSINADO') {
-      return NextResponse.json({ error: 'Você já assinou este documento.' }, { status: 400 });
+      // Exceção: o escritório pode ter pedido para refazer uma foto
+      // específica depois da assinatura já concluída (ver action
+      // "redo-photo" em /api/documents/[id]) - nesse caso o CPF ainda
+      // precisa ser confirmado de novo para liberar a etapa de captura,
+      // mesmo com o status permanecendo ASSINADO.
+      const lastRedoRequest = await prisma.documentEvent.findFirst({
+        where: { signerId: signer.id, eventType: 'PHOTO_REDO_REQUESTED' },
+        orderBy: { createdAt: 'desc' },
+        select: { metadata: true },
+      });
+      let hasPendingRedo = false;
+      if (lastRedoRequest?.metadata) {
+        try {
+          const parsedField = JSON.parse(lastRedoRequest.metadata)?.field;
+          hasPendingRedo = Boolean(
+            (parsedField === 'documentFrontImage' && !signer.documentFrontImage) ||
+            (parsedField === 'documentBackImage' && !signer.documentBackImage) ||
+            (parsedField === 'selfieCenterImage' && !signer.selfieCenterImage)
+          );
+        } catch {
+          hasPendingRedo = false;
+        }
+      }
+      if (!hasPendingRedo) {
+        return NextResponse.json({ error: 'Você já assinou este documento.' }, { status: 400 });
+      }
     }
     if (signer.document.status === 'CANCELADO' || signer.document.status === 'EXPIRADO' || (signer.document.expirationDate && new Date(signer.document.expirationDate).getTime() < Date.now())) {
       return NextResponse.json({ error: 'Este link foi cancelado ou expirou.' }, { status: 400 });

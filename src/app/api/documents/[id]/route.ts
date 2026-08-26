@@ -253,6 +253,74 @@ export async function POST(
       return NextResponse.json({ success: true, resetCount: eligible.length });
     }
 
+    // Pede para o signatário refazer só UMA foto específica (frente/verso do
+    // documento ou selfie), sem reabrir a assinatura inteira - diferente do
+    // "redo-document"/"redo-package" acima, que reabre tudo para uma nova
+    // tentativa. Pensado para quando o escritório olha o certificado e vê que
+    // uma foto específica ficou ruim (borrada, mal enquadrada), mas o resto
+    // (assinatura, demais evidências) está correto e não deve ser refeito.
+    // A assinatura já concluída CONTINUA valendo (status não muda) - só a
+    // foto é limpa, o link do signatário retoma direto naquela etapa, e o
+    // certificado é regenerado com a foto nova na próxima vez que for baixado.
+    if (action === 'redo-photo') {
+      if (user.role !== 'OFFICE_ADMIN') {
+        return NextResponse.json({ error: 'Apenas o administrador do escritório pode solicitar que uma foto seja refeita.' }, { status: 403 });
+      }
+      const REDOABLE_FIELDS = new Set(['documentFrontImage', 'documentBackImage', 'selfieCenterImage']);
+      const field = body.field;
+      const signerId = body.signerId;
+      if (!REDOABLE_FIELDS.has(field) || typeof signerId !== 'string') {
+        return NextResponse.json({ error: 'Campo ou signatário inválido para refazer.' }, { status: 400 });
+      }
+      const signer = document.signers.find((item) => item.id === signerId);
+      if (!signer) {
+        return NextResponse.json({ error: 'Signatário não encontrado neste documento.' }, { status: 404 });
+      }
+      if (!(signer as any)[field]) {
+        return NextResponse.json({ error: 'Este signatário ainda não tem essa foto capturada.' }, { status: 400 });
+      }
+
+      const fieldLabel = field === 'documentFrontImage' ? 'frente do documento' : field === 'documentBackImage' ? 'verso do documento' : 'selfie (prova de presença)';
+      const reason = typeof body.reason === 'string' ? body.reason.trim().slice(0, 500) : '';
+
+      await prisma.signer.update({
+        where: { id: signer.id },
+        data: { [field]: null },
+      });
+
+      // Limpa o PDF assinado já gerado (se houver) para forçar a regeneração
+      // do certificado na próxima vez que for baixado/visualizado - do
+      // contrário o download continuaria servindo o certificado antigo, com
+      // a foto que o escritório acabou de pedir para trocar.
+      if (document.signedFileId) {
+        await prisma.document.update({ where: { id: document.id }, data: { signedFileId: null } });
+      }
+
+      await prisma.documentEvent.create({
+        data: {
+          documentId: document.id,
+          signerId: signer.id,
+          userId: user.id,
+          eventType: 'PHOTO_REDO_REQUESTED',
+          description: `Escritório solicitou nova foto (${fieldLabel}) para ${signer.name}, por ${user.name}${reason ? `. Motivo: ${reason}` : '.'} A foto anterior foi removida; o link de assinatura do signatário retoma diretamente nesta etapa.`,
+          // Guarda qual campo foi pedido em formato estruturado - a rota
+          // pública GET /api/sign/[token] usa isso para saber, quando a
+          // assinatura já está concluída, para qual etapa retomar o link em
+          // vez de mostrar direto a tela de sucesso.
+          metadata: JSON.stringify({ field }),
+        },
+      });
+
+      await logAuditEvent({
+        officeId: user.officeId,
+        userId: user.id,
+        eventType: 'PHOTO_REDO_REQUESTED',
+        description: `Solicitada nova foto (${fieldLabel}) para ${signer.name} em "${document.title}", por ${user.name}.`,
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
     if (action === 'send') {
       if (document.status === 'CONCLUIDO' || document.status === 'CANCELADO') {
         return NextResponse.json(

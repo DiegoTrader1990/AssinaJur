@@ -110,6 +110,10 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [isOfficeAdmin, setIsOfficeAdmin] = useState(false);
   const [redoingIds, setRedoingIds] = useState<Set<string>>(new Set());
+  // Ids no formato "signerId:campo" das solicitações de "refazer só uma
+  // foto" em andamento - separado de redoingIds (que é por documento) porque
+  // aqui a unidade é o campo específico de um signatário.
+  const [redoingPhotoIds, setRedoingPhotoIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '');
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('ALL');
   const [dateFilter, setDateFilter] = useState<DateFilter>('ALL');
@@ -150,6 +154,7 @@ export default function DocumentsPage() {
       const res = await fetch(url.toString());
       const data = await res.json();
       if (data.documents) setDocuments(data.documents);
+      return data.documents as DocumentItem[] | undefined;
     } catch (err) {
       console.error('Erro ao carregar documentos:', err);
     } finally {
@@ -301,6 +306,49 @@ export default function DocumentsPage() {
       setRedoingIds((current) => {
         const next = new Set(current);
         next.delete(doc.id);
+        return next;
+      });
+    }
+  };
+
+  const REDOABLE_FIELD_LABELS: Record<string, string> = {
+    documentFrontImage: 'frente do documento',
+    documentBackImage: 'verso do documento',
+    selfieCenterImage: 'selfie (prova de presença)',
+  };
+
+  // Pede para o signatário refazer só UMA foto específica, sem reabrir toda
+  // a assinatura - pensado para quando o escritório olha o certificado e vê
+  // que uma foto ficou ruim (borrada, mal enquadrada), mas o resto está
+  // correto. Se a assinatura já estiver concluída, ela continua valendo; só
+  // a foto é substituída e o certificado é regenerado com a foto nova.
+  const handleRequestPhotoRedo = async (doc: DocumentItem, signer: Signer, field: 'documentFrontImage' | 'documentBackImage' | 'selfieCenterImage') => {
+    const fieldLabel = REDOABLE_FIELD_LABELS[field];
+    if (!window.confirm(`Pedir para ${signer.name} refazer a foto de ${fieldLabel}? A foto atual será removida e o link de assinatura dele(a) retomará direto nessa etapa.${signer.status === 'ASSINADO' ? ' A assinatura já concluída continua válida.' : ''}`)) return;
+    const reason = window.prompt('Motivo (opcional, fica registrado na trilha de auditoria):') || '';
+
+    const key = `${signer.id}:${field}`;
+    setRedoingPhotoIds((current) => new Set(current).add(key));
+    try {
+      const res = await fetch(`/api/documents/${doc.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'redo-photo', signerId: signer.id, field, reason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Não foi possível solicitar a nova foto.');
+      // Atualiza o dossiê aberto com os dados novos (foto removida, status),
+      // sem fechar o modal, para o escritório poder pedir mais de uma foto
+      // seguida se precisar.
+      const freshDocs = await fetchDocuments();
+      const freshDoc = freshDocs?.find((item) => item.id === doc.id);
+      if (freshDoc) setSelectedDoc(freshDoc);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setRedoingPhotoIds((current) => {
+        const next = new Set(current);
+        next.delete(key);
         return next;
       });
     }
@@ -1185,7 +1233,32 @@ export default function DocumentsPage() {
                   {selectedDoc.signers.map((s) => (
                     <div key={s.id} className={`p-3 rounded-xl border text-xs ${s.status === 'ASSINADO' ? 'bg-emerald-50/40 border-emerald-200' : s.status === 'EM_ANDAMENTO' ? 'bg-amber-50/40 border-amber-200' : s.status === 'VISUALIZADO' ? 'bg-blue-50/40 border-blue-200' : 'bg-slate-50 border-slate-200/80'}`}>
                       <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0"><div className="font-extrabold text-slate-900 truncate">{s.name}</div><div className="mt-1 flex flex-wrap gap-1.5 items-center"><span className="text-slate-500 text-[10px]">{signerRoleLabel(s.role)}</span>{signerProgress(s)}{s.signingMode === 'SAME_DEVICE' && <span className="text-[10px] font-bold text-violet-700">Mesmo celular</span>}</div>{s.status === 'EM_ANDAMENTO' && <div className="text-amber-700 text-[10px] font-bold mt-0.5 capitalize">{signerProgressDetail(s)}</div>}<div className="text-slate-400 font-mono text-[10px] mt-1">CPF: {maskCpfCnpj(s.cpf)}</div></div>
+                        <div className="min-w-0"><div className="font-extrabold text-slate-900 truncate">{s.name}</div><div className="mt-1 flex flex-wrap gap-1.5 items-center"><span className="text-slate-500 text-[10px]">{signerRoleLabel(s.role)}</span>{signerProgress(s)}{s.signingMode === 'SAME_DEVICE' && <span className="text-[10px] font-bold text-violet-700">Mesmo celular</span>}</div>{s.status === 'EM_ANDAMENTO' && <div className="text-amber-700 text-[10px] font-bold mt-0.5 capitalize">{signerProgressDetail(s)}</div>}<div className="text-slate-400 font-mono text-[10px] mt-1">CPF: {maskCpfCnpj(s.cpf)}</div>
+                          {/* "Pedir para refazer" por foto - só para o Cliente Titular (o
+                              Assinante a Rogo capturado no mesmo celular não tem link próprio
+                              e por isso não é coberto por este fluxo ainda) e só quando existe
+                              uma foto capturada para aquele campo. */}
+                          {isOfficeAdmin && s.role === 'CLIENTE' && (s.documentFrontImage || s.documentBackImage || s.selfieCenterImage) && (
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {([
+                                ['documentFrontImage', 'Frente'],
+                                ['documentBackImage', 'Verso'],
+                                ['selfieCenterImage', 'Selfie'],
+                              ] as const).map(([field, label]) => s[field] && (
+                                <button
+                                  key={field}
+                                  type="button"
+                                  onClick={() => handleRequestPhotoRedo(selectedDoc, s, field)}
+                                  disabled={redoingPhotoIds.has(`${s.id}:${field}`)}
+                                  title={`Pedir para refazer a foto: ${REDOABLE_FIELD_LABELS[field]}`}
+                                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[9px] font-bold text-slate-600 hover:border-amber-300 hover:text-amber-700 disabled:opacity-50"
+                                >
+                                  {redoingPhotoIds.has(`${s.id}:${field}`) ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RotateCcw className="w-2.5 h-2.5" />} Refazer {label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                         {s.status !== 'ASSINADO' && <div className="flex items-center gap-1 shrink-0"><button onClick={() => handleCopyLink(s.token)} title="Copiar link" className="p-2 rounded-lg border border-blue-200 bg-white text-blue-700 hover:bg-blue-50">{copiedToken === s.token ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}</button><button onClick={() => handleOpenWhatsApp(selectedDoc.title, s.name, s.token)} title="Enviar pelo WhatsApp" className="px-2.5 py-2 bg-emerald-50 text-emerald-800 font-extrabold rounded-lg border border-emerald-200 flex items-center gap-1 text-[10px]"><MessageSquare className="w-3.5 h-3.5 text-emerald-600" /> Enviar</button></div>}
                       </div>
                     </div>

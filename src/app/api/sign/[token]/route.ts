@@ -78,6 +78,36 @@ export async function GET(
         })
       : [];
 
+    // Se o escritório pediu para o signatário refazer uma foto específica
+    // (ver action "redo-photo" em /api/documents/[id]) DEPOIS da assinatura
+    // já concluída, o campo correspondente foi limpo mas o status continua
+    // "ASSINADO" - sem isso, o link simplesmente mostraria a tela de sucesso
+    // de novo e não deixaria a pessoa enviar a foto nova. Localiza o pedido
+    // mais recente e, se o campo pedido ainda estiver vazio (ou seja, a foto
+    // nova ainda não chegou), devolve qual campo retomar.
+    let redoPendingField: string | null = null;
+    if (signer.status === 'ASSINADO') {
+      const lastRedoRequest = await prisma.documentEvent.findFirst({
+        where: { signerId: signer.id, eventType: 'PHOTO_REDO_REQUESTED' },
+        orderBy: { createdAt: 'desc' },
+        select: { metadata: true },
+      });
+      if (lastRedoRequest?.metadata) {
+        try {
+          const parsedField = JSON.parse(lastRedoRequest.metadata)?.field;
+          if (
+            (parsedField === 'documentFrontImage' && !signer.documentFrontImage) ||
+            (parsedField === 'documentBackImage' && !signer.documentBackImage) ||
+            (parsedField === 'selfieCenterImage' && !signer.selfieCenterImage)
+          ) {
+            redoPendingField = parsedField;
+          }
+        } catch {
+          // metadata mal formado - ignora, trata como sem pedido pendente.
+        }
+      }
+    }
+
     if (document.status === 'CANCELADO') {
       return NextResponse.json({ error: 'Este documento foi cancelado pelo escritório responsável.' }, { status: 400 });
     }
@@ -171,6 +201,9 @@ export async function GET(
         documentFrontImage: signer.documentFrontImage,
         documentBackImage: signer.documentBackImage,
         selfieCenterImage: signer.selfieCenterImage,
+        // Ver comentário acima de onde redoPendingField é calculado - null
+        // quando não há pedido de refazer foto pendente.
+        redoPendingField,
       },
       rogoProgress: rogoSigner
         ? {

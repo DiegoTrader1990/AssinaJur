@@ -56,6 +56,11 @@ interface SignerInfo {
   documentFrontImage?: string | null;
   documentBackImage?: string | null;
   selfieCenterImage?: string | null;
+  // Presente quando o escritório pediu para refazer uma foto específica
+  // DEPOIS da assinatura já concluída (ver "Pedir para refazer" no painel).
+  // Nesse caso o link retoma direto nessa etapa mesmo com status ASSINADO,
+  // em vez de mostrar a tela de sucesso normalmente.
+  redoPendingField?: 'documentFrontImage' | 'documentBackImage' | 'selfieCenterImage' | null;
 }
 
 interface RogoProgress {
@@ -492,7 +497,13 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         }
       }
 
-      if (data.signer.status === 'ASSINADO' || sessionStorage.getItem(`assinajur-signed-${params.token}`) === '1') {
+      // Se há um pedido de refazer foto pendente, NÃO mostra a tela de
+      // sucesso direto (mesmo com status ASSINADO) - o signatário precisa
+      // conseguir chegar até a etapa da foto pedida (ver handleConfirmCpf).
+      if (
+        (data.signer.status === 'ASSINADO' && !data.signer.redoPendingField) ||
+        sessionStorage.getItem(`assinajur-signed-${params.token}`) === '1'
+      ) {
         setStep('SUCCESS');
       }
     } catch (err: any) {
@@ -522,12 +533,27 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao autenticar CPF.');
 
+      // Pedido de refazer uma foto específica (assinatura já concluída) tem
+      // prioridade sobre a retomada normal - manda direto para a etapa da
+      // foto pedida, ignorando o restante do fluxo (que já está feito e não
+      // deve ser refeito).
+      if (signer?.redoPendingField === 'selfieCenterImage') {
+        setStep('SELFIE');
+        setActivePerson('CLIENT');
+      } else if (signer?.redoPendingField === 'documentBackImage') {
+        setStep('DOCUMENT');
+        setDocumentSide('VERSO');
+        setActivePerson('CLIENT');
+      } else if (signer?.redoPendingField === 'documentFrontImage') {
+        setStep('DOCUMENT');
+        setDocumentSide('FRENTE');
+        setActivePerson('CLIENT');
       // Retoma da etapa certa quando já existe progresso salvo de uma sessão
       // anterior interrompida (ver comentário em fetchSignatureData) - em vez
       // de sempre reiniciar em DOCUMENT/FRENTE. A ordem de checagem segue a
       // ordem real do fluxo: primeiro a selfie do titular (etapa mais
       // avançada), depois verso, depois frente do documento.
-      if (signer?.selfieCenterImage) {
+      } else if (signer?.selfieCenterImage) {
         const rogoAlreadyDone = Boolean(rogoProgress?.selfieCenterImage);
         if (isRogadoConsent && !rogoAlreadyDone) {
           setStep('ROGO_TRANSITION');
@@ -562,10 +588,21 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     if (documentSide === 'FRENTE') {
       setDocumentFrontImage(result.dataUrl);
       await saveProgress('documentFrontImage', result.dataUrl);
+      // Se essa era a única foto pedida para refazer (assinatura já
+      // concluída), termina aqui em vez de seguir para o verso - o resto do
+      // documento já está correto e não deve ser mexido.
+      if (signer?.redoPendingField === 'documentFrontImage') {
+        setStep('SUCCESS');
+        return;
+      }
       setDocumentSide('VERSO');
     } else {
       setDocumentBackImage(result.dataUrl);
       await saveProgress('documentBackImage', result.dataUrl);
+      if (signer?.redoPendingField === 'documentBackImage') {
+        setStep('SUCCESS');
+        return;
+      }
       setStep('SELFIE');
       setActivePerson('CLIENT');
     }
@@ -801,13 +838,22 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       // de 1 foto) - salva assim que ela é capturada, para o Cliente Titular
       // e também para o Assinante a Rogo quando capturado no mesmo link.
       if (key === 'center' && (currentPerson === 'CLIENT' || currentPerson === 'ROGO')) {
-        saveProgress('selfieCenterImage', dataUrl, currentPerson === 'ROGO');
+        // Aguarda o salvamento terminar antes de seguir (mesmo motivo do
+        // documento - ver handleDocumentConfirm) - especialmente importante
+        // aqui porque é exatamente o caminho usado para refazer só a selfie
+        // de uma assinatura já concluída.
+        await saveProgress('selfieCenterImage', dataUrl, currentPerson === 'ROGO');
       }
 
       if (singleRetakeKey) {
         setSelfieInstruction(`✓ Foto de ${LIVENESS_STEPS.find(s => s.key === key)?.label} atualizada!`);
         stopSelfieCamera();
         setSingleRetakeKey(null);
+        // Se essa era a foto pedida para refazer (assinatura já concluída),
+        // termina aqui direto na tela de sucesso - o resto já está correto.
+        if (key === 'center' && currentPerson === 'CLIENT' && signer?.redoPendingField === 'selfieCenterImage') {
+          setStep('SUCCESS');
+        }
         return;
       }
 
@@ -1346,7 +1392,15 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             {!cameraActive && !clientSelfieComplete && (
               <button
                 type="button"
-                onClick={() => startSelfieCamera(undefined, false, 'CLIENT')}
+                onClick={() => (
+                  signer?.redoPendingField === 'selfieCenterImage'
+                    // Pedido de refazer só a selfie (assinatura já concluída)
+                    // - usa o modo de retake único, que tira só a foto center
+                    // e já encerra, sem entrar na sequência completa de
+                    // liveness (esquerda/direita) que não é usada hoje.
+                    ? startSelfieCamera('center', true, 'CLIENT')
+                    : startSelfieCamera(undefined, false, 'CLIENT')
+                )}
                 className="w-full py-4 bg-[#D4AF37] hover:bg-[#E4C35A] text-[#071B3A] font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
               >
                 <Camera className="w-4 h-4 text-blue-400" /> Abrir Câmera do Celular
@@ -1814,12 +1868,28 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             </div>
 
             <div className="space-y-2">
-              <span className="px-3.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-extrabold text-xs border border-emerald-200 uppercase tracking-wider font-heading">
-                Assinatura Registrada com Sucesso!
-              </span>
-              <h2 className="font-heading text-xl font-extrabold text-[#071B3A] mt-2">Assinatura confirmada</h2>
-              {pendingParticipants.length > 0 && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left"><p className="text-xs font-extrabold text-amber-950">Aguardando as próximas assinaturas</p><p className="mt-1 text-[11px] text-amber-900">{pendingParticipants.map((item) => item.name).join(', ')}. O escritório enviará o link individual para cada pessoa.</p></div>}
-              <p className="text-sm text-slate-600 font-medium leading-relaxed">Obrigado, <strong>{signer?.name}</strong>. Sua assinatura eletrônica foi registrada com segurança pelo Selo Digital AssinaJur. O escritório dará continuidade ao seu atendimento.</p>
+              {/* Quando essa tela é alcançada por um pedido de refazer só uma
+                  foto (assinatura já estava concluída antes), o texto reflete
+                  isso em vez de anunciar uma nova assinatura, que confundiria
+                  o signatário. */}
+              {signer?.redoPendingField ? (
+                <>
+                  <span className="px-3.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-extrabold text-xs border border-emerald-200 uppercase tracking-wider font-heading">
+                    Foto Atualizada com Sucesso!
+                  </span>
+                  <h2 className="font-heading text-xl font-extrabold text-[#071B3A] mt-2">Tudo certo</h2>
+                  <p className="text-sm text-slate-600 font-medium leading-relaxed">Obrigado, <strong>{signer?.name}</strong>. A nova foto foi recebida e sua assinatura, já registrada anteriormente, continua válida. O escritório foi notificado.</p>
+                </>
+              ) : (
+                <>
+                  <span className="px-3.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-extrabold text-xs border border-emerald-200 uppercase tracking-wider font-heading">
+                    Assinatura Registrada com Sucesso!
+                  </span>
+                  <h2 className="font-heading text-xl font-extrabold text-[#071B3A] mt-2">Assinatura confirmada</h2>
+                  {pendingParticipants.length > 0 && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left"><p className="text-xs font-extrabold text-amber-950">Aguardando as próximas assinaturas</p><p className="mt-1 text-[11px] text-amber-900">{pendingParticipants.map((item) => item.name).join(', ')}. O escritório enviará o link individual para cada pessoa.</p></div>}
+                  <p className="text-sm text-slate-600 font-medium leading-relaxed">Obrigado, <strong>{signer?.name}</strong>. Sua assinatura eletrônica foi registrada com segurança pelo Selo Digital AssinaJur. O escritório dará continuidade ao seu atendimento.</p>
+                </>
+              )}
               <p className="hidden">
                 A presença do cliente e a assinatura a rogo foram vinculadas ao Certificado de Evidências Jurídicas.
               </p>
