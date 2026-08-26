@@ -51,6 +51,22 @@ export async function GET(
     }
 
     const { document } = signer;
+
+    // Progresso já salvo do Assinante a Rogo (quando o documento é "a rogo" e
+    // o companheiro é capturado no MESMO link/dispositivo do titular) - o
+    // registro do acompanhante já existe desde a criação do documento
+    // (signatureOrder 2), então basta buscar o que já foi preenchido nele
+    // até agora para permitir retomar a captura dele também, sem repetir o
+    // que já foi feito.
+    const rogoSigner = document.isIlliterate && signer.role === 'CLIENTE'
+      ? await prisma.signer.findFirst({
+          where: { documentId: document.id, role: 'ASSINANTE_A_ROGO' },
+          select: {
+            id: true, status: true,
+            documentFrontImage: true, documentBackImage: true, selfieCenterImage: true,
+          },
+        })
+      : null;
     const kitDocuments = document.kitBatchId && signer.role === 'CLIENTE'
       ? await prisma.document.findMany({
           where: { kitBatchId: document.kitBatchId, clientId: document.clientId },
@@ -148,7 +164,22 @@ export async function GET(
         role: signer.role,
         status: signer.status,
         signatureOrder: signer.signatureOrder,
+        // Progresso já salvo (etapas anteriores concluídas mas não enviadas
+        // ainda no fim do fluxo) - permite ao front-end retomar a captura de
+        // onde o signatário parou, em vez de reiniciar tudo do zero se o
+        // link for reaberto após uma interrupção.
+        documentFrontImage: signer.documentFrontImage,
+        documentBackImage: signer.documentBackImage,
+        selfieCenterImage: signer.selfieCenterImage,
       },
+      rogoProgress: rogoSigner
+        ? {
+            documentFrontImage: rogoSigner.documentFrontImage,
+            documentBackImage: rogoSigner.documentBackImage,
+            selfieCenterImage: rogoSigner.selfieCenterImage,
+            status: rogoSigner.status,
+          }
+        : null,
       office: document.office,
       document: {
         id: document.id,

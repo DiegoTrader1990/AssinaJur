@@ -51,6 +51,18 @@ interface SignerInfo {
   status: string;
   signatureType?: string;
   signedAt?: string;
+  // Progresso de captura já salvo no servidor em uma sessão anterior
+  // interrompida - usado para retomar a assinatura de onde parou.
+  documentFrontImage?: string | null;
+  documentBackImage?: string | null;
+  selfieCenterImage?: string | null;
+}
+
+interface RogoProgress {
+  documentFrontImage: string | null;
+  documentBackImage: string | null;
+  selfieCenterImage: string | null;
+  status?: string;
 }
 
 interface DocumentInfo {
@@ -239,6 +251,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [pendingParticipants, setPendingParticipants] = useState<Array<{ name: string; role: string; signingMode: string }>>([]);
   const [nextParticipant, setNextParticipant] = useState<{ token: string; name: string; role: string } | null>(null);
   const [waitingFor, setWaitingFor] = useState<{ name: string; role: string; signatureOrder: number } | null>(null);
+  const [rogoProgress, setRogoProgress] = useState<RogoProgress | null>(null);
 
   // Canvas de assinatura
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -317,6 +330,19 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const recordEvidence = async (eventType: string) => {
     await fetch(`/api/sign/${params.token}/event`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ eventType }),
+    }).catch(() => {});
+  };
+
+  // Salva a foto/selfie capturada NO SERVIDOR assim que a etapa é concluída,
+  // em vez de deixar tudo só na memória do navegador até o clique final de
+  // "assinar" - se a pessoa fechar a aba, cair a conexão ou se atrapalhar
+  // numa etapa mais à frente (ex.: cliente titular travando na própria vez
+  // depois de já ter capturado o Assinante a Rogo no mesmo aparelho), o que
+  // já foi feito não se perde: reabrir o mesmo link retoma da etapa salva
+  // em vez de recomeçar tudo do zero.
+  const saveProgress = async (imageField: 'documentFrontImage' | 'documentBackImage' | 'selfieCenterImage', imageData: string, forRogo = false) => {
+    await fetch(`/api/sign/${params.token}/event`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageField, imageData, forRogo }),
     }).catch(() => {});
   };
 
@@ -441,6 +467,31 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       if (data.document?.rogoCpf) setRogoCpf(maskCpfCnpj(data.document.rogoCpf));
       if (data.document?.rogoRelationship) setRogoRelationship(data.document.rogoRelationship);
 
+      // Retoma o progresso já salvo em uma sessão anterior interrompida, se
+      // houver - pré-carrega no estado o que já foi capturado (do titular e,
+      // se for o caso, do Assinante a Rogo capturado no mesmo link) para que
+      // a etapa correspondente na tela já mostre isso como concluído, em vez
+      // de pedir para refazer do zero. A decisão de para qual ETAPA pular
+      // acontece só depois da confirmação de CPF (handleConfirmCpf), que já
+      // é a etapa seguinte no fluxo normal.
+      if (data.signer.documentFrontImage) setDocumentFrontImage(data.signer.documentFrontImage);
+      if (data.signer.documentBackImage) setDocumentBackImage(data.signer.documentBackImage);
+      if (data.signer.selfieCenterImage) {
+        const withCenter = { center: data.signer.selfieCenterImage, left: null, right: null };
+        setSelfieImages(withCenter);
+        selfieImagesRef.current = withCenter;
+      }
+      if (data.rogoProgress) {
+        setRogoProgress(data.rogoProgress);
+        if (data.rogoProgress.documentFrontImage) setRogoDocumentFrontImage(data.rogoProgress.documentFrontImage);
+        if (data.rogoProgress.documentBackImage) setRogoDocumentBackImage(data.rogoProgress.documentBackImage);
+        if (data.rogoProgress.selfieCenterImage) {
+          const rogoWithCenter = { center: data.rogoProgress.selfieCenterImage, left: null, right: null };
+          setRogoSelfieImages(rogoWithCenter);
+          rogoSelfieImagesRef.current = rogoWithCenter;
+        }
+      }
+
       if (data.signer.status === 'ASSINADO' || sessionStorage.getItem(`assinajur-signed-${params.token}`) === '1') {
         setStep('SUCCESS');
       }
@@ -470,9 +521,31 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao autenticar CPF.');
-      setStep('DOCUMENT');
-      setDocumentSide('FRENTE');
-      setActivePerson('CLIENT');
+
+      // Retoma da etapa certa quando já existe progresso salvo de uma sessão
+      // anterior interrompida (ver comentário em fetchSignatureData) - em vez
+      // de sempre reiniciar em DOCUMENT/FRENTE. A ordem de checagem segue a
+      // ordem real do fluxo: primeiro a selfie do titular (etapa mais
+      // avançada), depois verso, depois frente do documento.
+      if (signer?.selfieCenterImage) {
+        const rogoAlreadyDone = Boolean(rogoProgress?.selfieCenterImage);
+        if (isRogadoConsent && !rogoAlreadyDone) {
+          setStep('ROGO_TRANSITION');
+        } else {
+          setStep('SIGN');
+        }
+      } else if (signer?.documentBackImage) {
+        setStep('SELFIE');
+        setActivePerson('CLIENT');
+      } else if (signer?.documentFrontImage) {
+        setStep('DOCUMENT');
+        setDocumentSide('VERSO');
+        setActivePerson('CLIENT');
+      } else {
+        setStep('DOCUMENT');
+        setDocumentSide('FRENTE');
+        setActivePerson('CLIENT');
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -483,9 +556,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const handleDocumentConfirm = (result: CaptureResult) => {
     if (documentSide === 'FRENTE') {
       setDocumentFrontImage(result.dataUrl);
+      saveProgress('documentFrontImage', result.dataUrl);
       setDocumentSide('VERSO');
     } else {
       setDocumentBackImage(result.dataUrl);
+      saveProgress('documentBackImage', result.dataUrl);
       setStep('SELFIE');
       setActivePerson('CLIENT');
     }
@@ -496,9 +571,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const handleRogoDocumentConfirm = (result: CaptureResult) => {
     if (rogoDocumentSide === 'FRENTE') {
       setRogoDocumentFrontImage(result.dataUrl);
+      saveProgress('documentFrontImage', result.dataUrl, true);
       setRogoDocumentSide('VERSO');
     } else {
       setRogoDocumentBackImage(result.dataUrl);
+      saveProgress('documentBackImage', result.dataUrl, true);
       setStep('ROGO_SELFIE');
       startSelfieCamera(undefined, false, 'ROGO');
     }
@@ -714,6 +791,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       updateCurrentSelfieImages(updatedSelfies, currentPerson);
       if (currentPerson === 'CLIENT') {
         recordEvidence(key === 'center' ? 'SELFIE_CENTER_VALIDATED' : key === 'left' ? 'SELFIE_LEFT_VALIDATED' : 'SELFIE_RIGHT_VALIDATED');
+      }
+      // Só a selfie "center" é usada no certificado hoje (fluxo simplificado
+      // de 1 foto) - salva assim que ela é capturada, para o Cliente Titular
+      // e também para o Assinante a Rogo quando capturado no mesmo link.
+      if (key === 'center' && (currentPerson === 'CLIENT' || currentPerson === 'ROGO')) {
+        saveProgress('selfieCenterImage', dataUrl, currentPerson === 'ROGO');
       }
 
       if (singleRetakeKey) {
@@ -1415,8 +1498,20 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   return;
                 }
                 setError('');
-                setRogoDocumentSide('FRENTE');
-                setStep('ROGO_DOCUMENT');
+                // Retoma da etapa certa do Assinante a Rogo se ele já tinha
+                // capturado algo numa sessão anterior interrompida.
+                if (rogoProgress?.selfieCenterImage) {
+                  setStep('SIGN');
+                } else if (rogoProgress?.documentBackImage) {
+                  setStep('ROGO_SELFIE');
+                  startSelfieCamera(undefined, false, 'ROGO');
+                } else if (rogoProgress?.documentFrontImage) {
+                  setRogoDocumentSide('VERSO');
+                  setStep('ROGO_DOCUMENT');
+                } else {
+                  setRogoDocumentSide('FRENTE');
+                  setStep('ROGO_DOCUMENT');
+                }
               }}
               className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
             >
