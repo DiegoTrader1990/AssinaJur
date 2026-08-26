@@ -1183,17 +1183,19 @@ export async function generateFinalPdfCertificate(documentId: string) {
       // cartão da foto - se não houver espaço no que resta da página atual,
       // tudo pula junto para a próxima (nunca deixa um título "órfão"
       // sozinho no fim de uma página).
-      ensureSpace(30 + 30 + cardH + 20);
+      ensureSpace(36 + 34 + cardH + 20);
 
       page.drawLine({ start: { x: CX, y }, end: { x: CR, y }, thickness: 1.3, color: gold });
       page.drawText(`3. PROVA DE PRESENÇA AO VIVO — ${signerRoleLabel(signer.role).toUpperCase()} (REGISTRO FACIAL HD)`, {
         x: padX, y: y - 14, size: 8, font: bold, color: navy,
       });
       page.drawLine({ start: { x: CX, y: y - 20 }, end: { x: CR, y: y - 20 }, thickness: 0.5, color: panelBorder });
-      y -= 30;
+      // Mais respiro entre a linha divisória, o rótulo "TITULAR" e o nome -
+      // antes ficavam quase colados um no outro.
+      y -= 36;
       page.drawText('TITULAR DESTA EVIDÊNCIA', { x: padX, y, size: 7.6, font: bold, color: muted });
-      page.drawText(String(signer.name || '').toUpperCase(), { x: padX, y: y - 15, size: 11.6, font: bold, color: navy });
-      y -= 30;
+      page.drawText(String(signer.name || '').toUpperCase(), { x: padX, y: y - 18, size: 11.6, font: bold, color: navy });
+      y -= 34;
 
       const img = signer.selfieCenterImage;
       // Diagnóstico: se a foto sumir do certificado de novo, isto deixa claro nos logs
@@ -1262,7 +1264,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       // linha dourada seguinte, lendo como "embolado") - 52pt dá um vão
       // claramente visível entre a evidência de duas pessoas diferentes,
       // mesmo sem página nova entre elas.
-      y = imgFrameY - 52;
+      y = imgFrameY - 35;
     }
   }
 
