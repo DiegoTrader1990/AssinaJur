@@ -1287,12 +1287,24 @@ export async function generateFinalPdfCertificate(documentId: string) {
       dCursor = 706;
     };
 
+    let isFirstDocPhotoSigner = true;
     for (const signer of docPhotoSigners) {
       const docPhotoLabels: Array<[string, string | null]> = [
         ['Frente do documento', signer.documentFrontImage],
         ['Verso do documento', signer.documentBackImage],
       ].filter(([, img]) => Boolean(img)) as Array<[string, string | null]>;
       if (!docPhotoLabels.length) continue;
+
+      // Cada signatário sempre começa sua própria seção de documento numa
+      // página nova (mesmo sobrando espaço na anterior) - sem isso, o verso
+      // do documento de uma pessoa podia terminar no topo de uma página e,
+      // logo abaixo, já começar a frente do documento da OUTRA pessoa,
+      // misturando as duas identidades visualmente na mesma página (o que a
+      // dupla checagem de espaço por foto, sozinha, não evita). Dentro do
+      // documento do MESMO signatário, frente/verso continuam com checagem
+      // independente - só a fronteira entre pessoas força a nova página.
+      if (!isFirstDocPhotoSigner) startDocPage();
+      isFirstDocPhotoSigner = false;
 
       // Cada foto (frente/verso) reserva o próprio espaço individualmente,
       // em vez das duas exigirem caber juntas na mesma página - antes, se só
