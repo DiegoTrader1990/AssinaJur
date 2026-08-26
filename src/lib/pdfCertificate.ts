@@ -1025,10 +1025,21 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
   y = docPanelY - 6;
 
-  // SEÇÃO 3 & 4: DADOS DO SIGNATÁRIO E EVIDÊNCIAS COLETADAS
+  // SEÇÃO 2: DADOS DO SIGNATÁRIO
+  // Os dados de TODOS os signatários vêm primeiro, em sequência, e só depois
+  // as evidências fotográficas (prova de presença na Seção 3, documentos na
+  // Seção 4) - em vez do padrão antigo "dados + foto de presença de uma
+  // pessoa, dados + foto de presença da outra, documentos de uma, documentos
+  // da outra", que obrigava o leitor a alternar entre texto e foto várias
+  // vezes para acompanhar um único signatário. Agrupar por TIPO de conteúdo
+  // (todos os dados, depois todas as selfies, depois todos os documentos) lê
+  // como um relatório mais formal e organizado, em vez de um bloco repetido
+  // por pessoa.
   const docPhotoSigners: any[] = [];
+  const presenceSigners: any[] = [];
   for (const signer of doc.signers) {
     const hasPhotos = Boolean(signer.selfieCenterImage || signer.selfieLeftImage || signer.selfieRightImage);
+    if (hasPhotos) presenceSigners.push(signer);
     const hasLocation = signer.geoLat != null && signer.geoLng != null;
     const locationText = hasLocation
       ? `${signer.geoCity ? `${safeText(signer.geoCity, 200)}${signer.geoState ? '/' + signer.geoState : ''} — ` : ''}${Number(
@@ -1071,7 +1082,6 @@ export async function generateFinalPdfCertificate(documentId: string) {
     // selfie reserva o dela separadamente, logo antes de ser desenhada.
     const panelH = 28 + dataHeight + 5;
     ensureSpace(panelH + 6);
-    let selfieCardBottomY: number | null = null;
 
     const pTop = y;
     const pY = pTop - panelH;
@@ -1149,125 +1159,111 @@ export async function generateFinalPdfCertificate(documentId: string) {
       }
     }
 
-    // SEÇÃO 3: EVIDÊNCIA COLETADA — SELFIE FRONTAL
-    if (hasPhotos) {
-      // Cartão único, centralizado, maior que o antigo layout de 3 fotos lado a lado.
-      // Um cartão de evidência, e não uma foto solta: a imagem é preservada
-      // por inteiro (sem zoom/corte do rosto) e acompanhada de informações
-      // que explicam o seu vínculo probatório.
-      // Cartão compacto: mantém a foto em tamanho útil, mas evita uma página
-      // com grandes áreas vazias depois da evidência.
-      const boxW = 280;
-      const boxH = 156;
-      const captionH = 0;
-      const cardH = boxH + captionH + 10;
-      const gap = 16;
-      const photosTotalWidth = boxW;
+    // A prova de presença (selfie) deste signatário é desenhada mais adiante,
+    // na Seção 3 - separada dos dados para que todos os signatários fiquem
+    // com seus dados agrupados primeiro (ver comentário no início do loop).
+    y = pY - 6;
+  }
 
-      // Reserva espaço só para o cartão da selfie (cardH + o título da seção
-      // acima dele). Se não couber no que resta da página atual, só esta
-      // parte pula para a próxima - os dados do signatário, que já foram
-      // desenhados acima, ficam na página anterior mesmo, sem deixar um vão
-      // enorme em branco como acontecia quando dados+foto eram uma coisa só.
-      y = cursor;
-      ensureSpace(cardH + 8 + 20);
-      cursor = y;
-      page.drawText('3. PROVA DE PRESENÇA AO VIVO (REGISTRO FACIAL HD)', {
-        x: padX,
-        y: cursor,
-        size: 7.2,
-        font: bold,
-        color: navy,
+  // SEÇÃO 3: PROVA DE PRESENÇA AO VIVO (REGISTRO FACIAL HD)
+  // Um cartão de evidência por signatário, todos aqui reunidos depois da
+  // Seção 2 (dados). Cada signatário começa sua prova de presença numa
+  // página nova quando há mais de um - o mesmo cuidado já usado na Seção 4
+  // (documentos) para nunca misturar a evidência de duas pessoas diferentes
+  // na mesma página.
+  if (presenceSigners.length > 0) {
+    const presenceInnerWidth = CW - 28;
+    const boxW = 280;
+    const boxH = 156;
+    const cardH = boxH + 10;
+
+    const startPresencePage = () => {
+      page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+      manifestPageCount += 1;
+      drawFrame(page, `CERTIFICADO DE EVIDÊNCIAS JURÍDICAS (Continuação ${manifestPageCount})`);
+      y = 706;
+    };
+
+    let isFirstPresenceSigner = true;
+    for (const signer of presenceSigners) {
+      if (!isFirstPresenceSigner) startPresencePage();
+      isFirstPresenceSigner = false;
+
+      // Cabeçalho da seção + nome do titular sempre cabendo juntos com o
+      // cartão da foto - se não houver espaço na página atual, tudo pula
+      // junto para a próxima (mesmo raciocínio da Seção 4: nunca deixar um
+      // título "órfão" sozinho no fim de uma página).
+      ensureSpace(30 + 22 + cardH + 20);
+
+      page.drawLine({ start: { x: CX, y }, end: { x: CR, y }, thickness: 1.3, color: gold });
+      page.drawText(`3. PROVA DE PRESENÇA AO VIVO — ${signerRoleLabel(signer.role).toUpperCase()} (REGISTRO FACIAL HD)`, {
+        x: padX, y: y - 14, size: 8, font: bold, color: navy,
       });
+      page.drawLine({ start: { x: CX, y: y - 20 }, end: { x: CR, y: y - 20 }, thickness: 0.5, color: panelBorder });
+      y -= 30;
+      page.drawText('TITULAR DESTA EVIDÊNCIA', { x: padX, y, size: 5.6, font: bold, color: muted });
+      page.drawText(String(signer.name || '').toUpperCase(), { x: padX, y: y - 11, size: 8.6, font: bold, color: navy });
+      y -= 22;
 
-      const photoLabels: Array<[string, string | null]> = [
-        ['Selfie Frontal', signer.selfieCenterImage],
-      ];
+      const img = signer.selfieCenterImage;
+      // Diagnóstico: se a foto sumir do certificado de novo, isto deixa claro nos logs
+      // do servidor se o dado nem chegou a ser salvo no signatário (Foto ausente) ou se
+      // chegou mas falhou ao ser incorporada no PDF (nesse caso embedBase64Image já loga
+      // o próprio erro) - sem isto, as duas causas eram indistinguíveis.
+      if (!img) console.warn(`Foto ausente no signatário para o certificado: "Selfie Frontal" (signer ${signer.id}) - selfie não foi capturada/salva na assinatura.`);
+      // Canvas vertical 4:5 em modo contain: preserva todo o enquadramento
+      // capturado, inclusive rosto e documento, sem nenhuma deformação.
+      const embedded = await embedBase64Image(pdfDoc, img, { width: 480, height: 600, fit: 'contain' });
+      const photoX = padX + Math.max(0, (presenceInnerWidth - boxW) / 2);
+      const imgFrameY = y - boxH;
 
-      let photoX = padX + Math.max(0, (innerWidth - photosTotalWidth) / 2);
-      // Guardado fora do bloco "if (hasPhotos)" (via selfieCardBottomY) para
-      // continuar acessível depois dele, ao posicionar o restante do
-      // certificado logo abaixo do cartão da selfie.
-      const cardY = cursor - cardH - 8;
-      selfieCardBottomY = cardY;
+      // Sem bloco de cor: só um friso dourado fino na borda superior da
+      // foto (mesmo tom das linhas divisórias do certificado) e a legenda
+      // como texto corrido logo abaixo, no mesmo padrão tipográfico do
+      // resto do documento (rótulo em cinza, valor em cor). O bloco navy
+      // sólido usado antes lia como uma etiqueta colada por cima do papel
+      // timbrado; este friso integra a foto ao certificado em vez de
+      // emoldurá-la como um objeto à parte.
+      page.drawRectangle({ x: photoX, y: imgFrameY, width: boxW, height: boxH, color: rgb(0.96, 0.97, 0.985), opacity: 0.82, borderColor: rgb(0.82, 0.86, 0.92), borderWidth: 0.8 });
+      page.drawRectangle({ x: photoX, y: imgFrameY + boxH - 1.4, width: boxW, height: 1.4, color: gold });
 
-      for (const [label, img] of photoLabels) {
-        // Diagnóstico: se a foto sumir do certificado de novo, isto deixa claro nos logs
-        // do servidor se o dado nem chegou a ser salvo no signatário (Foto ausente) ou se
-        // chegou mas falhou ao ser incorporada no PDF (nesse caso embedBase64Image já loga
-        // o próprio erro) - sem isto, as duas causas eram indistinguíveis.
-        if (!img) console.warn(`Foto ausente no signatário para o certificado: "${label}" (signer ${signer.id}) - selfie não foi capturada/salva na assinatura.`);
-        // Alvo de corte quadrado, igual ao quadro de exibição (140x140) - o corte
-        // anterior (540x620, retrato) recortava boa parte das laterais da selfie
-        // antes mesmo do encaixe final no quadro, dando a impressão de "zoom"
-        // excessivo no rosto. Agora o corte só remove o estritamente necessário.
-        // Canvas vertical 4:5 em modo contain: preserva todo o enquadramento
-        // capturado, inclusive rosto e documento, sem nenhuma deformação.
-        const embedded = await embedBase64Image(pdfDoc, img, { width: 480, height: 600, fit: 'contain' });
-        const imgFrameY = cardY + captionH;
+      const photoFrameMaxW = 124;
+      const photoFrameMaxH = 128;
+      const photoSlotY = imgFrameY + 14;
+      // A moldura é calculada do tamanho exato da foto já escalada dentro do
+      // espaço disponível (até 124x128), então sempre encosta nas quatro
+      // bordas da imagem, landscape ou retrato, sem sobra em branco.
+      const photoScale = embedded
+        ? Math.min(photoFrameMaxW / embedded.width, photoFrameMaxH / embedded.height)
+        : 1;
+      const photoFrameW = embedded ? Math.round(embedded.width * photoScale) : photoFrameMaxW;
+      const photoFrameH = embedded ? Math.round(embedded.height * photoScale) : photoFrameMaxH;
+      const photoFrameX = photoX + 13 + (photoFrameMaxW - photoFrameW) / 2;
+      const photoFrameY = photoSlotY + (photoFrameMaxH - photoFrameH) / 2;
+      page.drawRectangle({ x: photoFrameX, y: photoFrameY, width: photoFrameW, height: photoFrameH, color: rgb(1, 1, 1), borderColor: rgb(0.8, 0.84, 0.9), borderWidth: 0.7 });
 
-        // Sem bloco de cor: só um friso dourado fino na borda superior da
-        // foto (mesmo tom das linhas divisórias do certificado) e a legenda
-        // como texto corrido logo abaixo, no mesmo padrão tipográfico do
-        // resto do documento (rótulo em cinza, valor em cor). O bloco navy
-        // sólido usado antes lia como uma etiqueta colada por cima do papel
-        // timbrado; este friso integra a foto ao certificado em vez de
-        // emoldurá-la como um objeto à parte.
-        page.drawRectangle({ x: photoX, y: imgFrameY, width: boxW, height: boxH, color: rgb(0.96, 0.97, 0.985), opacity: 0.82, borderColor: rgb(0.82, 0.86, 0.92), borderWidth: 0.8 });
-        page.drawRectangle({ x: photoX, y: imgFrameY + boxH - 1.4, width: boxW, height: 1.4, color: gold });
-
-        const photoFrameMaxW = 124;
-        const photoFrameMaxH = 128;
-        const photoSlotY = imgFrameY + 14;
-        // A moldura antiga tinha largura máxima fixa em 112pt (calculada só a
-        // partir da ALTURA de 128pt) - para uma selfie real, capturada em
-        // formato paisagem 4:3 pela câmera (640x480), a largura "correta"
-        // para preencher 128pt de altura mantendo a proporção passava bem de
-        // 112pt e ficava cortada nesse teto, então a foto final era escalada
-        // pela LARGURA em vez da altura, sobrando uma faixa branca enorme
-        // em cima e embaixo dela dentro da moldura - dava a impressão de
-        // foto "flutuando", cortada ou incompleta dentro do quadro (esse é o
-        // mesmo formato que a evidência real de qualquer cliente sai hoje,
-        // não só um placeholder de teste). Agora a moldura é calculada para
-        // caber exatamente do tamanho da foto já escalada dentro do espaço
-        // disponível (até 140x128), então a moldura sempre encosta nas
-        // quatro bordas da imagem, landscape ou retrato, sem sobra.
-        const photoScale = embedded
-          ? Math.min(photoFrameMaxW / embedded.width, photoFrameMaxH / embedded.height)
-          : 1;
-        const photoFrameW = embedded ? Math.round(embedded.width * photoScale) : photoFrameMaxW;
-        const photoFrameH = embedded ? Math.round(embedded.height * photoScale) : photoFrameMaxH;
-        const photoFrameX = photoX + 13 + (photoFrameMaxW - photoFrameW) / 2;
-        const photoFrameY = photoSlotY + (photoFrameMaxH - photoFrameH) / 2;
-        page.drawRectangle({ x: photoFrameX, y: photoFrameY, width: photoFrameW, height: photoFrameH, color: rgb(1, 1, 1), borderColor: rgb(0.8, 0.84, 0.9), borderWidth: 0.7 });
-
-        if (embedded) {
-          page.drawImage(embedded, {
-            x: photoFrameX,
-            y: photoFrameY,
-            width: photoFrameW,
-            height: photoFrameH,
-          });
-        }
-
-        const infoX = photoX + 13 + photoFrameMaxW + 10;
-        page.drawText('EVIDÊNCIA FOTOGRÁFICA', { x: infoX, y: imgFrameY + 112, size: 6.2, font: bold, color: navy });
-        page.drawText('SELFIE COM DOCUMENTO', { x: infoX, y: imgFrameY + 97, size: 5.5, font: bold, color: muted });
-        page.drawLine({ start: { x: infoX, y: imgFrameY + 89 }, end: { x: photoX + boxW - 14, y: imgFrameY + 89 }, thickness: 0.5, color: rgb(0.8, 0.84, 0.9) });
-        page.drawText('Identidade e presença', { x: infoX, y: imgFrameY + 69, size: 5.6, font: regular, color: muted });
-        page.drawText('confirmadas na sessão', { x: infoX, y: imgFrameY + 56, size: 7.6, font: bold, color: navy });
-        page.drawText('Imagem original preservada', { x: infoX, y: imgFrameY + 35, size: 5.6, font: regular, color: muted });
-        page.drawText('junto aos registros técnicos.', { x: infoX, y: imgFrameY + 25, size: 5.6, font: regular, color: muted });
-        page.drawRectangle({ x: infoX, y: imgFrameY + 7, width: 110, height: 13, borderColor: green, borderWidth: 0.7 });
-        page.drawText('EVIDÊNCIA VINCULADA', { x: infoX + 9, y: imgFrameY + 11, size: 5, font: bold, color: green });
-        photoX += boxW + gap;
+      if (embedded) {
+        page.drawImage(embedded, {
+          x: photoFrameX,
+          y: photoFrameY,
+          width: photoFrameW,
+          height: photoFrameH,
+        });
       }
-    }
 
-    // Usa a posição final real do cursor (depois dos dados e, se houve, da
-    // selfie) em vez do antigo "pY" fixo - que representava o fim de um
-    // painel de altura pré-calculada que não existe mais como bloco único.
-    y = (selfieCardBottomY ?? cursor) - 8;
+      const infoX = photoX + 13 + photoFrameMaxW + 10;
+      page.drawText('EVIDÊNCIA FOTOGRÁFICA', { x: infoX, y: imgFrameY + 112, size: 6.2, font: bold, color: navy });
+      page.drawText('SELFIE COM DOCUMENTO', { x: infoX, y: imgFrameY + 97, size: 5.5, font: bold, color: muted });
+      page.drawLine({ start: { x: infoX, y: imgFrameY + 89 }, end: { x: photoX + boxW - 14, y: imgFrameY + 89 }, thickness: 0.5, color: rgb(0.8, 0.84, 0.9) });
+      page.drawText('Identidade e presença', { x: infoX, y: imgFrameY + 69, size: 5.6, font: regular, color: muted });
+      page.drawText('confirmadas na sessão', { x: infoX, y: imgFrameY + 56, size: 7.6, font: bold, color: navy });
+      page.drawText('Imagem original preservada', { x: infoX, y: imgFrameY + 35, size: 5.6, font: regular, color: muted });
+      page.drawText('junto aos registros técnicos.', { x: infoX, y: imgFrameY + 25, size: 5.6, font: regular, color: muted });
+      page.drawRectangle({ x: infoX, y: imgFrameY + 7, width: 110, height: 13, borderColor: green, borderWidth: 0.7 });
+      page.drawText('EVIDÊNCIA VINCULADA', { x: infoX + 9, y: imgFrameY + 11, size: 5, font: bold, color: green });
+
+      y = imgFrameY - 8;
+    }
   }
 
   // SEÇÃO 4: EVIDÊNCIA COMPLEMENTAR — DOCUMENTO DE IDENTIFICAÇÃO (FRENTE/VERSO)
