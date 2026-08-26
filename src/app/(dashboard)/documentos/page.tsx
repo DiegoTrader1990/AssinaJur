@@ -1234,11 +1234,15 @@ export default function DocumentsPage() {
                     <div key={s.id} className={`p-3 rounded-xl border text-xs ${s.status === 'ASSINADO' ? 'bg-emerald-50/40 border-emerald-200' : s.status === 'EM_ANDAMENTO' ? 'bg-amber-50/40 border-amber-200' : s.status === 'VISUALIZADO' ? 'bg-blue-50/40 border-blue-200' : 'bg-slate-50 border-slate-200/80'}`}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0"><div className="font-extrabold text-slate-900 truncate">{s.name}</div><div className="mt-1 flex flex-wrap gap-1.5 items-center"><span className="text-slate-500 text-[10px]">{signerRoleLabel(s.role)}</span>{signerProgress(s)}{s.signingMode === 'SAME_DEVICE' && <span className="text-[10px] font-bold text-violet-700">Mesmo celular</span>}</div>{s.status === 'EM_ANDAMENTO' && <div className="text-amber-700 text-[10px] font-bold mt-0.5 capitalize">{signerProgressDetail(s)}</div>}<div className="text-slate-400 font-mono text-[10px] mt-1">CPF: {maskCpfCnpj(s.cpf)}</div>
-                          {/* "Pedir para refazer" por foto - só para o Cliente Titular (o
-                              Assinante a Rogo capturado no mesmo celular não tem link próprio
-                              e por isso não é coberto por este fluxo ainda) e só quando existe
-                              uma foto capturada para aquele campo. */}
-                          {isOfficeAdmin && s.role === 'CLIENTE' && (s.documentFrontImage || s.documentBackImage || s.selfieCenterImage) && (
+                          {/* "Pedir para refazer" por foto - disponível para qualquer
+                              signatário (Cliente Titular, Assinante a Rogo, testemunhas)
+                              que já tenha essa foto capturada. Cada signatário sempre tem
+                              seu próprio link/token (mesmo o Assinante a Rogo capturado no
+                              mesmo celular do titular na assinatura original) - ao pedir
+                              para refazer, envie o link individual DELE (botão "Copiar
+                              link"/"Enviar" acima) para a pessoa retomar direto na foto
+                              pedida, sem precisar do celular do titular de novo. */}
+                          {isOfficeAdmin && (s.documentFrontImage || s.documentBackImage || s.selfieCenterImage) && (
                             <div className="mt-1.5 flex flex-wrap gap-1">
                               {([
                                 ['documentFrontImage', 'Frente'],
@@ -1259,7 +1263,12 @@ export default function DocumentsPage() {
                             </div>
                           )}
                         </div>
-                        {s.status !== 'ASSINADO' && <div className="flex items-center gap-1 shrink-0"><button onClick={() => handleCopyLink(s.token)} title="Copiar link" className="p-2 rounded-lg border border-blue-200 bg-white text-blue-700 hover:bg-blue-50">{copiedToken === s.token ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}</button><button onClick={() => handleOpenWhatsApp(selectedDoc.title, s.name, s.token)} title="Enviar pelo WhatsApp" className="px-2.5 py-2 bg-emerald-50 text-emerald-800 font-extrabold rounded-lg border border-emerald-200 flex items-center gap-1 text-[10px]"><MessageSquare className="w-3.5 h-3.5 text-emerald-600" /> Enviar</button></div>}
+                        {/* Mesmo já ASSINADO, mantém o botão de copiar link/WhatsApp
+                            disponível - é como o escritório envia o link individual
+                            do signatário de volta para ele depois de pedir para
+                            refazer uma foto (o link é o mesmo, só retoma direto na
+                            etapa da foto pedida em vez de reiniciar tudo). */}
+                        <div className="flex items-center gap-1 shrink-0"><button onClick={() => handleCopyLink(s.token)} title="Copiar link" className="p-2 rounded-lg border border-blue-200 bg-white text-blue-700 hover:bg-blue-50">{copiedToken === s.token ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}</button><button onClick={() => handleOpenWhatsApp(selectedDoc.title, s.name, s.token)} title="Enviar pelo WhatsApp" className="px-2.5 py-2 bg-emerald-50 text-emerald-800 font-extrabold rounded-lg border border-emerald-200 flex items-center gap-1 text-[10px]"><MessageSquare className="w-3.5 h-3.5 text-emerald-600" /> Enviar</button></div>
                       </div>
                     </div>
                   ))}
