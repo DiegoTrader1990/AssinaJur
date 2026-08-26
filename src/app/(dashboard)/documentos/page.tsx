@@ -89,6 +89,7 @@ interface DocumentItem {
   createdAt: string;
   completedAt?: string;
   kitBatchId?: string | null;
+  kitId?: string | null;
   processId?: string | null;
   client?: { id: string; name: string; cpfCnpj: string };
   signers: Signer[];
@@ -319,8 +320,12 @@ export default function DocumentsPage() {
     // selectedPackageDocuments, que só reflete o dossiê aberto no momento -
     // esta função também é chamada direto de um card individual do kanban,
     // sem o dossiê aberto, onde selectedPackageDocuments estaria vazio/errado).
-    const packageDocCount = isPackage && doc.kitBatchId
-      ? documents.filter((item) => item.kitBatchId === doc.kitBatchId && item.client?.id === doc.client?.id && item.status === 'CONCLUIDO').length || 1
+    const packageDocCount = isPackage
+      ? (doc.kitBatchId
+          ? documents.filter((item) => item.kitBatchId === doc.kitBatchId && item.client?.id === doc.client?.id && item.status === 'CONCLUIDO').length
+          : doc.kitId
+          ? resolveLegacyPackageMembers(doc, documents).filter((item) => item.status === 'CONCLUIDO').length
+          : 1) || 1
       : 1;
     const confirmMsg = isPackage
       ? `Reabrir TODO O PACOTE (${packageDocCount} documentos) de ${doc.client?.name || 'este cliente'} para uma nova tentativa de assinatura? O mesmo link será reativado e o conteúdo já editado é mantido.`
@@ -582,13 +587,42 @@ export default function DocumentsPage() {
     return { completed, inProgress, drafts };
   }, [filteredDocuments]);
 
+  // Kits mais antigos (gerados antes do campo kitBatchId existir/estar
+  // preenchido de forma consistente) têm kitId preenchido mas kitBatchId
+  // nulo - sem este fallback esses documentos aparecem soltos, um por um, em
+  // vez de agrupados no card "Pacote de assinatura" (e ações no pacote inteiro
+  // atingiam só 1 documento). Agrupa por kitId + mesmo cliente + criados
+  // dentro de uma janela de 2h - mesma regra usada no backend.
+  const resolveLegacyPackageMembers = (doc: DocumentItem, pool: DocumentItem[]) => {
+    if (!doc.kitId) return [doc];
+    const windowMs = 2 * 60 * 60 * 1000;
+    const anchor = new Date(doc.createdAt).getTime();
+    return pool.filter(
+      (item) =>
+        item.kitId === doc.kitId &&
+        !item.kitBatchId &&
+        item.client?.id === doc.client?.id &&
+        Math.abs(new Date(item.createdAt).getTime() - anchor) <= windowMs
+    );
+  };
+
   const groupPackages = (items: DocumentItem[]) => {
-    const groups = new Map<string, DocumentItem[]>();
+    const groups: DocumentItem[][] = [];
+    const consumed = new Set<string>();
     for (const item of items) {
-      const key = item.kitBatchId ? `kit:${item.kitBatchId}` : `doc:${item.id}`;
-      groups.set(key, [...(groups.get(key) || []), item]);
+      if (consumed.has(item.id)) continue;
+      let members: DocumentItem[];
+      if (item.kitBatchId) {
+        members = items.filter((candidate) => candidate.kitBatchId === item.kitBatchId);
+      } else if (item.kitId) {
+        members = resolveLegacyPackageMembers(item, items);
+      } else {
+        members = [item];
+      }
+      members.forEach((member) => consumed.add(member.id));
+      groups.push(members);
     }
-    return Array.from(groups.values());
+    return groups;
   };
 
   // Lista de clientes para o dropdown de pastas
@@ -616,9 +650,13 @@ export default function DocumentsPage() {
 
   const selectedPackageDocuments = useMemo(() => {
     if (!selectedDoc) return [];
-    return selectedDoc.kitBatchId
-      ? documents.filter((item) => item.kitBatchId === selectedDoc.kitBatchId && item.client?.id === selectedDoc.client?.id)
-      : [selectedDoc];
+    if (selectedDoc.kitBatchId) {
+      return documents.filter((item) => item.kitBatchId === selectedDoc.kitBatchId && item.client?.id === selectedDoc.client?.id);
+    }
+    if (selectedDoc.kitId) {
+      return resolveLegacyPackageMembers(selectedDoc, documents);
+    }
+    return [selectedDoc];
   }, [selectedDoc, documents]);
 
   const getStatusBadge = (status: string) => {

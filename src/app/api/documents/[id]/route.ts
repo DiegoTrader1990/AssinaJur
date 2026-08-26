@@ -80,6 +80,30 @@ export async function POST(
       return NextResponse.json({ error: 'Documento não encontrado.' }, { status: 404 });
     }
 
+    // Kits mais antigos (gerados antes de o campo kitBatchId existir/estar
+    // preenchido de forma consistente) têm kitId preenchido mas kitBatchId
+    // nulo. Sem este fallback, qualquer ação "-package" enxergava só o
+    // documento em que o botão foi clicado, deixando os demais documentos do
+    // mesmo kit para trás (o clique em "Refazer"/"Aprovar" no pacote só
+    // afetava 1 de N documentos). Agrupa por kitId + mesmo cliente + criados
+    // dentro de uma janela de 2h um do outro - tempo generoso para cobrir a
+    // geração sequencial de vários PDFs na mesma sessão de criação do kit.
+    const resolvePackageTargets = async (extraWhere: Record<string, any> = {}) => {
+      if (document.kitBatchId) {
+        return prisma.document.findMany({
+          where: { officeId: user.officeId, kitBatchId: document.kitBatchId, clientId: document.clientId, ...extraWhere },
+        });
+      }
+      if (document.kitId) {
+        const candidates = await prisma.document.findMany({
+          where: { officeId: user.officeId, kitId: document.kitId, clientId: document.clientId, kitBatchId: null, ...extraWhere },
+        });
+        const windowMs = 2 * 60 * 60 * 1000;
+        return candidates.filter((item) => Math.abs(item.createdAt.getTime() - document.createdAt.getTime()) <= windowMs);
+      }
+      return [document];
+    };
+
     if (action === 'sync-package-signature') {
       if (document.status !== 'CONCLUIDO' || !document.kitBatchId) {
         return NextResponse.json({ error: 'Este documento não possui uma assinatura de pacote concluída para sincronizar.' }, { status: 400 });
@@ -117,10 +141,8 @@ export async function POST(
         return NextResponse.json({ error: 'Apenas o administrador do escritório pode aprovar a assinatura.' }, { status: 403 });
       }
 
-      const approveTargets = action === 'approve-package' && document.kitBatchId
-        ? await prisma.document.findMany({
-            where: { officeId: user.officeId, kitBatchId: document.kitBatchId, clientId: document.clientId, status: 'CONCLUIDO' },
-          })
+      const approveTargets = action === 'approve-package'
+        ? await resolvePackageTargets({ status: 'CONCLUIDO' })
         : [document];
 
       const approveEligible = approveTargets.filter((item) => item.status === 'CONCLUIDO');
@@ -161,10 +183,8 @@ export async function POST(
         return NextResponse.json({ error: 'Apenas o administrador do escritório pode desfazer uma aprovação.' }, { status: 403 });
       }
 
-      const unapproveTargets = action === 'unapprove-package' && document.kitBatchId
-        ? await prisma.document.findMany({
-            where: { officeId: user.officeId, kitBatchId: document.kitBatchId, clientId: document.clientId, status: 'CONCLUIDO', reviewStatus: 'APROVADO' },
-          })
+      const unapproveTargets = action === 'unapprove-package'
+        ? await resolvePackageTargets({ status: 'CONCLUIDO', reviewStatus: 'APROVADO' })
         : [document];
 
       const unapproveEligible = unapproveTargets.filter((item) => item.status === 'CONCLUIDO' && item.reviewStatus === 'APROVADO');
@@ -207,10 +227,8 @@ export async function POST(
         return NextResponse.json({ error: 'Apenas o administrador do escritório pode solicitar que a assinatura seja refeita.' }, { status: 403 });
       }
 
-      const targets = action === 'redo-package' && document.kitBatchId
-        ? await prisma.document.findMany({
-            where: { officeId: user.officeId, kitBatchId: document.kitBatchId, clientId: document.clientId, status: 'CONCLUIDO' },
-          })
+      const targets = action === 'redo-package'
+        ? await resolvePackageTargets({ status: 'CONCLUIDO' })
         : [document];
 
       const eligible = targets.filter((item) => item.status === 'CONCLUIDO' && item.reviewStatus !== 'APROVADO');
