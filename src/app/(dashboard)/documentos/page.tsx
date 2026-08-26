@@ -315,8 +315,15 @@ export default function DocumentsPage() {
   // revisado - a pessoa só refaz a etapa de assinar, não precisa de um link novo.
   const handleRedoSignature = async (doc: DocumentItem, mode: 'redo-document' | 'redo-package') => {
     const isPackage = mode === 'redo-package';
+    // Conta os documentos do mesmo pacote a partir da lista completa (não de
+    // selectedPackageDocuments, que só reflete o dossiê aberto no momento -
+    // esta função também é chamada direto de um card individual do kanban,
+    // sem o dossiê aberto, onde selectedPackageDocuments estaria vazio/errado).
+    const packageDocCount = isPackage && doc.kitBatchId
+      ? documents.filter((item) => item.kitBatchId === doc.kitBatchId && item.client?.id === doc.client?.id && item.status === 'CONCLUIDO').length || 1
+      : 1;
     const confirmMsg = isPackage
-      ? `Reabrir TODO O PACOTE (${selectedPackageDocuments.length || 1} documentos) de ${doc.client?.name || 'este cliente'} para uma nova tentativa de assinatura? O mesmo link será reativado e o conteúdo já editado é mantido.`
+      ? `Reabrir TODO O PACOTE (${packageDocCount} documentos) de ${doc.client?.name || 'este cliente'} para uma nova tentativa de assinatura? O mesmo link será reativado e o conteúdo já editado é mantido.`
       : `Reabrir "${doc.title}" para uma nova tentativa de assinatura? O mesmo link será reativado e o conteúdo já editado é mantido.`;
     if (!window.confirm(confirmMsg)) return;
     const reason = window.prompt('Motivo (opcional, fica registrado na trilha de auditoria):') || '';
@@ -752,18 +759,23 @@ export default function DocumentsPage() {
 
           {isCompleted && isOfficeAdmin && doc.reviewStatus !== 'APROVADO' && (
             <>
+              {/* Documento faz parte de um kit (mesma sessão de assinatura com
+                  vários PDFs) - aprovar/refazer precisa agir no PACOTE inteiro,
+                  não só neste card individual, senão os documentos do mesmo
+                  kit ficam dessincronizados (um aprovado/reaberto e os outros
+                  não, quando na prática são uma única assinatura). */}
               <button
-                onClick={() => handleApproveSignature(doc, 'approve-document')}
+                onClick={() => handleApproveSignature(doc, doc.kitBatchId ? 'approve-package' : 'approve-document')}
                 disabled={redoingIds.has(doc.id)}
-                title="Aprovar - confirma que a assinatura está correta e remove o botão Refazer"
+                title={doc.kitBatchId ? 'Aprovar todo o pacote - confirma que as assinaturas estão corretas e remove o botão Refazer' : 'Aprovar - confirma que a assinatura está correta e remove o botão Refazer'}
                 className="p-1 text-emerald-600 hover:text-emerald-700 disabled:opacity-50 rounded-lg border border-emerald-200 transition-colors"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
               </button>
               <button
-                onClick={() => handleRedoSignature(doc, 'redo-document')}
+                onClick={() => handleRedoSignature(doc, doc.kitBatchId ? 'redo-package' : 'redo-document')}
                 disabled={redoingIds.has(doc.id)}
-                title="Reabrir para uma nova tentativa de assinatura, mantendo o mesmo link"
+                title={doc.kitBatchId ? 'Reabrir TODO O PACOTE para uma nova tentativa de assinatura, mantendo os documentos sincronizados' : 'Reabrir para uma nova tentativa de assinatura, mantendo o mesmo link'}
                 className="p-1 text-amber-600 hover:text-amber-700 disabled:opacity-50 rounded-lg border border-amber-200 transition-colors"
               >
                 {redoingIds.has(doc.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
