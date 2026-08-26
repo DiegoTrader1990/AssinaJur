@@ -108,7 +108,7 @@ export async function GET(req: Request) {
       },
     });
 
-    let rogoSigner = null;
+    let rogoSigner: Awaited<ReturnType<typeof prisma.signer.create>> | null = null;
     if (withRogo) {
       rogoSigner = await prisma.signer.create({
         data: {
@@ -169,7 +169,14 @@ export async function GET(req: Request) {
       }));
     };
 
-    const events = [
+    const events: Array<{
+      documentId: string;
+      signerId: string | null;
+      eventType: string;
+      description: string;
+      ipAddress: string | null;
+      createdAt: Date;
+    }> = [
       ...buildTrail(clientSigner.id, withRogo ? 12 : 6, true),
       ...(rogoSigner ? buildTrail(rogoSigner.id, 6, false) : []),
     ];
