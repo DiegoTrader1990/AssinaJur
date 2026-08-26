@@ -1167,30 +1167,18 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
   // SEÇÃO 3: PROVA DE PRESENÇA AO VIVO (REGISTRO FACIAL HD)
   // Um cartão de evidência por signatário, todos aqui reunidos depois da
-  // Seção 2 (dados). O cartão é grande (380x210) para dar destaque à selfie
-  // - dois cartões grandes na mesma página ficavam com pouco respiro entre
-  // eles ("embolado"), então, como na Seção 4 (documentos), cada signatário
-  // sempre começa sua prova de presença numa página nova quando há mais de
-  // um. Um cartão grande e bem respirado por página lê como mais premium do
-  // que economizar papel espremendo dois juntos.
+  // Seção 2 (dados). O cartão é grande (380x210) para dar destaque à selfie,
+  // mas os cartões seguem na mesma página quando cabem (sem forçar página
+  // nova por pessoa) - o ajuste que resolveu o "embolado" não foi forçar
+  // página nova, e sim dar um respiro generoso entre um cartão e o próximo
+  // (52pt, abaixo) e um separador visual mais forte entre eles.
   if (presenceSigners.length > 0) {
     const presenceInnerWidth = CW - 28;
     const boxW = 380;
     const boxH = 210;
     const cardH = boxH + 10;
 
-    const startPresencePage = () => {
-      page = pdfDoc.addPage([PAGE_W, PAGE_H]);
-      manifestPageCount += 1;
-      drawFrame(page, `CERTIFICADO DE EVIDÊNCIAS JURÍDICAS (Continuação ${manifestPageCount})`);
-      y = 706;
-    };
-
-    let isFirstPresenceSigner = true;
     for (const signer of presenceSigners) {
-      if (!isFirstPresenceSigner) startPresencePage();
-      isFirstPresenceSigner = false;
-
       // Cabeçalho da seção + nome do titular sempre cabendo juntos com o
       // cartão da foto - se não houver espaço no que resta da página atual,
       // tudo pula junto para a próxima (nunca deixa um título "órfão"
@@ -1269,12 +1257,12 @@ export async function generateFinalPdfCertificate(documentId: string) {
       page.drawRectangle({ x: infoX, y: photoFrameTop - 149, width: 149, height: 18, borderColor: green, borderWidth: 0.7 });
       page.drawText('EVIDÊNCIA VINCULADA', { x: infoX + 12, y: photoFrameTop - 144, size: 6.8, font: bold, color: green });
 
-      // Respiro maior entre o fim de um cartão e o início do próximo (8pt
-      // era pouco e deixava o selo "EVIDÊNCIA VINCULADA" quase colado na
-      // linha dourada do cabeçalho seguinte, quando há mais de um
-      // signatário na mesma página) - agora os dois cartões respiram bem
-      // separados, mesmo sem página nova entre eles.
-      y = imgFrameY - 26;
+      // Respiro generoso entre o fim de um cartão e o início do próximo
+      // (26pt ainda deixava o selo "EVIDÊNCIA VINCULADA" perto demais da
+      // linha dourada seguinte, lendo como "embolado") - 52pt dá um vão
+      // claramente visível entre a evidência de duas pessoas diferentes,
+      // mesmo sem página nova entre elas.
+      y = imgFrameY - 52;
     }
   }
 
