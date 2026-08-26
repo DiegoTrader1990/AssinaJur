@@ -553,14 +553,19 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     }
   };
 
-  const handleDocumentConfirm = (result: CaptureResult) => {
+  const handleDocumentConfirm = async (result: CaptureResult) => {
+    // Espera a gravação do progresso terminar ANTES de avançar de tela - se
+    // apenas disparássemos a chamada sem aguardar (fire-and-forget), alguém
+    // que fecha a aba rápido logo após confirmar a foto podia interromper a
+    // requisição antes dela ser concluída, perdendo a etapa mesmo já tendo
+    // "confirmado" a foto na tela.
     if (documentSide === 'FRENTE') {
       setDocumentFrontImage(result.dataUrl);
-      saveProgress('documentFrontImage', result.dataUrl);
+      await saveProgress('documentFrontImage', result.dataUrl);
       setDocumentSide('VERSO');
     } else {
       setDocumentBackImage(result.dataUrl);
-      saveProgress('documentBackImage', result.dataUrl);
+      await saveProgress('documentBackImage', result.dataUrl);
       setStep('SELFIE');
       setActivePerson('CLIENT');
     }
@@ -568,14 +573,14 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   // Mesma lógica do documento do cliente titular, mas para o Assinante a Rogo -
   // ao concluir frente/verso, segue para as selfies do acompanhante.
-  const handleRogoDocumentConfirm = (result: CaptureResult) => {
+  const handleRogoDocumentConfirm = async (result: CaptureResult) => {
     if (rogoDocumentSide === 'FRENTE') {
       setRogoDocumentFrontImage(result.dataUrl);
-      saveProgress('documentFrontImage', result.dataUrl, true);
+      await saveProgress('documentFrontImage', result.dataUrl, true);
       setRogoDocumentSide('VERSO');
     } else {
       setRogoDocumentBackImage(result.dataUrl);
-      saveProgress('documentBackImage', result.dataUrl, true);
+      await saveProgress('documentBackImage', result.dataUrl, true);
       setStep('ROGO_SELFIE');
       startSelfieCamera(undefined, false, 'ROGO');
     }
