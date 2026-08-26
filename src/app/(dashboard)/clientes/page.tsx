@@ -173,6 +173,15 @@ export default function ClientsPage() {
   const dragCounter = useRef(0);
   const [activeTab, setActiveTab] = useState<'resumo' | 'pessoais' | 'documentos' | 'historico'>('resumo');
 
+  // Modal de acompanhamento/alerta (pendência) da Central de Clientes -
+  // abre ao clicar em "Alerta"/"Gerenciar" num card, tanto para criar um
+  // acompanhamento novo quanto para editar um já existente daquele cliente.
+  const [followUpClient, setFollowUpClient] = useState<CentralClient | null>(null);
+  const [followUpPendency, setFollowUpPendency] = useState<{ id: string; title?: string | null; description: string; priority: string; dueDate?: string | null; status: string } | null>(null);
+  const [followUpForm, setFollowUpForm] = useState({ title: '', description: '', priority: 'NORMAL', dueDate: '' });
+  const [followUpSaving, setFollowUpSaving] = useState(false);
+  const [followUpError, setFollowUpError] = useState('');
+
   // Formulário do Cliente
   const [formData, setFormData] = useState(EMPTY_CLIENT_FORM);
 
@@ -293,6 +302,65 @@ export default function ClientsPage() {
       if (response.ok && data.client) setSelectedClient(data.client);
     } catch {
       // A ficha básica continua disponível mesmo que os dados complementares falhem.
+    }
+  };
+
+  // Abre o modal de acompanhamento/alerta - se o cliente já tem uma pendência
+  // em aberto (pendency), pré-preenche o formulário para edição; senão, abre
+  // em branco para criar uma nova.
+  const openFollowUpModal = (client: CentralClient, pendency?: { id: string; title?: string | null; description: string; priority: string; dueDate?: string | null; status: string } | null) => {
+    setFollowUpClient(client);
+    setFollowUpPendency(pendency || null);
+    setFollowUpError('');
+    setFollowUpForm({
+      title: pendency?.title || '',
+      description: pendency?.description || '',
+      priority: pendency?.priority || 'NORMAL',
+      dueDate: pendency?.dueDate ? String(pendency.dueDate).slice(0, 10) : '',
+    });
+  };
+
+  const closeFollowUpModal = () => {
+    setFollowUpClient(null);
+    setFollowUpPendency(null);
+    setFollowUpError('');
+  };
+
+  const saveFollowUp = async () => {
+    if (!followUpClient) return;
+    if (!followUpForm.title.trim() && !followUpForm.description.trim()) {
+      setFollowUpError('Informe um título ou uma descrição para o acompanhamento.');
+      return;
+    }
+    setFollowUpSaving(true);
+    setFollowUpError('');
+    try {
+      const payload = {
+        clientId: followUpClient.id,
+        title: followUpForm.title.trim(),
+        description: followUpForm.description.trim(),
+        priority: followUpForm.priority,
+        dueDate: followUpForm.dueDate || null,
+      };
+      const response = followUpPendency
+        ? await fetch(`/api/pendencias/${followUpPendency.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+        : await fetch('/api/pendencias', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Não foi possível salvar o acompanhamento.');
+      closeFollowUpModal();
+      fetchClients();
+    } catch (err: any) {
+      setFollowUpError(err.message || 'Não foi possível salvar o acompanhamento.');
+    } finally {
+      setFollowUpSaving(false);
     }
   };
 
@@ -519,6 +587,7 @@ export default function ClientsPage() {
           setDeleteConfirmation('');
           setFormError('');
         }}
+        onCreateFollowUp={(client, pendency) => openFollowUpModal(client, pendency)}
       />
 
       {/* Modal: Novo Cliente com OCR & Leitura por IA */}
@@ -1162,6 +1231,91 @@ export default function ClientsPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Modal de Acompanhamento/Alerta (pendência) - cria ou edita um
+          acompanhamento vinculado ao cliente selecionado na Central de Clientes. */}
+      {followUpClient && mounted && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 font-sans animate-fade-in" onClick={closeFollowUpModal}>
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-heading text-base font-extrabold text-[#071B3A]">
+                  {followUpPendency ? 'Gerenciar acompanhamento' : 'Novo acompanhamento'}
+                </h3>
+                <p className="mt-1 text-[11px] font-semibold text-slate-500">{followUpClient.name}</p>
+              </div>
+              <button onClick={closeFollowUpModal} className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-wide text-slate-400">Título</label>
+                <input
+                  type="text"
+                  value={followUpForm.title}
+                  onChange={(event) => setFollowUpForm((prev) => ({ ...prev, title: event.target.value }))}
+                  placeholder="Ex.: Aguardando documento do cliente"
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#071B3A]"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-wide text-slate-400">Descrição</label>
+                <textarea
+                  value={followUpForm.description}
+                  onChange={(event) => setFollowUpForm((prev) => ({ ...prev, description: event.target.value }))}
+                  rows={3}
+                  placeholder="Detalhes do que precisa ser acompanhado..."
+                  className="mt-1 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 outline-none transition focus:border-[#071B3A]"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-wide text-slate-400">Prioridade</label>
+                  <select
+                    value={followUpForm.priority}
+                    onChange={(event) => setFollowUpForm((prev) => ({ ...prev, priority: event.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#071B3A]"
+                  >
+                    <option value="BAIXA">Baixa</option>
+                    <option value="NORMAL">Normal</option>
+                    <option value="ALTA">Alta</option>
+                    <option value="URGENTE">Urgente</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-wide text-slate-400">Prazo</label>
+                  <input
+                    type="date"
+                    value={followUpForm.dueDate}
+                    onChange={(event) => setFollowUpForm((prev) => ({ ...prev, dueDate: event.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#071B3A]"
+                  />
+                </div>
+              </div>
+              {followUpError && (
+                <p className="rounded-xl bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-600">{followUpError}</p>
+              )}
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-2">
+              <button onClick={closeFollowUpModal} className="rounded-xl px-4 py-2.5 text-xs font-bold text-slate-500 transition hover:bg-slate-100">
+                Cancelar
+              </button>
+              <button
+                onClick={saveFollowUp}
+                disabled={followUpSaving}
+                className="flex items-center gap-2 rounded-xl bg-[#071B3A] px-4 py-2.5 text-xs font-extrabold text-white transition hover:bg-[#12335e] disabled:opacity-60"
+              >
+                {followUpSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                {followUpPendency ? 'Salvar alterações' : 'Criar acompanhamento'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
