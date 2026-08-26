@@ -588,20 +588,34 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     if (documentSide === 'FRENTE') {
       setDocumentFrontImage(result.dataUrl);
       await saveProgress('documentFrontImage', result.dataUrl);
-      // Se essa era a única foto pedida para refazer (assinatura já
-      // concluída), termina aqui em vez de seguir para o verso - o resto do
-      // documento já está correto e não deve ser mexido.
+      // Se essa era a foto pedida para refazer E a assinatura já estava
+      // concluída antes, termina aqui em vez de seguir para o verso - o
+      // resto já está correto e não deve ser mexido. Mas se a assinatura
+      // AINDA NÃO tinha sido concluída (ex: signatário já tinha o verso e a
+      // selfie de uma tentativa anterior, mas parou antes de assinar, e o
+      // pedido era só para refazer a frente), a pessoa ainda precisa
+      // terminar o resto do fluxo - por isso segue para o verso normalmente.
       if (signer?.redoPendingField === 'documentFrontImage') {
-        setStep('SUCCESS');
-        return;
+        if (signer.status === 'ASSINADO') {
+          setStep('SUCCESS');
+          return;
+        }
+        // Pedido já atendido, mas a pessoa ainda vai completar o resto do
+        // fluxo pela primeira vez - limpa localmente para a tela final de
+        // sucesso mostrar o texto certo (assinatura concluída, não "foto
+        // atualizada").
+        setSigner((prev) => (prev ? { ...prev, redoPendingField: null } : prev));
       }
       setDocumentSide('VERSO');
     } else {
       setDocumentBackImage(result.dataUrl);
       await saveProgress('documentBackImage', result.dataUrl);
       if (signer?.redoPendingField === 'documentBackImage') {
-        setStep('SUCCESS');
-        return;
+        if (signer.status === 'ASSINADO') {
+          setStep('SUCCESS');
+          return;
+        }
+        setSigner((prev) => (prev ? { ...prev, redoPendingField: null } : prev));
       }
       setStep('SELFIE');
       setActivePerson('CLIENT');
@@ -849,12 +863,23 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         setSelfieInstruction(`✓ Foto de ${LIVENESS_STEPS.find(s => s.key === key)?.label} atualizada!`);
         stopSelfieCamera();
         setSingleRetakeKey(null);
-        // Se essa era a foto pedida para refazer (assinatura já concluída),
-        // termina aqui direto na tela de sucesso - o resto já está correto.
-        if (key === 'center' && currentPerson === 'CLIENT' && signer?.redoPendingField === 'selfieCenterImage') {
+        const isRedoOfSelfie = key === 'center' && currentPerson === 'CLIENT' && signer?.redoPendingField === 'selfieCenterImage';
+        // Se a assinatura JÁ ESTAVA concluída, essa troca de foto é só uma
+        // correção pontual - termina aqui, sem reabrir o resto do fluxo.
+        if (isRedoOfSelfie && signer?.status === 'ASSINADO') {
           setStep('SUCCESS');
+          return;
         }
-        return;
+        if (isRedoOfSelfie) {
+          // Pedido já atendido, mas a assinatura AINDA NÃO tinha sido
+          // concluída (ex: signatário já tinha selfie de uma tentativa
+          // anterior, mas parou antes de assinar) - limpa localmente e
+          // continua o fluxo normal abaixo (que leva a ROGO_TRANSITION ou
+          // SIGN) em vez de voltar aqui, já que a pessoa ainda precisa
+          // terminar a assinatura pela primeira vez.
+          setSigner((prev) => (prev ? { ...prev, redoPendingField: null } : prev));
+        }
+        if (!isRedoOfSelfie) return;
       }
 
       playShutterSound(audioEnabledRef.current);
