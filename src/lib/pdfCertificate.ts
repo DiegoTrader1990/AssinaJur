@@ -1177,8 +1177,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
   // não há espaço (ensureSpace cuida disso, como em qualquer outra seção).
   if (presenceSigners.length > 0) {
     const presenceInnerWidth = CW - 28;
-    const boxW = 280;
-    const boxH = 156;
+    // Cartão ~35% maior que a versão anterior (280x156 -> 380x210) - como a
+    // Seção 3 agora deixa os cartões seguirem na mesma página em vez de
+    // forçar uma página por signatário, sobra espaço de sobra; um cartão
+    // maior aproveita melhor esse espaço e deixa a selfie (e o texto ao
+    // lado) bem mais visível/premium, em vez de pequena no meio da folha.
+    const boxW = 380;
+    const boxH = 210;
     const cardH = boxH + 10;
 
     for (const signer of presenceSigners) {
@@ -1186,7 +1191,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       // cartão da foto - se não houver espaço no que resta da página atual,
       // tudo pula junto para a próxima (nunca deixa um título "órfão"
       // sozinho no fim de uma página).
-      ensureSpace(30 + 22 + cardH + 20);
+      ensureSpace(30 + 30 + cardH + 20);
 
       page.drawLine({ start: { x: CX, y }, end: { x: CR, y }, thickness: 1.3, color: gold });
       page.drawText(`3. PROVA DE PRESENÇA AO VIVO — ${signerRoleLabel(signer.role).toUpperCase()} (REGISTRO FACIAL HD)`, {
@@ -1194,9 +1199,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
       });
       page.drawLine({ start: { x: CX, y: y - 20 }, end: { x: CR, y: y - 20 }, thickness: 0.5, color: panelBorder });
       y -= 30;
-      page.drawText('TITULAR DESTA EVIDÊNCIA', { x: padX, y, size: 5.6, font: bold, color: muted });
-      page.drawText(String(signer.name || '').toUpperCase(), { x: padX, y: y - 11, size: 8.6, font: bold, color: navy });
-      y -= 22;
+      page.drawText('TITULAR DESTA EVIDÊNCIA', { x: padX, y, size: 7.6, font: bold, color: muted });
+      page.drawText(String(signer.name || '').toUpperCase(), { x: padX, y: y - 15, size: 11.6, font: bold, color: navy });
+      y -= 30;
 
       const img = signer.selfieCenterImage;
       // Diagnóstico: se a foto sumir do certificado de novo, isto deixa claro nos logs
@@ -1220,18 +1225,18 @@ export async function generateFinalPdfCertificate(documentId: string) {
       page.drawRectangle({ x: photoX, y: imgFrameY, width: boxW, height: boxH, color: rgb(0.96, 0.97, 0.985), opacity: 0.82, borderColor: rgb(0.82, 0.86, 0.92), borderWidth: 0.8 });
       page.drawRectangle({ x: photoX, y: imgFrameY + boxH - 1.4, width: boxW, height: 1.4, color: gold });
 
-      const photoFrameMaxW = 124;
-      const photoFrameMaxH = 128;
-      const photoSlotY = imgFrameY + 14;
+      const photoFrameMaxW = 167;
+      const photoFrameMaxH = 173;
+      const photoSlotY = imgFrameY + 19;
       // A moldura é calculada do tamanho exato da foto já escalada dentro do
-      // espaço disponível (até 124x128), então sempre encosta nas quatro
+      // espaço disponível (até 167x173), então sempre encosta nas quatro
       // bordas da imagem, landscape ou retrato, sem sobra em branco.
       const photoScale = embedded
         ? Math.min(photoFrameMaxW / embedded.width, photoFrameMaxH / embedded.height)
         : 1;
       const photoFrameW = embedded ? Math.round(embedded.width * photoScale) : photoFrameMaxW;
       const photoFrameH = embedded ? Math.round(embedded.height * photoScale) : photoFrameMaxH;
-      const photoFrameX = photoX + 13 + (photoFrameMaxW - photoFrameW) / 2;
+      const photoFrameX = photoX + 18 + (photoFrameMaxW - photoFrameW) / 2;
       const photoFrameY = photoSlotY + (photoFrameMaxH - photoFrameH) / 2;
       page.drawRectangle({ x: photoFrameX, y: photoFrameY, width: photoFrameW, height: photoFrameH, color: rgb(1, 1, 1), borderColor: rgb(0.8, 0.84, 0.9), borderWidth: 0.7 });
 
@@ -1244,16 +1249,16 @@ export async function generateFinalPdfCertificate(documentId: string) {
         });
       }
 
-      const infoX = photoX + 13 + photoFrameMaxW + 10;
-      page.drawText('EVIDÊNCIA FOTOGRÁFICA', { x: infoX, y: imgFrameY + 112, size: 6.2, font: bold, color: navy });
-      page.drawText('SELFIE COM DOCUMENTO', { x: infoX, y: imgFrameY + 97, size: 5.5, font: bold, color: muted });
-      page.drawLine({ start: { x: infoX, y: imgFrameY + 89 }, end: { x: photoX + boxW - 14, y: imgFrameY + 89 }, thickness: 0.5, color: rgb(0.8, 0.84, 0.9) });
-      page.drawText('Identidade e presença', { x: infoX, y: imgFrameY + 69, size: 5.6, font: regular, color: muted });
-      page.drawText('confirmadas na sessão', { x: infoX, y: imgFrameY + 56, size: 7.6, font: bold, color: navy });
-      page.drawText('Imagem original preservada', { x: infoX, y: imgFrameY + 35, size: 5.6, font: regular, color: muted });
-      page.drawText('junto aos registros técnicos.', { x: infoX, y: imgFrameY + 25, size: 5.6, font: regular, color: muted });
-      page.drawRectangle({ x: infoX, y: imgFrameY + 7, width: 110, height: 13, borderColor: green, borderWidth: 0.7 });
-      page.drawText('EVIDÊNCIA VINCULADA', { x: infoX + 9, y: imgFrameY + 11, size: 5, font: bold, color: green });
+      const infoX = photoX + 18 + photoFrameMaxW + 14;
+      page.drawText('EVIDÊNCIA FOTOGRÁFICA', { x: infoX, y: imgFrameY + 151, size: 8.4, font: bold, color: navy });
+      page.drawText('SELFIE COM DOCUMENTO', { x: infoX, y: imgFrameY + 131, size: 7.4, font: bold, color: muted });
+      page.drawLine({ start: { x: infoX, y: imgFrameY + 120 }, end: { x: photoX + boxW - 19, y: imgFrameY + 120 }, thickness: 0.5, color: rgb(0.8, 0.84, 0.9) });
+      page.drawText('Identidade e presença', { x: infoX, y: imgFrameY + 93, size: 7.6, font: regular, color: muted });
+      page.drawText('confirmadas na sessão', { x: infoX, y: imgFrameY + 76, size: 10.3, font: bold, color: navy });
+      page.drawText('Imagem original preservada', { x: infoX, y: imgFrameY + 47, size: 7.6, font: regular, color: muted });
+      page.drawText('junto aos registros técnicos.', { x: infoX, y: imgFrameY + 34, size: 7.6, font: regular, color: muted });
+      page.drawRectangle({ x: infoX, y: imgFrameY + 9, width: 149, height: 18, borderColor: green, borderWidth: 0.7 });
+      page.drawText('EVIDÊNCIA VINCULADA', { x: infoX + 12, y: imgFrameY + 14, size: 6.8, font: bold, color: green });
 
       y = imgFrameY - 8;
     }
