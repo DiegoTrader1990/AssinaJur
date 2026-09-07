@@ -34,7 +34,12 @@ import {
   RotateCcw,
   Pencil,
   Trash2,
-  ShieldAlert
+  ShieldAlert,
+  Copy,
+  IdCard,
+  CalendarDays,
+  StickyNote,
+  UserCheck
 } from 'lucide-react';
 import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
 import { createPortal } from 'react-dom';
@@ -173,6 +178,16 @@ export default function ClientsPage() {
   const dragCounter = useRef(0);
   const [activeTab, setActiveTab] = useState<'resumo' | 'pessoais' | 'documentos' | 'historico'>('resumo');
 
+  // Edição rápida da observação direto na ficha: antes, para ler ou anotar
+  // qualquer coisa sobre o cliente era preciso abrir o formulário de "Editar
+  // cadastro" inteiro - trabalhoso e com risco de salvar sem querer alguma
+  // alteração em outro campo.
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesDraft, setNotesDraft] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [notesError, setNotesError] = useState('');
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
   // Modal de acompanhamento/alerta (pendência) da Central de Clientes -
   // abre ao clicar em "Alerta"/"Gerenciar" num card, tanto para criar um
   // acompanhamento novo quanto para editar um já existente daquele cliente.
@@ -293,9 +308,52 @@ export default function ClientsPage() {
     setShowModal(true);
   };
 
+  const copyToClipboard = async (key: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedField(key);
+      setTimeout(() => setCopiedField((current) => (current === key ? null : current)), 1800);
+    } catch {
+      // Navegador sem permissão de área de transferência - o dado continua
+      // visível na tela para cópia manual.
+    }
+  };
+
+  // Salva SÓ a observação, sem passar pelo formulário de cadastro. A API de
+  // clientes preserva os demais campos quando eles não vêm no corpo, então o
+  // envio mínimo (nome/CPF/telefone, exigidos na validação) é seguro.
+  const saveClientNotes = async () => {
+    if (!selectedClient) return;
+    setSavingNotes(true);
+    setNotesError('');
+    try {
+      const response = await fetch(`/api/clients/${selectedClient.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: selectedClient.name,
+          cpfCnpj: selectedClient.cpfCnpj,
+          phone: selectedClient.phone,
+          notes: notesDraft,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Não foi possível salvar a observação.');
+      setSelectedClient((current) => (current ? { ...current, notes: notesDraft } : current));
+      setEditingNotes(false);
+      fetchClients();
+    } catch (error: any) {
+      setNotesError(error.message || 'Não foi possível salvar a observação.');
+    } finally {
+      setSavingNotes(false);
+    }
+  };
+
   const openClientDossier = async (client: Client) => {
     setSelectedClient(client);
     setActiveTab('resumo');
+    setEditingNotes(false);
+    setNotesError('');
     try {
       const response = await fetch(`/api/clients/${client.id}`, { cache: 'no-store' });
       const data = await response.json();
@@ -1127,12 +1185,137 @@ export default function ClientsPage() {
 
                   <section className="grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Contato principal</p><div className="mt-3 flex items-center gap-2 font-black text-[#071B3A]"><Phone className="h-4 w-4 text-blue-600" />{maskPhone(selectedClient.phone)}</div><div className="mt-2 flex min-w-0 items-center gap-2 text-[10px] font-semibold text-slate-500"><Mail className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{selectedClient.email || 'E-mail não informado'}</span></div></div><div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Gestão jurídica</p><div className="mt-3 flex items-center gap-2 font-black text-[#071B3A]"><Scale className="h-4 w-4 text-blue-600" />{selectedClient.legalArea || 'Área geral'}</div><p className="mt-2 text-[10px] font-semibold text-slate-500">Responsável: {selectedClient.lawyerInCharge?.name || 'Não definido'}</p></div></section>
 
+                  {/* Prévia da observação já na primeira aba: quem abre a ficha
+                      costuma querer justamente esta anotação, sem ter de
+                      procurar em outra aba (nem abrir o cadastro). */}
+                  <section className="rounded-2xl border border-[#e6d18f] bg-[#fffcf3] p-4 shadow-sm">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[.14em] text-[#8a6810]"><StickyNote className="h-3.5 w-3.5" /> Observações</p>
+                      <button type="button" onClick={() => setActiveTab('pessoais')} className="text-[9px] font-black text-[#7d5f0d] underline decoration-dotted">
+                        {selectedClient.notes ? 'Ver ficha completa' : 'Adicionar observação'}
+                      </button>
+                    </div>
+                    {selectedClient.notes ? (
+                      <p className="line-clamp-4 whitespace-pre-wrap text-[11px] font-semibold leading-5 text-slate-700">{selectedClient.notes}</p>
+                    ) : (
+                      <p className="text-[10px] font-semibold text-slate-400">Nenhuma observação registrada para este cliente.</p>
+                    )}
+                  </section>
+
                   <section><p className="mb-2.5 text-[9px] font-black uppercase tracking-[.14em] text-slate-400">Movimentações recentes</p><div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="space-y-4">{selectedClient.documents?.slice(0, 4).map((document, index) => <div key={document.id} className="relative flex gap-3"><span className={`relative z-10 mt-1.5 h-2 w-2 shrink-0 rounded-full ${document.status === 'CONCLUIDO' ? 'bg-emerald-500' : 'bg-blue-500'}`} />{index < Math.min((selectedClient.documents?.length || 0), 4) - 1 && <span className="absolute left-[3px] top-4 h-7 w-px bg-slate-200" />}<div className="min-w-0 flex-1"><strong className="block truncate text-[10px] font-extrabold text-slate-700">{document.title}</strong><span className="mt-1 block text-[9px] text-slate-400">{new Date(document.completedAt || document.createdAt).toLocaleDateString('pt-BR')} · {document.status === 'CONCLUIDO' ? 'Documento assinado' : document.status.replaceAll('_', ' ')}</span></div></div>)}{!selectedClient.documents?.length && <p className="text-[10px] text-slate-400">Nenhuma movimentação documental registrada.</p>}</div></div></section>
                 </div>
               )}
 
               {activeTab === 'pessoais' && (
-                <div className="space-y-4"><section className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2"><DataItem label="CPF/CNPJ" value={maskCpfCnpj(selectedClient.cpfCnpj)} /><DataItem label="RG / Órgão expedidor" value={[selectedClient.rg, selectedClient.issuingOrgan].filter(Boolean).join(' · ') || 'Não informado'} /><DataItem label="Nascimento" value={selectedClient.birthDate ? new Date(`${selectedClient.birthDate}T12:00:00`).toLocaleDateString('pt-BR') : 'Não informado'} /><DataItem label="Estado civil" value={selectedClient.maritalStatus || 'Não informado'} /><DataItem label="Nacionalidade" value={selectedClient.nationality || 'Não informado'} /><DataItem label="Profissão" value={selectedClient.profession || 'Não informado'} /><DataItem label="Endereço" value={[selectedClient.address, selectedClient.city && `${selectedClient.city}/${selectedClient.state || ''}`, selectedClient.cep && `CEP ${selectedClient.cep}`].filter(Boolean).join(', ') || 'Não informado'} wide /></section>{selectedClient.legalRepresentative && <section className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4"><p className="text-[9px] font-black uppercase tracking-wider text-blue-700">Representante legal</p><p className="mt-2 text-[11px] font-black text-[#071B3A]">{selectedClient.legalRepresentative}</p><p className="mt-1 text-[10px] text-slate-500">{selectedClient.representativeRole || 'Representante'} · CPF {maskCpfCnpj(selectedClient.representativeCpf || '')}</p></section>}</div>
+                <div className="space-y-4">
+                  {/* Observação em destaque e editável aqui mesmo - é o dado que
+                      o escritório mais consulta e que antes só existia dentro do
+                      formulário de edição do cadastro. */}
+                  <section className="rounded-2xl border border-[#e6d18f] bg-[#fffcf3] p-4 shadow-sm">
+                    <div className="mb-2.5 flex items-center justify-between gap-2">
+                      <p className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[.14em] text-[#8a6810]"><StickyNote className="h-3.5 w-3.5" /> Observações do cliente</p>
+                      {!editingNotes && (
+                        <button
+                          type="button"
+                          onClick={() => { setNotesDraft(selectedClient.notes || ''); setNotesError(''); setEditingNotes(true); }}
+                          className="inline-flex items-center gap-1 rounded-lg border border-[#dec66e] bg-white px-2 py-1 text-[8px] font-black text-[#7d5f0d] transition hover:bg-[#f8edc4]"
+                        >
+                          <Pencil className="h-3 w-3" /> {selectedClient.notes ? 'Editar' : 'Adicionar'}
+                        </button>
+                      )}
+                    </div>
+                    {editingNotes ? (
+                      <div className="space-y-2">
+                        <textarea
+                          value={notesDraft}
+                          onChange={(event) => setNotesDraft(event.target.value)}
+                          rows={5}
+                          placeholder="Anotações internas sobre o cliente (histórico do atendimento, combinados, documentos que faltam...)"
+                          className="w-full rounded-xl border border-[#e0cf95] bg-white p-3 text-[11px] leading-5 font-semibold text-slate-700 outline-none transition focus:border-[#c39a25]"
+                        />
+                        {notesError && <p className="text-[10px] font-bold text-rose-600">{notesError}</p>}
+                        <div className="flex items-center justify-end gap-2">
+                          <button type="button" onClick={() => { setEditingNotes(false); setNotesError(''); }} className="rounded-lg px-3 py-1.5 text-[9px] font-bold text-slate-500 transition hover:bg-white">Cancelar</button>
+                          <button type="button" onClick={saveClientNotes} disabled={savingNotes} className="inline-flex items-center gap-1.5 rounded-lg bg-[#071B3A] px-3 py-1.5 text-[9px] font-black text-white transition hover:bg-[#12335e] disabled:opacity-60">
+                            {savingNotes ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Salvar observação
+                          </button>
+                        </div>
+                      </div>
+                    ) : selectedClient.notes ? (
+                      <p className="whitespace-pre-wrap text-[11px] font-semibold leading-5 text-slate-700">{selectedClient.notes}</p>
+                    ) : (
+                      <p className="text-[10px] font-semibold text-slate-400">Nenhuma observação registrada para este cliente.</p>
+                    )}
+                  </section>
+
+                  <DossierCard title="Identificação" icon={<IdCard className="h-3.5 w-3.5 text-slate-400" />}>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <DossierField label="CPF/CNPJ" value={maskCpfCnpj(selectedClient.cpfCnpj)} copied={copiedField === 'cpf'} onCopy={() => copyToClipboard('cpf', maskCpfCnpj(selectedClient.cpfCnpj))} />
+                      <DossierField label="RG / Órgão expedidor" value={[selectedClient.rg, selectedClient.issuingOrgan].filter(Boolean).join(' · ')} copied={copiedField === 'rg'} onCopy={() => copyToClipboard('rg', String(selectedClient.rg || ''))} />
+                      <DossierField label="Nascimento" value={selectedClient.birthDate ? new Date(`${selectedClient.birthDate}T12:00:00`).toLocaleDateString('pt-BR') : ''} />
+                      <DossierField label="Gênero" value={selectedClient.gender === 'MASCULINO' ? 'Masculino' : selectedClient.gender === 'FEMININO' ? 'Feminino' : ''} />
+                      <DossierField label="Estado civil" value={selectedClient.maritalStatus} />
+                      <DossierField label="Nacionalidade" value={selectedClient.nationality} />
+                      <DossierField label="Profissão" value={selectedClient.profession} wide />
+                    </div>
+                  </DossierCard>
+
+                  <DossierCard title="Contato" icon={<Phone className="h-3.5 w-3.5 text-slate-400" />}>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <DossierField label="Telefone" value={selectedClient.phone ? maskPhone(selectedClient.phone) : ''} copied={copiedField === 'phone'} onCopy={() => copyToClipboard('phone', maskPhone(selectedClient.phone))} />
+                      <DossierField label="WhatsApp" value={selectedClient.whatsapp ? maskPhone(selectedClient.whatsapp) : ''} copied={copiedField === 'whatsapp'} onCopy={() => copyToClipboard('whatsapp', maskPhone(selectedClient.whatsapp || ''))} />
+                      <DossierField label="E-mail" value={selectedClient.email} copied={copiedField === 'email'} onCopy={() => copyToClipboard('email', String(selectedClient.email || ''))} wide />
+                    </div>
+                  </DossierCard>
+
+                  <DossierCard title="Endereço" icon={<MapPin className="h-3.5 w-3.5 text-slate-400" />}>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <DossierField
+                        label="Endereço completo"
+                        value={[selectedClient.address, selectedClient.city && `${selectedClient.city}${selectedClient.state ? `/${selectedClient.state}` : ''}`, selectedClient.cep && `CEP ${selectedClient.cep}`].filter(Boolean).join(', ')}
+                        copied={copiedField === 'address'}
+                        onCopy={() => copyToClipboard('address', [selectedClient.address, selectedClient.city && `${selectedClient.city}${selectedClient.state ? `/${selectedClient.state}` : ''}`, selectedClient.cep && `CEP ${selectedClient.cep}`].filter(Boolean).join(', '))}
+                        wide
+                      />
+                      <DossierField label="Cidade / UF" value={[selectedClient.city, selectedClient.state].filter(Boolean).join('/')} />
+                      <DossierField label="CEP" value={selectedClient.cep} />
+                    </div>
+                  </DossierCard>
+
+                  <DossierCard title="Gestão jurídica e financeira" icon={<Scale className="h-3.5 w-3.5 text-slate-400" />}>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <DossierField label="Área jurídica" value={selectedClient.legalArea} />
+                      <DossierField label="Advogado responsável" value={selectedClient.lawyerInCharge ? `${selectedClient.lawyerInCharge.name}${selectedClient.lawyerInCharge.oabNumber ? ` · OAB ${selectedClient.lawyerInCharge.oabNumber}` : ''}` : ''} />
+                      <DossierField label="Nº do processo / benefício" value={selectedClient.processNumber} copied={copiedField === 'processNumber'} onCopy={() => copyToClipboard('processNumber', String(selectedClient.processNumber || ''))} />
+                      <DossierField label="Responsável financeiro" value={selectedClient.financialResponsible} />
+                    </div>
+                  </DossierCard>
+
+                  {selectedClient.legalRepresentative && (
+                    <section className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 shadow-sm">
+                      <div className="mb-3 flex items-center gap-1.5">
+                        <UserCheck className="h-3.5 w-3.5 text-blue-600" />
+                        <p className="text-[9px] font-black uppercase tracking-[.14em] text-blue-700">Representante legal</p>
+                      </div>
+                      <p className="text-[12px] font-black text-[#071B3A]">{selectedClient.legalRepresentative}</p>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <DossierField label="Qualidade / cargo" value={selectedClient.representativeRole || 'Representante'} />
+                        <DossierField label="CPF" value={selectedClient.representativeCpf ? maskCpfCnpj(selectedClient.representativeCpf) : ''} copied={copiedField === 'repCpf'} onCopy={() => copyToClipboard('repCpf', maskCpfCnpj(selectedClient.representativeCpf || ''))} />
+                        <DossierField label="RG" value={selectedClient.representativeRg} />
+                        <DossierField label="Nascimento" value={selectedClient.representativeBirthDate ? new Date(`${selectedClient.representativeBirthDate}T12:00:00`).toLocaleDateString('pt-BR') : ''} />
+                        <DossierField label="Telefone" value={selectedClient.representativePhone ? maskPhone(selectedClient.representativePhone) : ''} copied={copiedField === 'repPhone'} onCopy={() => copyToClipboard('repPhone', maskPhone(selectedClient.representativePhone || ''))} />
+                        <DossierField label="Endereço" value={selectedClient.representativeSameAddress ? 'Mesmo endereço do cliente' : selectedClient.representativeAddress} wide />
+                      </div>
+                    </section>
+                  )}
+
+                  <DossierCard title="Registro no sistema" icon={<CalendarDays className="h-3.5 w-3.5 text-slate-400" />}>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <DossierField label="Cadastrado em" value={selectedClient.createdAt ? new Date(selectedClient.createdAt).toLocaleString('pt-BR') : ''} />
+                      <DossierField label="Última atualização" value={selectedClient.updatedAt ? new Date(selectedClient.updatedAt).toLocaleString('pt-BR') : ''} />
+                    </div>
+                  </DossierCard>
+                </div>
               )}
 
               {activeTab === 'documentos' && (
@@ -1317,6 +1500,47 @@ export default function ClientsPage() {
         </div>,
         document.body
       )}
+    </div>
+  );
+}
+
+// Bloco de dados da ficha do cliente - agrupa os campos por assunto para que
+// tudo que está no cadastro fique visível sem precisar abrir o formulário de
+// edição (era o motivo de o escritório clicar em "Editar" só para consultar).
+function DossierCard({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center gap-1.5">
+        {icon}
+        <p className="text-[9px] font-black uppercase tracking-[.14em] text-slate-400">{title}</p>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+// Campo individual da ficha. Só mostra o botão de copiar quando há valor -
+// evita o clique que copia string vazia.
+function DossierField({ label, value, onCopy, copied = false, wide = false }: { label: string; value?: string | null; onCopy?: () => void; copied?: boolean; wide?: boolean }) {
+  const filled = Boolean(value && String(value).trim());
+  return (
+    <div className={wide ? 'sm:col-span-2' : ''}>
+      <span className="text-[8px] font-black uppercase tracking-wider text-slate-400">{label}</span>
+      <div className="mt-1 flex items-start gap-1.5">
+        <p className={`min-w-0 flex-1 break-words text-[10px] font-extrabold leading-4 ${filled ? 'text-slate-700' : 'text-slate-300'}`}>
+          {filled ? value : 'Não informado'}
+        </p>
+        {filled && onCopy && (
+          <button
+            type="button"
+            onClick={onCopy}
+            title={`Copiar ${label.toLowerCase()}`}
+            className="shrink-0 rounded-md border border-slate-200 p-1 text-slate-400 transition hover:border-slate-300 hover:text-slate-600"
+          >
+            {copied ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -48,6 +48,25 @@ export async function GET(
           orderBy: { createdAt: 'desc' },
           take: 20,
         },
+        // A aba "Visão geral" da ficha mostra "Pendências e próxima ação" a
+        // partir daqui. Sem este include ela dizia sempre "Nenhuma pendência
+        // aberta para este cliente", mesmo quando havia alertas em aberto.
+        pendencies: {
+          where: { resolvedAt: null },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            status: true,
+            category: true,
+            priority: true,
+            dueDate: true,
+            createdAt: true,
+            updatedAt: true,
+            responsible: { select: { id: true, name: true } },
+          },
+          orderBy: [{ dueDate: 'asc' }, { updatedAt: 'desc' }],
+        },
       },
     });
 
@@ -149,11 +168,20 @@ export async function PUT(
         issuingOrgan: body.issuingOrgan ?? existingClient.issuingOrgan,
         birthDate: body.birthDate ?? existingClient.birthDate,
         nationality: body.nationality ?? existingClient.nationality,
-        gender: ['MASCULINO', 'FEMININO'].includes(body.gender) ? body.gender : null,
+        // Estes dois campos precisam distinguir "não veio no corpo" de "veio
+        // vazio": o formulário completo sempre envia os dois, mas uma edição
+        // pontual (ex.: salvar só a observação pela ficha) não envia - e a
+        // versão anterior zerava o gênero e sobrescrevia o WhatsApp com o
+        // telefone nesse caso, apagando dado bom sem ninguém pedir.
+        gender: body.gender === undefined
+          ? existingClient.gender
+          : (['MASCULINO', 'FEMININO'].includes(body.gender) ? body.gender : null),
         maritalStatus: body.maritalStatus ?? existingClient.maritalStatus,
         profession: body.profession ?? existingClient.profession,
         phone: cleanPhone,
-        whatsapp: body.whatsapp ? String(body.whatsapp).replace(/\D/g, '') : cleanPhone,
+        whatsapp: body.whatsapp !== undefined
+          ? (String(body.whatsapp).replace(/\D/g, '') || cleanPhone)
+          : (existingClient.whatsapp || cleanPhone),
         email: body.email ?? existingClient.email,
         cep: body.cep ?? existingClient.cep,
         address: body.address ?? existingClient.address,

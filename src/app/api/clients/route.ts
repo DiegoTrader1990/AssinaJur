@@ -17,6 +17,13 @@ export async function GET(req: Request) {
     const query = searchParams.get('q') || '';
     const legalArea = searchParams.get('legalArea') || '';
 
+    // A Central de Clientes calcula TUDO (status do card, alerta e próxima ação,
+    // filtros rápidos, ordenação por prioridade e os contadores do topo) a partir
+    // de processes/documents/pendencies/movementSummary do cliente. Sem essas
+    // relações aqui, a página inteira mostrava "Sem demanda ativa · 0 processos ·
+    // 0 docs · 0 movimentações" para todo mundo - inclusive para clientes com kit
+    // assinado - e a busca por processo/protocolo/documento nunca achava nada.
+    // Selects propositalmente enxutos: só o que o card e a busca usam.
     const clients = await prisma.client.findMany({
       where: {
         officeId: user.officeId, // ISOLAMENTO RIGOROSO MULTI-TENANT
@@ -38,11 +45,79 @@ export async function GET(req: Request) {
         lawyerInCharge: {
           select: { id: true, name: true, oabNumber: true },
         },
+        processes: {
+          select: {
+            id: true,
+            title: true,
+            legalArea: true,
+            status: true,
+            priority: true,
+            dueDate: true,
+            protocolNumber: true,
+            lastActivityAt: true,
+          },
+          orderBy: { lastActivityAt: 'desc' },
+        },
+        documents: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            createdAt: true,
+            completedAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+        // Só as pendências ainda em aberto - são elas que viram alerta e
+        // "próxima ação" no card. As já resolvidas ficam no histórico e não
+        // precisam trafegar na listagem.
+        pendencies: {
+          where: { resolvedAt: null },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            status: true,
+            category: true,
+            priority: true,
+            dueDate: true,
+            createdAt: true,
+            updatedAt: true,
+            responsible: { select: { id: true, name: true } },
+          },
+          orderBy: { updatedAt: 'desc' },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    return NextResponse.json({ clients });
+    const isOpenProcess = (status: string) => !['CONCLUIDO', 'ARQUIVADO', 'CANCELADO'].includes(String(status || '').toUpperCase());
+    const isPendingDocument = (status: string) => ['ENVIADO', 'PENDENTE', 'VISUALIZADO', 'PARCIALMENTE_ASSINADO', 'EM_ASSINATURA'].includes(String(status || '').toUpperCase());
+
+    const clientsWithSummary = clients.map((client) => {
+      const activeProcesses = client.processes.filter((item) => isOpenProcess(item.status)).length;
+      const pendingDocuments = client.documents.filter((item) => isPendingDocument(item.status)).length;
+      const openAlerts = client.pendencies.filter((item) => item.status !== 'CONCLUIDO').length;
+      return {
+        ...client,
+        // "Movimentação" aqui = tudo que está vinculado ao cliente e que o
+        // escritório acompanha (processos + documentos + alertas em aberto).
+        movementSummary: {
+          total: client.processes.length + client.documents.length + openAlerts,
+          processes: client.processes.length,
+          activeProcesses,
+          processActivities: activeProcesses,
+          documents: client.documents.length,
+          pendingDocuments,
+          documentEvents: client.documents.length,
+          alerts: client.pendencies.length,
+          openAlerts,
+          alertChanges: openAlerts,
+        },
+      };
+    });
+
+    return NextResponse.json({ clients: clientsWithSummary });
   } catch (error: any) {
     console.error('Erro ao listar clientes:', error);
     return NextResponse.json({ error: 'Erro ao buscar clientes.' }, { status: 500 });
