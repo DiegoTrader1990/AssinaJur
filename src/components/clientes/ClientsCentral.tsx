@@ -16,6 +16,8 @@ import {
   FileClock,
   Filter,
   FolderKanban,
+  LayoutGrid,
+  List,
   Loader2,
   Mail,
   MessageCircle,
@@ -281,8 +283,13 @@ export default function ClientsCentral({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [menuId, setMenuId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  // Densidade da carteira. "LISTA" é o padrão: uma linha por cliente, para o
+  // escritório varrer a carteira inteira sem rolar a tela - os cartões
+  // ocupavam ~230px cada e mostravam três clientes por tela. "CARTOES" fica
+  // disponível para quem preferir a leitura visual.
+  const [view, setView] = useState<'LISTA' | 'CARTOES'>('LISTA');
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const pageSize = 12;
+  const pageSize = view === 'LISTA' ? 25 : 12;
 
   useEffect(() => {
     const close = (event: MouseEvent) => {
@@ -337,7 +344,7 @@ export default function ClientsCentral({
     });
   }, [enriched, search, area, city, responsible, status, quickFilter, sort]);
 
-  useEffect(() => setPage(1), [search, area, city, responsible, status, quickFilter, sort]);
+  useEffect(() => setPage(1), [search, area, city, responsible, status, quickFilter, sort, view]);
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const visible = filtered.slice((page - 1) * pageSize, page * pageSize);
   const selectedClients = clients.filter((item) => selected.has(item.id));
@@ -354,7 +361,23 @@ export default function ClientsCentral({
 
   const exportSelected = () => {
     if (!selectedClients.length) return;
-    const rows = [['Cliente', 'CPF/CNPJ', 'Telefone', 'E-mail', 'Cidade', 'Área'], ...selectedClients.map((client) => [client.name, client.cpfCnpj, client.phone, client.email || '', [client.city, client.state].filter(Boolean).join('/'), client.legalArea || ''])];
+    const rows = [
+      ['Cliente', 'CPF/CNPJ', 'Telefone', 'WhatsApp', 'E-mail', 'Cidade', 'Área', 'Responsável', 'Processos', 'Documentos', 'Alertas em aberto', 'Observações'],
+      ...selectedClients.map((client) => [
+        client.name,
+        client.cpfCnpj,
+        client.phone,
+        client.whatsapp || '',
+        client.email || '',
+        [client.city, client.state].filter(Boolean).join('/'),
+        client.legalArea || '',
+        client.lawyerInCharge?.name || '',
+        String(client.movementSummary?.processes ?? (client.processes || []).length),
+        String(client.movementSummary?.documents ?? (client.documents || []).length),
+        String(client.movementSummary?.openAlerts ?? (client.pendencies || []).filter((item) => item.status !== 'CONCLUIDO').length),
+        (client.notes || '').replace(/\s*\n\s*/g, ' | '),
+      ]),
+    ];
     const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(';')).join('\n');
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' }));
@@ -364,13 +387,26 @@ export default function ClientsCentral({
   };
 
   const clearFilters = () => { setArea(''); setCity(''); setResponsible(''); setStatus(''); setQuickFilter('TODOS'); };
-  const metricItems: Array<{ label: string; value: number; Icon: LucideIcon; color: string; quick?: QuickFilter }> = [
-    { label: 'Total de clientes', value: metrics.total, Icon: UsersRound, color: 'text-[#071B3A]' },
+  // Todo indicador do topo agora filtra a carteira - antes, quatro dos seis
+  // eram botões que não faziam nada ao serem clicados.
+  const applyMetricFilter = (quick?: QuickFilter, statusKey?: StatusKey) => {
+    if (statusKey) {
+      setStatus(statusKey);
+      setQuickFilter('TODOS');
+      return;
+    }
+    if (quick) {
+      setStatus('');
+      setQuickFilter(quick);
+    }
+  };
+  const metricItems: Array<{ label: string; value: number; Icon: LucideIcon; color: string; quick?: QuickFilter; statusKey?: StatusKey }> = [
+    { label: 'Total de clientes', value: metrics.total, Icon: UsersRound, color: 'text-[#071B3A]', quick: 'TODOS' },
     { label: 'Alertas em aberto', value: metrics.openAlerts, Icon: CircleAlert, color: metrics.openAlerts ? 'text-orange-600' : 'text-slate-500', quick: 'PENDENCIAS' },
     { label: 'Prazos críticos', value: metrics.attention, Icon: AlertTriangle, color: metrics.attention ? 'text-rose-600' : 'text-slate-500', quick: 'ATENCAO' },
-    { label: 'Processos ativos', value: metrics.activeProcesses, Icon: FolderKanban, color: 'text-violet-600' },
-    { label: 'Aguardando assinatura', value: metrics.awaitingSignature, Icon: FileCheck2, color: 'text-sky-600' },
-    { label: 'Movimentações', value: metrics.movements, Icon: Zap, color: 'text-[#ad8214]' },
+    { label: 'Processos ativos', value: metrics.activeProcesses, Icon: FolderKanban, color: 'text-violet-600', statusKey: 'ANDAMENTO' },
+    { label: 'Aguardando assinatura', value: metrics.awaitingSignature, Icon: FileCheck2, color: 'text-sky-600', statusKey: 'ASSINATURA' },
+    { label: 'Movimentações', value: metrics.movements, Icon: Zap, color: 'text-[#ad8214]', quick: 'TODOS' },
   ];
 
   return (
@@ -394,8 +430,8 @@ export default function ClientsCentral({
       </section>
 
       <section className="grid grid-cols-2 overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_12px_32px_-30px_rgba(7,27,58,.4)] sm:grid-cols-3 xl:grid-cols-6">
-        {metricItems.map(({ label, value, Icon, color, quick }) => (
-          <button key={label} onClick={() => quick && setQuickFilter(quick)} className="group flex min-h-[84px] items-center gap-3 border-b border-r border-slate-100 px-4 text-left transition hover:bg-[#fafbfc] xl:border-b-0">
+        {metricItems.map(({ label, value, Icon, color, quick, statusKey }) => (
+          <button key={label} onClick={() => applyMetricFilter(quick, statusKey)} className="group flex min-h-[76px] items-center gap-3 border-b border-r border-slate-100 px-4 text-left transition hover:bg-[#fafbfc] xl:border-b-0">
             <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-100 bg-slate-50 ${color}`}><Icon className="h-4 w-4" /></span>
             <span><strong className="block font-heading text-[19px] font-black leading-none text-[#071B3A]">{value}</strong><span className="mt-1.5 block text-[8px] font-black uppercase leading-3 tracking-[.08em] text-slate-400">{label}</span></span>
           </button>
@@ -446,11 +482,106 @@ export default function ClientsCentral({
           <div className="flex min-h-[320px] flex-col items-center justify-center px-5 text-center"><span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400"><Search className="h-6 w-6" /></span><h3 className="font-heading text-base font-black text-[#071B3A]">Nenhum cliente encontrado</h3><p className="mt-1 max-w-sm text-xs leading-5 text-slate-500">Ajuste a busca ou limpe os filtros para visualizar outros cadastros.</p><button onClick={clearFilters} className="mt-4 text-xs font-extrabold text-blue-700">Limpar filtros</button></div>
         ) : (
           <div className="bg-[#f6f8fb]">
-            <div className="flex flex-col gap-2 border-b border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+            <div className="flex flex-col gap-2 border-b border-slate-200 bg-white px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <label className="inline-flex cursor-pointer items-center gap-2 text-[10px] font-extrabold text-slate-600"><input type="checkbox" checked={visible.length > 0 && visible.every(({ client }) => selected.has(client.id))} onChange={toggleAllVisible} className="h-4 w-4 rounded border-slate-300 text-blue-600" /> Selecionar clientes desta página</label>
-              <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[.13em] text-slate-400"><span className="h-px w-6 bg-[#d6b23f]" /> Carteira operacional</div>
+              <div className="flex items-center gap-3">
+                <div className="hidden items-center gap-2 text-[9px] font-black uppercase tracking-[.13em] text-slate-400 sm:flex"><span className="h-px w-6 bg-[#d6b23f]" /> Carteira operacional</div>
+                <div className="inline-flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                  {([['LISTA', 'Lista', List], ['CARTOES', 'Cartões', LayoutGrid]] as const).map(([key, label, Icon]) => (
+                    <button
+                      key={key}
+                      onClick={() => setView(key)}
+                      title={`Exibir em ${label.toLowerCase()}`}
+                      className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[9px] font-black transition ${view === key ? 'bg-[#071B3A] text-white shadow-sm' : 'text-slate-500 hover:text-[#071B3A]'}`}
+                    >
+                      <Icon className="h-3.5 w-3.5" /> {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
+            {/* Cabeçalho de colunas - só na lista e em telas largas, para a
+                varredura vertical ficar alinhada como numa planilha. */}
+            {view === 'LISTA' && (
+              <div className="hidden border-b border-slate-200 bg-white px-4 py-2 text-[8px] font-black uppercase tracking-[.13em] text-slate-400 xl:grid xl:grid-cols-12 xl:gap-3">
+                <span className="col-span-4 pl-7">Cliente</span>
+                <span className="col-span-3">Situação e demanda</span>
+                <span className="col-span-3">Próxima ação</span>
+                <span className="col-span-2 text-right">Carteira</span>
+              </div>
+            )}
+
+            {view === 'LISTA' ? (
+              <div className="divide-y divide-slate-100 bg-white">
+                {visible.map(({ client, info }) => {
+                  const statusInfo = STATUS[info.status];
+                  const alertInfo = info.mainPendency ? ALERT_PRIORITY[info.mainPendency.priority] || ALERT_PRIORITY.NORMAL : null;
+                  const due = dueLabel(info.due);
+                  const whatsapp = String(client.whatsapp || client.phone || '').replace(/\D/g, '');
+                  return (
+                    <article
+                      key={client.id}
+                      onClick={() => onOpen(client)}
+                      className="group relative cursor-pointer px-3 py-2.5 transition hover:bg-[#f8fafd] xl:grid xl:grid-cols-12 xl:items-center xl:gap-3 xl:px-4 xl:py-2"
+                    >
+                      {/* A faixa colorida fica sempre visível em quem precisa de
+                          atenção e só no hover no resto - assim a cor destaca de
+                          verdade quem tem prazo, em vez de pintar a lista toda. */}
+                      <span className={`absolute inset-y-0 left-0 w-[3px] transition ${info.requiresAttention ? 'opacity-100' : 'opacity-0 group-hover:opacity-60'} ${alertInfo?.stripe || statusInfo.dot}`} />
+
+                      <div className="flex min-w-0 items-center gap-2.5 xl:col-span-4">
+                        <div onClick={(event) => event.stopPropagation()} className="shrink-0">
+                          <input type="checkbox" checked={selected.has(client.id)} onChange={() => setSelected((current) => { const next = new Set(current); next.has(client.id) ? next.delete(client.id) : next.add(client.id); return next; })} className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600" />
+                        </div>
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-gradient-to-br from-[#f8fafc] to-[#eef2f7] font-heading text-[10px] font-black text-[#071B3A] transition group-hover:border-[#d7c06b]">{initials(client.name)}</span>
+                        <div className="min-w-0 flex-1">
+                          <strong className="block truncate font-heading text-[12px] font-black leading-4 text-[#071B3A]">{client.name}</strong>
+                          <span className="block truncate text-[9px] font-semibold text-slate-400">{maskCpfCnpj(client.cpfCnpj)}{client.city ? ` · ${client.city}${client.state ? `/${client.state}` : ''}` : ''} · {maskPhone(client.phone)}</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5 xl:col-span-3 xl:mt-0 xl:block">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[8px] font-black ${alertInfo?.classes || statusInfo.classes}`}><span className={`h-1.5 w-1.5 rounded-full ${alertInfo?.dot || statusInfo.dot}`} />{alertInfo?.label || statusInfo.label}</span>
+                        {info.pendingDocuments.length > 0 && <span className="rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[8px] font-black text-sky-700">Assinatura pendente</span>}
+                        <span className="block min-w-0 truncate text-[9px] font-semibold text-slate-500 xl:mt-1">{info.currentProcess?.title || client.legalArea || 'Sem demanda ativa'} · {client.lawyerInCharge?.name || 'Responsável a definir'}</span>
+                      </div>
+
+                      <div className="mt-1.5 min-w-0 xl:col-span-3 xl:mt-0">
+                        <div className="flex items-center gap-1.5">
+                          <Zap className="h-3 w-3 shrink-0 text-[#c39a25]" />
+                          <strong className="min-w-0 truncate text-[10px] font-black leading-4 text-[#071B3A]">{info.nextAction}</strong>
+                        </div>
+                        <span className="mt-0.5 block truncate pl-[18px] text-[8px] font-bold text-slate-400">
+                          {due && <span className={due.overdue ? 'text-rose-600' : 'text-amber-700'}>{due.text} · </span>}
+                          {dateLabel(info.lastActivity)} · {info.activityDescription}
+                        </span>
+                      </div>
+
+                      {/* No desktop, as métricas dão lugar às ações no hover -
+                          a linha fica limpa para leitura e as ações ficam a um
+                          clique. Em telas menores as duas coisas aparecem. */}
+                      <div className="mt-2 flex items-center justify-between gap-2 xl:col-span-2 xl:mt-0 xl:justify-end">
+                        <div className="flex items-center gap-1 text-[8px] font-bold text-slate-400 xl:group-hover:hidden">
+                          <span title="Processos" className="rounded bg-slate-50 px-1.5 py-0.5 tabular-nums">{client.movementSummary?.processes || 0}p</span>
+                          <span title="Documentos" className="rounded bg-slate-50 px-1.5 py-0.5 tabular-nums">{info.documentCount}d</span>
+                          {info.openAlerts > 0 && <span title="Alertas em aberto" className="rounded bg-[#fdf6e3] px-1.5 py-0.5 tabular-nums text-[#8a6810]">{info.openAlerts}a</span>}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1 xl:hidden xl:group-hover:flex" onClick={(event) => event.stopPropagation()}>
+                          {whatsapp && <a href={`https://wa.me/${whatsapp.startsWith('55') ? whatsapp : `55${whatsapp}`}`} target="_blank" rel="noreferrer" title={`WhatsApp de ${client.name}`} className="flex h-7 w-7 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-600 transition hover:bg-emerald-100"><MessageCircle className="h-3.5 w-3.5" /></a>}
+                          <button onClick={() => onCreateFollowUp(client, info.mainPendency)} title={info.mainPendency ? 'Gerenciar alerta' : 'Criar alerta'} className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#dec66e] bg-[#fffaf0] text-[#7d5f0d] transition hover:bg-[#f8edc4]">{info.mainPendency ? <Palette className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}</button>
+                          <button onClick={() => onOpen(client)} className="h-7 rounded-lg bg-[#071B3A] px-2.5 text-[8px] font-black text-white transition hover:bg-[#12335e]">Ficha</button>
+                          <div className="relative">
+                            <button onClick={() => setMenuId(menuId === client.id ? null : client.id)} className="flex h-7 w-7 items-center justify-center rounded-lg border border-transparent text-slate-400 transition hover:border-slate-200 hover:bg-slate-50 hover:text-[#071B3A]" aria-label={`Mais ações para ${client.name}`}><MoreHorizontal className="h-4 w-4" /></button>
+                            {menuId === client.id && <ActionMenu menuRef={menuRef} client={client} hasAlert={Boolean(info.mainPendency)} onOpen={() => onOpen(client)} onEdit={() => onEdit(client)} onFollowUp={() => onCreateFollowUp(client, info.mainPendency)} onDelete={() => onDelete(client)} />}
+                          </div>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
             <div className="grid gap-3 p-3 sm:p-4 lg:grid-cols-2 2xl:grid-cols-3">
               {visible.map(({ client, info }) => {
                 const statusInfo = STATUS[info.status];
@@ -497,6 +628,7 @@ export default function ClientsCentral({
                 );
               })}
             </div>
+            )}
           </div>
         )}
 

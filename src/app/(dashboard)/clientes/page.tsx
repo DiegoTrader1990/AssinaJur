@@ -207,8 +207,12 @@ export default function ClientsPage() {
       setShowModal(true);
     }
     
-    // Atualização em tempo real para exibir novos cadastros vindos do WhatsApp
-    const interval = setInterval(fetchClients, 6000);
+    // Atualização periódica para exibir novos cadastros vindos do WhatsApp.
+    // Intervalo de 30s (era 6s): a listagem agora traz processos, documentos e
+    // pendências de cada cliente para alimentar os indicadores e os filtros da
+    // Central - recarregar isso dez vezes por minuto era desperdício de banco e
+    // de banda. O refresh ao voltar o foco para a aba cobre o caso urgente.
+    const interval = setInterval(fetchClients, 30000);
     const onFocus = () => fetchClients();
     window.addEventListener('focus', onFocus);
 
