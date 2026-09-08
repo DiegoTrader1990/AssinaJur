@@ -13,6 +13,7 @@ import {
   looksLikeUnverifiedOperationalClaim,
   parseSignatureLinkCommand,
 } from '@/lib/whatsapp/conversation';
+import { removeEmptyRgFromQualification } from '@/lib/kitTemplateNormalization';
 
 export const AUTHORIZED_LAWYER_PHONES = [
   '5573988250201',
@@ -721,7 +722,9 @@ function buildTemplateVariables(client: Awaited<ReturnType<typeof getAutomationC
   return {
     cliente_nome: client.name,
     cliente_cpf: client.cpfCnpj,
-    cliente_rg: client.rg || '—',
+    // Vazio quando não há RG (CIN usa só o CPF); o trecho "portador(a) do RG
+    // nº ..." já é removido do texto antes da compilação.
+    cliente_rg: client.rg || '',
     cliente_nacionalidade: client.nationality || 'Brasileira',
     cliente_genero: client.gender || '',
     cliente_telefone: client.whatsapp || client.phone,
@@ -774,7 +777,10 @@ async function createDocumentFromTemplate({
     officeId,
     uploadedBy: user.id,
     title,
-    contentHtml: template.contentHtml,
+    // Cliente sem RG (CIN): remove o trecho do RG em vez de imprimir "RG nº —".
+    contentHtml: String(client.rg || '').trim()
+      ? template.contentHtml
+      : removeEmptyRgFromQualification(template.contentHtml),
     variables: buildTemplateVariables(client, office, user),
     officeName: office.tradeName || office.name,
   });

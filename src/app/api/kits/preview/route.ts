@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { compileTemplatePreviewToPdf } from '@/lib/templateCompiler';
 import { getDocumentLetterheadBuffer } from '@/lib/documentLetterhead';
-import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, removeDuplicateParagraphs, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
+import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, removeDuplicateParagraphs, removeEmptyRgFromQualification, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -105,7 +105,7 @@ export async function POST(req: Request) {
       representante_legal: client.legalRepresentative || '', representante_cpf: formatCpfCnpj(client.representativeCpf) || '', representante_rg: client.representativeRg || '', representante_telefone: formatPhone(client.representativePhone) || '',
       representante_qualificacao: representativeQualificationParts.join(', '),
       cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${representativeQualificationParts.join(', ')}` : '',
-      cliente_nome: client.name, cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '—', cliente_nacionalidade: client.nationality || 'Brasileira',
+      cliente_nome: client.name, cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '', cliente_nacionalidade: client.nationality || 'Brasileira',
       cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—',
       cliente_nascimento_qualificacao: client.birthDate ? `, ${nascidoWord} em ${formatBirthDate(client.birthDate)}` : '',
       cliente_portador: portadorWord,
@@ -120,7 +120,12 @@ export async function POST(req: Request) {
     };
     const normalizedClientContent = removeStandaloneClientNameBeforeQualification(ensureClientQualificationTokens(contentHtml, title || ''), client.name);
     const clientContentHtml = ensureClientRepresentativeQualification(normalizedClientContent, title || '', Boolean(client.legalRepresentative));
-    const finalContentHtml = removeDuplicateParagraphs(ensureJointAttorneyQualification(clientContentHtml, title || ''));
+    // Mesma regra da geração do kit: cliente sem RG (CIN) não deve ver o
+    // trecho "portador(a) do RG nº —" na prévia da minuta.
+    const jointAttorneyPreviewHtml = ensureJointAttorneyQualification(clientContentHtml, title || '');
+    const finalContentHtml = removeDuplicateParagraphs(
+      String(client.rg || '').trim() ? jointAttorneyPreviewHtml : removeEmptyRgFromQualification(jointAttorneyPreviewHtml),
+    );
     const rendered = await compileTemplatePreviewToPdf({ title: title || 'Documento', contentHtml: finalContentHtml, variables, officeName: office.tradeName || office.name, version: 1, letterheadBuffer });
     return new NextResponse(rendered.pdfBuffer, { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="minuta.pdf"' } });
   } catch (error) { console.error(error); return NextResponse.json({ error: 'Não foi possível gerar a prévia.' }, { status: 500 }); }

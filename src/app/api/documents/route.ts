@@ -191,8 +191,11 @@ export async function POST(req: Request) {
       if (!rogoName || !hasValidCpfCnpjCheckDigits(String(rogoCpf || ''))) {
         return NextResponse.json({ error: 'No fluxo a rogo, informe o nome e CPF válido do assinante a rogo.' }, { status: 400 });
       }
-      if (!String(rogoRg || '').trim() || !rogoBirthDate || !String(rogoAddress || '').trim()) {
-        return NextResponse.json({ error: 'No fluxo a rogo, informe também RG, data de nascimento e endereço do assinante a rogo.' }, { status: 400 });
+      // RG não é mais obrigatório - com a CIN (Carteira de Identidade Nacional)
+      // o CPF passou a ser o identificador único, e há quem não tenha número de
+      // RG para informar. O CPF do assinante a rogo segue obrigatório acima.
+      if (!rogoBirthDate || !String(rogoAddress || '').trim()) {
+        return NextResponse.json({ error: 'No fluxo a rogo, informe também a data de nascimento e o endereço do assinante a rogo.' }, { status: 400 });
       }
       if (signers[0]?.role !== 'CLIENTE') {
         return NextResponse.json({ error: 'No fluxo a rogo, o primeiro participante deve ser o cliente titular.' }, { status: 400 });

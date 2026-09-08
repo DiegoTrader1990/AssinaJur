@@ -5,7 +5,7 @@ import { logAuditEvent } from '@/lib/audit';
 import { compileTemplateToPdf } from '@/lib/templateCompiler';
 import { getDocumentLetterheadBuffer } from '@/lib/documentLetterhead';
 import { randomUUID } from 'crypto';
-import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, removeDuplicateParagraphs, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
+import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, removeDuplicateParagraphs, removeEmptyRgFromQualification, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -148,8 +148,12 @@ export async function POST(req: Request) {
       if (!rogoName || !hasValidCpfCnpjCheckDigits(String(rogoCpf || ''))) {
         return NextResponse.json({ error: 'No fluxo a rogo, informe o nome e CPF válido do assinante a rogo.' }, { status: 400 });
       }
-      if (!String(rogoRg || '').trim() || !rogoBirthDate || !String(rogoAddress || '').trim()) {
-        return NextResponse.json({ error: 'No fluxo a rogo, informe também RG, data de nascimento e endereço do assinante a rogo.' }, { status: 400 });
+      // O RG deixou de ser obrigatório: com a Carteira de Identidade Nacional
+      // (CIN) o documento passa a ser identificado apenas pelo CPF, e muita
+      // gente já não tem número de RG para informar. O CPF do assinante a rogo
+      // continua obrigatório e validado acima - ele é o identificador legal.
+      if (!rogoBirthDate || !String(rogoAddress || '').trim()) {
+        return NextResponse.json({ error: 'No fluxo a rogo, informe também a data de nascimento e o endereço do assinante a rogo.' }, { status: 400 });
       }
       const rogoDigits = String(rogoCpf).replace(/\D/g, '');
       const clientDigits = String(client.cpfCnpj || '').replace(/\D/g, '');
@@ -312,7 +316,9 @@ export async function POST(req: Request) {
     const variableValues = {
       cliente_nome: client.name,
       cliente_cpf: formatCpfCnpj(client.cpfCnpj),
-      cliente_rg: client.rg || '—',
+      // Sem RG o token sai vazio (e o trecho inteiro já foi removido do texto
+      // por removeEmptyRgFromQualification) - o traço antigo virava "RG nº —".
+      cliente_rg: client.rg || '',
       cliente_nacionalidade: client.nationality || 'Brasileira',
       cliente_genero: client.gender || '',
       cliente_telefone: client.whatsapp || client.phone || '—',
@@ -405,7 +411,13 @@ export async function POST(req: Request) {
         template.documentType,
         template.title,
       );
-      const finalContentHtml = removeDuplicateParagraphs(jointAttorneyContentHtml);
+      // Cliente sem RG (CIN, que usa só o CPF): tira o trecho do RG da
+      // qualificação em vez de imprimir "RG nº —" e obrigar o escritório a
+      // editar o documento à mão.
+      const withoutEmptyRg = String(client.rg || '').trim()
+        ? removeDuplicateParagraphs(jointAttorneyContentHtml)
+        : removeDuplicateParagraphs(removeEmptyRgFromQualification(jointAttorneyContentHtml));
+      const finalContentHtml = withoutEmptyRg;
 
       const compiledResult = await compileTemplateToPdf({
         officeId: user.officeId,

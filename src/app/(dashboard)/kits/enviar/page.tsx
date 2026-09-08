@@ -1060,9 +1060,13 @@ export default function DispatchKitPage() {
                   </div>
                   <div className="grid md:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">RG do Assinante a Rogo *</label>
-                      <input type="text" required={isIlliterate} value={rogoRg} onChange={(e) => setRogoRg(e.target.value)}
-                        placeholder="00.000.000-0" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
+                      {/* RG opcional: quem já tem a CIN (Carteira de Identidade
+                          Nacional) é identificado só pelo CPF e não tem número de
+                          RG para informar. Deixando em branco, a qualificação do
+                          documento sai direto no CPF, sem espaço vazio. */}
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">RG do Assinante a Rogo <span className="font-semibold text-slate-400">(opcional)</span></label>
+                      <input type="text" value={rogoRg} onChange={(e) => setRogoRg(e.target.value)}
+                        placeholder="Deixe em branco se não tiver RG (CIN)" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
                     </div>
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Data de Nascimento do Assinante a Rogo *</label>

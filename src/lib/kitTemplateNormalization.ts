@@ -22,6 +22,37 @@ export function formatBirthDate(value: string | Date | null | undefined): string
   return isoMatch ? `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}` : raw;
 }
 
+// Tira o trecho do RG da qualificação quando a pessoa não tem RG para informar.
+//
+// Desde a Carteira de Identidade Nacional (CIN) o CPF é o número único de
+// identificação e muita gente já não tem RG. Antes, a minuta saía com
+// "portadora do RG nº — e inscrita no CPF sob o nº ..." (ou com o espaço em
+// branco), e o escritório precisava editar cada documento à mão para apagar
+// esse pedaço. Agora o trecho inteiro some e a qualificação segue direto para
+// o CPF, que é o identificador legalmente suficiente.
+//
+// Roda sobre o HTML AINDA COM AS TAGS {{...}}, antes da substituição das
+// variáveis - por isso casa com o token {{cliente_rg}} e não com o texto já
+// renderizado (que poderia ser confundido com um RG legítimo).
+export function removeEmptyRgFromQualification(contentHtml: string): string {
+  let result = contentHtml;
+  // 1) "{{cliente_portador}} do RG nº {{cliente_rg}} e inscrito(a) no CPF..."
+  //    -> "inscrito(a) no CPF..." (também cobre "portador", "portadora" e
+  //    "portador(a)" escritos direto no modelo, e o separador ", " no lugar do "e")
+  result = result.replace(
+    /(?:{{\s*cliente_portador\s*}}|portador(?:\(a\))?a?)\s*(?:,\s*)?(?:do\s+)?RG[\s:.n°ºo]*{{\s*cliente_rg\s*}}\s*(?:,\s*)?(?:e\s+)?/gi,
+    '',
+  );
+  // 2) Modelos que citam o RG sem a palavra "portador" ("..., RG nº X, CPF Y")
+  result = result.replace(/\bRG[\s:.n°ºo]*{{\s*cliente_rg\s*}}\s*(?:,\s*)?(?:e\s+)?/gi, '');
+  // 3) Sobra do token isolado em modelos fora do padrão - melhor vazio do que
+  //    um traço solto no meio da frase.
+  result = result.replace(/{{\s*cliente_rg\s*}}/gi, '');
+  // 4) Higiene final: vírgulas/espaços duplicados deixados pela remoção.
+  result = result.replace(/,\s*,/g, ',').replace(/\s{2,}/g, ' ').replace(/\s+,/g, ',');
+  return result;
+}
+
 // Remove o nome isolado que alguns fluxos de revisão herdaram do Word antes da
 // qualificação. Recebe também o nome já renderizado, pois a cópia temporária da
 // revisão pode não conter mais a tag {{cliente_nome}}.
