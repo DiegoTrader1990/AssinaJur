@@ -70,13 +70,27 @@ interface RogoProgress {
   status?: string;
 }
 
+// Dados do escritório que envia o documento. A API sempre devolveu isso em
+// data.office, mas a tela lia "document.officeName" - campo que não existe no
+// payload -, então o cliente do escritório sempre via a marca "AssinaJur" no
+// cabeçalho e no rodapé, em vez da marca de quem mandou o documento.
+interface OfficeInfo {
+  id?: string;
+  name?: string;
+  tradeName?: string;
+  logoUrl?: string | null;
+  primaryColor?: string | null;
+  secondaryColor?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  welcomeMessage?: string | null;
+}
+
 interface DocumentInfo {
   id: string;
   title: string;
   documentType: string;
   status: string;
-  officeName: string;
-  officeLogo?: string;
   customMessage?: string;
   previewText?: string;
   isIlliterate?: boolean;
@@ -232,9 +246,21 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [step, setStep] = useState<'IDENTIFY' | 'DOCUMENT' | 'SELFIE' | 'ROGO_TRANSITION' | 'ROGO_DOCUMENT' | 'ROGO_SELFIE' | 'SIGN' | 'NEXT_PARTICIPANT' | 'WAITING_ORDER' | 'SUCCESS'>('IDENTIFY');
   const [signer, setSigner] = useState<SignerInfo | null>(null);
   const [document, setDocument] = useState<DocumentInfo | null>(null);
+  const [office, setOffice] = useState<OfficeInfo | null>(null);
   const [kit, setKit] = useState<KitInfo | null>(null);
   const isRogadoConsent = Boolean(document?.isIlliterate && signer?.role === 'CLIENTE');
   const isRogoSigner = signer?.role === 'ASSINANTE_A_ROGO';
+  // Marca de quem enviou o documento. Prefere o nome fantasia (é como o
+  // escritório se apresenta ao cliente) e cai no nome oficial; "AssinaJur" só
+  // aparece enquanto os dados ainda não carregaram.
+  const officeDisplayName = office?.tradeName?.trim() || office?.name?.trim() || 'AssinaJur';
+  const officeInitials = officeDisplayName
+    .split(/\s+/)
+    .filter((part) => part.length > 2 || /^[A-ZÀ-Ú]/.test(part))
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase() || 'AJ';
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -459,6 +485,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
       setSigner(data.signer);
       setDocument(data.document);
+      setOffice(data.office || null);
       setKit(data.kit || null);
       if (data.waitingFor) {
         setWaitingFor(data.waitingFor);
@@ -947,7 +974,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         setSelfieInstruction('✓ Foto 2 Salva! Agora vire o rosto para a DIREITA →');
         speakCaptureInstruction('Foto registrada. Agora vire o rosto para a direita.', audioEnabledRef.current);
       } else if (key === 'right') {
-        setSelfieInstruction('✓ Prova de presença concluída com 3 fotos!'); // legado (ramo 'right' não é mais alcançado no fluxo de 1 selfie)
+        setSelfieInstruction('✓ Prova de presença concluída!'); // legado (ramo 'right' não é mais alcançado no fluxo de 1 selfie)
         speakCaptureInstruction('Prova de presença concluída. Vamos continuar para a assinatura.', audioEnabledRef.current);
         stopSelfieCamera();
 
@@ -1308,12 +1335,24 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         <header className="bg-white border-b border-slate-200/80 py-4 px-6 sticky top-0 z-30 shadow-xs">
           <div className="max-w-md mx-auto flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-[#071B3A] text-white font-heading font-extrabold flex items-center justify-center text-lg shadow-md border border-white/10">
-                AJ
-              </div>
+              {/* Logo do escritório quando cadastrado; senão, as iniciais do
+                  nome dele. O "AJ" fixo fazia o cliente do escritório abrir o
+                  link e ver a marca do sistema em vez da marca de quem mandou
+                  o documento. */}
+              {office?.logoUrl ? (
+                <img
+                  src={office.logoUrl}
+                  alt={officeDisplayName}
+                  className="w-9 h-9 rounded-xl object-contain bg-white border border-slate-200 shadow-xs"
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-xl bg-[#071B3A] text-white font-heading font-extrabold flex items-center justify-center text-sm shadow-md border border-white/10">
+                  {officeInitials}
+                </div>
+              )}
               <div>
                 <h1 className="font-heading font-extrabold text-[#071B3A] text-base tracking-tight leading-none">
-                  {document?.officeName || 'AssinaJur'}
+                  {officeDisplayName}
                 </h1>
                 <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Assinatura Eletrônica Jurídica</p>
               </div>
@@ -1415,10 +1454,16 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 🪪 Documento de Identificação ({documentSide === 'FRENTE' ? 'Frente' : 'Verso'})
               </h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Fotografe o RG ou a CNH do cliente titular como evidência complementar. Essa etapa não impede a assinatura.
+                Fotografe o documento de identificação do cliente titular (RG, CIN ou CNH). Esta etapa é obrigatória.
               </p>
             </div>
 
+            {/* A opção "Pular esta etapa por enquanto" foi removida: a foto do
+                documento é evidência da identidade do signatário e passou a ser
+                obrigatória. Ela também criava um beco sem saída quando o
+                escritório pedia para refazer justamente essa foto - o
+                signatário pulava, seguia até o fim e levava um "Você já assinou
+                este documento" sem nenhum caminho de volta. */}
             <DocumentCapture
               key={documentSide}
               side={documentSide}
@@ -1427,21 +1472,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               onConfirm={handleDocumentConfirm}
               onEvent={(code) => recordEvidence(code)}
             />
-
-            <button
-              type="button"
-              onClick={() => {
-                if (documentSide === 'FRENTE') {
-                  setDocumentSide('VERSO');
-                } else {
-                  setStep('SELFIE');
-                  setActivePerson('CLIENT');
-                }
-              }}
-              className="w-full py-3 text-slate-500 hover:text-slate-700 font-bold text-xs underline underline-offset-2 transition-colors"
-            >
-              Pular esta etapa por enquanto
-            </button>
           </div>
         )}
 
@@ -1657,10 +1687,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 🪪 Documento de Identificação do Assinante a Rogo ({rogoDocumentSide === 'FRENTE' ? 'Frente' : 'Verso'})
               </h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Fotografe o RG ou a CNH de {rogoName || 'quem assina a rogo'} como evidência complementar. Essa etapa não impede a assinatura.
+                Fotografe o documento de identificação de {rogoName || 'quem assina a rogo'} (RG, CIN ou CNH). Esta etapa é obrigatória.
               </p>
             </div>
 
+            {/* Sem "pular": mesma regra do titular - a foto do documento de
+                quem assina a rogo é evidência da identidade dele e é obrigatória. */}
             <DocumentCapture
               key={`rogo-${rogoDocumentSide}`}
               side={rogoDocumentSide}
@@ -1669,21 +1701,6 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               onConfirm={handleRogoDocumentConfirm}
               onEvent={(code) => recordEvidence(code)}
             />
-
-            <button
-              type="button"
-              onClick={() => {
-                if (rogoDocumentSide === 'FRENTE') {
-                  setRogoDocumentSide('VERSO');
-                } else {
-                  setStep('ROGO_SELFIE');
-                  startSelfieCamera(undefined, false, 'ROGO');
-                }
-              }}
-              className="w-full py-3 text-slate-500 hover:text-slate-700 font-bold text-xs underline underline-offset-2 transition-colors"
-            >
-              Pular esta etapa por enquanto
-            </button>
           </div>
         )}
 
@@ -1967,7 +1984,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         {step === 'NEXT_PARTICIPANT' && nextParticipant && (
           <div className="bg-white p-8 rounded-3xl border border-blue-200 shadow-2xl text-center space-y-6">
             <div className="w-16 h-16 bg-blue-50 border border-blue-200 text-blue-600 rounded-full flex items-center justify-center mx-auto shadow-xs"><Users className="w-9 h-9" /></div>
-            <div className="space-y-2"><span className="px-3.5 py-1 rounded-full bg-blue-50 text-blue-700 font-extrabold text-xs border border-blue-200 uppercase tracking-wider font-heading">Próxima etapa obrigatória</span><h2 className="font-heading text-xl font-extrabold text-[#071B3A]">Passe o celular para {nextParticipant.name}</h2><p className="text-sm text-slate-600 font-medium leading-relaxed">A etapa anterior foi registrada, mas o documento ainda não foi concluído. Agora a {nextParticipant.role.replace(/_/g, ' ').toLowerCase()} deverá confirmar o próprio CPF, fazer as três fotos e assinar.</p></div>
+            <div className="space-y-2"><span className="px-3.5 py-1 rounded-full bg-blue-50 text-blue-700 font-extrabold text-xs border border-blue-200 uppercase tracking-wider font-heading">Próxima etapa obrigatória</span><h2 className="font-heading text-xl font-extrabold text-[#071B3A]">Passe o celular para {nextParticipant.name}</h2><p className="text-sm text-slate-600 font-medium leading-relaxed">A etapa anterior foi registrada, mas o documento ainda não foi concluído. Essa pessoa deverá confirmar o próprio CPF, fotografar o documento de identificação, fazer a selfie de prova de presença e assinar.</p></div>
             <button type="button" onClick={() => window.location.assign(`/assinar/${nextParticipant.token}`)} className="w-full py-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg text-sm font-heading">Iniciar etapa de {nextParticipant.name}</button>
           </div>
         )}
@@ -2068,7 +2085,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       </main>
 
       {!isActiveSelfieCamera && <footer className="max-w-md mx-auto w-full text-center text-[11px] text-slate-500 py-4 border-t border-slate-200/60 font-medium">
-        © 2026 {document?.officeName || 'AssinaJur'}. Respaldado pela MP 2.200-2/2001 e Lei 14.063/2020.
+        © 2026 {officeDisplayName}. Respaldado pela MP 2.200-2/2001 e Lei 14.063/2020.
       </footer>}
     </div>
   );
