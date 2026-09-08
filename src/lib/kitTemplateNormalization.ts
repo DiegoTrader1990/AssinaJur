@@ -22,6 +22,68 @@ export function formatBirthDate(value: string | Date | null | undefined): string
   return isoMatch ? `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}` : raw;
 }
 
+// Quando o representante legal (ou o assinante a rogo) mora no MESMO endereço
+// da cliente, a qualificação termina com "ambos residentes e domiciliados em
+// [endereço]" - que já cobre as duas pessoas. Repetir antes o "residente e
+// domiciliada em [mesmo endereço]" da cliente deixava o endereço duas vezes na
+// mesma frase:
+//   "... nascida em 05/10/1984, residente e domiciliada em Rua X, 136 ...,
+//    neste ato representada por ELVINA ..., ambos residentes e domiciliados
+//    em Rua X, 136 ..."
+// Aqui o endereço da cliente sai da primeira metade e fica só o "ambos ..." do
+// final. Só mexe no parágrafo que realmente traz a representação/rogo - uma
+// Declaração de Residência, por exemplo, continua com o endereço intacto.
+export function removeDuplicateClientAddressWhenShared(contentHtml: string): string {
+  return contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attrs, inner) => {
+    const sharesAddressBelow = /{{\s*(?:cliente_representacao|assinante_rogo_qualificacao)\s*}}/i.test(inner);
+    if (!sharesAddressBelow) return block;
+    const cleaned = String(inner)
+      .replace(
+        /,?\s*(?:{{\s*cliente_residente_domiciliado\s*}}|residentes?\s+e\s+domiciliad[oa](?:\(a\))?s?)\s+em\s+{{\s*cliente_endereco\s*}}/gi,
+        '',
+      )
+      .replace(/,\s*,/g, ',')
+      .replace(/\s{2,}/g, ' ')
+      .replace(/\s+,/g, ',');
+    return `<${tag}${attrs}>${cleaned}</${tag}>`;
+  });
+}
+
+// Concordância de gênero na qualificação da cliente. O sistema já escreve
+// "portadora", "nascida" e "residente e domiciliada" a partir do gênero do
+// cadastro, mas o texto fixo dos modelos continuava nas formas genéricas
+// ("e inscrito(a) no CPF", "doravante denominado(a) CONTRATANTE"), deixando a
+// frase misturada: "portadora ... e inscrito(a) ...".
+//
+// A troca acontece SÓ no trecho anterior a {{cliente_representacao}} /
+// {{assinante_rogo_qualificacao}}: dali para frente o texto fala do
+// representante ou do assinante a rogo, cujo gênero não está cadastrado e por
+// isso continua na forma neutra.
+export function applyClientGenderToQualification(contentHtml: string, gender?: string | null): string {
+  const feminine = gender === 'FEMININO';
+  const masculine = gender === 'MASCULINO';
+  if (!feminine && !masculine) return contentHtml;
+  const ending = feminine ? 'a' : 'o';
+  const genderize = (text: string) =>
+    text
+      .replace(/inscrito\(a\)/gi, `inscrit${ending}`)
+      .replace(/denominado\(a\)/gi, `denominad${ending}`)
+      .replace(/representado\(a\)/gi, `representad${ending}`)
+      .replace(/portador\(a\)/gi, `portador${feminine ? 'a' : ''}`)
+      .replace(/nascido\(a\)/gi, `nascid${ending}`)
+      .replace(/domiciliado\(a\)/gi, `domiciliad${ending}`);
+
+  return contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attrs, inner) => {
+    const text = String(inner);
+    const isClientQualification = /{{\s*cliente_(?:nome|cpf|portador|residente_domiciliado)\s*}}/i.test(text);
+    if (!isClientQualification) return block;
+    const othersStart = text.search(/{{\s*(?:cliente_representacao|assinante_rogo_qualificacao|representante_qualificacao)\s*}}/i);
+    const clientPart = othersStart >= 0 ? text.slice(0, othersStart) : text;
+    const remainder = othersStart >= 0 ? text.slice(othersStart) : '';
+    return `<${tag}${attrs}>${genderize(clientPart)}${remainder}</${tag}>`;
+  });
+}
+
 // Tira o trecho do RG da qualificação quando a pessoa não tem RG para informar.
 //
 // Desde a Carteira de Identidade Nacional (CIN) o CPF é o número único de

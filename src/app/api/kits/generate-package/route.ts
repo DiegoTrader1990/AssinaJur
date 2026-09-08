@@ -5,7 +5,7 @@ import { logAuditEvent } from '@/lib/audit';
 import { compileTemplateToPdf } from '@/lib/templateCompiler';
 import { getDocumentLetterheadBuffer } from '@/lib/documentLetterhead';
 import { randomUUID } from 'crypto';
-import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, removeDuplicateParagraphs, removeEmptyRgFromQualification, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
+import { applyClientGenderToQualification, ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, removeDuplicateClientAddressWhenShared, removeDuplicateParagraphs, removeEmptyRgFromQualification, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -93,7 +93,17 @@ function ensureClientRepresentativeQualification(contentHtml: string, documentTy
     const matchesClientQualification = label ? new RegExp(`^${label}\\s*:`, 'i').test(visibleText) : /{{\s*cliente_nome\s*}}/i.test(innerHtml);
     if (included || !matchesClientQualification) return block;
     included = true;
-    return `<${tag}${attributes}>${String(innerHtml).replace(/\s*\.?\s*$/, '')}, {{cliente_representacao}}.</${tag}>`;
+    // O ponto final da qualificação precisa sair antes de emendar a
+    // representação, senão a frase fica "... CONTRATANTE., neste ato
+    // representada por ...". A versão anterior só olhava o fim absoluto do
+    // trecho, então quando o parágrafo terminava com uma tag de formatação
+    // (ex.: </font>, </strong>) o ponto escapava e ia parar no documento.
+    // Agora as tags de fechamento são separadas, o ponto sai do texto e a
+    // representação entra dentro da mesma formatação.
+    const inner = String(innerHtml);
+    const trailingTags = inner.match(/((?:<\/[^>]+>\s*)*)$/)?.[1] || '';
+    const body = trailingTags ? inner.slice(0, inner.length - trailingTags.length) : inner;
+    return `<${tag}${attributes}>${body.replace(/\s*\.\s*$/, '')}, {{cliente_representacao}}.${trailingTags}</${tag}>`;
   });
 }
 
@@ -312,6 +322,7 @@ export async function POST(req: Request) {
     const nascidoWord = client.gender === 'FEMININO' ? 'nascida' : client.gender === 'MASCULINO' ? 'nascido' : 'nascido(a)';
     const portadorWord = client.gender === 'FEMININO' ? 'portadora' : client.gender === 'MASCULINO' ? 'portador' : 'portador(a)';
     const residenteDomiciliadoWord = client.gender === 'FEMININO' ? 'residente e domiciliada' : client.gender === 'MASCULINO' ? 'residente e domiciliado' : 'residente e domiciliado(a)';
+    const representadoWord = client.gender === 'FEMININO' ? 'representada' : client.gender === 'MASCULINO' ? 'representado' : 'representado(a)';
 
     const variableValues = {
       cliente_nome: client.name,
@@ -333,7 +344,9 @@ export async function POST(req: Request) {
       representante_rg: client.representativeRg || '',
       representante_telefone: formatPhone(client.representativePhone) || '',
       representante_qualificacao: representativeQualificationParts.join(', '),
-      cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${representativeQualificationParts.join(', ')}` : '',
+      // "representada/representado" concorda com a CLIENTE (quem é
+      // representada), não com o representante - por isso usa o gênero dela.
+      cliente_representacao: client.legalRepresentative ? `neste ato ${representadoWord} por ${client.legalRepresentative}, ${representativeQualificationParts.join(', ')}` : '',
       advogado_nome: mainLawyer.name,
       advogado_oab: mainLawyer.oabNumber || 'OAB/BA 51.881',
       advogada_nome: secondLawyer.name,
@@ -415,9 +428,23 @@ export async function POST(req: Request) {
       // qualificação em vez de imprimir "RG nº —" e obrigar o escritório a
       // editar o documento à mão.
       const withoutEmptyRg = String(client.rg || '').trim()
-        ? removeDuplicateParagraphs(jointAttorneyContentHtml)
-        : removeDuplicateParagraphs(removeEmptyRgFromQualification(jointAttorneyContentHtml));
-      const finalContentHtml = withoutEmptyRg;
+        ? jointAttorneyContentHtml
+        : removeEmptyRgFromQualification(jointAttorneyContentHtml);
+      // Representante legal ou assinante a rogo no mesmo endereço da cliente:
+      // o endereço aparece uma única vez, no "ambos residentes e domiciliados
+      // em ..." que fecha a qualificação.
+      const sharesClientAddress = Boolean(
+        (client.legalRepresentative && client.representativeSameAddress) || (isIlliterate && rogoSameAddress),
+      );
+      const withoutDuplicateAddress = sharesClientAddress
+        ? removeDuplicateClientAddressWhenShared(withoutEmptyRg)
+        : withoutEmptyRg;
+      // Concordância de gênero no trecho da própria cliente ("inscrita",
+      // "denominada", "representada") - o restante da frase, que fala do
+      // representante/assinante a rogo, continua na forma neutra.
+      const finalContentHtml = removeDuplicateParagraphs(
+        applyClientGenderToQualification(withoutDuplicateAddress, client.gender),
+      );
 
       const compiledResult = await compileTemplateToPdf({
         officeId: user.officeId,

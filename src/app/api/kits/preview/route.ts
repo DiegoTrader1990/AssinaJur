@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { compileTemplatePreviewToPdf } from '@/lib/templateCompiler';
 import { getDocumentLetterheadBuffer } from '@/lib/documentLetterhead';
-import { ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, removeDuplicateParagraphs, removeEmptyRgFromQualification, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
+import { applyClientGenderToQualification, ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, removeDuplicateClientAddressWhenShared, removeDuplicateParagraphs, removeEmptyRgFromQualification, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +35,13 @@ function ensureClientRepresentativeQualification(contentHtml: string, title: str
     const matchesClientQualification = label ? new RegExp(`^${label}\\s*:`, 'i').test(visibleText) : /{{\s*cliente_nome\s*}}/i.test(innerHtml);
     if (included || !matchesClientQualification) return block;
     included = true;
-    return `<${tag}${attributes}>${String(innerHtml).replace(/\s*\.?\s*$/, '')}, {{cliente_representacao}}.</${tag}>`;
+    // Mesma correção de /api/kits/generate-package: separar as tags de
+    // fechamento antes de tirar o ponto final, senão sai "CONTRATANTE., neste
+    // ato representada por ...".
+    const inner = String(innerHtml);
+    const trailingTags = inner.match(/((?:<\/[^>]+>\s*)*)$/)?.[1] || '';
+    const body = trailingTags ? inner.slice(0, inner.length - trailingTags.length) : inner;
+    return `<${tag}${attributes}>${body.replace(/\s*\.\s*$/, '')}, {{cliente_representacao}}.${trailingTags}</${tag}>`;
   });
 }
 
@@ -101,10 +107,12 @@ export async function POST(req: Request) {
     const nascidoWord = client.gender === 'FEMININO' ? 'nascida' : client.gender === 'MASCULINO' ? 'nascido' : 'nascido(a)';
     const portadorWord = client.gender === 'FEMININO' ? 'portadora' : client.gender === 'MASCULINO' ? 'portador' : 'portador(a)';
     const residenteDomiciliadoWord = client.gender === 'FEMININO' ? 'residente e domiciliada' : client.gender === 'MASCULINO' ? 'residente e domiciliado' : 'residente e domiciliado(a)';
+    // Concorda com a CLIENTE (quem é representada), não com o representante.
+    const representadoWord = client.gender === 'FEMININO' ? 'representada' : client.gender === 'MASCULINO' ? 'representado' : 'representado(a)';
     const variables = {
       representante_legal: client.legalRepresentative || '', representante_cpf: formatCpfCnpj(client.representativeCpf) || '', representante_rg: client.representativeRg || '', representante_telefone: formatPhone(client.representativePhone) || '',
       representante_qualificacao: representativeQualificationParts.join(', '),
-      cliente_representacao: client.legalRepresentative ? `neste ato representado(a) por ${client.legalRepresentative}, ${representativeQualificationParts.join(', ')}` : '',
+      cliente_representacao: client.legalRepresentative ? `neste ato ${representadoWord} por ${client.legalRepresentative}, ${representativeQualificationParts.join(', ')}` : '',
       cliente_nome: client.name, cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '', cliente_nacionalidade: client.nationality || 'Brasileira',
       cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—',
       cliente_nascimento_qualificacao: client.birthDate ? `, ${nascidoWord} em ${formatBirthDate(client.birthDate)}` : '',
@@ -123,8 +131,17 @@ export async function POST(req: Request) {
     // Mesma regra da geração do kit: cliente sem RG (CIN) não deve ver o
     // trecho "portador(a) do RG nº —" na prévia da minuta.
     const jointAttorneyPreviewHtml = ensureJointAttorneyQualification(clientContentHtml, title || '');
+    const previewWithoutEmptyRg = String(client.rg || '').trim()
+      ? jointAttorneyPreviewHtml
+      : removeEmptyRgFromQualification(jointAttorneyPreviewHtml);
+    // Representante legal no mesmo endereço: o endereço fica só no "ambos
+    // residentes e domiciliados em ..." do final, sem repetição - igual à
+    // geração do kit.
+    const previewWithoutDuplicateAddress = client.legalRepresentative && (client as any).representativeSameAddress
+      ? removeDuplicateClientAddressWhenShared(previewWithoutEmptyRg)
+      : previewWithoutEmptyRg;
     const finalContentHtml = removeDuplicateParagraphs(
-      String(client.rg || '').trim() ? jointAttorneyPreviewHtml : removeEmptyRgFromQualification(jointAttorneyPreviewHtml),
+      applyClientGenderToQualification(previewWithoutDuplicateAddress, client.gender),
     );
     const rendered = await compileTemplatePreviewToPdf({ title: title || 'Documento', contentHtml: finalContentHtml, variables, officeName: office.tradeName || office.name, version: 1, letterheadBuffer });
     return new NextResponse(rendered.pdfBuffer, { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="minuta.pdf"' } });
