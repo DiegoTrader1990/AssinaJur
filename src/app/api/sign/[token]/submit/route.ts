@@ -181,14 +181,22 @@ export async function POST(
 
     // 5b. Se dados da 1ª Testemunha foram enviados no mesmo link, registrar assinatura
     if (witness1 && witness1.name && witness1.cpf && witness1.selfieCenterImage) {
-      let witness1Signer = signer.document.signers.find((s) => s.role === 'TESTEMUNHA');
+      // O papel gravado na criação do documento é "TESTEMUNHA_1" (ver
+      // api/documents/route.ts e api/kits/generate-package/route.ts, que
+      // renomeiam para TESTEMUNHA_${index + 1}). Esta busca procurava só
+      // "TESTEMUNHA", nunca encontrava a testemunha já criada e caía no create
+      // abaixo: nascia um segundo registro para a mesma pessoa, a TESTEMUNHA_1
+      // original ficava PENDENTE para sempre e o documento nunca chegava a
+      // CONCLUÍDO - logo, nunca emitia certificado. O papel antigo continua
+      // aceito para documentos criados antes da renomeação.
+      let witness1Signer = signer.document.signers.find((s) => s.role === 'TESTEMUNHA_1' || s.role === 'TESTEMUNHA');
       if (!witness1Signer) {
         witness1Signer = await prisma.signer.create({
           data: {
             documentId: signer.document.id,
             name: witness1.name,
             cpf: witness1.cpf.replace(/\D/g, ''),
-            role: 'TESTEMUNHA',
+            role: 'TESTEMUNHA_1',
             status: 'PENDENTE',
           },
         });
@@ -437,21 +445,31 @@ export async function POST(
     // Somente depois de o pacote inteiro estar concluído no banco, compila os
     // certificados. Se uma compilação falhar, o documento continuará concluído e
     // a rota de download poderá regenerá-lo sob demanda.
-    if (allCompleted) {
+    // O certificado e o aviso de conclusão são independentes e por isso ficam
+    // em blocos separados. Antes estavam no mesmo try, com o certificado
+    // primeiro: se a compilação falhasse, o erro pulava a fila de mensagens e
+    // NINGUÉM era avisado - nem o escritório nem o cliente -, mesmo com o
+    // documento constando como concluído. O certificado se recupera sozinho
+    // (a rota de download o regenera sob demanda); o aviso não tem retentativa
+    // nenhuma: ou sai aqui, ou não sai nunca.
+    const finalizeDocument = async (documentId: string, label: string) => {
       try {
-        await generateFinalPdfCertificate(signer.document.id);
-        await queueSignatureCompletionMessages(signer.document.id);
+        await generateFinalPdfCertificate(documentId);
       } catch (pdfErr) {
-        console.error('Erro na compilação ou notificação imediata do PDF:', pdfErr);
+        console.error(`Erro ao compilar o certificado (${label}); será regerado no download:`, pdfErr);
       }
+      try {
+        await queueSignatureCompletionMessages(documentId);
+      } catch (notifyErr) {
+        console.error(`Erro ao enfileirar o aviso de conclusão (${label}):`, notifyErr);
+      }
+    };
+
+    if (allCompleted) {
+      await finalizeDocument(signer.document.id, 'documento principal');
 
       for (const companionId of completedCompanionIds) {
-        try {
-          await generateFinalPdfCertificate(companionId);
-          await queueSignatureCompletionMessages(companionId);
-        } catch (pdfErr) {
-          console.error('Erro ao concluir documento complementar do kit:', pdfErr);
-        }
+        await finalizeDocument(companionId, 'documento complementar do kit');
       }
     }
 
