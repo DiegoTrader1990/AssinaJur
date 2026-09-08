@@ -465,6 +465,18 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         setStep('WAITING_ORDER');
         return;
       }
+      // A vez chegou: a pessoa da frente concluiu e o servidor parou de mandar
+      // "waitingFor". Sem estas duas linhas a tela de espera nunca era desfeita
+      // - o código só sabia ENTRAR nela. Quem abria o link antes da vez (caso
+      // comum das testemunhas no fluxo a rogo, em que a ordem sequencial é
+      // obrigatória) ficava preso no "aguarde sua vez" mesmo depois de
+      // liberado: a verificação automática a cada 12s e o botão "Verificar
+      // agora" chamam esta mesma função, então os dois voltavam para a mesma
+      // tela. Só um F5 resolvia - algo que ninguém faz no navegador interno do
+      // WhatsApp. O setStep é condicional para não atropelar quem já está no
+      // meio do fluxo (a função também roda no carregamento inicial).
+      setWaitingFor(null);
+      setStep((current) => (current === 'WAITING_ORDER' ? 'IDENTIFY' : current));
       setCpf(maskCpfCnpj(data.signer.cpf));
       setTypedName(data.signer.name);
 
@@ -500,10 +512,20 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       // Se há um pedido de refazer foto pendente, NÃO mostra a tela de
       // sucesso direto (mesmo com status ASSINADO) - o signatário precisa
       // conseguir chegar até a etapa da foto pedida (ver handleConfirmCpf).
-      if (
-        (data.signer.status === 'ASSINADO' && !data.signer.redoPendingField) ||
-        sessionStorage.getItem(`assinajur-signed-${params.token}`) === '1'
-      ) {
+      // A marca no sessionStorage ("já assinei neste navegador") estava num OU
+      // solto, o que anulava justamente a exceção do refazimento: quem tocava
+      // no link na MESMA sessão em que assinou caía direto na tela de sucesso -
+      // e, como havia pedido de refazer pendente, essa tela ainda mostrava
+      // "Foto Atualizada com Sucesso! A nova foto foi recebida", sem abrir a
+      // câmera e sem enviar nada. O escritório ficava esperando uma foto que o
+      // cliente acreditava ter mandado. Agora o pedido pendente (do próprio
+      // signatário ou do assinante a rogo capturado no mesmo link) tem
+      // prioridade sobre as duas formas de "já assinou". (O pedido do assinante
+      // a rogo chega pelo link individual dele, onde ele é o próprio "signer" -
+      // por isso basta olhar este campo.)
+      const hasPendingRedo = Boolean(data.signer.redoPendingField);
+      const signedInThisSession = sessionStorage.getItem(`assinajur-signed-${params.token}`) === '1';
+      if (!hasPendingRedo && (data.signer.status === 'ASSINADO' || signedInThisSession)) {
         setStep('SUCCESS');
       }
     } catch (err: any) {
