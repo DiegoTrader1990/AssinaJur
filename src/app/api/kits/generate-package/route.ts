@@ -5,7 +5,7 @@ import { logAuditEvent } from '@/lib/audit';
 import { compileTemplateToPdf } from '@/lib/templateCompiler';
 import { getDocumentLetterheadBuffer } from '@/lib/documentLetterhead';
 import { randomUUID } from 'crypto';
-import { applyClientGenderToQualification, ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, removeDuplicateClientAddressWhenShared, removeDuplicateParagraphs, removeEmptyRgFromQualification, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
+import { applyClientGenderToQualification, ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, genderizeNeutralWord, removeDuplicateClientAddressWhenShared, removeDuplicateParagraphs, removeEmptyRgFromQualification, removeStandaloneClientNameBeforeQualification, trimTrailingPeriod } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -334,7 +334,9 @@ export async function POST(req: Request) {
       cliente_genero: client.gender || '',
       cliente_telefone: client.whatsapp || client.phone || '—',
       cliente_endereco: clienteEnderecoText,
-      cliente_estado_civil: client.maritalStatus || '—',
+      // O cadastro guarda "Solteiro(a)"/"Viúvo(a)" porque é uma lista fixa de
+      // opções; no documento sai "Solteira"/"Viúva" conforme o gênero da pessoa.
+      cliente_estado_civil: genderizeNeutralWord(client.maritalStatus, client.gender) || '—',
       cliente_profissao: client.profession || '—',
       cliente_nascimento_qualificacao: client.birthDate ? `, ${nascidoWord} em ${formatBirthDate(client.birthDate)}` : '',
       cliente_portador: portadorWord,
@@ -356,8 +358,11 @@ export async function POST(req: Request) {
       escritorio_endereco: fullAddress,
       escritorio_telefone: office.phone || '(73) 98117-1111 / (73) 98825-0201',
       escritorio_email: office.email || 'contato@rodriguesesoares.adv.br',
-      escritorio_qualificacao: fullOfficeQualification,
-      patronos_qualificacao_conjunta: jointPatronosQualification,
+      escritorio_qualificacao: trimTrailingPeriod(fullOfficeQualification),
+      // O modelo fecha a qualificação dos patronos com o próprio ponto final.
+      // Como o endereço do escritório costuma estar cadastrado terminando em
+      // ponto ("... CEP 45810-000."), o documento saía com ".." no fim.
+      patronos_qualificacao_conjunta: trimTrailingPeriod(jointPatronosQualification),
       patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),
       // Qualificação completa do assinante a rogo (nome, CPF, RG, nascimento e
       // endereço), para modelos que precisem identificá-lo formalmente no corpo

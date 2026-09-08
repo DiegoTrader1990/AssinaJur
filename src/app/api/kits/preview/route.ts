@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { compileTemplatePreviewToPdf } from '@/lib/templateCompiler';
 import { getDocumentLetterheadBuffer } from '@/lib/documentLetterhead';
-import { applyClientGenderToQualification, ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, removeDuplicateClientAddressWhenShared, removeDuplicateParagraphs, removeEmptyRgFromQualification, removeStandaloneClientNameBeforeQualification } from '@/lib/kitTemplateNormalization';
+import { applyClientGenderToQualification, ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, genderizeNeutralWord, removeDuplicateClientAddressWhenShared, removeDuplicateParagraphs, removeEmptyRgFromQualification, removeStandaloneClientNameBeforeQualification, trimTrailingPeriod } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -114,13 +114,16 @@ export async function POST(req: Request) {
       representante_qualificacao: representativeQualificationParts.join(', '),
       cliente_representacao: client.legalRepresentative ? `neste ato ${representadoWord} por ${client.legalRepresentative}, ${representativeQualificationParts.join(', ')}` : '',
       cliente_nome: client.name, cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '', cliente_nacionalidade: client.nationality || 'Brasileira',
-      cliente_estado_civil: client.maritalStatus || '—', cliente_profissao: client.profession || '—',
+      // "Solteiro(a)" do cadastro sai como "Solteira"/"Solteiro" no documento.
+      cliente_estado_civil: genderizeNeutralWord(client.maritalStatus, client.gender) || '—', cliente_profissao: client.profession || '—',
       cliente_nascimento_qualificacao: client.birthDate ? `, ${nascidoWord} em ${formatBirthDate(client.birthDate)}` : '',
       cliente_portador: portadorWord,
       cliente_residente_domiciliado: residenteDomiciliadoWord,
       cliente_endereco: clienteEnderecoText,
       advogado_nome: lawyer?.name || 'Advogado responsável', advogado_oab: lawyer?.oabNumber || '—', escritorio_nome: office.tradeName || office.name,
-      patronos_qualificacao_conjunta: `${patronosQualification}, com escritório profissional na ${fullAddress}`,
+      // Sem o ponto final do endereço cadastrado: o modelo já fecha a frase
+      // com o próprio ponto, e saía ".." no documento.
+      patronos_qualificacao_conjunta: trimTrailingPeriod(`${patronosQualification}, com escritório profissional na ${fullAddress}`),
       patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),
       data_atual: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date()),
       ...(customVariables || {}),

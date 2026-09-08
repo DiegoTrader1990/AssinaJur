@@ -22,6 +22,27 @@ export function formatBirthDate(value: string | Date | null | undefined): string
   return isoMatch ? `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}` : raw;
 }
 
+// Aplica o gênero cadastrado a um valor guardado na forma neutra, como o estado
+// civil ("Solteiro(a)" -> "Solteira"/"Solteiro", "Viúvo(a)" -> "Viúva"/"Viúvo").
+// O cadastro guarda a forma com "(a)" porque é uma lista fixa de opções; na hora
+// de escrever o documento, com o gênero da pessoa em mãos, não há motivo para
+// manter o parêntese. Sem gênero informado, o valor sai como está.
+export function genderizeNeutralWord(value: string | null | undefined, gender?: string | null): string {
+  const raw = String(value || '');
+  if (!raw) return raw;
+  if (gender === 'FEMININO') return raw.replace(/[oa]\(a\)/gi, 'a').replace(/\(a\)/gi, 'a');
+  if (gender === 'MASCULINO') return raw.replace(/([oa])\(a\)/gi, '$1').replace(/\(a\)/gi, '');
+  return raw;
+}
+
+// Tira o ponto final de um trecho que vai ser emendado dentro de outra frase.
+// O endereço do escritório, por exemplo, costuma estar cadastrado terminando em
+// ponto ("... CEP 45810-000."); como o modelo fecha a qualificação dos patronos
+// com o seu próprio ponto, o documento saía com ".." no final.
+export function trimTrailingPeriod(value: string): string {
+  return String(value || '').replace(/\s*\.\s*$/, '');
+}
+
 // Quando o representante legal (ou o assinante a rogo) mora no MESMO endereço
 // da cliente, a qualificação termina com "ambos residentes e domiciliados em
 // [endereço]" - que já cobre as duas pessoas. Repetir antes o "residente e

@@ -13,7 +13,7 @@ import {
   looksLikeUnverifiedOperationalClaim,
   parseSignatureLinkCommand,
 } from '@/lib/whatsapp/conversation';
-import { removeEmptyRgFromQualification } from '@/lib/kitTemplateNormalization';
+import { genderizeNeutralWord, removeEmptyRgFromQualification } from '@/lib/kitTemplateNormalization';
 
 export const AUTHORIZED_LAWYER_PHONES = [
   '5573988250201',
@@ -729,7 +729,8 @@ function buildTemplateVariables(client: Awaited<ReturnType<typeof getAutomationC
     cliente_genero: client.gender || '',
     cliente_telefone: client.whatsapp || client.phone,
     cliente_endereco: [client.address, client.number, client.neighborhood, client.city, client.state].filter(Boolean).join(', ') || '—',
-    cliente_estado_civil: client.maritalStatus || '—',
+    // "Solteiro(a)" do cadastro vira "Solteira"/"Solteiro" no documento.
+    cliente_estado_civil: genderizeNeutralWord(client.maritalStatus, client.gender) || '—',
     cliente_profissao: client.profession || '—',
     advogado_nome: user.name,
     advogado_oab: user.oabNumber || office.oabNumber || '—',
