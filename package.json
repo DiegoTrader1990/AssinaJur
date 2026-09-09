@@ -4,10 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma db push --accept-data-loss && next build",
+    "prebuild": "npm run test:security",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "test:whatsapp": "tsx --test scripts/whatsapp-conversation.test.ts",
+    "test:security": "node --test scripts/security-regression.test.cjs",
     "db:push": "prisma db push",
     "db:seed": "npx tsx prisma/seed.ts"
   },

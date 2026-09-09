@@ -2,12 +2,11 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
 import { prisma } from './prisma';
+import { getJwtSecret } from './server-config';
 
-function getJwtSecret(): string {
-  const secret = process.env.JWT_SECRET;
-  if (secret) return secret;
-  return 'assinajur_saas_prod_jwt_secret_2026_diego';
-}
+// Falha já na inicialização (inclusive no build), antes de publicar login sem chave.
+const jwtSecret = getJwtSecret();
+
 export const TOKEN_COOKIE_NAME = 'assinajur_token';
 
 export type UserRole = 'OFFICE_ADMIN' | 'LAWYER' | 'STAFF' | 'VIEWER';
@@ -39,12 +38,20 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 }
 
 export function signToken(payload: AuthPayload): string {
-  return jwt.sign(payload, getJwtSecret(), { expiresIn: '7d' });
+  return jwt.sign(payload, jwtSecret, { expiresIn: '7d', algorithm: 'HS256' });
 }
 
 export function verifyToken(token: string): AuthPayload | null {
   try {
-    return jwt.verify(token, getJwtSecret()) as AuthPayload;
+    const payload = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] });
+    if (typeof payload === 'string' ||
+        typeof payload.userId !== 'string' || !payload.userId ||
+        typeof payload.officeId !== 'string' || !payload.officeId ||
+        typeof payload.email !== 'string' ||
+        !['OFFICE_ADMIN', 'LAWYER', 'STAFF', 'VIEWER'].includes(payload.role)) {
+      return null;
+    }
+    return payload as AuthPayload;
   } catch {
     return null;
   }
@@ -84,7 +91,7 @@ export async function getSessionUser(): Promise<AuthUser | null> {
       },
     });
 
-    if (!user || !user.active || (user.office && !user.office.active)) {
+    if (!user || user.officeId !== decoded.officeId || !user.active || !user.office?.active) {
       return null;
     }
 

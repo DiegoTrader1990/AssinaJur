@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 import { ensureDefaultLegalLibrary } from '@/lib/defaultLegalLibrary';
+import { assertKitTemplates, InvalidKitTemplatesError, validTemplateIds } from '@/lib/kit-security';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,7 @@ export async function GET(req: Request) {
       where: {
         officeId: user.officeId, // MULTI-TENANT ISOLATION
         active: true,
+        items: { every: { template: { officeId: user.officeId } } },
       },
       include: {
         items: {
@@ -49,11 +51,14 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
     }
+    if (user.role === 'VIEWER') {
+      return NextResponse.json({ error: 'Seu acesso permite apenas consultas.' }, { status: 403 });
+    }
 
     const body = await req.json();
     const { name, category, description, templateIds } = body;
 
-    if (!name || !templateIds || !Array.isArray(templateIds) || templateIds.length === 0) {
+    if (typeof name !== 'string' || !name.trim() || !validTemplateIds(templateIds)) {
       return NextResponse.json(
         { error: 'Nome do kit e ao menos 1 modelo jurídico são obrigatórios.' },
         { status: 400 }
@@ -61,6 +66,7 @@ export async function POST(req: Request) {
     }
 
     const kit = await prisma.$transaction(async (tx) => {
+      await assertKitTemplates(tx, user.officeId, templateIds);
       const createdKit = await tx.legalKit.create({
         data: {
           officeId: user.officeId,
@@ -92,6 +98,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, kit });
   } catch (error: any) {
+    if (error instanceof InvalidKitTemplatesError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     console.error('Erro ao criar kit jurídico:', error);
     return NextResponse.json({ error: 'Erro ao cadastrar kit jurídico.' }, { status: 500 });
   }

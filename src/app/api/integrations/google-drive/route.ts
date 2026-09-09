@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import { getSessionUser } from '@/lib/auth';
+import { getJwtSecret } from '@/lib/server-config';
 import { prisma } from '@/lib/prisma';
 import { createGoogleDriveAuthorizeUrl, ensureDriveRoot, ensureProcessDriveFolders, googleDriveConfigured, syncProcessFilesToDrive } from '@/lib/google-drive';
 
 export const dynamic = 'force-dynamic';
-const stateSecret = () => process.env.JWT_SECRET || 'assinajur_google_drive_state_2026';
 
 export async function GET() {
   const user = await getSessionUser();
@@ -49,7 +49,7 @@ export async function POST() {
   if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
   if (user.role !== 'OFFICE_ADMIN') return NextResponse.json({ error: 'Apenas o administrador do escritório pode conectar o Drive.' }, { status: 403 });
   if (!googleDriveConfigured()) return NextResponse.json({ error: 'A integração ainda está sendo preparada. Informe as credenciais protegidas no ambiente do AssinaJur.' }, { status: 503 });
-  const state = jwt.sign({ officeId: user.officeId, userId: user.id, action: 'google_drive_connect' }, stateSecret(), { expiresIn: '10m' });
+  const state = jwt.sign({ officeId: user.officeId, userId: user.id, action: 'google_drive_connect' }, getJwtSecret(), { expiresIn: '10m', algorithm: 'HS256' });
   return NextResponse.json({ url: createGoogleDriveAuthorizeUrl(state) });
 }
 

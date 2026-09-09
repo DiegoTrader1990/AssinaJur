@@ -45,6 +45,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
     }
+    if (user.role === 'VIEWER') {
+      return NextResponse.json({ error: 'Seu acesso permite apenas consultas.' }, { status: 403 });
+    }
 
     const existing = await prisma.clientPendency.findFirst({
       where: { id: params.id, officeId: user.officeId },
@@ -54,6 +57,22 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
 
     const body = await req.json();
+    if ((body.clientId != null && typeof body.clientId !== 'string') ||
+        (body.responsibleId != null && typeof body.responsibleId !== 'string')) {
+      return NextResponse.json({ error: 'Cliente ou responsável inválido.' }, { status: 400 });
+    }
+    if (body.clientId) {
+      const client = await prisma.client.findFirst({
+        where: { id: body.clientId, officeId: user.officeId }, select: { id: true },
+      });
+      if (!client) return NextResponse.json({ error: 'Cliente não encontrado.' }, { status: 404 });
+    }
+    if (body.responsibleId) {
+      const responsible = await prisma.user.findFirst({
+        where: { id: body.responsibleId, officeId: user.officeId, active: true }, select: { id: true },
+      });
+      if (!responsible) return NextResponse.json({ error: 'Responsável não encontrado ou inativo.' }, { status: 404 });
+    }
     const updateData: any = {};
     const historyActions: any[] = [];
 
@@ -109,6 +128,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     // 4. Mudança de Prazo / Reagendamento
     if (body.dueDate !== undefined) {
       const newDueDate = body.dueDate ? new Date(body.dueDate) : null;
+      if (newDueDate && Number.isNaN(newDueDate.getTime())) {
+        return NextResponse.json({ error: 'Prazo inválido.' }, { status: 400 });
+      }
       updateData.dueDate = newDueDate;
       historyActions.push({
         userId: user.id,
@@ -167,6 +189,9 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     const user = await getSessionUser();
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
+    }
+    if (user.role === 'VIEWER') {
+      return NextResponse.json({ error: 'Seu acesso permite apenas consultas.' }, { status: 403 });
     }
 
     const existing = await prisma.clientPendency.findFirst({

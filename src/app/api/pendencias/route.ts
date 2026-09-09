@@ -91,8 +91,15 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
     }
+    if (user.role === 'VIEWER') {
+      return NextResponse.json({ error: 'Seu acesso permite apenas consultas.' }, { status: 403 });
+    }
 
     const body = await req.json();
+    if ((body.clientId != null && typeof body.clientId !== 'string') ||
+        (body.responsibleId != null && typeof body.responsibleId !== 'string')) {
+      return NextResponse.json({ error: 'Cliente ou responsável inválido.' }, { status: 400 });
+    }
     const clientId = (body.clientId || '').trim();
     const title = (body.title || '').trim();
     const description = (body.description || '').trim();
@@ -121,6 +128,14 @@ export async function POST(req: Request) {
       if (!client) {
         return NextResponse.json({ error: 'Cliente não encontrado.' }, { status: 404 });
       }
+    }
+
+    const responsible = await prisma.user.findFirst({
+      where: { id: responsibleId, officeId: user.officeId, active: true },
+      select: { id: true },
+    });
+    if (!responsible) {
+      return NextResponse.json({ error: 'Responsável não encontrado ou inativo.' }, { status: 404 });
     }
 
     const pendency = await prisma.clientPendency.create({

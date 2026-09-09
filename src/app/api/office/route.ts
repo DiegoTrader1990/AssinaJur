@@ -33,6 +33,9 @@ export async function PUT(req: Request) {
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
     }
+    if (user.role !== 'OFFICE_ADMIN') {
+      return NextResponse.json({ error: 'Apenas o administrador pode alterar os dados do escritório.' }, { status: 403 });
+    }
 
     const body = await req.json();
 

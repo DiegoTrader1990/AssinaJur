@@ -12,6 +12,19 @@ próprios usuários, clientes, modelos de documento e documentos enviados para a
 
 ## Stack técnica
 
+### Verificação operacional em 09/09/2026
+
+O banco atual foi confirmado no Supabase, projeto `ngprverpvbztptshbnsp`: 20 clientes,
+8 documentos concluídos e 2 lotes concluídos. O `.env` local contém acesso a esse banco
+atual; **não é um ambiente isolado de desenvolvimento**. Não executar testes com escrita,
+`db:push`, reset ou migrations usando esse arquivo. O Neon conectado contém registros antigos.
+As referências abaixo a Neon em produção e Supabase exclusivamente de desenvolvimento
+são históricas e não devem orientar operações. Consulte `auditoria/VERIFICACAO_PRE_PUBLICACAO.md`.
+
+O procedimento histórico com `--accept-data-loss` abaixo não deve ser repetido. Alterações
+de estrutura exigem migração revisada, backup recuperável e teste isolado antes de produção.
+O build deve somente gerar o cliente Prisma e compilar, sem sincronizar o banco.
+
 - **Framework**: Next.js 14 (App Router) + TypeScript
 - **ORM / Banco**: Prisma ORM sobre PostgreSQL (Neon, serverless, plano gratuito)
 - **Armazenamento de arquivos**: Vercel Blob (PDFs originais e assinados)

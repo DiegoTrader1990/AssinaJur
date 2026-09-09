@@ -113,6 +113,9 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
     }
+    if (user.role === 'VIEWER') {
+      return NextResponse.json({ error: 'Seu acesso permite apenas consultas.' }, { status: 403 });
+    }
 
     const body = await req.json();
     const {
@@ -214,6 +217,9 @@ export async function POST(req: Request) {
 
     if (!kit || !office || kit.items.length === 0) {
       return NextResponse.json({ error: 'Kit jurídico não possui modelos cadastrados.' }, { status: 400 });
+    }
+    if (!kit.active || kit.items.some((item) => item.template.officeId !== user.officeId || !item.template.active)) {
+      return NextResponse.json({ error: 'O kit contém modelos indisponíveis. Revise os modelos antes de gerar os documentos.' }, { status: 400 });
     }
 
     const activeLawyers = await prisma.user.findMany({
