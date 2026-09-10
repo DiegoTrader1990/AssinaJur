@@ -382,8 +382,16 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   const saveProgress = async (imageField: 'documentFrontImage' | 'documentBackImage' | 'selfieCenterImage', imageData: string, forRogo = false) => {
     // Mantém a foto nesta página e só avança depois da confirmação do servidor.
+    //
+    // Antes de incomodar o signatário, tenta sozinho algumas vezes: uma
+    // oscilação rápida de rede (comum no navegador interno do WhatsApp, em rede
+    // móvel) ou um conflito momentâneo no banco se resolvem na segunda
+    // tentativa. A janela de aviso passa a ser o último recurso - quando ela
+    // aparecer, é porque a conexão realmente caiu, e aí o aviso é legítimo: a
+    // foto continua guardada na página, esperando a conexão voltar.
+    const SILENT_ATTEMPTS = 3;
     await new Promise<void>((resolve) => {
-      const attempt = async () => {
+      const attempt = async (silentAttemptsLeft = SILENT_ATTEMPTS) => {
         setRetryingProgress(true);
         const controller = new AbortController();
         const timeout = window.setTimeout(() => controller.abort(), 20000);
@@ -393,12 +401,26 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           });
           if (!response.ok) {
             const data = await response.json().catch(() => ({}));
-            throw new Error(data.error || 'Não foi possível salvar a foto agora.');
+            const failure: any = new Error(data.error || 'Não foi possível salvar a foto agora.');
+            // Só repete sozinho o que é passageiro: conflito no banco (o
+            // servidor marca com "retryable") ou erro de servidor. Uma recusa
+            // por regra - link cancelado, documento já aprovado - não muda com
+            // a repetição e precisa aparecer na hora.
+            failure.transient = Boolean(data.retryable) || response.status >= 500;
+            throw failure;
           }
           setProgressRetry(null);
           resolve();
         } catch (error: any) {
-          setProgressRetry({ retry: attempt, message: error.name === 'AbortError' ? 'O envio demorou mais que o esperado. Confira sua conexão.' : error.message || 'A conexão foi interrompida.' });
+          // AbortError = estourou o tempo; TypeError = o fetch nem completou
+          // (aparelho sem rede no momento do envio).
+          const isNetworkFailure = error.name === 'AbortError' || error.name === 'TypeError';
+          if ((isNetworkFailure || error.transient) && silentAttemptsLeft > 1) {
+            const wait = (SILENT_ATTEMPTS - silentAttemptsLeft + 1) * 700;
+            window.setTimeout(() => { void attempt(silentAttemptsLeft - 1); }, wait);
+            return;
+          }
+          setProgressRetry({ retry: () => attempt(SILENT_ATTEMPTS), message: error.name === 'AbortError' ? 'O envio demorou mais que o esperado. Confira sua conexão.' : error.message || 'A conexão foi interrompida.' });
         } finally { window.clearTimeout(timeout); setRetryingProgress(false); }
       };
       void attempt();
@@ -944,9 +966,20 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
       const updatedSelfies = { ...currentTargetSelfies, [key]: dataUrl };
       updateCurrentSelfieImages(updatedSelfies, currentPerson);
-      if (currentPerson === 'CLIENT') {
-        recordEvidence(key === 'center' ? 'SELFIE_CENTER_VALIDATED' : key === 'left' ? 'SELFIE_LEFT_VALIDATED' : 'SELFIE_RIGHT_VALIDATED');
-      }
+      // O registro do evento na trilha e o salvamento da foto vão para a MESMA
+      // rota, que abre uma transação Serializable e trava a linha do documento.
+      // Antes os dois saíam praticamente juntos (o evento era disparado sem
+      // await, e o salvamento logo na sequência): como aqui a captura é
+      // automática, por contagem regressiva, não existe o toque humano que
+      // separa as duas chamadas na foto do documento. As transações colidiam no
+      // banco e o signatário via "Não foi possível salvar. Atualize a página e
+      // tente novamente." logo depois da selfie - e ao tocar em "Tentar salvar
+      // novamente" dava certo, porque aí não havia mais concorrência.
+      // Agora vai um de cada vez, começando pela FOTO, que é o que não pode se
+      // perder: se a página for fechada no meio, perde-se no máximo a linha da
+      // trilha, nunca a imagem. (A rota também passou a repetir a transação
+      // sozinha em caso de conflito - ver api/sign/[token]/event/route.ts.)
+      //
       // Só a selfie "center" é usada no certificado hoje (fluxo simplificado
       // de 1 foto) - salva assim que ela é capturada, para o Cliente Titular
       // e também para o Assinante a Rogo quando capturado no mesmo link.
@@ -956,6 +989,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         // aqui porque é exatamente o caminho usado para refazer só a selfie
         // de uma assinatura já concluída.
         await saveProgress('selfieCenterImage', dataUrl, currentPerson === 'ROGO');
+      }
+      if (currentPerson === 'CLIENT') {
+        await recordEvidence(key === 'center' ? 'SELFIE_CENTER_VALIDATED' : key === 'left' ? 'SELFIE_LEFT_VALIDATED' : 'SELFIE_RIGHT_VALIDATED');
       }
 
       if (singleRetakeKey) {

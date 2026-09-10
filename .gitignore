@@ -52,3 +52,8 @@ next-env.d.ts
 .vercel
 .env*
 !.env.bot.example
+
+# área de rascunho/descarte usada durante manutenção (scripts de depuração,
+# cópias temporárias de arquivos, restos de trava do git). Nada aqui faz parte
+# do sistema - é só sujeira de trabalho e não deve entrar no repositório.
+/_to_delete/

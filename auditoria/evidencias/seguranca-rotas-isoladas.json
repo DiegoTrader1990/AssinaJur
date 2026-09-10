@@ -1,0 +1,37 @@
+{
+  "scope": "Handlers reais transpilados; banco e sessão simulados. Não comprova exploração em produção.",
+  "checks": 4,
+  "results": [
+    {
+      "name": "VIEWER pode alterar dados institucionais",
+      "reproduzido": true,
+      "evidence": {
+        "status": 200
+      }
+    },
+    {
+      "name": "Pendência aceita vínculo externo sem validar cliente",
+      "reproduzido": true,
+      "evidence": {
+        "status": 200,
+        "foreignIdAccepted": true,
+        "includesCpf": true
+      }
+    },
+    {
+      "name": "Kit aceita modelo externo sem consulta de titularidade",
+      "reproduzido": true,
+      "evidence": {
+        "status": 200
+      }
+    },
+    {
+      "name": "Normalização preserva atributo executável no HTML",
+      "reproduzido": true,
+      "evidence": {
+        "attributePreserved": true,
+        "note": "Não executa JavaScript em navegador; a inserção innerHTML foi inspecionada no código."
+      }
+    }
+  ]
+}

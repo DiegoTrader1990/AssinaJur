@@ -1,0 +1,452 @@
+
+> assinajur@1.0.0 test:security
+> node --test scripts/security-regression.test.cjs
+
+TAP version 13
+# Subtest: publicação gera o cliente e compila, sem sincronizar ou apagar banco
+ok 1 - publicação gera o cliente e compila, sem sincronizar ou apagar banco
+  ---
+  duration_ms: 4.1518
+  type: 'test'
+  ...
+# Subtest: configuração sem chave utilizável recusa emissão ({})
+ok 2 - configuração sem chave utilizável recusa emissão ({})
+  ---
+  duration_ms: 14.8624
+  type: 'test'
+  ...
+# Subtest: configuração sem chave utilizável recusa emissão ({"JWT_SECRET":"   "})
+ok 3 - configuração sem chave utilizável recusa emissão ({"JWT_SECRET":"   "})
+  ---
+  duration_ms: 9.5069
+  type: 'test'
+  ...
+# Subtest: conexão ausente falha sem escolher um banco alternativo embutido
+ok 4 - conexão ausente falha sem escolher um banco alternativo embutido
+  ---
+  duration_ms: 25.476
+  type: 'test'
+  ...
+# Subtest: conexão configurada mantém prioridade e compatibilidade dos nomes existentes
+ok 5 - conexão configurada mantém prioridade e compatibilidade dos nomes existentes
+  ---
+  duration_ms: 5.9868
+  type: 'test'
+  ...
+# Subtest: sessão anterior HS256 continua válida com a mesma chave configurada
+ok 6 - sessão anterior HS256 continua válida com a mesma chave configurada
+  ---
+  duration_ms: 98.3189
+  type: 'test'
+  ...
+# Subtest: ausência de chave não emite nem aceita sessão
+ok 7 - ausência de chave não emite nem aceita sessão
+  ---
+  duration_ms: 15.4085
+  type: 'test'
+  ...
+# Subtest: sessão recusa assinatura falsificada
+ok 8 - sessão recusa assinatura falsificada
+  ---
+  duration_ms: 21.9265
+  type: 'test'
+  ...
+# Subtest: sessão recusa token expirado
+ok 9 - sessão recusa token expirado
+  ---
+  duration_ms: 16.423
+  type: 'test'
+  ...
+# Subtest: sessão recusa algoritmo diferente
+ok 10 - sessão recusa algoritmo diferente
+  ---
+  duration_ms: 14.3699
+  type: 'test'
+  ...
+# Subtest: sessão recusa estado OAuth usado como sessão
+ok 11 - sessão recusa estado OAuth usado como sessão
+  ---
+  duration_ms: 15.5466
+  type: 'test'
+  ...
+# Subtest: sessão recusa cargo desconhecido
+ok 12 - sessão recusa cargo desconhecido
+  ---
+  duration_ms: 12.702
+  type: 'test'
+  ...
+# Subtest: resolução de sessão: usuário ativo
+ok 13 - resolução de sessão: usuário ativo
+  ---
+  duration_ms: 13.0866
+  type: 'test'
+  ...
+# Subtest: resolução de sessão: usuário de outro escritório
+ok 14 - resolução de sessão: usuário de outro escritório
+  ---
+  duration_ms: 18.2098
+  type: 'test'
+  ...
+# Subtest: resolução de sessão: usuário inativo
+ok 15 - resolução de sessão: usuário inativo
+  ---
+  duration_ms: 20.4715
+  type: 'test'
+  ...
+# Subtest: resolução de sessão: escritório inativo
+ok 16 - resolução de sessão: escritório inativo
+  ---
+  duration_ms: 12.1051
+  type: 'test'
+  ...
+# Subtest: resolução de sessão: escritório ausente
+ok 17 - resolução de sessão: escritório ausente
+  ---
+  duration_ms: 14.9466
+  type: 'test'
+  ...
+# Subtest: kit POST: modelo do próprio escritório
+ok 18 - kit POST: modelo do próprio escritório
+  ---
+  duration_ms: 24.0444
+  type: 'test'
+  ...
+# Subtest: kit POST: modelo externo
+ok 19 - kit POST: modelo externo
+  ---
+  duration_ms: 12.2214
+  type: 'test'
+  ...
+# Subtest: kit POST: mistura de modelos próprios e externos
+ok 20 - kit POST: mistura de modelos próprios e externos
+  ---
+  duration_ms: 14.7289
+  type: 'test'
+  ...
+# Subtest: kit POST: modelo inativo
+ok 21 - kit POST: modelo inativo
+  ---
+  duration_ms: 15.6477
+  type: 'test'
+  ...
+# Subtest: kit POST: modelo inexistente
+ok 22 - kit POST: modelo inexistente
+  ---
+  duration_ms: 13.6221
+  type: 'test'
+  ...
+# Subtest: kit POST: modelos duplicados
+ok 23 - kit POST: modelos duplicados
+  ---
+  duration_ms: 9.7174
+  type: 'test'
+  ...
+# Subtest: kit POST: identificador malformado
+ok 24 - kit POST: identificador malformado
+  ---
+  duration_ms: 10.7163
+  type: 'test'
+  ...
+# Subtest: kit POST: lista vazia
+ok 25 - kit POST: lista vazia
+  ---
+  duration_ms: 9.1785
+  type: 'test'
+  ...
+# Subtest: kit PUT: modelo do próprio escritório
+ok 26 - kit PUT: modelo do próprio escritório
+  ---
+  duration_ms: 12.1614
+  type: 'test'
+  ...
+# Subtest: kit PUT: modelo externo
+ok 27 - kit PUT: modelo externo
+  ---
+  duration_ms: 10.7946
+  type: 'test'
+  ...
+# Subtest: kit PUT: mistura de modelos próprios e externos
+ok 28 - kit PUT: mistura de modelos próprios e externos
+  ---
+  duration_ms: 20.9953
+  type: 'test'
+  ...
+# Subtest: kit PUT: modelo inativo
+ok 29 - kit PUT: modelo inativo
+  ---
+  duration_ms: 8.4081
+  type: 'test'
+  ...
+# Subtest: kit PUT: modelo inexistente
+ok 30 - kit PUT: modelo inexistente
+  ---
+  duration_ms: 10.2973
+  type: 'test'
+  ...
+# Subtest: kit PUT: modelos duplicados
+ok 31 - kit PUT: modelos duplicados
+  ---
+  duration_ms: 8.8784
+  type: 'test'
+  ...
+# Subtest: kit PUT: identificador malformado
+ok 32 - kit PUT: identificador malformado
+  ---
+  duration_ms: 10.1203
+  type: 'test'
+  ...
+# Subtest: kit PUT: lista vazia
+ok 33 - kit PUT: lista vazia
+  ---
+  duration_ms: 8.9153
+  type: 'test'
+  ...
+# Subtest: pendência POST: vínculos próprios
+ok 34 - pendência POST: vínculos próprios
+  ---
+  duration_ms: 17.1426
+  type: 'test'
+  ...
+# Subtest: pendência POST: cliente externo
+ok 35 - pendência POST: cliente externo
+  ---
+  duration_ms: 17.8017
+  type: 'test'
+  ...
+# Subtest: pendência POST: responsável externo
+ok 36 - pendência POST: responsável externo
+  ---
+  duration_ms: 13.2859
+  type: 'test'
+  ...
+# Subtest: pendência POST: responsável inativo
+ok 37 - pendência POST: responsável inativo
+  ---
+  duration_ms: 12.3008
+  type: 'test'
+  ...
+# Subtest: pendência POST: cliente inexistente
+ok 38 - pendência POST: cliente inexistente
+  ---
+  duration_ms: 9.5966
+  type: 'test'
+  ...
+# Subtest: pendência POST: referência malformada
+ok 39 - pendência POST: referência malformada
+  ---
+  duration_ms: 13.7557
+  type: 'test'
+  ...
+# Subtest: pendência POST: prazo inválido
+ok 40 - pendência POST: prazo inválido
+  ---
+  duration_ms: 14.8451
+  type: 'test'
+  ...
+# Subtest: pendência POST: sem cliente associado
+ok 41 - pendência POST: sem cliente associado
+  ---
+  duration_ms: 13.1453
+  type: 'test'
+  ...
+# Subtest: pendência PATCH: vínculos próprios
+ok 42 - pendência PATCH: vínculos próprios
+  ---
+  duration_ms: 23.3827
+  type: 'test'
+  ...
+# Subtest: pendência PATCH: cliente externo
+ok 43 - pendência PATCH: cliente externo
+  ---
+  duration_ms: 20.767
+  type: 'test'
+  ...
+# Subtest: pendência PATCH: responsável externo
+ok 44 - pendência PATCH: responsável externo
+  ---
+  duration_ms: 16.5523
+  type: 'test'
+  ...
+# Subtest: pendência PATCH: responsável inativo
+ok 45 - pendência PATCH: responsável inativo
+  ---
+  duration_ms: 11.3198
+  type: 'test'
+  ...
+# Subtest: pendência PATCH: cliente inexistente
+ok 46 - pendência PATCH: cliente inexistente
+  ---
+  duration_ms: 9.6009
+  type: 'test'
+  ...
+# Subtest: pendência PATCH: referência malformada
+ok 47 - pendência PATCH: referência malformada
+  ---
+  duration_ms: 12.9793
+  type: 'test'
+  ...
+# Subtest: pendência PATCH: prazo inválido
+ok 48 - pendência PATCH: prazo inválido
+  ---
+  duration_ms: 15.1529
+  type: 'test'
+  ...
+# Subtest: pendência PATCH: sem cliente associado
+ok 49 - pendência PATCH: sem cliente associado
+  ---
+  duration_ms: 11.0935
+  type: 'test'
+  ...
+# Subtest: pendência GET: outro escritório não acessa nem altera o registro
+ok 50 - pendência GET: outro escritório não acessa nem altera o registro
+  ---
+  duration_ms: 11.0672
+  type: 'test'
+  ...
+# Subtest: pendência PATCH: outro escritório não acessa nem altera o registro
+ok 51 - pendência PATCH: outro escritório não acessa nem altera o registro
+  ---
+  duration_ms: 16.027
+  type: 'test'
+  ...
+# Subtest: pendência DELETE: outro escritório não acessa nem altera o registro
+ok 52 - pendência DELETE: outro escritório não acessa nem altera o registro
+  ---
+  duration_ms: 12.2426
+  type: 'test'
+  ...
+# Subtest: visualizador não altera src/app/api/kits/route.ts POST
+ok 53 - visualizador não altera src/app/api/kits/route.ts POST
+  ---
+  duration_ms: 6.5366
+  type: 'test'
+  ...
+# Subtest: sem sessão não altera src/app/api/kits/route.ts POST
+ok 54 - sem sessão não altera src/app/api/kits/route.ts POST
+  ---
+  duration_ms: 6.7039
+  type: 'test'
+  ...
+# Subtest: visualizador não altera src/app/api/kits/[id]/route.ts PUT
+ok 55 - visualizador não altera src/app/api/kits/[id]/route.ts PUT
+  ---
+  duration_ms: 7.0679
+  type: 'test'
+  ...
+# Subtest: sem sessão não altera src/app/api/kits/[id]/route.ts PUT
+ok 56 - sem sessão não altera src/app/api/kits/[id]/route.ts PUT
+  ---
+  duration_ms: 13.9549
+  type: 'test'
+  ...
+# Subtest: visualizador não altera src/app/api/kits/[id]/route.ts DELETE
+ok 57 - visualizador não altera src/app/api/kits/[id]/route.ts DELETE
+  ---
+  duration_ms: 6.461
+  type: 'test'
+  ...
+# Subtest: sem sessão não altera src/app/api/kits/[id]/route.ts DELETE
+ok 58 - sem sessão não altera src/app/api/kits/[id]/route.ts DELETE
+  ---
+  duration_ms: 9.3746
+  type: 'test'
+  ...
+# Subtest: visualizador não altera src/app/api/pendencias/route.ts POST
+ok 59 - visualizador não altera src/app/api/pendencias/route.ts POST
+  ---
+  duration_ms: 13.394
+  type: 'test'
+  ...
+# Subtest: sem sessão não altera src/app/api/pendencias/route.ts POST
+ok 60 - sem sessão não altera src/app/api/pendencias/route.ts POST
+  ---
+  duration_ms: 11.3391
+  type: 'test'
+  ...
+# Subtest: visualizador não altera src/app/api/pendencias/[id]/route.ts PATCH
+ok 61 - visualizador não altera src/app/api/pendencias/[id]/route.ts PATCH
+  ---
+  duration_ms: 8.5808
+  type: 'test'
+  ...
+# Subtest: sem sessão não altera src/app/api/pendencias/[id]/route.ts PATCH
+ok 62 - sem sessão não altera src/app/api/pendencias/[id]/route.ts PATCH
+  ---
+  duration_ms: 14.881
+  type: 'test'
+  ...
+# Subtest: visualizador não altera src/app/api/pendencias/[id]/route.ts DELETE
+ok 63 - visualizador não altera src/app/api/pendencias/[id]/route.ts DELETE
+  ---
+  duration_ms: 20.4776
+  type: 'test'
+  ...
+# Subtest: sem sessão não altera src/app/api/pendencias/[id]/route.ts DELETE
+ok 64 - sem sessão não altera src/app/api/pendencias/[id]/route.ts DELETE
+  ---
+  duration_ms: 11.7651
+  type: 'test'
+  ...
+# Subtest: configurações institucionais: cargo OFFICE_ADMIN
+ok 65 - configurações institucionais: cargo OFFICE_ADMIN
+  ---
+  duration_ms: 8.2515
+  type: 'test'
+  ...
+# Subtest: configurações institucionais: cargo LAWYER
+ok 66 - configurações institucionais: cargo LAWYER
+  ---
+  duration_ms: 5.26
+  type: 'test'
+  ...
+# Subtest: configurações institucionais: cargo STAFF
+ok 67 - configurações institucionais: cargo STAFF
+  ---
+  duration_ms: 7.3126
+  type: 'test'
+  ...
+# Subtest: configurações institucionais: cargo VIEWER
+ok 68 - configurações institucionais: cargo VIEWER
+  ---
+  duration_ms: 5.9916
+  type: 'test'
+  ...
+# Subtest: listagem de kits omite kit com vínculo legado de outro escritório
+ok 69 - listagem de kits omite kit com vínculo legado de outro escritório
+  ---
+  duration_ms: 11.5664
+  type: 'test'
+  ...
+# Subtest: geração não cria documentos para vínculo legado externo
+ok 70 - geração não cria documentos para vínculo legado externo
+  ---
+  duration_ms: 107.7182
+  type: 'test'
+  ...
+# Subtest: geração não cria documentos para modelo inativo
+ok 71 - geração não cria documentos para modelo inativo
+  ---
+  duration_ms: 57.3661
+  type: 'test'
+  ...
+# Subtest: geração não cria documentos para kit inativo
+ok 72 - geração não cria documentos para kit inativo
+  ---
+  duration_ms: 57.5728
+  type: 'test'
+  ...
+# Subtest: geração não cria documentos para visualizador
+ok 73 - geração não cria documentos para visualizador
+  ---
+  duration_ms: 43.8462
+  type: 'test'
+  ...
+1..73
+# tests 73
+# suites 0
+# pass 73
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2020.0979

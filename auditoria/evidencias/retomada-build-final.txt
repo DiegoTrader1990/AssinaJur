@@ -1,0 +1,576 @@
+
+> assinajur@1.0.0 prebuild
+> npm run test:security
+
+
+> assinajur@1.0.0 test:security
+> node --test scripts/security-regression.test.cjs
+
+TAP version 13
+# Subtest: publicação gera o cliente e compila, sem sincronizar ou apagar banco
+ok 1 - publicação gera o cliente e compila, sem sincronizar ou apagar banco
+  ---
+  duration_ms: 1.9081
+  type: 'test'
+  ...
+# Subtest: configuração sem chave utilizável recusa emissão ({})
+ok 2 - configuração sem chave utilizável recusa emissão ({})
+  ---
+  duration_ms: 8.5249
+  type: 'test'
+  ...
+# Subtest: configuração sem chave utilizável recusa emissão ({"JWT_SECRET":"   "})
+ok 3 - configuração sem chave utilizável recusa emissão ({"JWT_SECRET":"   "})
+  ---
+  duration_ms: 6.6915
+  type: 'test'
+  ...
+# Subtest: conexão ausente falha sem escolher um banco alternativo embutido
+ok 4 - conexão ausente falha sem escolher um banco alternativo embutido
+  ---
+  duration_ms: 17.7413
+  type: 'test'
+  ...
+# Subtest: conexão configurada mantém prioridade e compatibilidade dos nomes existentes
+ok 5 - conexão configurada mantém prioridade e compatibilidade dos nomes existentes
+  ---
+  duration_ms: 5.6143
+  type: 'test'
+  ...
+# Subtest: sessão anterior HS256 continua válida com a mesma chave configurada
+ok 6 - sessão anterior HS256 continua válida com a mesma chave configurada
+  ---
+  duration_ms: 69.4357
+  type: 'test'
+  ...
+# Subtest: ausência de chave impede inicialização da autenticação
+ok 7 - ausência de chave impede inicialização da autenticação
+  ---
+  duration_ms: 16.7752
+  type: 'test'
+  ...
+# Subtest: sessão recusa assinatura falsificada
+ok 8 - sessão recusa assinatura falsificada
+  ---
+  duration_ms: 14.1818
+  type: 'test'
+  ...
+# Subtest: sessão recusa token expirado
+ok 9 - sessão recusa token expirado
+  ---
+  duration_ms: 14.6813
+  type: 'test'
+  ...
+# Subtest: sessão recusa algoritmo diferente
+ok 10 - sessão recusa algoritmo diferente
+  ---
+  duration_ms: 13.7673
+  type: 'test'
+  ...
+# Subtest: sessão recusa estado OAuth usado como sessão
+ok 11 - sessão recusa estado OAuth usado como sessão
+  ---
+  duration_ms: 9.7293
+  type: 'test'
+  ...
+# Subtest: sessão recusa cargo desconhecido
+ok 12 - sessão recusa cargo desconhecido
+  ---
+  duration_ms: 9.0649
+  type: 'test'
+  ...
+# Subtest: resolução de sessão: usuário ativo
+ok 13 - resolução de sessão: usuário ativo
+  ---
+  duration_ms: 11.7676
+  type: 'test'
+  ...
+# Subtest: resolução de sessão: usuário de outro escritório
+ok 14 - resolução de sessão: usuário de outro escritório
+  ---
+  duration_ms: 14.9289
+  type: 'test'
+  ...
+# Subtest: resolução de sessão: usuário inativo
+ok 15 - resolução de sessão: usuário inativo
+  ---
+  duration_ms: 15.2411
+  type: 'test'
+  ...
+# Subtest: resolução de sessão: escritório inativo
+ok 16 - resolução de sessão: escritório inativo
+  ---
+  duration_ms: 9.4779
+  type: 'test'
+  ...
+# Subtest: resolução de sessão: escritório ausente
+ok 17 - resolução de sessão: escritório ausente
+  ---
+  duration_ms: 9.1553
+  type: 'test'
+  ...
+# Subtest: kit POST: modelo do próprio escritório
+ok 18 - kit POST: modelo do próprio escritório
+  ---
+  duration_ms: 16.5766
+  type: 'test'
+  ...
+# Subtest: kit POST: modelo externo
+ok 19 - kit POST: modelo externo
+  ---
+  duration_ms: 8.4744
+  type: 'test'
+  ...
+# Subtest: kit POST: mistura de modelos próprios e externos
+ok 20 - kit POST: mistura de modelos próprios e externos
+  ---
+  duration_ms: 9.5387
+  type: 'test'
+  ...
+# Subtest: kit POST: modelo inativo
+ok 21 - kit POST: modelo inativo
+  ---
+  duration_ms: 9.0257
+  type: 'test'
+  ...
+# Subtest: kit POST: modelo inexistente
+ok 22 - kit POST: modelo inexistente
+  ---
+  duration_ms: 9.1257
+  type: 'test'
+  ...
+# Subtest: kit POST: modelos duplicados
+ok 23 - kit POST: modelos duplicados
+  ---
+  duration_ms: 9.2792
+  type: 'test'
+  ...
+# Subtest: kit POST: identificador malformado
+ok 24 - kit POST: identificador malformado
+  ---
+  duration_ms: 8.0289
+  type: 'test'
+  ...
+# Subtest: kit POST: lista vazia
+ok 25 - kit POST: lista vazia
+  ---
+  duration_ms: 8.0711
+  type: 'test'
+  ...
+# Subtest: kit PUT: modelo do próprio escritório
+ok 26 - kit PUT: modelo do próprio escritório
+  ---
+  duration_ms: 10.1793
+  type: 'test'
+  ...
+# Subtest: kit PUT: modelo externo
+ok 27 - kit PUT: modelo externo
+  ---
+  duration_ms: 7.9774
+  type: 'test'
+  ...
+# Subtest: kit PUT: mistura de modelos próprios e externos
+ok 28 - kit PUT: mistura de modelos próprios e externos
+  ---
+  duration_ms: 16.1685
+  type: 'test'
+  ...
+# Subtest: kit PUT: modelo inativo
+ok 29 - kit PUT: modelo inativo
+  ---
+  duration_ms: 8.0681
+  type: 'test'
+  ...
+# Subtest: kit PUT: modelo inexistente
+ok 30 - kit PUT: modelo inexistente
+  ---
+  duration_ms: 7.999
+  type: 'test'
+  ...
+# Subtest: kit PUT: modelos duplicados
+ok 31 - kit PUT: modelos duplicados
+  ---
+  duration_ms: 6.8833
+  type: 'test'
+  ...
+# Subtest: kit PUT: identificador malformado
+ok 32 - kit PUT: identificador malformado
+  ---
+  duration_ms: 7.1129
+  type: 'test'
+  ...
+# Subtest: kit PUT: lista vazia
+ok 33 - kit PUT: lista vazia
+  ---
+  duration_ms: 6.4205
+  type: 'test'
+  ...
+# Subtest: pendência POST: vínculos próprios
+ok 34 - pendência POST: vínculos próprios
+  ---
+  duration_ms: 12.2358
+  type: 'test'
+  ...
+# Subtest: pendência POST: cliente externo
+ok 35 - pendência POST: cliente externo
+  ---
+  duration_ms: 15.8276
+  type: 'test'
+  ...
+# Subtest: pendência POST: responsável externo
+ok 36 - pendência POST: responsável externo
+  ---
+  duration_ms: 10.7587
+  type: 'test'
+  ...
+# Subtest: pendência POST: responsável inativo
+ok 37 - pendência POST: responsável inativo
+  ---
+  duration_ms: 8.6837
+  type: 'test'
+  ...
+# Subtest: pendência POST: cliente inexistente
+ok 38 - pendência POST: cliente inexistente
+  ---
+  duration_ms: 8.8943
+  type: 'test'
+  ...
+# Subtest: pendência POST: referência malformada
+ok 39 - pendência POST: referência malformada
+  ---
+  duration_ms: 7.8826
+  type: 'test'
+  ...
+# Subtest: pendência POST: prazo inválido
+ok 40 - pendência POST: prazo inválido
+  ---
+  duration_ms: 8.4082
+  type: 'test'
+  ...
+# Subtest: pendência POST: sem cliente associado
+ok 41 - pendência POST: sem cliente associado
+  ---
+  duration_ms: 8.7512
+  type: 'test'
+  ...
+# Subtest: pendência PATCH: vínculos próprios
+ok 42 - pendência PATCH: vínculos próprios
+  ---
+  duration_ms: 14.3176
+  type: 'test'
+  ...
+# Subtest: pendência PATCH: cliente externo
+ok 43 - pendência PATCH: cliente externo
+  ---
+  duration_ms: 11.0884
+  type: 'test'
+  ...
+# Subtest: pendência PATCH: responsável externo
+ok 44 - pendência PATCH: responsável externo
+  ---
+  duration_ms: 9.8279
+  type: 'test'
+  ...
+# Subtest: pendência PATCH: responsável inativo
+ok 45 - pendência PATCH: responsável inativo
+  ---
+  duration_ms: 8.3327
+  type: 'test'
+  ...
+# Subtest: pendência PATCH: cliente inexistente
+ok 46 - pendência PATCH: cliente inexistente
+  ---
+  duration_ms: 8.1516
+  type: 'test'
+  ...
+# Subtest: pendência PATCH: referência malformada
+ok 47 - pendência PATCH: referência malformada
+  ---
+  duration_ms: 7.7193
+  type: 'test'
+  ...
+# Subtest: pendência PATCH: prazo inválido
+ok 48 - pendência PATCH: prazo inválido
+  ---
+  duration_ms: 10.724
+  type: 'test'
+  ...
+# Subtest: pendência PATCH: sem cliente associado
+ok 49 - pendência PATCH: sem cliente associado
+  ---
+  duration_ms: 8.9098
+  type: 'test'
+  ...
+# Subtest: pendência GET: outro escritório não acessa nem altera o registro
+ok 50 - pendência GET: outro escritório não acessa nem altera o registro
+  ---
+  duration_ms: 7.4226
+  type: 'test'
+  ...
+# Subtest: pendência PATCH: outro escritório não acessa nem altera o registro
+ok 51 - pendência PATCH: outro escritório não acessa nem altera o registro
+  ---
+  duration_ms: 8.5792
+  type: 'test'
+  ...
+# Subtest: pendência DELETE: outro escritório não acessa nem altera o registro
+ok 52 - pendência DELETE: outro escritório não acessa nem altera o registro
+  ---
+  duration_ms: 7.9553
+  type: 'test'
+  ...
+# Subtest: visualizador não altera src/app/api/kits/route.ts POST
+ok 53 - visualizador não altera src/app/api/kits/route.ts POST
+  ---
+  duration_ms: 5.4779
+  type: 'test'
+  ...
+# Subtest: sem sessão não altera src/app/api/kits/route.ts POST
+ok 54 - sem sessão não altera src/app/api/kits/route.ts POST
+  ---
+  duration_ms: 5.5398
+  type: 'test'
+  ...
+# Subtest: visualizador não altera src/app/api/kits/[id]/route.ts PUT
+ok 55 - visualizador não altera src/app/api/kits/[id]/route.ts PUT
+  ---
+  duration_ms: 5.0943
+  type: 'test'
+  ...
+# Subtest: sem sessão não altera src/app/api/kits/[id]/route.ts PUT
+ok 56 - sem sessão não altera src/app/api/kits/[id]/route.ts PUT
+  ---
+  duration_ms: 8.3474
+  type: 'test'
+  ...
+# Subtest: visualizador não altera src/app/api/kits/[id]/route.ts DELETE
+ok 57 - visualizador não altera src/app/api/kits/[id]/route.ts DELETE
+  ---
+  duration_ms: 5.5645
+  type: 'test'
+  ...
+# Subtest: sem sessão não altera src/app/api/kits/[id]/route.ts DELETE
+ok 58 - sem sessão não altera src/app/api/kits/[id]/route.ts DELETE
+  ---
+  duration_ms: 5.1943
+  type: 'test'
+  ...
+# Subtest: visualizador não altera src/app/api/pendencias/route.ts POST
+ok 59 - visualizador não altera src/app/api/pendencias/route.ts POST
+  ---
+  duration_ms: 7.73
+  type: 'test'
+  ...
+# Subtest: sem sessão não altera src/app/api/pendencias/route.ts POST
+ok 60 - sem sessão não altera src/app/api/pendencias/route.ts POST
+  ---
+  duration_ms: 8.5994
+  type: 'test'
+  ...
+# Subtest: visualizador não altera src/app/api/pendencias/[id]/route.ts PATCH
+ok 61 - visualizador não altera src/app/api/pendencias/[id]/route.ts PATCH
+  ---
+  duration_ms: 6.8016
+  type: 'test'
+  ...
+# Subtest: sem sessão não altera src/app/api/pendencias/[id]/route.ts PATCH
+ok 62 - sem sessão não altera src/app/api/pendencias/[id]/route.ts PATCH
+  ---
+  duration_ms: 8.27
+  type: 'test'
+  ...
+# Subtest: visualizador não altera src/app/api/pendencias/[id]/route.ts DELETE
+ok 63 - visualizador não altera src/app/api/pendencias/[id]/route.ts DELETE
+  ---
+  duration_ms: 16.7437
+  type: 'test'
+  ...
+# Subtest: sem sessão não altera src/app/api/pendencias/[id]/route.ts DELETE
+ok 64 - sem sessão não altera src/app/api/pendencias/[id]/route.ts DELETE
+  ---
+  duration_ms: 6.6745
+  type: 'test'
+  ...
+# Subtest: configurações institucionais: cargo OFFICE_ADMIN
+ok 65 - configurações institucionais: cargo OFFICE_ADMIN
+  ---
+  duration_ms: 4.4918
+  type: 'test'
+  ...
+# Subtest: configurações institucionais: cargo LAWYER
+ok 66 - configurações institucionais: cargo LAWYER
+  ---
+  duration_ms: 3.9089
+  type: 'test'
+  ...
+# Subtest: configurações institucionais: cargo STAFF
+ok 67 - configurações institucionais: cargo STAFF
+  ---
+  duration_ms: 3.4829
+  type: 'test'
+  ...
+# Subtest: configurações institucionais: cargo VIEWER
+ok 68 - configurações institucionais: cargo VIEWER
+  ---
+  duration_ms: 3.3896
+  type: 'test'
+  ...
+# Subtest: listagem de kits omite kit com vínculo legado de outro escritório
+ok 69 - listagem de kits omite kit com vínculo legado de outro escritório
+  ---
+  duration_ms: 6.0003
+  type: 'test'
+  ...
+# Subtest: geração não cria documentos para vínculo legado externo
+ok 70 - geração não cria documentos para vínculo legado externo
+  ---
+  duration_ms: 33.2381
+  type: 'test'
+  ...
+# Subtest: geração não cria documentos para modelo inativo
+ok 71 - geração não cria documentos para modelo inativo
+  ---
+  duration_ms: 20.7764
+  type: 'test'
+  ...
+# Subtest: geração não cria documentos para kit inativo
+ok 72 - geração não cria documentos para kit inativo
+  ---
+  duration_ms: 23.1504
+  type: 'test'
+  ...
+# Subtest: geração não cria documentos para visualizador
+ok 73 - geração não cria documentos para visualizador
+  ---
+  duration_ms: 20.4356
+  type: 'test'
+  ...
+1..73
+# tests 73
+# suites 0
+# pass 73
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2064.4348
+
+> assinajur@1.0.0 build
+> prisma generate && next build
+
+Environment variables loaded from .env
+Prisma schema loaded from prisma\schema.prisma
+
+✔ Generated Prisma Client (v5.22.0) to .\node_modules\@prisma\client in 312ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Help us improve the Prisma ORM for everyone. Share your feedback in a short 2-min survey: https://pris.ly/orm/survey/release-5-22
+
+  ▲ Next.js 14.2.35
+  - Environments: .env.production.local, .env.local, .env
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/31) ...
+   Generating static pages (7/31) 
+   Generating static pages (15/31) 
+   Generating static pages (23/31) 
+ ✓ Generating static pages (31/31)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                  Size     First Load JS
+┌ ○ /                                        18.5 kB         115 kB
+├ ○ /_not-found                              880 B            89 kB
+├ ○ /admin                                   4.15 kB         101 kB
+├ ○ /admin/login                             2.56 kB        90.7 kB
+├ ƒ /api/admin/login                         0 B                0 B
+├ ƒ /api/admin/offices                       0 B                0 B
+├ ƒ /api/admin/offices/[id]                  0 B                0 B
+├ ƒ /api/auth/login                          0 B                0 B
+├ ƒ /api/auth/logout                         0 B                0 B
+├ ƒ /api/auth/me                             0 B                0 B
+├ ƒ /api/auth/register-office                0 B                0 B
+├ ƒ /api/clients                             0 B                0 B
+├ ƒ /api/clients/[id]                        0 B                0 B
+├ ƒ /api/clients/geographic-summary          0 B                0 B
+├ ƒ /api/clients/parse-document              0 B                0 B
+├ ƒ /api/dev/sample-certificate              0 B                0 B
+├ ƒ /api/documents                           0 B                0 B
+├ ƒ /api/documents/[id]                      0 B                0 B
+├ ƒ /api/documents/[id]/download             0 B                0 B
+├ ƒ /api/documents/bulk                      0 B                0 B
+├ ƒ /api/documents/upload                    0 B                0 B
+├ ƒ /api/intake                              0 B                0 B
+├ ƒ /api/intake/file/[id]                    0 B                0 B
+├ ƒ /api/intake/local                        0 B                0 B
+├ ƒ /api/integrations/google-drive           0 B                0 B
+├ ƒ /api/integrations/google-drive/callback  0 B                0 B
+├ ƒ /api/kits                                0 B                0 B
+├ ƒ /api/kits/[id]                           0 B                0 B
+├ ƒ /api/kits/generate-package               0 B                0 B
+├ ƒ /api/kits/preview                        0 B                0 B
+├ ƒ /api/lab/documento/validar               0 B                0 B
+├ ƒ /api/office                              0 B                0 B
+├ ƒ /api/office/letterhead                   0 B                0 B
+├ ƒ /api/office/plan                         0 B                0 B
+├ ƒ /api/office/team                         0 B                0 B
+├ ƒ /api/pendencias                          0 B                0 B
+├ ƒ /api/pendencias/[id]                     0 B                0 B
+├ ƒ /api/processos                           0 B                0 B
+├ ƒ /api/processos/[id]                      0 B                0 B
+├ ƒ /api/processos/sync-drive                0 B                0 B
+├ ƒ /api/sign/[token]                        0 B                0 B
+├ ƒ /api/sign/[token]/confirm-identity       0 B                0 B
+├ ƒ /api/sign/[token]/document               0 B                0 B
+├ ƒ /api/sign/[token]/event                  0 B                0 B
+├ ƒ /api/sign/[token]/submit                 0 B                0 B
+├ ƒ /api/sign/documento/validar              0 B                0 B
+├ ƒ /api/tags                                0 B                0 B
+├ ƒ /api/tags/[id]                           0 B                0 B
+├ ƒ /api/templates                           0 B                0 B
+├ ƒ /api/templates/[id]                      0 B                0 B
+├ ƒ /api/templates/ai-edit                   0 B                0 B
+├ ƒ /api/templates/fix-tokens                0 B                0 B
+├ ƒ /api/templates/preview                   0 B                0 B
+├ ƒ /api/templates/word                      0 B                0 B
+├ ƒ /api/verify/[code]                       0 B                0 B
+├ ƒ /api/whatsapp/qr                         0 B                0 B
+├ ƒ /api/whatsapp/status                     0 B                0 B
+├ ƒ /api/whatsapp/webhook                    0 B                0 B
+├ ƒ /assinar/[token]                         20.9 kB         109 kB
+├ ○ /clientes                                23.5 kB         114 kB
+├ ○ /configuracoes                           8.54 kB        96.6 kB
+├ ○ /dashboard                               7.21 kB         156 kB
+├ ○ /documentos                              12.8 kB         110 kB
+├ ○ /documentos/novo                         13.2 kB         101 kB
+├ ○ /entrada                                 5.77 kB         103 kB
+├ ○ /equipe                                  4.11 kB        92.2 kB
+├ ○ /escritorio                              192 B           154 kB
+├ ○ /kits                                    7.83 kB         113 kB
+├ ○ /kits/enviar                             14 kB           111 kB
+├ ○ /lab/documento                           14.5 kB         103 kB
+├ ○ /login                                   3.23 kB         100 kB
+├ ○ /modelos                                 7.79 kB         104 kB
+├ ○ /painel-novo                             190 B           154 kB
+├ ○ /plano                                   2.99 kB        91.1 kB
+├ ○ /privacidade                             180 B            97 kB
+├ ○ /processos                               10.8 kB         108 kB
+├ ○ /register                                5.04 kB         102 kB
+├ ○ /relatorios                              3.46 kB        91.6 kB
+├ ○ /termos                                  183 B            97 kB
+├ ○ /verificar                               2.83 kB        99.6 kB
+├ ƒ /verificar/[code]                        5.53 kB         102 kB
+└ ○ /whatsapp                                7.03 kB        95.1 kB
++ First Load JS shared by all                88.1 kB
+  ├ chunks/2117-f865963bdea5a4d9.js          31.9 kB
+  ├ chunks/fd9d1056-6e97223271e8ad39.js      53.6 kB
+  └ other shared chunks (total)              2.55 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

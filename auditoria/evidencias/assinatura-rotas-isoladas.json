@@ -1,0 +1,87 @@
+{
+  "scope": "Rotas locais reais transpiled; banco, rede, Blob e WhatsApp substituídos por doubles. Não é teste E2E nem produção.",
+  "checks": 9,
+  "results": [
+    {
+      "name": "Submit aceita selfie texto e consentimento omitido",
+      "reproduzido": true,
+      "evidence": {
+        "status": 200,
+        "documentStatus": "CONCLUIDO",
+        "selfie": "not-an-image",
+        "defaultConsentAdded": true
+      }
+    },
+    {
+      "name": "Token cliente sobrescreve testemunha individual já assinada",
+      "reproduzido": true,
+      "evidence": {
+        "cpf": "000",
+        "status": "ASSINADO",
+        "signingMode": "INDIVIDUAL"
+      }
+    },
+    {
+      "name": "Salvar evidência CANCELADO sem autorização de etapa",
+      "reproduzido": true,
+      "evidence": {
+        "status": 200,
+        "mutation": {
+          "documentFrontImage": "fake",
+          "status": "EM_ANDAMENTO"
+        }
+      }
+    },
+    {
+      "name": "Salvar evidência CONCLUIDO sem autorização de etapa",
+      "reproduzido": true,
+      "evidence": {
+        "status": 200,
+        "mutation": {
+          "documentFrontImage": "fake",
+          "status": "ASSINADO"
+        }
+      }
+    },
+    {
+      "name": "Abrir link transforma CONCLUIDO em EXPIRADO",
+      "reproduzido": true,
+      "evidence": {
+        "responseStatus": 400,
+        "newStatus": "EXPIRADO"
+      }
+    },
+    {
+      "name": "Verificação retorna valid true para cancelado",
+      "reproduzido": true,
+      "evidence": {
+        "valid": true,
+        "status": "CANCELADO"
+      }
+    },
+    {
+      "name": "Download público ignora cancelamento e expiração",
+      "reproduzido": true,
+      "evidence": {
+        "status": 200
+      }
+    },
+    {
+      "name": "Falha parcial impede retentativa de conclusão",
+      "reproduzido": true,
+      "evidence": {
+        "firstStatus": 500,
+        "retryStatus": 400,
+        "signerStatus": "ASSINADO",
+        "documentStatus": "ENVIADO"
+      }
+    },
+    {
+      "name": "Conclusão sem PDF não enfileira avisos",
+      "reproduzido": true,
+      "evidence": {
+        "outboxOperations": 0
+      }
+    }
+  ]
+}

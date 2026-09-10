@@ -1,0 +1,424 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Auditoria AssinaJur — 08/09/2026</title><style>:root{color-scheme:light;--navy:#0b1d3d;--blue:#245edb;--ink:#26354a;--muted:#637083;--line:#dde3ec}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#f2f5fa;color:var(--ink);font:16px/1.72 system-ui,-apple-system,Segoe UI,sans-serif}.cover{background:var(--navy);color:white;padding:50px max(28px,calc((100% - 1050px)/2)) 38px}.eyebrow{text-transform:uppercase;font-size:12px;letter-spacing:.16em;color:#aabfdc}.cover h1{font-size:40px;line-height:1.14;max-width:800px;margin:12px 0 18px}.cover p{max-width:800px;color:#d2dced}.stats{display:flex;gap:12px;flex-wrap:wrap;margin-top:25px}.stats div{border:1px solid #314460;border-radius:12px;padding:12px 20px;min-width:130px}.stats strong{font-size:28px;display:block}.stats span{font-size:12px;color:#c3d0e3}main{max-width:1120px;margin:30px auto 70px;padding:40px 48px;background:white;border:1px solid var(--line);border-radius:18px}main>h1{font-size:30px;color:var(--navy)}h2{font-size:25px;line-height:1.3;margin:44px 0 18px;color:var(--navy);padding-top:20px;border-top:2px solid var(--line)}h3{font-size:19px;line-height:1.4;color:var(--navy);margin:35px 0 12px;padding:16px 20px;background:#f3f6fb;border-left:4px solid var(--blue);border-radius:0 8px 8px 0}p{margin:12px 0}a{color:var(--blue);overflow-wrap:anywhere}code{font-family:ui-monospace,Consolas,monospace;font-size:.86em;background:#f1f4f8;padding:2px 4px;border-radius:4px;overflow-wrap:anywhere}table{border-collapse:collapse;font-size:13px;width:100%;display:block;overflow:auto;margin:20px 0}th,td{padding:12px 14px;border:1px solid var(--line);vertical-align:top;min-width:150px}th{background:var(--navy);color:white;text-align:left}tr:nth-child(even){background:#f7f9fc}li{margin:7px 0}footer{text-align:center;color:var(--muted);font-size:12px;padding:20px}@media(max-width:700px){main{margin:12px;padding:22px 20px}.cover{padding:30px 24px}.cover h1{font-size:30px}h2{font-size:22px}h3{font-size:17px}.stats div{min-width:100px;padding:10px 12px}}@media print{body{background:white;font-size:10pt}.cover{padding:24px;color:#0b1d3d;background:#edf2f8}.cover p,.eyebrow,.stats span{color:#34455c}.stats div{border-color:#becadb}main{max-width:none;border:0;margin:0;padding:12px}h2,h3{break-after:avoid}p,li{orphans:3;widows:3}table{display:table;font-size:8pt}th,td{min-width:0;padding:7px}h3{break-inside:avoid}a{color:#17469e;text-decoration:none}footer{display:none}}</style></head><body><header class="cover"><div class="eyebrow">AssinaJur • Preparação para lançamento • 08/09/2026</div><h1>O que falta para testar e vender com confiança</h1><p>Auditoria de produto, segurança, assinatura e operação. Parecer atual: corrigir bloqueios antes de liberar outros escritórios com dados reais.</p><div class="stats"><div><strong>57</strong><span>pontos de ação</span></div><div><strong>15</strong><span>P0 • bloqueios</span></div><div><strong>37</strong><span>P1 • antes da liberação</span></div><div><strong>5</strong><span>P2 • melhorias</span></div></div></header><main><h1 id="auditoria-do-assinajur-preparacao-para-testes-e-vendas">Auditoria do AssinaJur — preparação para testes e vendas</h1>
+<p><strong>Data:</strong> 8 de setembro de 2026. <strong>Base local:</strong> commit <code>9783c2d</code>. <strong>Site observado:</strong> <a href="https://www.assinajur.com.br">https://www.assinajur.com.br</a>. <strong>Natureza:</strong> auditoria de código, fluxos, superfície pública e preparação operacional/comercial.</p>
+<p><strong>Inventário:</strong> 57 pontos de ação — <strong>15 P0</strong>, <strong>37 P1</strong> e <strong>5 P2</strong>. O inventário combina defeitos confirmados, lacunas e verificações externas, identificados individualmente.</p>
+<h2 id="parecer-de-liberacao">Parecer de liberação</h2>
+<p><strong>Ainda não recomendo abrir vendas nem liberar o ambiente atual para colegas utilizarem documentos reais.</strong> Há uma base funcional considerável e a compilação passa, mas existem falhas que comprometem isolamento entre escritórios, identidade dos participantes, preservação das evidências e previsibilidade dos fluxos.</p>
+<p>É possível preparar um <strong>piloto fechado com dados fictícios</strong>, depois de corrigir os bloqueios indicados abaixo e separar o ambiente de testes. Uma demonstração visual acompanhada, sem cadastro ou documentos reais, pode servir para colher opiniões sobre a proposta do produto. Isso não equivale à aprovação para uso operacional.</p>
+<p>O caminho mais curto para vender é estabilizar um escopo pequeno: <strong>cadastro de escritório e cliente → modelos revisados → envio individual ou kit → assinatura → certificado → conferência e download</strong>. WhatsApp com IA, edição Word local e Central de Entrada devem entrar no piloto apenas quando estiverem isolados, previsíveis e verificáveis; podem ficar temporariamente fora da oferta inicial.</p>
+<p><strong>Restrição confirmada pelo usuário após a auditoria:</strong> o sistema já está em uso, existem clientes cadastrados e dois kits com assinaturas concluídas que o usuário conferiu como corretas. Esses registros devem ser preservados. Os dois kits não foram inspecionados individualmente nesta auditoria; os achados não são uma declaração de defeito nesses exemplares.</p>
+<p><strong>Condição antes de alterações em produção:</strong> fazer backup do banco e dos arquivos originais/assinados, conferir a recuperação em ambiente isolado e registrar o inventário de clientes, documentos, participantes, evidências, códigos de verificação e hashes. As correções devem manter compatibilidade com os registros existentes e preservar os bytes e identificadores das versões já emitidas. Não regenerar ou reabrir automaticamente os certificados históricos como efeito colateral de uma atualização. Comparar o inventário antes/depois; não alterar a estrutura do banco de produção sem backup verificado e plano de recuperação.</p>
+<h2 id="o-que-foi-efetivamente-verificado">O que foi efetivamente verificado</h2>
+<table>
+<thead>
+<tr>
+<th>Frente</th>
+<th>Resultado e alcance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Código</td>
+<td>Revisão dos fluxos centrais, APIs, autenticação, relações entre escritórios, schema, armazenamento, PDF, integrações, planos e interfaces. Achados vinculados aos arquivos abaixo.</td>
+</tr>
+<tr>
+<td>Navegador, produção</td>
+<td>Home, navegação para login/cadastro, link de recuperação, DOM dos links e campos; home/cadastro em largura de 390 px; link de assinatura e código de verificação inexistentes exibiram mensagens de erro apropriadas. Nenhuma conta criada, assinatura realizada ou mensagem enviada.</td>
+</tr>
+<tr>
+<td>Tipagem</td>
+<td><code>tsc --noEmit --incremental false</code> passou.</td>
+</tr>
+<tr>
+<td>Testes existentes</td>
+<td>Os <strong>12 testes de WhatsApp/trilha pública</strong> passaram. Cobertura restrita a essas funções, sem aprovação implícita dos demais fluxos.</td>
+</tr>
+<tr>
+<td>Assinatura em isolamento</td>
+<td><strong>9 verificações</strong> de rotas reais, transpiladas em memória, com banco, arquivos e notificações simulados, reproduziram comportamentos problemáticos.</td>
+</tr>
+<tr>
+<td>Segurança em isolamento</td>
+<td><strong>4 verificações</strong> confirmaram condições de falha em permissões, referências entre escritórios e preservação de HTML executável. Banco e sessão simulados.</td>
+</tr>
+<tr>
+<td>Compilação completa</td>
+<td><code>next build</code> passou e gerou as páginas. Executado diretamente, <strong>sem o <code>db push</code> do script de build</strong>, com conexões Postgres substituídas por endereço local sem serviço. A primeira tentativa falhou por bloqueio de download de fontes; a repetição com rede autorizada passou.</td>
+</tr>
+<tr>
+<td>Dependências</td>
+<td><code>npm audit --omit=dev</code> apontou <strong>4 dependências de nível alto</strong>, zero críticas no resultado: <code>next</code>, <code>sharp</code>, <code>postcss</code> transitivo e <code>nanoid</code>. São alertas sobre pacotes, não quatro explorações demonstradas no site.</td>
+</tr>
+<tr>
+<td>Banco/infraestrutura real</td>
+<td>Não foram auditados conteúdo dos bancos, restauração, configuração do painel da Vercel/Neon, volumes/custos, credenciais, licenças ativas ou entrega real dos provedores.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Limites da conclusão:</strong> testes isolados validam decisões das rotas, não substituem testes completos com PostgreSQL, Blob, câmera e provedores reais. Não foi demonstrado incidente ou invasão em produção. O commit publicado não foi confrontado com o painel da Vercel; observações no navegador e achados do código local são identificados separadamente. Não é possível garantir ausência de outros defeitos a partir desta auditoria.</p>
+<p><strong>Legenda de evidência:</strong> <strong>C</strong> = confirmado no código; <strong>I</strong> = reproduzido em ensaio isolado; <strong>V</strong> = observado no navegador publicado; <strong>E</strong> = depende de configuração externa; <strong>L</strong> = lacuna de produto/operação identificada no material disponível.</p>
+<p><strong>Prioridades:</strong> <strong>P0</strong> = bloquear liberação externa com dados reais; <strong>P1</strong> = corrigir antes da venda ou antes de liberar a funcionalidade afetada no piloto; <strong>P2</strong> = melhoria programável, que pode ficar fora de um piloto de escopo reduzido. Prioridade de lançamento não é pontuação CVSS.</p>
+<h2 id="seguranca-privacidade-e-separacao-entre-escritorios">1. Segurança, privacidade e separação entre escritórios</h2>
+<h3 id="seg-01-p0-credencial-de-banco-embutida-no-codigo">SEG-01 — P0 — Credencial de banco embutida no código</h3>
+<p><strong>Evidência C:</strong> <code>src/lib/prisma.ts:3–8</code> contém conexão alternativa com usuário e senha literais. Os valores não são reproduzidos neste relatório e sua validade não foi testada.</p>
+<p><strong>Impacto:</strong> quem obtiver esse código/histórico poderá tentar acessar o banco correspondente. Também existe risco de usar um banco inesperado quando uma variável estiver ausente.</p>
+<p><strong>Fazer/aceite:</strong> remover a conexão literal; exigir variáveis válidas; identificar e rotacionar a credencial no serviço correto; revisar histórico, scripts e artefatos com detecção de segredos. Confirmar que a credencial anterior deixou de funcionar, sem assumir que esse seja o banco de produção.</p>
+<h3 id="seg-02-p0-segredo-alternativo-previsivel-para-sessao">SEG-02 — P0 — Segredo alternativo previsível para sessão</h3>
+<p><strong>Evidência C/E:</strong> <code>src/lib/auth.ts:7</code>, <code>src/app/api/integrations/google-drive/route.ts:8</code> e callback usam segredos fixos se <code>JWT_SECRET</code> estiver ausente. As APIs de administração aceitam JWT com <code>officeId</code> de superadministrador.</p>
+<p><strong>Impacto:</strong> configuração incompleta deixa de falhar de forma segura e pode permitir falsificação de autorização. A existência do fallback está confirmada; não foi verificado se ele está ativo na produção.</p>
+<p><strong>Fazer/aceite:</strong> recusar inicialização sem segredo forte; separar finalidade de tokens administrativos/OAuth; testar ambiente sem segredo e garantir falha explícita. Não emitir sessões nesse estado.</p>
+<h3 id="seg-03-p0-kit-aceita-modelo-de-outro-escritorio">SEG-03 — P0 — Kit aceita modelo de outro escritório</h3>
+<p><strong>Evidência C/I:</strong> <code>src/app/api/kits/route.ts:69–94</code>, <code>src/app/api/kits/[id]/route.ts:55–62</code>. <code>templateIds</code> entram na relação sem validar o escritório do modelo; GET de kits inclui <code>contentHtml</code> (<code>route.ts:30</code>).</p>
+<p><strong>Impacto:</strong> um usuário que conheça um ID externo pode vincular modelo de outro escritório e receber seu conteúdo. O teste isolado confirmou aceitação do vínculo, não acesso a dados reais.</p>
+<p><strong>Fazer/aceite:</strong> validar todos os modelos por <code>officeId</code>, estado ativo e formato, inclusive em edição; reforçar integridade das relações. Testar dois escritórios: nenhuma leitura ou vínculo cruzado pode ser permitido.</p>
+<h3 id="seg-04-p0-pendencia-aceita-clienteresponsavel-de-outro-escritorio">SEG-04 — P0 — Pendência aceita cliente/responsável de outro escritório</h3>
+<p><strong>Evidência C/I:</strong> <code>src/app/api/pendencias/[id]/route.ts:99–127,146</code>. A pendência é filtrada por escritório, mas <code>clientId</code> e <code>responsibleId</code> recebidos não são validados da mesma forma; a resposta inclui dados do cliente.</p>
+<p><strong>Impacto:</strong> vínculo incorreto entre contas e possível exposição de nome, CPF e contato, caso seja informado ID externo válido.</p>
+<p><strong>Fazer/aceite:</strong> validar toda referência antes de alterar; manter responsáveis ativos no mesmo escritório; testes negativos de atualização, leitura posterior e exclusão em duas contas.</p>
+<h3 id="seg-05-p0-cargo-visualizador-nao-limita-diversas-alteracoes">SEG-05 — P0 — Cargo “visualizador” não limita diversas alterações</h3>
+<p><strong>Evidência C/I:</strong> <code>src/app/api/office/route.ts:32–64</code> permite PUT a qualquer sessão; rotas de clientes, modelos e kits também verificam sessão sem aplicar política de cargo. <code>src/app/api/whatsapp/webhook/route.ts:109–205</code> permite operações de manutenção a usuários de sessão sem exigir cargo específico.</p>
+<p><strong>Impacto:</strong> VIEWER pode modificar dados institucionais; ações sensíveis ficam disponíveis além da permissão esperada. Esconder botões não resolve acesso direto à API.</p>
+<p><strong>Fazer/aceite:</strong> matriz de permissões central para ADMIN, LAWYER, STAFF e VIEWER, aplicada no servidor e na interface; testar cada verbo/ação para cada cargo. Operações administrativas do WhatsApp devem ter autorização própria.</p>
+<h3 id="seg-06-p0-html-de-modelos-pode-executar-conteudo-no-editor">SEG-06 — P0 — HTML de modelos pode executar conteúdo no editor</h3>
+<p><strong>Evidência C/I:</strong> <code>src/app/api/templates/route.ts:61–70</code> persiste HTML normalizado; <code>src/components/DocumentRichEditor.tsx:102,108</code> injeta via <code>innerHTML</code>. O ensaio confirmou que atributo <code>onerror</code> atravessa a normalização. Não houve exploração em navegador autenticado.</p>
+<p><strong>Impacto:</strong> conteúdo malicioso persistido pode executar ações com a sessão de quem abrir o modelo, inclusive alguém com mais permissões.</p>
+<p><strong>Fazer/aceite:</strong> sanitização por lista permitida, URLs/protocolos seguros, limpeza de conteúdo legado e política de conteúdo como defesa adicional; testar atributos de evento, SVG, links ativos e HTML produzido pela IA sem destruir a formatação legítima.</p>
+<h3 id="seg-07-p0-aviso-de-assinatura-inclui-destinatario-global">SEG-07 — P0 — Aviso de assinatura inclui destinatário global</h3>
+<p><strong>Evidência C:</strong> <code>src/lib/whatsapp/signatureCompletion.ts:20–23</code> adiciona telefone administrativo global, com fallback fixo, aos destinatários do PDF final, independentemente do escritório.</p>
+<p><strong>Impacto:</strong> documentos jurídicos de colegas podem ser encaminhados a contato da plataforma, fora da configuração daquele escritório. O encaminhamento real depende da fila/ponte; não foi disparado nesta auditoria.</p>
+<p><strong>Fazer/aceite:</strong> destinatários explícitos por escritório, validados e auditados; nenhum fallback global para conteúdo de clientes. Simular dois escritórios e conferir destinatários de todas as mensagens/anexos.</p>
+<h3 id="seg-08-p0-cadastro-de-advogado-com-senha-fixa">SEG-08 — P0 — Cadastro de advogado com senha fixa</h3>
+<p><strong>Evidência C:</strong> <code>src/app/(dashboard)/configuracoes/page.tsx:146–147</code> fabrica e-mail quando ausente e envia senha literal ao cadastrar advogado.</p>
+<p><strong>Impacto:</strong> contas criadas por esse caminho têm credencial previsível; o titular pode nem controlar o endereço de acesso.</p>
+<p><strong>Fazer/aceite:</strong> convite individual com validade, aceite e definição de senha pelo titular; exigir e-mail real; identificar contas afetadas e trocar credenciais com revogação das sessões anteriores. Não reproduzir a senha em documentação.</p>
+<h3 id="seg-09-p1-saida-da-equipe-e-revogacao-de-sessao-incompletas">SEG-09 — P1 — Saída da equipe e revogação de sessão incompletas</h3>
+<p><strong>Evidência C:</strong> <code>src/app/api/office/team/route.ts:199–204</code> rejeita exclusão de usuário com histórico; PATCH não oferece <code>active</code>. <code>src/lib/auth.ts:42–110</code> usa JWT de sete dias, consulta usuário ativo, mas não tem versão de sessão vinculada à troca de senha.</p>
+<p><strong>Impacto:</strong> falta um caminho operacional para remover o acesso de ex-colaborador sem apagar histórico; trocar senha não invalida por si só o token anterior. A consulta de <code>active</code> já é uma boa base.</p>
+<p><strong>Fazer/aceite:</strong> inativação/restauração controladas, revogação por usuário/dispositivo e alteração de senha; teste que uma sessão antiga perde acesso imediatamente.</p>
+<h3 id="seg-10-p1-excesso-de-dados-na-consulta-publica">SEG-10 — P1 — Excesso de dados na consulta pública</h3>
+<p><strong>Evidência C:</strong> <code>src/app/api/verify/[code]/route.ts:55–68</code> entrega CPF e telefone completos, além de localização aproximada e descrições; GET de assinatura entrega CPF/contatos antes da confirmação (<code>src/app/api/sign/[token]/route.ts:198</code> e resposta de espera).</p>
+<p><strong>Impacto:</strong> quem obtiver o código/link tem acesso maior que o necessário para conferir existência/status. Links podem circular além das partes.</p>
+<p><strong>Fazer/aceite:</strong> definir exposição mínima; mascarar CPF/telefone; separar consulta pública de acesso autorizado às evidências completas; testar respostas, página, cache, compartilhamento e indexação.</p>
+<h3 id="seg-11-p1-controles-de-abuso-nao-demonstrados">SEG-11 — P1 — Controles de abuso não demonstrados</h3>
+<p><strong>Evidência C/E:</strong> não foi encontrada limitação de tentativas no código de login, registro, confirmação de CPF, OCR/IA e eventos. Não foi inspecionado eventual firewall/rate limit da Vercel.</p>
+<p><strong>Impacto:</strong> tentativas automatizadas, criação abusiva de contas, consumo de IA e crescimento de registros podem gerar custo ou indisponibilidade.</p>
+<p><strong>Fazer/aceite:</strong> limites por identidade, IP e escritório, combinados com detecção de abuso; erros que não facilitem enumeração; proteger processamento caro. Demonstrar limites em ambiente de teste sem teste de carga agressivo na produção.</p>
+<h3 id="seg-12-p1-uploads-precisam-validacao-mais-profunda">SEG-12 — P1 — Uploads precisam validação mais profunda</h3>
+<p><strong>Evidência C:</strong> <code>src/app/api/templates/word/route.ts:20–25</code> valida extensão/assinatura ZIP <code>PK</code>; isso não comprova DOCX seguro. <code>src/app/api/clients/parse-document/route.ts:116–129</code> lê arquivo e encaminha ao processamento sem limite de tamanho equivalente ao PDF.</p>
+<p><strong>Impacto:</strong> arquivos inadequados, imagens gigantes ou pacotes compactados expansivos podem causar falhas e consumo excessivo.</p>
+<p><strong>Fazer/aceite:</strong> validação real de formato, páginas/dimensões/expansão, limites antes de processar, bibliotecas atualizadas e isolamento do processamento; respostas claras para arquivos rejeitados. Combinar com ASS-13.</p>
+<h3 id="seg-13-p1-integracoes-e-administracao-precisam-trilha-e-validacao">SEG-13 — P1 — Integrações e administração precisam trilha e validação</h3>
+<p><strong>Evidência C:</strong> <code>src/app/api/admin/offices/[id]/route.ts:33–62</code> aceita plano/status/números sem domínio/faixas explícitas e não registra auditoria própria. OAuth callback verifica token assinado, mas não associa retorno à sessão atual nem consome nonce único (<code>src/app/api/integrations/google-drive/callback/route.ts:15–24</code>).</p>
+<p><strong>Impacto:</strong> configuração incorreta de limite/plano e conexão administrativa com proteção de sessão incompleta.</p>
+<p><strong>Fazer/aceite:</strong> validar enumerações/números, registrar autor/antes/depois, vincular state OAuth à sessão e uso único, testar replay e sessão diferente. Rever controles de acesso da conta administrativa e recuperação.</p>
+<h2 id="assinatura-integridade-e-documentos">2. Assinatura, integridade e documentos</h2>
+<h3 id="ass-01-p0-servidor-aceita-assinatura-sem-evidencia-valida">ASS-01 — P0 — Servidor aceita assinatura sem evidência válida</h3>
+<p><strong>Evidência C/I:</strong> <code>src/app/api/sign/[token]/submit/route.ts:73–126</code>. A presença de qualquer valor em <code>selfieCenterImage</code> é suficiente; foto do documento, imagem de assinatura e consentimento expresso não são obrigatórios no servidor. Texto de consentimento padrão é gravado quando omitido.</p>
+<p><strong>Impacto:</strong> ensaio concluiu documento com selfie textual, sem imagem real e sem consentimento enviado. Validações apenas na tela são contornáveis.</p>
+<p><strong>Fazer/aceite:</strong> contrato de submissão por modalidade; validar imagem, limites e evidências obrigatórias, versão e aceite do consentimento. Rejeitar payload inválido antes de gravar qualquer assinatura.</p>
+<h3 id="ass-02-p0-cpf-exposto-e-utilizado-como-confirmacao-de-identidade">ASS-02 — P0 — CPF exposto é utilizado como confirmação de identidade</h3>
+<p><strong>Evidência C:</strong> GET de assinatura informa o CPF completo; <code>confirm-identity/route.ts:66–86</code> e <code>submit/route.ts:63–70</code> apenas comparam esse mesmo valor. Não existe desafio independente nesse fluxo.</p>
+<p><strong>Impacto:</strong> conhecer o link já fornece a informação necessária para “confirmar” o CPF. Uma selfie existente é tratada como presença verificada, sem que isso comprove identidade/liveness por si só.</p>
+<p><strong>Fazer/aceite:</strong> definir nível de identificação por uso, minimizar CPF prévio e implementar desafio/validação compatível com esse nível, com etapa atestada pelo servidor. Não anunciar garantia de identidade baseada só na existência de foto.</p>
+<h3 id="ass-03-p0-token-de-uma-pessoa-pode-sobrescrever-testemunha">ASS-03 — P0 — Token de uma pessoa pode sobrescrever testemunha</h3>
+<p><strong>Evidência C/I:</strong> <code>submit/route.ts:181–285</code>. <code>witness1</code>/<code>witness2</code> recebidos permitem criar ou atualizar nome, CPF e evidências sem conferir papel do solicitante, modalidade individual/mesmo dispositivo ou assinatura anterior.</p>
+<p><strong>Impacto:</strong> ensaio com token de cliente alterou nome e CPF de testemunha INDIVIDUAL já assinada. O caminho a rogo também necessita controle explícito de participante/modalidade.</p>
+<p><strong>Fazer/aceite:</strong> participantes fixados no envio; cada submissão só atua nos participantes autorizados da sessão; preservar assinaturas anteriores. Testar tentativa de troca de identidade e de inclusão de testemunha não prevista.</p>
+<h3 id="ass-04-p0-salvamento-de-evidencias-ignora-estado-do-documento">ASS-04 — P0 — Salvamento de evidências ignora estado do documento</h3>
+<p><strong>Evidência C/I:</strong> <code>src/app/api/sign/[token]/event/route.ts:46–93</code>. A rota não bloqueia documento cancelado/expirado; “refazer foto” é inferido apenas por campo vazio, sem exigir pedido de revisão.</p>
+<p><strong>Impacto:</strong> ensaios permitiram salvar evidência em cancelado e acrescentar foto em concluído sem pedido autorizado. <code>forRogo</code> também precisa respeitar cargo/modalidade/ordem.</p>
+<p><strong>Fazer/aceite:</strong> máquina de estados e autorização comuns a GET, confirmação, eventos, upload e submit. Pedido de correção deve ser específico, válido e consumível uma única vez.</p>
+<h3 id="ass-05-p0-evidencias-e-certificado-concluido-sao-substituiveis">ASS-05 — P0 — Evidências e certificado concluído são substituíveis</h3>
+<p><strong>Evidência C:</strong> <code>src/app/api/documents/[id]/route.ts:247–260,305–328</code> reabre assinatura ou apaga foto; <code>event/route.ts:90–106</code> invalida PDF; <code>src/lib/pdfCertificate.ts:885–900,1589–1604</code> gera novo arquivo/hash para o mesmo documento/código. Eventos de revisão/reset não entram na lista de eventos do certificado (<code>pdfCertificate.ts:312–323</code>).</p>
+<p><strong>Impacto:</strong> não há versão histórica completa ligada a cada emissão. Uma trilha textual não preserva a foto anterior que foi substituída. A consulta atual pode divergir do PDF já distribuído.</p>
+<p>Também existe exclusão permanente de documento concluído por administrador (<code>src/app/api/documents/[id]/route.ts:461–484</code>), removendo participantes/eventos em cascata e arquivos associados. Rever arquivamento, retenção e proteção dos registros emitidos para reduzir perda acidental, mantendo um procedimento explícito para exclusões legítimas.</p>
+<p><strong>Fazer/aceite:</strong> versões imutáveis de documento, evidências, hash e emissão; correção como aditamento/nova versão com ligação à anterior e motivo/autor/data. Um PDF já emitido deve continuar verificável pela sua versão exata.</p>
+<h3 id="ass-06-p1-abrir-link-pode-transformar-concluido-em-expirado">ASS-06 — P1 — Abrir link pode transformar concluído em expirado</h3>
+<p><strong>Evidência C/I:</strong> <code>src/app/api/sign/[token]/route.ts:124–132</code>. O prazo é aplicado também a documentos concluídos.</p>
+<p><strong>Impacto:</strong> o ensaio confirmou alteração persistida de CONCLUIDO para EXPIRADO ao abrir um link após o prazo, prejudicando painel e verificação.</p>
+<p><strong>Fazer/aceite:</strong> separar validade do convite de validade do registro concluído; expirar apenas estados elegíveis. Reabrir o link após meses deve preservar conclusão e evidências.</p>
+<h3 id="ass-07-p1-falha-parcial-deixa-assinatura-sem-conclusao-recuperavel">ASS-07 — P1 — Falha parcial deixa assinatura sem conclusão recuperável</h3>
+<p><strong>Evidência C/I:</strong> <code>submit/route.ts:50–51,103,289–310</code>. Grava signatário antes das etapas seguintes, fora de transação; retentativa é recusada quando ele já está ASSINADO.</p>
+<p><strong>Impacto:</strong> ensaio simulou falha depois da gravação: primeira chamada 500, nova chamada 400, signatário ASSINADO e documento ENVIADO.</p>
+<p><strong>Fazer/aceite:</strong> transação para estado/registro essencial, chave de idempotência e reconciliação posterior; testar duplo clique, duas requisições simultâneas e falha em cada etapa, sem duplicar ou perder assinatura.</p>
+<h3 id="ass-08-p1-aviso-ainda-depende-da-geracao-do-pdf">ASS-08 — P1 — Aviso ainda depende da geração do PDF</h3>
+<p><strong>Evidência C/I:</strong> <code>submit/route.ts:455–469</code> separa chamadas, mas <code>src/lib/whatsapp/signatureCompletion.ts:18</code> retorna sem enfileirar se <code>signedFile</code> não existir. O ensaio confirmou zero operações na fila nesse caso.</p>
+<p><strong>Impacto:</strong> assinatura pode constar concluída sem aviso, apesar de comentário afirmar independência. Geração sequencial de certificados dentro do pedido também eleva risco de timeout.</p>
+<p><strong>Fazer/aceite:</strong> filas duráveis distintas para conclusão, PDF e entrega; retentativas com estado/erro e reconciliação; avisar “assinatura recebida” separadamente de “PDF disponível”. Simular falha de PDF e indisponibilidade da ponte.</p>
+<h3 id="ass-09-p1-criacao-do-kit-nao-e-atomica">ASS-09 — P1 — Criação do kit não é atômica</h3>
+<p><strong>Evidência C:</strong> <code>src/app/api/kits/generate-package/route.ts:408–552</code> executa loop de compilação, armazenamento, documentos e signatários sem transação abrangente, apesar do comentário.</p>
+<p><strong>Impacto:</strong> falha no segundo/terceiro documento pode deixar pacote incompleto; repetir pode duplicar envios e consumir cota/armazenamento.</p>
+<p><strong>Fazer/aceite:</strong> preparar pacote, persistir estado coerente e promover a enviado apenas quando completo; idempotência e limpeza/compensação para arquivos externos. Testar falha no meio de kit com três documentos.</p>
+<h3 id="ass-10-p1-modelo-word-pode-virar-documento-com-texto-provisorio">ASS-10 — P1 — Modelo Word pode virar documento com texto provisório</h3>
+<p><strong>Evidência C:</strong> <code>src/app/api/templates/word/route.ts:27</code> grava HTML “Modelo Word preservado no arquivo original”; geração do kit compila <code>template.contentHtml</code>, sem fluxo específico DOCX (<code>generate-package/route.ts:415,454</code>).</p>
+<p><strong>Impacto:</strong> modelo Word vinculado ao kit pode gerar o texto provisório em vez do contrato. Precisa ser impedido mesmo se a interface tentar ocultar essa combinação.</p>
+<p><strong>Fazer/aceite:</strong> pipeline DOCX consistente entre editor, prévia e geração final, ou bloqueio explícito desse formato em kits até suporte real. Comparar um modelo Word real com prévia e PDF enviado.</p>
+<h3 id="ass-11-p0-dados-do-escritorio-fundador-entram-em-outros-escritorios">ASS-11 — P0 — Dados do escritório fundador entram em outros escritórios</h3>
+<p><strong>Evidência C:</strong> <code>generate-package/route.ts:227,246,268–269,353–355</code> usa endereço, nomes e OABs específicos como fallback; até a escolha do advogado procura nomes particulares.</p>
+<p><strong>Impacto:</strong> outro escritório pode emitir procuração/contrato qualificando profissional ou endereço errado. Isso atinge diretamente o documento que será assinado.</p>
+<p><strong>Fazer/aceite:</strong> variáveis exclusivamente do escritório/participantes selecionados; bloquear campos essenciais ausentes. Gerar contrato e procuração de escritório fictício e assegurar ausência de qualquer dado do fundador.</p>
+<h3 id="ass-12-p1-consulta-por-codigo-nao-verifica-o-arquivo-apresentado">ASS-12 — P1 — Consulta por código não verifica o arquivo apresentado</h3>
+<p><strong>Evidência C/I:</strong> <code>src/app/api/verify/[code]/route.ts:79</code> responde <code>valid: true</code> para todo registro encontrado, inclusive cancelado. A interface diferencia status (<code>src/app/verificar/[code]/page.tsx:140</code>), portanto não foi constatado que ela mostra cancelado como concluído. A consulta exibe hashes armazenados, sem comparar o arquivo que o terceiro tem em mãos.</p>
+<p><strong>Impacto:</strong> existência do código, conclusão e integridade do arquivo são conceitos diferentes. Copiar um QR Code não comprova que outro PDF corresponda ao hash.</p>
+<p><strong>Fazer/aceite:</strong> contrato explícito de status; comparação local do hash do arquivo com a versão registrada; rejeitar arquivo alterado mantendo a consulta de histórico/cancelamento clara.</p>
+<h3 id="ass-13-p1-limite-anunciado-de-arquivo-conflita-com-a-hospedagem">ASS-13 — P1 — Limite anunciado de arquivo conflita com a hospedagem</h3>
+<p><strong>Evidência C/E:</strong> upload PDF e Word aceitam até 20 MB (<code>src/app/api/documents/upload/route.ts:30</code>, <code>templates/word/route.ts:23</code>), transportados pelas funções. Downloads também montam o arquivo inteiro na resposta. A Vercel documenta limite de payload de 4,5 MB para funções. <a href="https://vercel.com/docs/functions/limitations">Limites oficiais</a>.</p>
+<p><strong>Impacto:</strong> arquivo permitido pela tela pode falhar antes de chegar à validação; evidências em base64 e certificados grandes agravam o risco. O limite específico não foi forçado em produção.</p>
+<p><strong>Fazer/aceite:</strong> upload direto privado com autorização curta, processamento posterior e entrega apropriada a arquivos grandes; limites coerentes na interface. Testar 1, 4, 5 e 20 MB e certificado com várias fotos no ambiente Vercel.</p>
+<h3 id="ass-14-p1-consentimento-do-kit-precisa-vincular-os-documentos-exatos">ASS-14 — P1 — Consentimento do kit precisa vincular os documentos exatos</h3>
+<p><strong>Evidência C:</strong> <code>submit/route.ts:374–438</code> propaga assinaturas por igualdade de participantes a documentos do lote. Eventos de abertura/leitura podem ser propagados por sessão; não há manifesto assinado com hashes/versões dos documentos aceitos na submissão.</p>
+<p><strong>Impacto:</strong> é necessário demonstrar quais documentos foram apresentados e aceitos, distinguindo “disponível na sessão” de “efetivamente aberto”. Não se conclui invalidade jurídica automática a partir dessa lacuna.</p>
+<p><strong>Fazer/aceite:</strong> lista explícita de títulos/versões/hashes no consentimento, sessão vinculada e bloqueio de alteração depois do aceite; testar pacote parcialmente visualizado e documento substituído entre revisão e envio.</p>
+<h3 id="ass-15-p1-cancelamentoexpiracao-nao-revogam-leitura-do-original">ASS-15 — P1 — Cancelamento/expiração não revogam leitura do original</h3>
+<p><strong>Evidência C/I:</strong> <code>src/app/api/sign/[token]/document/route.ts:25–45</code> exige token existente e arquivo, mas não estado, prazo ou ordem. Ensaio retornou 200 para documento cancelado e expirado.</p>
+<p><strong>Impacto:</strong> cancelar o convite não interrompe todos os acessos proporcionados por ele. A política de acesso ao original precisa ser diferente da preservação do documento já assinado.</p>
+<p><strong>Fazer/aceite:</strong> autorizar leitura conforme sessão e estado, revogar convites cancelados; manter acesso posterior a versões concluídas por regra própria. Testar URL direta do arquivo, não só a página de assinatura.</p>
+<h2 id="produto-cadastro-planos-e-experiencia">3. Produto, cadastro, planos e experiência</h2>
+<h3 id="pro-01-p1-teste-gratuito-anunciado-nao-corresponde-ao-cadastro">PRO-01 — P1 — Teste gratuito anunciado não corresponde ao cadastro</h3>
+<p><strong>Evidência C/V:</strong> home/cadastro prometem cinco pacotes por 30 dias; <code>register-office/route.ts:71–83</code> não define trial e <code>prisma/schema.prisma:48–52</code> cria SOLO, ACTIVE, 30 documentos, sem expiração do teste.</p>
+<p><strong>Fazer/aceite:</strong> modelar início/fim e cota do teste; usar a mesma regra no cadastro, painel, APIs e oferta. Testar início, quinto envio, sexto envio e dia 31. Mudar apenas o status para TRIAL também exige ajustar <code>/api/documents</code>, que hoje exige ACTIVE.</p>
+<h3 id="pro-02-p1-cotas-e-planos-aplicados-de-forma-diferente">PRO-02 — P1 — Cotas e planos aplicados de forma diferente</h3>
+<p><strong>Evidência C:</strong> <code>/api/documents</code> checa plano/cota (<code>route.ts:157,182–184</code>); <code>/api/kits/generate-package</code> não aplica essas verificações. <code>office/team/route.ts:53–102</code> não aplica <code>maxUsersLimit</code>.</p>
+<p><strong>Impacto:</strong> pacote e equipe podem escapar dos limites comerciais. Escritório com <code>active=false</code> é bloqueado pela sessão; o problema inclui contas ativas com cota esgotada e inconsistências de <code>planStatus</code>.</p>
+<p><strong>Fazer/aceite:</strong> serviço único de autorização/cota para todos os caminhos, incluindo IA/WhatsApp; reserva atômica para concorrência e limite de membros. Testar limite atingido e pedidos simultâneos.</p>
+<h3 id="pro-03-p1-pacote-documento-e-creditos-precisam-regra-unica">PRO-03 — P1 — “Pacote”, “documento” e créditos precisam regra única</h3>
+<p><strong>Evidência C/V:</strong> home mistura cinco pacotes, envios e planos por documento; kit cria um <code>Document</code> por modelo. <code>src/app/api/office/plan/route.ts:25–39</code> soma documentos do mês e créditos extras. Os créditos não têm razão individual de consumo/expiração.</p>
+<p><strong>Fazer/aceite:</strong> definir unidade cobrada, quando consome, o efeito de cancelamento/erro e validade dos extras. Exemplo obrigatório na oferta: “um kit com três documentos consome X unidades”. Conferir painel, cobrança e APIs com o mesmo cenário.</p>
+<h3 id="pro-04-p1-venda-assistida-existe-ciclo-comercial-precisa-fechamento">PRO-04 — P1 — Venda assistida existe; ciclo comercial precisa fechamento</h3>
+<p><strong>Evidência C/V/L:</strong> botões de contratação levam ao WhatsApp; administração altera plano manualmente. Não foram encontrados ciclo de renovação, histórico de pagamentos/ativação, procedimento de cancelamento e exportação ligado ao término.</p>
+<p><strong>Fazer/aceite:</strong> para início, cobrança manual é aceitável se houver procedimento rastreável: proposta, aceite, pagamento, ativação, vencimento, aviso, suspensão, cancelamento e exportação. Checkout automático não é requisito para o primeiro piloto; cumprir a oferta é.</p>
+<h3 id="pro-05-p1-esqueceu-a-senha-nao-funciona">PRO-05 — P1 — “Esqueceu a senha?” não funciona</h3>
+<p><strong>Evidência C/V:</strong> <code>src/app/(auth)/login/page.tsx</code> contém <code>href=&quot;#&quot;</code>; clique publicado mantém a mesma tela. Não foi encontrada API de recuperação.</p>
+<p><strong>Fazer/aceite:</strong> recuperação com token de uso único, prazo, mensagem neutra, entrega verificável e revogação de sessão; alternativa manual documentada apenas para piloto assistido. Testar token vencido/reutilizado e endereço inexistente.</p>
+<h3 id="pro-06-p1-e-mail-de-membro-nao-normalizado-no-cadastro">PRO-06 — P1 — E-mail de membro não normalizado no cadastro</h3>
+<p><strong>Evidência C:</strong> <code>office/team/route.ts:74–92</code> persiste e consulta e-mail recebido; <code>auth/login/route.ts:20–24</code> normaliza para minúsculas. PATCH de equipe normaliza, POST não.</p>
+<p><strong>Impacto:</strong> usuário cadastrado com maiúsculas/espaços pode não conseguir entrar.</p>
+<p><strong>Fazer/aceite:</strong> normalizar todas as entradas e tratar contas existentes/colisões. Cadastrar e entrar com variações de caixa e espaços deve resolver a mesma identidade.</p>
+<h3 id="pro-07-p1-ultimo-administrador-pode-perder-o-proprio-cargo">PRO-07 — P1 — Último administrador pode perder o próprio cargo</h3>
+<p><strong>Evidência C:</strong> <code>office/team/route.ts:212–276</code> permite alterar <code>role</code> sem guarda do último administrador, embora DELETE tenha essa proteção.</p>
+<p><strong>Fazer/aceite:</strong> impedir ficar sem administrador ativo em qualquer operação; transferência explícita de administração; testes de autoalteração e concorrência entre administradores.</p>
+<h3 id="pro-08-p2-entrada-no-produto-precisa-orientacao-de-primeira-utilizacao">PRO-08 — P2 — Entrada no produto precisa orientação de primeira utilização</h3>
+<p><strong>Evidência C/V/L:</strong> há cadastro, biblioteca inicial e módulos; faltam critérios de “escritório pronto para enviar”. Placeholders publicados ainda usam os dados/nome do fundador. Cadastro promete configuração em dois minutos sem demonstrar preparação do primeiro documento.</p>
+<p><strong>Fazer/aceite:</strong> checklist curto com dados do escritório, advogado responsável, modelo revisado, cliente fictício e primeiro envio; dados demonstrativos claramente identificados. Um colega deve realizar o fluxo sem intervenção no banco ou no código.</p>
+<h3 id="pro-09-p1-quatorze-destinos-de-navegacao-da-home-nao-existem">PRO-09 — P1 — Quatorze destinos de navegação da home não existem</h3>
+<p><strong>Evidência V/C:</strong> DOM publicado tem links para <code>#assinatura</code>, <code>#pacotes</code>, <code>#clientes</code>, <code>#acompanhamento</code>, <code>#modelos</code>, <code>#certificado</code>, <code>#trilha</code>, <code>#validacao</code>, <code>#advogados</code>, <code>#escritorios</code>, <code>#departamentos</code>, <code>#imobiliarias</code>, <code>#empresas</code>, <code>#sobre</code>, sem IDs correspondentes. Fonte: <code>src/app/page.tsx</code>.</p>
+<p><strong>Fazer/aceite:</strong> criar destinos ou apontar para seções reais; remover oferta sem conteúdo. Testar todos os links de menu/rodapé no desktop, teclado e celular. A home não pode aparentar navegação que não entrega conteúdo.</p>
+<h3 id="pro-10-p1-editor-word-depende-de-programa-no-computador">PRO-10 — P1 — Editor Word depende de programa no computador</h3>
+<p><strong>Evidência C/E:</strong> <code>src/components/WordTemplateEditor.tsx:9,27–33</code> usa <code>127.0.0.1:5127</code> por padrão e orienta abrir arquivo <code>.bat</code>; <code>word-service/Program.cs:45</code> só escuta loopback.</p>
+<p><strong>Impacto:</strong> colega em outro computador/celular não recebe a mesma experiência sem instalação/configuração. Uma URL externa configurada poderia mudar isso; não foi conferida a configuração publicada.</p>
+<p><strong>Fazer/aceite:</strong> hospedar conversão autenticada e isolada ou retirar Word do escopo inicial, mantendo alternativas testadas. Testar numa máquina limpa, sem arquivos locais do fundador.</p>
+<h3 id="pro-11-p2-central-de-entrada-ainda-nao-fecha-a-triagem">PRO-11 — P2 — Central de Entrada ainda não fecha a triagem</h3>
+<p><strong>Evidência C/L:</strong> <code>src/app/(dashboard)/entrada/page.tsx:35</code> promete pastas automáticas do Drive, mas a entrada implementada visível é <code>/api/intake/local</code>; não foi encontrado consumidor automático do Drive nesse fluxo. “Conferir cliente” abre <code>/processos?clienteId=</code>, que inicia processo (<code>processos/page.tsx:184–191</code>).</p>
+<p><strong>Fazer/aceite:</strong> ingestão real, confirmação do titular, associação de arquivos, conclusão/rejeição da triagem e prevenção de duplicidade; botão levar à ficha correta. Até isso existir, marcar experimental ou omitir da oferta.</p>
+<h3 id="pro-12-p2-tela-whatsapp-sugere-conversa-com-cliente-mas-usa-assistente">PRO-12 — P2 — Tela WhatsApp sugere conversa com cliente, mas usa assistente</h3>
+<p><strong>Evidência C:</strong> <code>src/app/(dashboard)/whatsapp/page.tsx:112</code> limita contatos aos dez primeiros; envio usa <code>fromNumber: PAINEL_ASSINAJUR</code> (<code>:205</code>) e a interface não representa uma caixa de conversas completa por destinatário.</p>
+<p><strong>Fazer/aceite:</strong> decidir entre “assistente operacional” e “atendimento a clientes”; indicar claramente destinatário/ação; busca e paginação reais se houver caixa de entrada. Testar seleção de cada contato e confirmar a quem a mensagem seria destinada antes de enviar.</p>
+<h3 id="pro-13-p2-metricas-usam-conceitos-diferentes">PRO-13 — P2 — Métricas usam conceitos diferentes</h3>
+<p><strong>Evidência C:</strong> <code>relatorios/page.tsx:43–48</code> calcula taxa geral só sobre encerrados; <code>:77</code> calcula taxa mensal sobre todos os documentos. <code>clients/route.ts:110–118</code> chama contagens de processos/documentos de atividades/eventos.</p>
+<p><strong>Fazer/aceite:</strong> dicionário de métricas com período e denominador; distinguir documentos, pessoas, envios e eventos. Conjunto fixo de exemplo deve gerar totais conciliáveis em dashboard, cliente e relatório. “Tempo real” deve corresponder à frequência real de atualização.</p>
+<h3 id="pro-14-p1-acessibilidade-do-cadastro-e-login-precisa-correcao">PRO-14 — P1 — Acessibilidade do cadastro e login precisa correção</h3>
+<p><strong>Evidência C/V:</strong> campos de texto publicados aparecem sem nome acessível na árvore; inputs do cadastro não têm <code>id</code>/associação <code>for</code> nem preenchimento automático explícito. Fontes: páginas <code>(auth)/register</code> e <code>(auth)/login</code>.</p>
+<p><strong>Fazer/aceite:</strong> rótulos associados, <code>autocomplete</code>, teclado apropriado, erros ligados ao campo, foco visível e navegação por teclado. Validar menus/modais, contraste, zoom e mensagens da captura com leitor de tela. Não foi realizada certificação WCAG completa.</p>
+<h3 id="pro-15-p1-jornada-movel-real-ainda-precisa-homologacao">PRO-15 — P1 — Jornada móvel real ainda precisa homologação</h3>
+<p><strong>Evidência V/L:</strong> home/cadastro em 390 px não mostraram transbordamento horizontal; isso não valida câmera, fotos, PDF, assinatura, permissões ou interrupção de rede em aparelho real.</p>
+<p><strong>Fazer/aceite:</strong> executar matriz Android/Chrome, iPhone/Safari e navegador interno do WhatsApp; câmera negada, rotação, voltar, fechar/reabrir, baixa memória, conexão fraca e ausência de geolocalização. Dar instrução de recuperação em cada situação. Liberar somente modalidades que passarem.</p>
+<h2 id="operacao-manutencao-e-capacidade-de-venda">4. Operação, manutenção e capacidade de venda</h2>
+<h3 id="ope-01-p0-build-sincroniza-schema-aceitando-perda-de-dados">OPE-01 — P0 — Build sincroniza schema aceitando perda de dados</h3>
+<p><strong>Evidência C:</strong> <code>package.json:8</code> contém <code>prisma db push --accept-data-loss</code> permanentemente, contrariando <code>AGENTS.md</code>.</p>
+<p><strong>Impacto:</strong> alteração de schema pode ser aplicada no banco durante qualquer publicação, com aceitação automática de mudanças destrutivas. Não foi executada essa etapa na auditoria.</p>
+<p><strong>Fazer/aceite:</strong> separar compilação de alteração de banco; remover etapa destrutiva do build; adotar mudanças versionadas, backup e procedimento reversível. Toda mudança de schema exigirá etapa própria de sincronização/migração em produção, planejada explicitamente.</p>
+<h3 id="ope-02-p1-atualizar-dependencias-e-runtimes-sem-suporte">OPE-02 — P1 — Atualizar dependências e runtimes sem suporte</h3>
+<p><strong>Evidência C/E:</strong> lock instalado usa Next 14.2.35 e Sharp 0.33.5; consulta npm apontou quatro pacotes com alertas altos. Next 14 está fora das versões suportadas. <code>Dockerfile.whatsapp:2</code> usa Node 18, encerrado. <a href="https://nextjs.org/support-policy">Política Next.js</a>, <a href="https://nodejs.org/en/about/previous-releases">ciclo Node.js</a>.</p>
+<p><strong>Fazer/aceite:</strong> atualizar de forma controlada para versões suportadas/corrigidas, avaliar aplicabilidade dos avisos, testar PDF/imagem/auth e repetir auditoria. Não aplicar atualização forçada sem revisão de compatibilidade. O Node local 22 não corrige a imagem Docker 18.</p>
+<h3 id="ope-03-p1-hospedagem-comercial-e-licencas-precisam-conferencia">OPE-03 — P1 — Hospedagem comercial e licenças precisam conferência</h3>
+<p><strong>Evidência E:</strong> AGENTS informa Vercel Hobby. A Vercel restringe Hobby a uso pessoal/não comercial; é necessário conferir o plano atual antes de divulgar comercialmente. Syncfusion exige licença/eligibilidade válida; pacote instalado não comprova licença. <a href="https://vercel.com/legal/terms">Termos Vercel</a>, <a href="https://www.syncfusion.com/products/communitylicense">Community License Syncfusion</a>.</p>
+<p><strong>Fazer/aceite:</strong> documentar plano de hospedagem compatível e licenças do editor/conversor, custos e limites. Não foi verificado contrato ativo e nenhuma contratação/pagamento foi realizado.</p>
+<h3 id="ope-04-p1-backup-so-e-confiavel-depois-de-restaurado">OPE-04 — P1 — Backup só é confiável depois de restaurado</h3>
+<p><strong>Evidência L/E:</strong> não foi encontrado procedimento versionado de backup/restauração e desastre; painel Neon/Blob não foi auditado. Rollback da Vercel reverte aplicação, não reconstitui sozinho dados removidos.</p>
+<p><strong>Fazer/aceite:</strong> retenção de Postgres, objetos e chaves necessárias; cópia separada, restauração de ensaio e conferência de hashes. Definir perda máxima tolerável e prazo de recuperação, com responsável. Nenhum teste com dados reais antes de demonstrar recuperação.</p>
+<h3 id="ope-05-p1-testes-e-publicacao-precisam-uma-barreira-automatica">OPE-05 — P1 — Testes e publicação precisam uma barreira automática</h3>
+<p><strong>Evidência C/L:</strong> há doze testes focados em WhatsApp; não foi encontrada pipeline <code>.github</code> nem suíte de ponta a ponta dos fluxos críticos. Existem scripts de investigação que não equivalem a testes seguros e repetíveis.</p>
+<p><strong>Fazer/aceite:</strong> homologação isolada com dados fictícios; testes de cargos/tenants, contrato/kit, falhas de rede, PDF e cotas; compilação e validações em cada alteração; revisão antes de produção. Tornar o comando de build seguro antes de automatizá-lo.</p>
+<h3 id="ope-06-p1-falhas-precisam-ser-visiveis-e-recuperaveis">OPE-06 — P1 — Falhas precisam ser visíveis e recuperáveis</h3>
+<p><strong>Evidência C/L:</strong> erros de auditoria são absorvidos em <code>src/lib/audit.ts:14–31</code>; PDF, integração e notificações usam diversos <code>catch</code> com log. Não foi demonstrado alerta operacional, reconciliação periódica ou painel de entregas falhas.</p>
+<p><strong>Fazer/aceite:</strong> identificação de operação, logs sem conteúdo sensível, métricas por fase e alerta de assinatura travada/PDF ausente/ponte desconectada; retentativa segura; procedimento de suporte. Diferenciar solicitação aceita, mensagem enfileirada, enviada e entregue.</p>
+<h3 id="ope-07-p1-listagens-completas-e-processamento-em-pedido-limitam-escala">OPE-07 — P1 — Listagens completas e processamento em pedido limitam escala</h3>
+<p><strong>Evidência C:</strong> clientes (<code>clients/route.ts:27</code>), documentos (<code>documents/route.ts:55</code>), processos (<code>processos/route.ts:60</code>) e relatórios carregam conjuntos sem paginação principal, com relações. GET da integração Drive tenta sincronizar até 50 processos (<code>integrations/google-drive/route.ts:32–42</code>).</p>
+<p><strong>Fazer/aceite:</strong> paginação/busca no servidor, agregações dedicadas, fila de processamento e limites por escritório. Medir com volume representativo, conexões simultâneas e celular; definir metas antes de prometer SLA. Não foi feito ensaio de carga em produção.</p>
+<h3 id="ope-08-p1-whatsapp-ainda-depende-de-decisoes-de-operacao-por-escritorio">OPE-08 — P1 — WhatsApp ainda depende de decisões de operação por escritório</h3>
+<p><strong>Evidência C/E:</strong> ponte local/daemon e três caminhos de provedor; <code>src/lib/whatsapp/meta.ts:75</code> fixa <code>office_demo</code> e processa só a primeira mensagem do lote; imagem recebida não é baixada ali. A ponte possui configurações globais de escritório/telefones (<code>whatsapp/webhook/route.ts:52–73</code>).</p>
+<p><strong>Fazer/aceite:</strong> escolher arquitetura suportada; mapear número/instância a escritório, não ao remetente global; deduplicar eventos e processar lotes; monitorar disponibilidade 24h. Validar custos, termos e templates do provedor antes de comercializar; não prometer serviço gratuito/sempre disponível por comentário no código.</p>
+<h3 id="ope-09-p1-armazenamento-e-empacotamento-falham-de-forma-insegura">OPE-09 — P1 — Armazenamento e empacotamento falham de forma insegura</h3>
+<p><strong>Evidência C/E:</strong> <code>src/lib/storage.ts:18–28</code> cai para disco local se Blob estiver ausente; <code>getFileBuffer</code> recebe <code>officeId</code> mas não verifica o prefixo. <code>Dockerfile.whatsapp:14</code> copia projeto completo, sem <code>.dockerignore</code> localizado.</p>
+<p><strong>Impacto:</strong> variável faltante na Vercel pode resultar em falha/disco efêmero; defesa de tenant depende só das rotas; imagem Docker pode incluir arquivos locais sensíveis se construída com esse contexto.</p>
+<p><strong>Fazer/aceite:</strong> falhar na produção sem storage correto, validar prefixo/relação de arquivo, compensar objetos órfãos e excluir segredos/dados do contexto Docker. Testar ausência de configuração e construção com arquivos fictícios proibidos.</p>
+<h2 id="oferta-confianca-e-obrigacoes-do-servico">5. Oferta, confiança e obrigações do serviço</h2>
+<h3 id="com-01-p1-promessas-publicas-excedem-o-que-foi-demonstrado">COM-01 — P1 — Promessas públicas excedem o que foi demonstrado</h3>
+<p><strong>Evidência C/V:</strong> home/FAQ falam em três ângulos faciais e detecção; fluxo atual prioriza selfie segurando documento. Há promessa de cópia por e-mail, tokens temporários/criptografados, trilha imutável e “validade jurídica garantida” no login. A implementação tem convite sem prazo obrigatório e mutações de evidências descritas acima; não foi encontrado envio transacional por e-mail.</p>
+<p><strong>Fazer/aceite:</strong> matriz “promessa → implementação → teste”; atualizar texto, imagens e demonstrações para o fluxo realmente entregue. Hash comprova correspondência de conteúdo quando comparado; não é criptografia nem verificação de identidade. Não usar garantia absoluta de validade para qualquer documento.</p>
+<h3 id="com-02-p1-definir-politica-de-assinatura-e-de-evidencias-por-caso-de-uso">COM-02 — P1 — Definir política de assinatura e de evidências por caso de uso</h3>
+<p><strong>Evidência L/C:</strong> fluxo contempla assinatura gráfica, selo e assinatura a rogo, mas controles técnicos ainda não sustentam igualmente todos os cenários.</p>
+<p><strong>Fazer/aceite:</strong> responsável jurídico revisar contratos, procurações, representação, assinatura a rogo, testemunhas e exigências dos destinatários; definir modalidade, consentimento, prazo e evidências mínimos. A MP 2.200-2 admite outros meios de autoria/integridade nas condições do art. 10, §2º; isso não dispensa avaliar o documento e a aceitação. A Lei 14.063 distingue categorias e âmbitos. <a href="https://www.planalto.gov.br/ccivil_03/mpv/antigas_2001/2200-2.htm">MP 2.200-2</a>, <a href="https://www.planalto.gov.br/ccivil_03/_ato2019-2022/2020/lei/l14063.htm">Lei 14.063</a>.</p>
+<h3 id="com-03-p1-privacidade-precisa-corresponder-a-operacao-real">COM-03 — P1 — Privacidade precisa corresponder à operação real</h3>
+<p><strong>Evidência C/L/E:</strong> páginas <code>/termos</code> e <code>/privacidade</code> existem e se apresentam como acesso antecipado. Explicam finalidades e direitos em termos gerais; faltam procedimentos demonstrados para retenção, exportação/exclusão, incidentes, fornecedores e transferências. Há tratamentos de fotos, documentos, localização e OCR/IA.</p>
+<p><strong>Fazer/aceite:</strong> identificar fornecedor responsável/contato; mapear controlador e operador, finalidades/bases por dado, contratos com fornecedores, acesso de suporte, prazos e atendimento aos titulares; avaliar dados biométricos quando utilizados para identificação. Adotar procedimento de incidente e revisar se o aviso descreve o compartilhamento real. <a href="https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm">LGPD</a>, <a href="https://www.gov.br/anpd/pt-br/centrais-de-conteudo/materiais-educativos-e-publicacoes/anonimizado___guia_orientat-_seg_da_inf_p_atpp.pdf">guia de segurança da ANPD</a>.</p>
+<h3 id="com-04-p1-precificar-o-servico-completo-e-limitar-a-oferta-inicial">COM-04 — P1 — Precificar o serviço completo e limitar a oferta inicial</h3>
+<p><strong>Evidência V/L/E:</strong> preços públicos de R$39,90, R$69,90 e R$99,90/mês; não foram auditados custos reais, margem, impostos, atendimento, armazenamento, processamento de fotos/PDF/IA ou retenção de longo prazo.</p>
+<p><strong>Fazer/aceite:</strong> custo por escritório ativo e por pacote concluído, suporte estimado e margem por plano; termos de cobrança/cancelamento, emissão fiscal aplicável, canal e prazo de suporte. Focar primeiro em escritórios de advocacia e usos homologados; promessas de filiais, imobiliárias e atendimento dedicado exigem capacidade demonstrada.</p>
+<h3 id="com-05-p2-divulgacao-precisa-medicao-e-conteudo-verificavel">COM-05 — P2 — Divulgação precisa medição e conteúdo verificável</h3>
+<p><strong>Evidência C/V/L:</strong> home tem apresentação visual consistente, preços e chamada de teste, mas destinos faltantes; metadados globais indicam indexação (<code>src/app/layout.tsx:43</code>) e não foram encontrados sitemap/robots dedicados para separar conteúdo público de convites e áreas internas.</p>
+<p><strong>Fazer/aceite:</strong> demo fiel, tutorial curto, exemplos fictícios, página de suporte, metadados/compartilhamento e regras de indexação adequadas; medir visita → cadastro → primeiro cliente → primeiro envio → primeira conclusão → contratação. Evitar dados pessoais em URLs/analytics. Depoimentos apenas reais e autorizados.</p>
+<h2 id="ordem-recomendada-de-execucao">6. Ordem recomendada de execução</h2>
+<table>
+<thead>
+<tr>
+<th>Etapa</th>
+<th>Entrega</th>
+<th>Itens principais</th>
+<th>Condição para avançar</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Contenção</td>
+<td>Base segura e ambiente isolado</td>
+<td>SEG-01 a 08; OPE-01, 04, 09</td>
+<td>Segredos tratados, nenhum vínculo entre escritórios, permissões corretas, backup restaurado e nenhuma alteração destrutiva no build.</td>
+</tr>
+<tr>
+<td>2. Assinatura confiável</td>
+<td>Jornada central consistente</td>
+<td>ASS-01 a 09, 11, 12, 14, 15; SEG-09 a 13</td>
+<td>Identidade/consentimento validados, evidências preservadas, repetição e falhas recuperáveis, convites revogados e consulta de versão correta.</td>
+</tr>
+<tr>
+<td>3. Piloto fechado</td>
+<td>Fluxo limitado funcionando para colegas</td>
+<td>PRO-05 a 08, 14, 15; ASS-13; OPE-02, 05, 06</td>
+<td>Matriz de testes aprovada, dados fictícios, participantes/escopo definidos e canal de falhas funcionando. Recursos incompletos desabilitados.</td>
+</tr>
+<tr>
+<td>4. Uso real supervisionado</td>
+<td>Operação e documentação prontas</td>
+<td>COM-01 a 03; OPE-03, 04, 06; SEG-10</td>
+<td>Política de evidências/privacidade aplicada, responsabilidades e acesso definidos, restauração e suporte verificados.</td>
+</tr>
+<tr>
+<td>5. Venda inicial assistida</td>
+<td>Oferta que pode ser cumprida</td>
+<td>PRO-01 a 04, 09; COM-04; OPE-07 e 08 conforme escopo</td>
+<td>Cotas e ciclo comercial coerentes, hospedagem/licenças adequadas, margem e atendimento definidos.</td>
+</tr>
+<tr>
+<td>6. Expansão</td>
+<td>Word, Drive, automação e crescimento</td>
+<td>ASS-10; PRO-10 a 13; COM-05</td>
+<td>Cada módulo passa por homologação própria antes de entrar na oferta.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Não é necessário implementar tudo que existe no menu para iniciar um piloto reduzido.</strong> É necessário corrigir todos os bloqueios de segurança e de integridade, e remover da oferta/acesso do piloto os recursos que ainda não foram concluídos. Ocultar um menu sem bloquear a API não restringe funcionalidade sensível.</p>
+<p>Não atribuo um prazo confiável antes das etapas 1 e 2: mudanças em identidade, versões de evidências, filas e cotas podem exigir schema e testes de regressão amplos. São blocos de trabalho distintos, não uma sequência de ajustes visuais rápidos.</p>
+<h2 id="criterios-objetivos-de-liberacao">7. Critérios objetivos de liberação</h2>
+<h3 id="piloto-com-colegas-e-dados-ficticios">Piloto com colegas e dados fictícios</h3>
+<ul>
+<li>Todos os P0 corrigidos e revalidados; ambiente separado de produção, sem credenciais/dados reais reutilizados.</li>
+<li>Dois escritórios fictícios isolados; quatro cargos testados; convite/saída de equipe operacionais.</li>
+<li>Pelo menos um fluxo completo de documento individual e um kit de três documentos, incluindo download e verificação.</li>
+<li>Retentativa após queda, duplo clique, expiração, cancelamento, participante fora de ordem e arquivo inválido tratados corretamente.</li>
+<li>Android e iPhone testados com câmera real; navegador interno de WhatsApp verificado ou encaminhado de forma clara para navegador suportado.</li>
+<li>Cópia de segurança restaurada; erro de PDF ou mensagem gera pendência recuperável e visível.</li>
+<li>Escopo publicado, instruções curtas, canal de feedback e identificação do envio/erro sem expor CPF, fotos ou documentos no relato.</li>
+</ul>
+<p>Sugestão de desenho: <strong>3–5 colegas, 7–14 dias, dados inteiramente fictícios</strong>, com roteiro comum. A meta é detectar travamentos e entender se conseguem concluir sem ajuda. Esses números são proposta de teste, não certificação de segurança.</p>
+<h3 id="uso-real-e-venda">Uso real e venda</h3>
+<ul>
+<li>Piloto concluído, sem defeitos críticos abertos; falhas funcionais do escopo vendável resolvidas.</li>
+<li>Exemplares finais revisados por responsável jurídico, com consentimento e evidências adequados a cada modalidade oferecida.</li>
+<li>Segurança, privacidade, versão de documentos, acesso posterior e retenção implementados; contatos de suporte/privacidade claros.</li>
+<li>Cotas, preço, unidade cobrada, teste, renovação, suspensão, cancelamento e exportação coerentes.</li>
+<li>Hospedagem, licenças, fornecedores, custo e capacidade de suporte confirmados.</li>
+<li>Compilação/testes aprovados no commit a publicar; publicação verificada como <strong>Ready</strong> e teste rápido do fluxo na versão publicada.</li>
+</ul>
+<h2 id="roteiro-minimo-de-testes-de-aceitacao">8. Roteiro mínimo de testes de aceitação</h2>
+<table>
+<thead>
+<tr>
+<th>Grupo</th>
+<th>Cenários obrigatórios</th>
+<th>Resultado esperado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Acesso</td>
+<td>Cadastro, e-mail com caixa diferente, senha errada, recuperação, token reutilizado, troca de senha, inativação</td>
+<td>Mensagens claras, acesso correto e revogação efetiva.</td>
+</tr>
+<tr>
+<td>Escritórios/cargos</td>
+<td>A tenta ler/alterar recursos de B; VIEWER tenta mutações; último admin tenta sair</td>
+<td>Nenhum dado externo; proibições no servidor; mantém administrador.</td>
+</tr>
+<tr>
+<td>Cliente/modelo</td>
+<td>Dados incompletos, duplicidade, representante, modelo malicioso, Word em kit</td>
+<td>Validação consistente; dados do escritório correto; conteúdo seguro.</td>
+</tr>
+<tr>
+<td>Envio</td>
+<td>Individual, kit de três, limite atingido, duas criações simultâneas, falha no segundo documento</td>
+<td>Cota atômica, lote consistente e retentativa sem duplicação.</td>
+</tr>
+<tr>
+<td>Participantes</td>
+<td>Cliente, testemunhas individuais, mesmo dispositivo, a rogo, CPF divergente e testemunha já assinada</td>
+<td>Apenas participantes autorizados, sem sobrescrita indevida.</td>
+</tr>
+<tr>
+<td>Captura</td>
+<td>Permissão negada, arquivo inválido, foto ausente, fechar/reabrir, rede interrompida</td>
+<td>Nenhuma conclusão sem requisito; progresso recuperável e explicação clara.</td>
+</tr>
+<tr>
+<td>Estados</td>
+<td>Link fora da ordem, vencido, cancelado; concluído após vencimento do convite</td>
+<td>Estado correto em todas as rotas, incluindo PDF direto.</td>
+</tr>
+<tr>
+<td>Conclusão</td>
+<td>Duplo envio, falha de banco, PDF indisponível, ponte desconectada</td>
+<td>Assinatura preservada, fila/reconciliação e estado de entrega visível.</td>
+</tr>
+<tr>
+<td>Integridade</td>
+<td>Baixar PDF, alterar um byte, refazer foto, reemitir certificado e verificar versão anterior</td>
+<td>Hash detecta alteração; histórico não é apagado; versão anterior identificável.</td>
+</tr>
+<tr>
+<td>Privacidade</td>
+<td>Consulta sem login, código compartilhado, exportação, encerramento, acesso de suporte</td>
+<td>Apenas dados mínimos e autorizados; procedimentos rastreáveis.</td>
+</tr>
+<tr>
+<td>Capacidade</td>
+<td>PDFs de diferentes tamanhos, kit com fotos, listagens extensas e carga moderada em homologação</td>
+<td>Limites coerentes, desempenho medido e erros recuperáveis.</td>
+</tr>
+<tr>
+<td>Venda</td>
+<td>Trial, limite, ativação paga, renovação, suspensão, cancelamento</td>
+<td>Oferta e implementação concordam, sem perda indevida de acesso aos arquivos.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="evidencias-anexas-e-pendencias-externas">9. Evidências anexas e pendências externas</h2>
+<p>Arquivos locais em <code>auditoria/evidencias/</code>:</p>
+<ul>
+<li><code>assinatura-rotas-isoladas.cjs</code> e <code>.json</code>: nove verificações isoladas; resultado <code>reproduzido: true</code> significa <strong>defeito/condição reproduzida</strong>, não funcionalidade aprovada.</li>
+<li><code>seguranca-rotas-isoladas.cjs</code> e <code>.json</code>: quatro verificações com dependências substituídas.</li>
+<li><code>npm-audit-producao.json</code>: resultado integral da consulta de dependências em 08/09/2026.</li>
+<li><code>compilacao.txt</code>: compilação Next concluída, sem execução do script destrutivo de sincronização.</li>
+</ul>
+<p>Ainda precisam de verificação externa: configuração atual de banco/Blob, se credenciais expostas continuam válidas e em qual ambiente, firewall/limites, envio/entrega de mensagens, política efetiva de backups, custos, licença Syncfusion, plano Vercel, consentimento/contratos dos fornecedores e correspondência entre commit local e publicado.</p>
+<p><strong>O trabalho desta auditoria gerou documentação e ensaios locais. Não corrigiu o produto, não alterou schema/bancos, não realizou deploy, não criou contas e não enviou mensagens a terceiros.</strong></p>
+</main><footer>Documento interno de preparação • Evidências e limitações descritas no relatório • Nenhuma correção ou publicação realizada</footer></body></html>

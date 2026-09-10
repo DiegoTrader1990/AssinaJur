@@ -21,7 +21,7 @@ Antes da publicação, comparação somente leitura confirmou as 25 tabelas sem 
 
 ## Publicação
 
-Pendente de confirmação Ready e comparação após publicação.
+Confirmado Ready na Vercel: commit `831fb9915f88589e0afba264c73bc9402f061669`, deployment `AjvhFirLvLRjpqLVQnGr5uiRrgRF`. Comparação após publicação concluída: as 25 tabelas permanecem iguais ao backup; 20 clientes, 12 documentos, 8 concluídos em 2 lotes e 25 registros de arquivos preservados. O painel autenticado carregou com 12 documentos, 8 concluídos e 4 em assinatura.
 
 ## Limites e continuidade
 
