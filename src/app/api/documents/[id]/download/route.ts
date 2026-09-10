@@ -41,6 +41,7 @@ export async function GET(
         fileToServe = certRes.signedStorageFile as any;
       } catch (certErr) {
         console.error('Erro ao gerar certificado sob demanda:', certErr);
+        if (document.status === 'CONCLUIDO') return NextResponse.json({ error: 'As assinaturas estão salvas, mas o PDF final não ficou pronto. Tente baixar novamente em instantes.', retryable: true }, { status: 503 });
       }
     }
 

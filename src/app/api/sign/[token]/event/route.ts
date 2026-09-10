@@ -56,6 +56,11 @@ export async function POST(req: Request, { params }: { params: { token: string }
       if (!target) return { status: 403, body: { error: 'Participante não autorizado neste aparelho.' } };
       const correction = imageField ? await pendingPhotoCorrection(tx, target, imageField) : null;
       if (target.status === 'ASSINADO' && !correction) {
+        // A resposta pode ter se perdido depois de a correção ser salva.
+        // Aceitar somente a mesma foto confirma o recebimento sem outra substituição.
+        if (imageField && SAVABLE_IMAGE_FIELDS.has(imageField) && imageData && target[imageField as keyof typeof target] === imageData) {
+          return { status: 200, body: { success: true } };
+        }
         return imageField ? { status: 409, body: { error: 'Não há solicitação de correção para esta etapa.' } } : { status: 200, body: { success: true } };
       }
       const ipAddress = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '127.0.0.1';

@@ -30,6 +30,7 @@ module.exports = async function run(prisma, admin, outsider) {
   deps['@/lib/document-files'] = load('src/lib/document-files.ts');
   const route = load('src/app/api/documents/[id]/route.ts');
   const event = load('src/app/api/sign/[token]/event/route.ts');
+  deps['@/lib/signatureOrder'] = load('src/lib/signatureOrder.ts');
   const submit = load('src/app/api/sign/[token]/submit/route.ts');
   const getSign = load('src/app/api/sign/[token]/route.ts');
   const request = (body) => new Request('http://127.0.0.1/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -123,5 +124,74 @@ module.exports = async function run(prisma, admin, outsider) {
   await status(submit.POST(request({ confirmCpf: singleClient.cpf, selfieCenterImage: 'foto-cliente-ficticia', signatureType: 'SELO_DIGITAL', signedConsentText: 'Aceite fictício',
     rogo: { name: 'A rogo fictício', cpf: '11144477735', selfieCenterImage: 'foto-rogo-ficticia', signatureType: 'SELO_DIGITAL' } }), tokenParams(singleClient)), 200);
   assert.equal(JSON.stringify(await prisma.document.findUnique({ where: { id: sibling.id }, include: { signers: true } })), siblingBefore); checks++;
+  // Falhas reais de transação: nada do envio pode ficar parcialmente assinado.
+  const atomic = await make('PENDENTE_REVISAO', crypto.randomUUID());
+  const atomicSibling = await make('PENDENTE_REVISAO', atomic.kitBatchId);
+  await status(route.POST(request({ action: 'redo-package' }), params(atomic)), 200);
+  const atomicClient = atomic.signers.find((s) => s.role === 'CLIENTE');
+  const payload = { confirmCpf: atomicClient.cpf, selfieCenterImage: 'foto-cliente-ficticia', signatureType: 'SELO_DIGITAL',
+    rogo: { name: 'A rogo fictício', cpf: '11144477735', selfieCenterImage: 'foto-rogo-ficticia', signatureType: 'SELO_DIGITAL' } };
+  const state = async () => JSON.stringify(await prisma.document.findMany({ where: { id: { in: [atomic.id, atomicSibling.id] } }, include: { signers: { orderBy: { id: 'asc' } }, events: { orderBy: { id: 'asc' } } }, orderBy: { id: 'asc' } }));
+  const beforeFailure = await state();
+  for (const failAt of [2, 3]) {
+    let writes = 0;
+    const failingDb = new Proxy(prisma, { get(target, key) {
+      if (key === '$transaction') return (work, options) => target.$transaction((tx) => work(new Proxy(tx, { get(t, k) {
+        if (k !== 'signer') return Reflect.get(t, k);
+        return new Proxy(t.signer, { get(model, operation) {
+          if (operation === 'update') return async (args) => { if (++writes === failAt) throw new Error('Falha fictícia durante gravação'); return model.update(args); };
+          return Reflect.get(model, operation);
+        } });
+      } })), options);
+      const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;
+    } });
+    deps['@/lib/prisma'] = { prisma: failingDb };
+    const failingSubmit = load('src/app/api/sign/[token]/submit/route.ts');
+    await status(failingSubmit.POST(request(payload), tokenParams(atomicClient)), 503);
+    assert.equal(await state(), beforeFailure); checks++;
+  }
+  deps['@/lib/prisma'] = { prisma };
+  const atomicResult = await status(submit.POST(request(payload), tokenParams(atomicClient)), 200);
+  assert.equal(atomicResult.kitDocumentsSigned, 2); assert.equal(atomicResult.certificatePending, true); checks++;
+  const saved = await state();
+  const repeat = await status(submit.POST(request({ ...payload, selfieCenterImage: 'nao-substituir' }), tokenParams(atomicClient)), 200);
+  assert.equal(repeat.alreadySigned, true); assert.equal(await state(), saved); checks++;
+  const resulting = await prisma.document.findMany({ where: { id: { in: [atomic.id, atomicSibling.id] } } });
+  assert(resulting.every((d) => d.status === 'CONCLUIDO' && d.reviewStatus === 'PENDENTE_REVISAO')); checks++;
+  // Perda da resposta de uma foto corrigida: confirmar a mesma foto não a troca novamente.
+  await status(route.POST(request({ action: 'redo-photo', signerId: atomicClient.id, field: 'selfieCenterImage' }), params(atomic)), 200);
+  await status(event.POST(request({ imageField: 'selfieCenterImage', imageData: 'foto-corrigida' }), tokenParams(atomicClient)), 200);
+  const photoSaved = await state();
+  await status(event.POST(request({ imageField: 'selfieCenterImage', imageData: 'foto-corrigida' }), tokenParams(atomicClient)), 200);
+  assert.equal(await state(), photoSaved); checks++;
+  await status(event.POST(request({ imageField: 'selfieCenterImage', imageData: 'foto-diferente' }), tokenParams(atomicClient)), 409);
+  // Testemunha em outro aparelho e passagem no mesmo aparelho continuam opcionais.
+  for (const mode of ['INDIVIDUAL', 'SAME_DEVICE']) {
+    const multi = await prisma.document.create({ data: { officeId: admin.officeId, title: 'Participantes fictícios', originalFileId: original.id, originalHash: 'hash-ficticio',
+      status: 'ENVIADO', reviewStatus: 'PENDENTE_REVISAO', signers: { create: [
+        { name: 'Cliente fictício', cpf: '52998224725', role: 'CLIENTE', signatureOrder: 1 },
+        { name: 'Testemunha fictícia', cpf: '11144477735', role: 'TESTEMUNHA_1', signatureOrder: 2, signingMode: mode },
+      ] } }, include: { signers: { orderBy: { signatureOrder: 'asc' } } } });
+    const send = { confirmCpf: multi.signers[0].cpf, selfieCenterImage: 'foto-cliente' };
+    const attempts = await Promise.all([submit.POST(request(send), tokenParams(multi.signers[0])), submit.POST(request(send), tokenParams(multi.signers[0]))]);
+    assert(attempts.every((r) => [200, 409].includes(r.status))); assert(attempts.some((r) => r.status === 200)); checks++;
+    const resumed = await status(submit.POST(request(send), tokenParams(multi.signers[0])), 200);
+    assert.equal(Boolean(resumed.nextSigner), mode === 'SAME_DEVICE'); assert.equal(resumed.pendingParticipants.length, 1); checks++;
+    const reopened = await status(getSign.GET(request({}), tokenParams(multi.signers[0])), 200);
+    assert.equal(Boolean(reopened.nextSigner), mode === 'SAME_DEVICE'); checks++;
+    await status(submit.POST(request({ confirmCpf: multi.signers[1].cpf, selfieCenterImage: 'foto-testemunha' }), tokenParams(multi.signers[1])), 200);
+    assert.equal((await prisma.document.findUnique({ where: { id: multi.id } })).status, 'CONCLUIDO');
+    assert.equal(await prisma.documentEvent.count({ where: { documentId: multi.id, signerId: multi.signers[0].id, eventType: 'SIGNATURE_SUBMITTED' } }), 1); checks++;
+  }
+  // Download nunca apresenta o original como substituto silencioso do certificado que falhou.
+  let pdfFailure = true;
+  deps['@/lib/pdfCertificate'] = { generateFinalPdfCertificate: async () => { if (pdfFailure) throw new Error('Falha PDF fictícia'); return { signedStorageFile: original }; } };
+  deps['@/lib/storage'] = { getFileBuffer: async () => Buffer.from('pdf-final-ficticio') };
+  const download = load('src/app/api/documents/[id]/download/route.ts');
+  actor = admin;
+  await status(download.GET(new Request('http://127.0.0.1/download'), params(atomic)), 503);
+  pdfFailure = false;
+  const recoveredDownload = await download.GET(new Request('http://127.0.0.1/download'), params(atomic));
+  assert.equal(recoveredDownload.status, 200); assert.equal(await recoveredDownload.text(), 'pdf-final-ficticio'); checks++;
   return checks;
 };

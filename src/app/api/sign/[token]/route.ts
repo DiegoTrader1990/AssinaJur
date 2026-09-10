@@ -168,8 +168,15 @@ export async function GET(
       }
     }
 
+    const pendingParticipants = document.signers.filter((person) => person.name && person.status !== 'ASSINADO');
+    const nextPending = pendingParticipants[0];
+    const nextSigner = signer.status === 'ASSINADO' && !redoPendingField && nextPending?.signingMode === 'SAME_DEVICE'
+      ? await prisma.signer.findUnique({ where: { id: nextPending.id }, select: { token: true, name: true, role: true } }) : null;
+
     // Retorna payload público seguro (sem segredos de autenticação)
     return NextResponse.json({
+      nextSigner,
+      pendingParticipants: pendingParticipants.map((person) => ({ name: person.name, role: person.role, signingMode: person.signingMode })),
       signer: {
         id: signer.id,
         name: signer.name,

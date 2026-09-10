@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 export const SIGNATURE_ORDER_EVENT = 'SIGNATURE_ORDER_ENFORCED';
@@ -19,14 +20,14 @@ export function findBlockingSigner(signers: OrderedSigner[], currentSignerId: st
     .sort((a, b) => a.signatureOrder - b.signatureOrder)[0] || null;
 }
 
-export async function getSignatureOrderBlock(documentId: string, currentSignerId: string) {
-  const enforced = await prisma.documentEvent.findFirst({
+export async function getSignatureOrderBlock(documentId: string, currentSignerId: string, db: Prisma.TransactionClient = prisma) {
+  const enforced = await db.documentEvent.findFirst({
     where: { documentId, eventType: SIGNATURE_ORDER_EVENT },
     select: { id: true },
   });
   if (!enforced) return null;
 
-  const signers = await prisma.signer.findMany({
+  const signers = await db.signer.findMany({
     where: { documentId },
     select: { id: true, name: true, role: true, status: true, signatureOrder: true },
     orderBy: { signatureOrder: 'asc' },

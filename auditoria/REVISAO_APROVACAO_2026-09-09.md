@@ -2,7 +2,7 @@
 
 Escopo definido pelo Diego: preservar o fluxo de cliente e assinatura a rogo, manter a exibição do CPF e corrigir os controles de revisão. Documento aprovado permanece intacto; refazer completo cria novo envio. Não foi adicionada retenção obrigatória das fotos rejeitadas.
 
-## Implementação preparada
+## Implementação publicada
 
 - Aprovação definitiva no servidor; a ação antiga de desfazer aprovação passa a ser recusada.
 - Novos envios de documento/kit aprovado preservam os originais, criam participantes com novos links e sem assinaturas/fotos anteriores, mantêm a modalidade a rogo e a ordem de participação. São envios separados e contam no limite de documentos do plano. Repetir a mesma solicitação não duplica o envio.
@@ -27,7 +27,7 @@ Nenhuma alteração de schema. Nenhum cadastro ou documento real foi usado nos t
 
 Antes desta etapa, o único acréscimo desde o snapshot anterior era um registro de auditoria. As outras 24 tabelas, inclusive clientes, documentos, participantes e arquivos, permaneciam iguais. Foi preparado o snapshot `snapshot-2026-09-10T01-16-37Z` com captura atualizada do banco e cópia dos 209 arquivos previamente verificados. As datas da captura original dos arquivos ficam registradas em `files-provenance.json`; a recuperação confere novamente todos os arquivos e seus vínculos.
 
-Snapshot recuperado e validado às 01:20 UTC de 10/09/2026: 25 tabelas idênticas, 20 clientes, 12 documentos, 8 concluídos em 2 lotes, 209 arquivos e 20 hashes de PDFs conferidos. Publicação preparada; aguardar Ready na Vercel para confirmação em produção.
+Snapshot recuperado e validado às 01:20 UTC de 10/09/2026: 25 tabelas idênticas, 20 clientes, 12 documentos, 8 concluídos em 2 lotes, 209 arquivos e 20 hashes de PDFs conferidos. Publicação confirmada como Ready em produção na Vercel, commit 1aadd3f32bd42f726fbd049af78a51b903c7f24a, deployment 3HqK21WZrGuVpgDsMJNrexabwMNy. Após a publicação, compare-live confirmou as 25 tabelas sem diferenças: 20 clientes, 12 documentos, 8 concluídos, 2 lotes concluídos e 25 registros de arquivos. A tela autenticada de documentos abriu normalmente e apresentou os mesmos totais. Não foram feitas ações de escrita em registros reais para testar a interface.
 
 ## Limites
 

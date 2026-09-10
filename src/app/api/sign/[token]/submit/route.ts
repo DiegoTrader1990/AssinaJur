@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { logAuditEvent } from '@/lib/audit';
 import { generateFinalPdfCertificate } from '@/lib/pdfCertificate';
 import { queueSignatureCompletionMessages } from '@/lib/whatsapp/signatureCompletion';
 import { getSignatureOrderBlock, signatureOrderError } from '@/lib/signatureOrder';
@@ -35,6 +34,16 @@ export async function POST(
       witness2,
     } = body;
 
+    const link = await prisma.signer.findUnique({ where: { token: params.token }, select: { document: { select: { officeId: true } } } });
+    if (!link) return NextResponse.json({ error: 'Link não encontrado.' }, { status: 404 });
+    // A aprovação usa a mesma ordem de bloqueios. Nenhum arquivo externo é gerado nesta transação.
+    const result = await prisma.$transaction(async (prisma) => {
+    await prisma.$queryRaw`SELECT id FROM "Office" WHERE id = ${link.document.officeId} FOR UPDATE`;
+    const linkedDocument = await prisma.signer.findUnique({ where: { token: params.token }, select: { document: true } });
+    if (!linkedDocument) return NextResponse.json({ error: 'Link não encontrado.' }, { status: 404 });
+    const lockDoc = linkedDocument.document;
+    await prisma.$queryRaw`SELECT id FROM "Document" WHERE "officeId" = ${lockDoc.officeId}
+      AND (id = ${lockDoc.id} OR (${lockDoc.kitBatchId}::text IS NOT NULL AND "kitBatchId" = ${lockDoc.kitBatchId})) ORDER BY id FOR UPDATE`;
     const signer = await prisma.signer.findUnique({
       where: { token: params.token },
       include: {
@@ -49,7 +58,13 @@ export async function POST(
     }
 
     if (signer.status === 'ASSINADO') {
-      return NextResponse.json({ error: 'Você já assinou este documento.' }, { status: 400 });
+      const pending = signer.document.signers.filter((s) => s.name && s.status !== 'ASSINADO').sort((a, b) => a.signatureOrder - b.signatureOrder);
+      return NextResponse.json({ success: true, alreadySigned: true, documentStatus: signer.document.status,
+        message: 'Sua participação já está salva.',
+        certificatePending: signer.document.status === 'CONCLUIDO' && !signer.document.signedFileId,
+        nextSigner: pending[0]?.signingMode === 'SAME_DEVICE' ? { token: pending[0].token, name: pending[0].name, role: pending[0].role } : null,
+        pendingParticipants: pending.map((s) => ({ name: s.name, role: s.role, signingMode: s.signingMode })),
+      });
     }
     if (signer.document.status === 'CONCLUIDO' && signer.document.reviewStatus === 'APROVADO') {
       return NextResponse.json({ error: 'O documento aprovado não pode ser alterado.' }, { status: 409 });
@@ -68,7 +83,7 @@ export async function POST(
       return NextResponse.json({ error: 'Este link foi cancelado ou expirou.' }, { status: 400 });
     }
 
-    const blocker = await getSignatureOrderBlock(signer.document.id, signer.id);
+    const blocker = await getSignatureOrderBlock(signer.document.id, signer.id, prisma);
     if (blocker) {
       return NextResponse.json({ error: signatureOrderError(blocker), orderEnforced: true, waitingFor: blocker.name }, { status: 409 });
     }
@@ -109,6 +124,14 @@ export async function POST(
           { status: 400 }
         );
       }
+    }
+
+    if (signer.role === 'ASSINANTE_A_ROGO' && signer.status !== 'ASSINADO') {
+      return NextResponse.json({ error: 'O assinante a rogo deve concluir junto com o cliente no mesmo aparelho.' }, { status: 409 });
+    }
+    if (isRogadoConsent && !rogo) return NextResponse.json({ error: 'Conclua a participação do assinante a rogo neste aparelho.' }, { status: 400 });
+    for (const witness of [witness1, witness2]) {
+      if (witness && !witness.selfieCenterImage) return NextResponse.json({ error: 'Conclua a foto da testemunha antes de enviar.' }, { status: 400 });
     }
 
     const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '127.0.0.1';
@@ -373,7 +396,7 @@ export async function POST(
         data: {
           documentId: signer.document.id,
           eventType: 'DOCUMENT_COMPLETED',
-          description: 'Todas as assinaturas foram colhidas. Certificado de Evidências Jurídicas emitido.',
+          description: 'Todas as assinaturas foram salvas. Documento aguardando geração do certificado e revisão do escritório.',
           ipAddress: clientIp,
           userAgent,
         },
@@ -417,7 +440,7 @@ export async function POST(
             && item.role === source.role
             && item.cpf.replace(/\D/g, '') === source.cpf.replace(/\D/g, '')
           );
-          if (!target) continue;
+          if (!target || target.status === 'ASSINADO') continue;
           await prisma.signer.update({
             where: { id: target.id },
             data: {
@@ -438,7 +461,7 @@ export async function POST(
         );
         if (!companionClient) continue;
 
-        await prisma.document.update({ where: { id: companion.id }, data: { status: 'CONCLUIDO', completedAt: new Date() } });
+        await prisma.document.update({ where: { id: companion.id }, data: { status: 'CONCLUIDO', completedAt: new Date(), reviewStatus: 'PENDENTE_REVISAO' } });
         await prisma.documentEvent.createMany({ data: [
           {
             documentId: companion.id, signerId: companionClient.id, eventType: 'LIVENESS_CAPTURED',
@@ -458,54 +481,36 @@ export async function POST(
       }
     }
 
-    // Somente depois de o pacote inteiro estar concluído no banco, compila os
-    // certificados. Se uma compilação falhar, o documento continuará concluído e
-    // a rota de download poderá regenerá-lo sob demanda.
-    // O certificado e o aviso de conclusão são independentes e por isso ficam
-    // em blocos separados. Antes estavam no mesmo try, com o certificado
-    // primeiro: se a compilação falhasse, o erro pulava a fila de mensagens e
-    // NINGUÉM era avisado - nem o escritório nem o cliente -, mesmo com o
-    // documento constando como concluído. O certificado se recupera sozinho
-    // (a rota de download o regenera sob demanda); o aviso não tem retentativa
-    // nenhuma: ou sai aqui, ou não sai nunca.
-    const finalizeDocument = async (documentId: string, label: string) => {
-      try {
-        await generateFinalPdfCertificate(documentId);
-      } catch (pdfErr) {
-        console.error(`Erro ao compilar o certificado (${label}); será regerado no download:`, pdfErr);
-      }
-      try {
-        await queueSignatureCompletionMessages(documentId);
-      } catch (notifyErr) {
-        console.error(`Erro ao enfileirar o aviso de conclusão (${label}):`, notifyErr);
-      }
-    };
-
-    if (allCompleted) {
-      await finalizeDocument(signer.document.id, 'documento principal');
-
-      for (const companionId of completedCompanionIds) {
-        await finalizeDocument(companionId, 'documento complementar do kit');
-      }
-    }
-
-    await logAuditEvent({
+    await prisma.auditLog.create({ data: {
       officeId: signer.document.officeId,
       eventType: 'DOCUMENT_SIGNED',
       description: `Documento "${signer.document.title}" assinado por ${signer.name}. Status atual: ${newDocStatus}.`,
-    });
+    } });
 
     return NextResponse.json({
       success: true,
       message: allCompleted ? 'Assinatura realizada com sucesso!' : 'Participação registrada. Aguardando os demais participantes.',
-      signer: updatedSigner,
+      signer: { id: updatedSigner.id, status: updatedSigner.status },
+      finalizeIds: allCompleted ? [signer.document.id, ...completedCompanionIds] : [],
       documentStatus: newDocStatus,
       kitDocumentsSigned,
       nextSigner: nextSigner && nextSigner.signingMode === 'SAME_DEVICE' ? { token: nextSigner.token, name: nextSigner.name, role: nextSigner.role } : null,
       pendingParticipants: allSigners.filter((item) => item.status !== 'ASSINADO').map((item) => ({ name: item.name, role: item.role, signingMode: item.signingMode })),
     });
+    }, { isolationLevel: 'Serializable', timeout: 20000, maxWait: 10000 });
+    if (!result.ok) return result;
+    const { finalizeIds = [], ...payload } = await result.json();
+    // Falhar aqui não desfaz as assinaturas já confirmadas no banco.
+    let certificatePending = payload.certificatePending === true;
+    for (const documentId of finalizeIds) {
+      try { await generateFinalPdfCertificate(documentId); }
+      catch { certificatePending = true; }
+      try { await queueSignatureCompletionMessages(documentId); }
+      catch { /* A assinatura permanece salva mesmo se o aviso falhar. */ }
+    }
+    return NextResponse.json({ ...payload, certificatePending });
   } catch (error: any) {
     console.error('Erro na submissão de assinatura:', error);
-    return NextResponse.json({ error: 'Erro ao processar assinatura: ' + (error?.message || '') }, { status: 500 });
+    return NextResponse.json({ error: 'Não foi possível confirmar agora. Suas etapas salvas foram mantidas. Tente novamente.', retryable: true }, { status: error?.code === 'P2034' || (error?.code === 'P2010' && ['40001', '40P01'].includes(error?.meta?.code)) ? 409 : 503 });
   }
 }

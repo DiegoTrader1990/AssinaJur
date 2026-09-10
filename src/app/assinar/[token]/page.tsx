@@ -371,10 +371,38 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   // depois de já ter capturado o Assinante a Rogo no mesmo aparelho), o que
   // já foi feito não se perde: reabrir o mesmo link retoma da etapa salva
   // em vez de recomeçar tudo do zero.
+  const [progressRetry, setProgressRetry] = useState<null | { retry: () => Promise<void>; message: string }>(null);
+  const [retryingProgress, setRetryingProgress] = useState(false);
+  useEffect(() => {
+    if (!progressRetry) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [progressRetry]);
+
   const saveProgress = async (imageField: 'documentFrontImage' | 'documentBackImage' | 'selfieCenterImage', imageData: string, forRogo = false) => {
-    await fetch(`/api/sign/${params.token}/event`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageField, imageData, forRogo }),
-    }).catch(() => {});
+    // Mantém a foto nesta página e só avança depois da confirmação do servidor.
+    await new Promise<void>((resolve) => {
+      const attempt = async () => {
+        setRetryingProgress(true);
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 20000);
+        try {
+          const response = await fetch(`/api/sign/${params.token}/event`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageField, imageData, forRogo }), signal: controller.signal,
+          });
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || 'Não foi possível salvar a foto agora.');
+          }
+          setProgressRetry(null);
+          resolve();
+        } catch (error: any) {
+          setProgressRetry({ retry: attempt, message: error.name === 'AbortError' ? 'O envio demorou mais que o esperado. Confira sua conexão.' : error.message || 'A conexão foi interrompida.' });
+        } finally { window.clearTimeout(timeout); setRetryingProgress(false); }
+      };
+      void attempt();
+    });
   };
 
   const handleOpenDocPreview = async (documentId?: string) => {
@@ -551,9 +579,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       // a rogo chega pelo link individual dele, onde ele é o próprio "signer" -
       // por isso basta olhar este campo.)
       const hasPendingRedo = Boolean(data.signer.redoPendingField);
-      const signedInThisSession = sessionStorage.getItem(`assinajur-signed-${params.token}`) === '1';
-      if (!hasPendingRedo && (data.signer.status === 'ASSINADO' || signedInThisSession)) {
-        setStep('SUCCESS');
+      // O servidor é a fonte de confirmação; uma marca antiga do navegador não encerra um novo envio.
+      if (!hasPendingRedo && data.signer.status === 'ASSINADO') {
+        setPendingParticipants(data.pendingParticipants || []);
+        if (data.nextSigner?.token) { setNextParticipant(data.nextSigner); setStep('NEXT_PARTICIPANT'); }
+        else setStep('SUCCESS');
       }
     } catch (err: any) {
       setError(err.message);
@@ -1284,7 +1314,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao processar assinatura.');
-      sessionStorage.setItem(`assinajur-signed-${params.token}`, '1');
+      try { sessionStorage.setItem(`assinajur-signed-${params.token}`, '1'); } catch { /* A confirmação do servidor independe do armazenamento do navegador. */ }
       if (data.nextSigner?.token) {
         setNextParticipant(data.nextSigner);
         setStep('NEXT_PARTICIPANT');
@@ -1327,6 +1357,14 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
   return (
     <div className={`flex flex-col justify-between font-sans bg-white text-slate-800 ${isActiveSelfieCamera ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'}`}>
+      {progressRetry && <div className="fixed inset-0 z-[100] bg-slate-950/80 flex items-center justify-center p-5" role="alertdialog" aria-modal="true" aria-labelledby="retry-photo-title">
+        <div className="max-w-md rounded-2xl bg-white p-6 space-y-4 text-center">
+          <h2 id="retry-photo-title" className="text-lg font-bold">Sua foto ainda não foi confirmada</h2>
+          <p className="text-sm">{progressRetry.message}</p>
+          <p className="text-sm">A foto está nesta página. Mantenha a página aberta e tente enviá-la novamente quando a conexão voltar. Não precisa tirar outra foto.</p>
+          <button type="button" disabled={retryingProgress} onClick={() => void progressRetry.retry()} className="rounded-xl bg-blue-700 px-5 py-3 text-white disabled:opacity-50">{retryingProgress ? 'Enviando…' : 'Tentar salvar novamente'}</button>
+        </div>
+      </div>}
       {/* O cabeçalho fixo some nas telas de câmera (documento/selfie): nelas
           já não sobra espaço de sobra na tela, e ele forçava a pessoa a
           rolar para ver o botão de disparo inteiro. Nas demais etapas ele
