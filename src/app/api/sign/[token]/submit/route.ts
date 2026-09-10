@@ -4,6 +4,7 @@ import { logAuditEvent } from '@/lib/audit';
 import { generateFinalPdfCertificate } from '@/lib/pdfCertificate';
 import { queueSignatureCompletionMessages } from '@/lib/whatsapp/signatureCompletion';
 import { getSignatureOrderBlock, signatureOrderError } from '@/lib/signatureOrder';
+import { isIndividualRetry } from '@/lib/photo-review';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -49,6 +50,19 @@ export async function POST(
 
     if (signer.status === 'ASSINADO') {
       return NextResponse.json({ error: 'Você já assinou este documento.' }, { status: 400 });
+    }
+    if (signer.document.status === 'CONCLUIDO' && signer.document.reviewStatus === 'APROVADO') {
+      return NextResponse.json({ error: 'O documento aprovado não pode ser alterado.' }, { status: 409 });
+    }
+    // O link só pode registrar acompanhantes previstos para o mesmo aparelho.
+    for (const [input, roles] of [[rogo, ['ASSINANTE_A_ROGO']], [witness1, ['TESTEMUNHA_1', 'TESTEMUNHA']], [witness2, ['TESTEMUNHA_2']]] as const) {
+      if (!input) continue;
+      const target = signer.document.signers.find((person) => (roles as readonly string[]).includes(person.role));
+      if (signer.role !== 'CLIENTE' || !target || target.signingMode !== 'SAME_DEVICE' || target.status === 'ASSINADO' ||
+          String(input.cpf || '').replace(/\D/g, '') !== target.cpf.replace(/\D/g, '') ||
+          String(input.name || '').trim().toLocaleLowerCase('pt-BR') !== target.name.trim().toLocaleLowerCase('pt-BR')) {
+        return NextResponse.json({ error: 'Os dados do acompanhante não correspondem ao participante autorizado. Solicite a correção ao escritório.' }, { status: 403 });
+      }
     }
     if (signer.document.status === 'CANCELADO' || signer.document.status === 'EXPIRADO' || (signer.document.expirationDate && new Date(signer.document.expirationDate).getTime() < Date.now())) {
       return NextResponse.json({ error: 'Este link foi cancelado ou expirou.' }, { status: 400 });
@@ -371,9 +385,10 @@ export async function POST(
     // do mesmo kit, mantendo PDFs e certificados individuais por documento.
     let kitDocumentsSigned = 1;
     const completedCompanionIds: string[] = [];
-    if (allCompleted && signer.document.kitBatchId) {
+    if (allCompleted && signer.document.kitBatchId && !(await isIndividualRetry(prisma, signer.document.id))) {
       const companionDocuments = await prisma.document.findMany({
         where: {
+          officeId: signer.document.officeId,
           kitBatchId: signer.document.kitBatchId,
           clientId: signer.document.clientId,
           id: { not: signer.document.id },
@@ -383,6 +398,7 @@ export async function POST(
       });
 
       for (const companion of companionDocuments) {
+        if (await isIndividualRetry(prisma, companion.id)) continue;
         const sourceParticipants = rawSigners.filter((item) => item.name && item.status === 'ASSINADO');
         const sameParticipants = sourceParticipants.length === companion.signers.length
           && sourceParticipants.every((source) => companion.signers.some((target) =>

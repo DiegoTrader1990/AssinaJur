@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { pendingPhotoCorrection, isIndividualRetry } from '@/lib/photo-review';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,68 +36,52 @@ const SAVABLE_IMAGE_FIELDS = new Set(['documentFrontImage', 'documentBackImage',
 export async function POST(req: Request, { params }: { params: { token: string } }) {
   try {
     const { eventType, imageField, imageData, forRogo } = await req.json();
-    // eventType agora é opcional: uma chamada só para salvar o progresso da
-    // captura (imageField/imageData), sem gerar um evento novo na trilha,
-    // usa isso quando o evento correspondente (ex.: FRONT_CAPTURED) já foi
-    // registrado separadamente pelo componente de câmera - evita duplicar a
-    // mesma entrada na trilha de auditoria.
     if (eventType && !EVENT_DESCRIPTIONS[eventType]) return NextResponse.json({ error: 'Evento inválido.' }, { status: 400 });
-    const signer = await prisma.signer.findUnique({ where: { token: params.token }, include: { document: true } });
-    if (!signer?.document) return NextResponse.json({ success: true });
-
-    // Uma foto pode ser reenviada mesmo com a assinatura já concluída, mas
-    // SÓ se o escritório explicitamente pediu para refazer aquele campo
-    // específico (o que já limpa o valor anterior - ver action "redo-photo"
-    // em /api/documents/[id]). Nunca sobrescreve uma foto que ainda está
-    // presente, então uma assinatura concluída continua protegida contra
-    // alteração indevida fora desse fluxo.
-    const isPhotoRedo = signer.status === 'ASSINADO' && !forRogo && imageField && SAVABLE_IMAGE_FIELDS.has(imageField) && !(signer as any)[imageField];
-    if (signer.status === 'ASSINADO' && !isPhotoRedo) return NextResponse.json({ success: true });
-    const ipAddress = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '127.0.0.1';
-    const userAgent = req.headers.get('user-agent') || 'Navegador Mobile';
-    if (eventType) {
-      const targets = signer.document.kitBatchId && signer.role === 'CLIENTE'
-        ? await prisma.document.findMany({
-            where: { kitBatchId: signer.document.kitBatchId, clientId: signer.document.clientId, status: { notIn: ['CANCELADO', 'EXPIRADO'] } },
-            include: { signers: { where: { role: 'CLIENTE' }, select: { id: true } } },
-          })
-        : [{ id: signer.document.id, signers: [{ id: signer.id }] }];
-      await prisma.documentEvent.createMany({ data: targets.flatMap((document) => {
-        const targetSigner = document.signers[0];
-        return targetSigner ? [{ documentId: document.id, signerId: targetSigner.id, eventType, description: EVENT_DESCRIPTIONS[eventType], ipAddress, userAgent }] : [];
-      }) });
-    }
-
-    // Salva a imagem capturada nesta etapa direto no signatário (o próprio
-    // titular do link, ou o Assinante a Rogo - que já existe como registro
-    // desde a criação do documento, quando capturado no mesmo dispositivo).
-    // Marca como "EM_ANDAMENTO" para o painel poder distinguir quem está no
-    // meio da captura de quem simplesmente ainda não abriu o link.
-    if (imageField && imageData && SAVABLE_IMAGE_FIELDS.has(imageField)) {
-      const targetSignerId = forRogo
-        ? (await prisma.signer.findFirst({ where: { documentId: signer.document.id, role: 'ASSINANTE_A_ROGO' }, select: { id: true, status: true } }))
-        : { id: signer.id, status: signer.status };
-      const allowSave = targetSignerId && (targetSignerId.status !== 'ASSINADO' || isPhotoRedo);
-      if (allowSave && targetSignerId) {
-        await prisma.signer.update({
-          where: { id: targetSignerId.id },
-          data: {
-            [imageField]: imageData,
-            status: targetSignerId.status === 'PENDENTE' || targetSignerId.status === 'VISUALIZADO' ? 'EM_ANDAMENTO' : targetSignerId.status,
-          },
-        });
-        // Se a assinatura já estava concluída (caso de refazer uma foto
-        // específica), o certificado em PDF já gerado fica desatualizado -
-        // limpa para ser regenerado sob demanda na próxima vez que alguém
-        // baixar ou visualizar o certificado, agora com a foto nova.
-        if (targetSignerId.status === 'ASSINADO') {
-          await prisma.document.update({ where: { id: signer.document.id }, data: { signedFileId: null } }).catch(() => {});
-        }
+    const result = await prisma.$transaction(async (tx) => {
+      const link = await tx.signer.findUnique({ where: { token: params.token }, select: { documentId: true } });
+      if (!link) return { status: 404, body: { error: 'Link não encontrado.' } };
+      await tx.$queryRaw`SELECT id FROM "Document" WHERE id = ${link.documentId} FOR UPDATE`;
+      const signer = await tx.signer.findUniqueOrThrow({ where: { token: params.token }, include: { document: true } });
+      const document = signer.document;
+      if (document.status === 'CONCLUIDO' && document.reviewStatus === 'APROVADO') {
+        return imageField ? { status: 409, body: { error: 'O documento aprovado não pode ser alterado.' } } : { status: 200, body: { success: true } };
       }
-    }
-
-    return NextResponse.json({ success: true });
+      if (['CANCELADO', 'EXPIRADO'].includes(document.status) || (document.status !== 'CONCLUIDO' && document.expirationDate && document.expirationDate.getTime() < Date.now())) {
+        return { status: 409, body: { error: 'Este documento foi cancelado ou o convite expirou.' } };
+      }
+      if (forRogo && (signer.role !== 'CLIENTE' || !document.isIlliterate)) return { status: 403, body: { error: 'Participante não autorizado.' } };
+      const target = forRogo
+        ? await tx.signer.findFirst({ where: { documentId: document.id, role: 'ASSINANTE_A_ROGO', signingMode: 'SAME_DEVICE' } })
+        : signer;
+      if (!target) return { status: 403, body: { error: 'Participante não autorizado neste aparelho.' } };
+      const correction = imageField ? await pendingPhotoCorrection(tx, target, imageField) : null;
+      if (target.status === 'ASSINADO' && !correction) {
+        return imageField ? { status: 409, body: { error: 'Não há solicitação de correção para esta etapa.' } } : { status: 200, body: { success: true } };
+      }
+      const ipAddress = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '127.0.0.1';
+      const userAgent = req.headers.get('user-agent') || 'Navegador';
+      if (imageField && imageData && SAVABLE_IMAGE_FIELDS.has(imageField)) {
+        await tx.signer.update({ where: { id: target.id }, data: { [imageField]: imageData,
+          status: ['PENDENTE', 'VISUALIZADO'].includes(target.status) ? 'EM_ANDAMENTO' : target.status } });
+        if (correction) await tx.documentEvent.create({ data: { documentId: document.id, signerId: target.id,
+          eventType: 'PHOTO_REDO_COMPLETED', metadata: JSON.stringify({ field: imageField, requestId: correction.id }),
+          description: 'Foto solicitada pelo escritório foi reenviada.', ipAddress, userAgent } });
+        if (target.status === 'ASSINADO') await tx.document.update({ where: { id: document.id }, data: { signedFileId: null, signedHash: null } });
+      }
+      if (eventType) {
+        // Não acrescentar eventos em documentos aprovados do mesmo pacote.
+        const targets = document.kitBatchId && signer.role === 'CLIENTE' && !(await isIndividualRetry(tx, document.id))
+          ? await tx.document.findMany({ where: { officeId: document.officeId, kitBatchId: document.kitBatchId, clientId: document.clientId,
+            status: { notIn: ['CANCELADO', 'EXPIRADO'] }, NOT: { status: 'CONCLUIDO', reviewStatus: 'APROVADO' } },
+            include: { signers: { where: { role: 'CLIENTE' }, select: { id: true } } } })
+          : [{ id: document.id, signers: [{ id: target.id }] }];
+        await tx.documentEvent.createMany({ data: targets.flatMap((doc) => doc.signers[0] ? [{ documentId: doc.id, signerId: doc.signers[0].id,
+          eventType, description: EVENT_DESCRIPTIONS[eventType], ipAddress, userAgent }] : []) });
+      }
+      return { status: 200, body: { success: true } };
+    }, { isolationLevel: 'Serializable' });
+    return NextResponse.json(result.body, { status: result.status });
   } catch {
-    return NextResponse.json({ error: 'Não foi possível registrar a evidência.' }, { status: 500 });
+    return NextResponse.json({ error: 'Não foi possível salvar. Atualize a página e tente novamente.' }, { status: 409 });
   }
 }

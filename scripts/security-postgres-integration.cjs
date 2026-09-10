@@ -84,6 +84,7 @@ async function main() {
   assert.equal((await status(pendencies.GET(request()), 200)).pendencies.length, 0);
   assert.equal(await prisma.legalKit.count(), 1);
   assert.equal(await prisma.clientPendency.count(), 1); checks++;
-  console.log(JSON.stringify({ passed: true, checks, database: 'PostgreSQL local vazio com dois escritórios fictícios', providersCalled: false }));
+  const reviewChecks = await require('./document-review-integration.cjs')(prisma, users[0], users[1]);
+  console.log(JSON.stringify({ passed: true, checks, reviewChecks, database: 'PostgreSQL local vazio com dois escritórios fictícios', providersCalled: false }));
 }
 main().catch((error) => { console.error(JSON.stringify({ passed: false, checks, errorType: error.name, message: error.message })); process.exitCode = 1; }).finally(() => prisma.$disconnect());

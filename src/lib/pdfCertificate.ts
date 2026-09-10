@@ -285,6 +285,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     include: {
       office: true,
       originalFile: true,
+      signedFile: true,
       signers: true,
       events: {
         where: {
@@ -298,6 +299,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
   if (!doc || !doc.originalFile) {
     throw new Error('Documento ou arquivo original não encontrado.');
+  }
+  if (doc.status === 'CONCLUIDO' && doc.reviewStatus === 'APROVADO') {
+    if (!doc.signedFile || !doc.signedHash || !doc.verificationCode) throw new Error('O arquivo aprovado precisa ser recuperado; ele não pode ser regenerado.');
+    return { signedStorageFile: doc.signedFile, signedHash: doc.signedHash, verificationCode: doc.verificationCode };
   }
   // A ordem visual do certificado segue a ordem jurídica, inclusive para
   // documentos antigos que possam ter participantes criados fora de ordem.
@@ -332,10 +337,11 @@ export async function generateFinalPdfCertificate(documentId: string) {
   let verificationCode = doc.verificationCode;
   if (!verificationCode) {
     verificationCode = generateVerificationCode();
-    await prisma.document.update({
-      where: { id: doc.id },
+    const withCode = await prisma.document.update({
+      where: { id: doc.id, status: 'CONCLUIDO', reviewStatus: 'PENDENTE_REVISAO', updatedAt: doc.updatedAt },
       data: { verificationCode },
     });
+    doc.updatedAt = withCode.updatedAt;
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://assinajur.vercel.app';
@@ -893,13 +899,14 @@ export async function generateFinalPdfCertificate(documentId: string) {
       mimeType: 'application/pdf',
     });
 
-    await prisma.document.update({
-      where: { id: doc.id },
+    const committed = await prisma.document.updateMany({
+      where: { id: doc.id, status: 'CONCLUIDO', reviewStatus: 'PENDENTE_REVISAO', updatedAt: doc.updatedAt },
       data: {
         signedFileId: signedStorageFile.id,
         signedHash,
       },
     });
+    if (!committed.count) throw new Error('Documento alterado durante a geração do PDF. Atualize e tente novamente.');
 
     return {
       signedStorageFile,
@@ -1597,13 +1604,15 @@ export async function generateFinalPdfCertificate(documentId: string) {
     mimeType: 'application/pdf',
   });
 
-  await prisma.document.update({
-    where: { id: doc.id },
+  const committed = await prisma.document.updateMany({
+    where: { id: doc.id, status: 'CONCLUIDO', reviewStatus: 'PENDENTE_REVISAO', updatedAt: doc.updatedAt },
     data: {
       signedFileId: signedStorageFile.id,
       signedHash,
     },
   });
+
+  if (!committed.count) throw new Error('Documento alterado durante a geração do PDF. Atualize e tente novamente.');
 
   return {
     signedStorageFile,

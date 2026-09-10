@@ -1,6 +1,6 @@
 # AssinaJur — primeira etapa de correções
 
-Data: 08/09/2026. Estado: mudanças locais; publicação pendente.
+Atualizado em 09/09/2026. Estado: etapa publicada no commit aafcbfc, deploy Ready confirmado; preservação verificada após a publicação.
 
 Verificação dos serviços realizada posteriormente: [VERIFICACAO_PRE_PUBLICACAO.md](VERIFICACAO_PRE_PUBLICACAO.md). O banco atual foi confirmado no Supabase. Backup criptografado e restauração local foram concluídos, incluindo 20 clientes, 8 documentos concluídos em 2 kits e os arquivos. A homologação com PostgreSQL e dois escritórios fictícios passou em 28 verificações.
 
@@ -28,7 +28,7 @@ Este registro complementa a auditoria original, que continua sendo uma fotografi
 
 ## Preservação e condições antes da publicação
 
-Nenhuma migração, sincronização ou limpeza de banco foi executada. Nenhuma assinatura histórica, arquivo, cadastro de cliente, senha ou configuração de serviço externo foi alterada. Não houve push nem deploy nesta etapa. Backup de produção e recuperação local foram validados em 09/09/2026; detalhes no relatório de pré-publicação.
+Nenhuma migração, sincronização ou limpeza de banco foi executada. Nenhuma assinatura histórica, arquivo, cadastro de cliente, senha ou configuração de serviço externo foi alterada. Publicação confirmada como Ready em 09/09/2026; verificação posterior confirmou os dados preservados. Backup de produção e recuperação local foram validados em 09/09/2026; detalhes no relatório de pré-publicação.
 
 Antes de publicar:
 

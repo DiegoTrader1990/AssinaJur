@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
-import { deleteFile } from '@/lib/storage';
+import { removeUnusedDocumentFile } from '@/lib/document-files';
+import { reviewActions, reviewDocument, DocumentReviewError, canCorrectDocuments, isApprovedDocument } from '@/lib/document-review';
+import { isIndividualRetry } from '@/lib/photo-review';
 import { generateFinalPdfCertificate } from '@/lib/pdfCertificate';
 import { queueSignatureCompletionMessages } from '@/lib/whatsapp/signatureCompletion';
 
@@ -104,7 +106,11 @@ export async function POST(
       return [document];
     };
 
+    if (reviewActions.has(action)) return NextResponse.json(await reviewDocument(prisma, user, document.id, body));
+    if (!canCorrectDocuments(user.role)) return NextResponse.json({ error: 'Seu acesso permite apenas consultas.' }, { status: 403 });
+
     if (action === 'sync-package-signature') {
+      if (await isIndividualRetry(prisma, document.id)) return NextResponse.json({ error: 'Esta nova tentativa é individual e não pode assinar os demais documentos.' }, { status: 409 });
       if (document.status !== 'CONCLUIDO' || !document.kitBatchId) {
         return NextResponse.json({ error: 'Este documento não possui uma assinatura de pacote concluída para sincronizar.' }, { status: 400 });
       }
@@ -115,6 +121,7 @@ export async function POST(
       });
       let synchronized = 0;
       for (const companion of companions) {
+        if (await isIndividualRetry(prisma, companion.id)) continue;
         const sameParticipants = companion.signers.length === sourceSigners.length && sourceSigners.every((source) => companion.signers.some((target) => target.signatureOrder === source.signatureOrder && target.role === source.role && target.cpf.replace(/\D/g, '') === source.cpf.replace(/\D/g, '')));
         if (!sameParticipants) continue;
         for (const source of sourceSigners) {
@@ -129,214 +136,6 @@ export async function POST(
       }
       await logAuditEvent({ officeId: user.officeId, userId: user.id, eventType: 'PACKAGE_SIGNATURE_SYNCHRONIZED', description: `${synchronized} documento(s) do pacote "${document.title}" foram sincronizados.` });
       return NextResponse.json({ success: true, synchronized });
-    }
-
-    // Aprovação manual: depois de conferir que a assinatura concluída saiu correta, o
-    // administrador marca o documento (ou o pacote inteiro) como "Aprovado". A partir daí
-    // o botão Refazer some para esse documento, evitando clique acidental num documento que
-    // já está certo. Documentos concluídos antes desse recurso existir já nascem aprovados
-    // (ver default do campo no schema); só passam a exigir essa revisão a partir de agora.
-    if (action === 'approve-document' || action === 'approve-package') {
-      if (user.role !== 'OFFICE_ADMIN') {
-        return NextResponse.json({ error: 'Apenas o administrador do escritório pode aprovar a assinatura.' }, { status: 403 });
-      }
-
-      const approveTargets = action === 'approve-package'
-        ? await resolvePackageTargets({ status: 'CONCLUIDO' })
-        : [document];
-
-      const approveEligible = approveTargets.filter((item) => item.status === 'CONCLUIDO');
-      if (!approveEligible.length) {
-        return NextResponse.json({ error: 'Só é possível aprovar documentos que já estão concluídos.' }, { status: 400 });
-      }
-
-      for (const target of approveEligible) {
-        await prisma.document.update({ where: { id: target.id }, data: { reviewStatus: 'APROVADO' } });
-        await prisma.documentEvent.create({
-          data: {
-            documentId: target.id,
-            userId: user.id,
-            eventType: 'DOCUMENT_APPROVED',
-            description: `Assinatura concluída revisada e aprovada por ${user.name}.`,
-          },
-        });
-      }
-
-      await logAuditEvent({
-        officeId: user.officeId,
-        userId: user.id,
-        eventType: 'DOCUMENT_APPROVED',
-        description: `${approveEligible.length} documento(s) ${action === 'approve-package' ? `do pacote "${document.title}"` : `("${document.title}")`} foram aprovados por ${user.name}.`,
-      });
-
-      return NextResponse.json({ success: true, approvedCount: approveEligible.length });
-    }
-
-    // Desfazer aprovação: a aprovação esconde o botão Refazer de propósito, para evitar
-    // clique acidental num documento já conferido - mas isso também significa que, se o
-    // escritório aprovou por engano (ou aprovou antes de perceber que a prova de presença
-    // precisa ser refeita), não havia como voltar atrás sem mexer direto no banco. Esta
-    // ação simplesmente devolve o documento (ou pacote) ao estado "Aguardando revisão",
-    // liberando o Refazer de novo - não altera nenhuma evidência já registrada.
-    if (action === 'unapprove-document' || action === 'unapprove-package') {
-      if (user.role !== 'OFFICE_ADMIN') {
-        return NextResponse.json({ error: 'Apenas o administrador do escritório pode desfazer uma aprovação.' }, { status: 403 });
-      }
-
-      const unapproveTargets = action === 'unapprove-package'
-        ? await resolvePackageTargets({ status: 'CONCLUIDO', reviewStatus: 'APROVADO' })
-        : [document];
-
-      const unapproveEligible = unapproveTargets.filter((item) => item.status === 'CONCLUIDO' && item.reviewStatus === 'APROVADO');
-      if (!unapproveEligible.length) {
-        return NextResponse.json({ error: 'Não há documentos aprovados para desfazer aqui.' }, { status: 400 });
-      }
-
-      for (const target of unapproveEligible) {
-        await prisma.document.update({ where: { id: target.id }, data: { reviewStatus: 'PENDENTE_REVISAO' } });
-        await prisma.documentEvent.create({
-          data: {
-            documentId: target.id,
-            userId: user.id,
-            eventType: 'DOCUMENT_APPROVED',
-            description: `Aprovação desfeita por ${user.name}; documento voltou a aguardar revisão.`,
-          },
-        });
-      }
-
-      await logAuditEvent({
-        officeId: user.officeId,
-        userId: user.id,
-        eventType: 'DOCUMENT_APPROVED',
-        description: `${unapproveEligible.length} documento(s) ${action === 'unapprove-package' ? `do pacote "${document.title}"` : `("${document.title}")`} voltaram a aguardar revisão por ${user.name}.`,
-      });
-
-      return NextResponse.json({ success: true, unapprovedCount: unapproveEligible.length });
-    }
-
-    // Reabre um documento (ou um pacote inteiro) já concluído para uma nova tentativa de
-    // assinatura, reaproveitando o MESMO link/token e todo o conteúdo já revisado/editado -
-    // pensado para o caso de a captura da prova de presença ter saído ruim (selfie, selo mal
-    // posicionado etc.) e ser preciso que a pessoa refaça só a parte de assinar, sem o
-    // escritório precisar reeditar o documento nem gerar um link novo. Só o dono/admin do
-    // escritório pode acionar - o cliente nunca tem esse botão. Só é permitido enquanto o
-    // documento ainda está "Aguardando revisão" - depois de aprovado, o Refazer não fica
-    // mais disponível (evita clique acidental num documento que já foi conferido).
-    if (action === 'redo-document' || action === 'redo-package') {
-      if (user.role !== 'OFFICE_ADMIN') {
-        return NextResponse.json({ error: 'Apenas o administrador do escritório pode solicitar que a assinatura seja refeita.' }, { status: 403 });
-      }
-
-      const targets = action === 'redo-package'
-        ? await resolvePackageTargets({ status: 'CONCLUIDO' })
-        : [document];
-
-      const eligible = targets.filter((item) => item.status === 'CONCLUIDO' && item.reviewStatus !== 'APROVADO');
-      if (!eligible.length) {
-        return NextResponse.json({ error: 'Só é possível refazer documentos concluídos que ainda não foram aprovados.' }, { status: 400 });
-      }
-
-      const reason = typeof body.reason === 'string' ? body.reason.trim().slice(0, 500) : '';
-
-      for (const target of eligible) {
-        // Preserva a trilha da tentativa anterior antes de reabrir - exigência de auditoria
-        // da MP 2.200-2/Lei 14.063: nunca some silenciosamente com uma assinatura já
-        // registrada, só marca como descartada. As evidências (selfie, selo, geolocalização)
-        // do signatário continuam salvas até a nova assinatura sobrescrevê-las.
-        await prisma.documentEvent.create({
-          data: {
-            documentId: target.id,
-            userId: user.id,
-            eventType: 'SIGNATURE_RESET',
-            description: `Assinatura concluída${target.completedAt ? ` em ${target.completedAt.toLocaleString('pt-BR')}` : ''} foi reaberta para nova tentativa por ${user.name}${reason ? `. Motivo: ${reason}` : '.'} O mesmo link de assinatura foi reativado; as evidências da tentativa anterior permanecem preservadas nesta trilha.`,
-          },
-        });
-        await prisma.signer.updateMany({
-          where: { documentId: target.id },
-          data: { status: 'PENDENTE' },
-        });
-        await prisma.document.update({
-          where: { id: target.id },
-          data: { status: 'ENVIADO', completedAt: null },
-        });
-      }
-
-      await logAuditEvent({
-        officeId: user.officeId,
-        userId: user.id,
-        eventType: 'SIGNATURE_RESET',
-        description: `${eligible.length} documento(s) ${action === 'redo-package' ? `do pacote "${document.title}"` : `("${document.title}")`} foram reabertos por ${user.name} para nova tentativa de assinatura.`,
-      });
-
-      return NextResponse.json({ success: true, resetCount: eligible.length });
-    }
-
-    // Pede para o signatário refazer só UMA foto específica (frente/verso do
-    // documento ou selfie), sem reabrir a assinatura inteira - diferente do
-    // "redo-document"/"redo-package" acima, que reabre tudo para uma nova
-    // tentativa. Pensado para quando o escritório olha o certificado e vê que
-    // uma foto específica ficou ruim (borrada, mal enquadrada), mas o resto
-    // (assinatura, demais evidências) está correto e não deve ser refeito.
-    // A assinatura já concluída CONTINUA valendo (status não muda) - só a
-    // foto é limpa, o link do signatário retoma direto naquela etapa, e o
-    // certificado é regenerado com a foto nova na próxima vez que for baixado.
-    if (action === 'redo-photo') {
-      if (user.role !== 'OFFICE_ADMIN') {
-        return NextResponse.json({ error: 'Apenas o administrador do escritório pode solicitar que uma foto seja refeita.' }, { status: 403 });
-      }
-      const REDOABLE_FIELDS = new Set(['documentFrontImage', 'documentBackImage', 'selfieCenterImage']);
-      const field = body.field;
-      const signerId = body.signerId;
-      if (!REDOABLE_FIELDS.has(field) || typeof signerId !== 'string') {
-        return NextResponse.json({ error: 'Campo ou signatário inválido para refazer.' }, { status: 400 });
-      }
-      const signer = document.signers.find((item) => item.id === signerId);
-      if (!signer) {
-        return NextResponse.json({ error: 'Signatário não encontrado neste documento.' }, { status: 404 });
-      }
-      if (!(signer as any)[field]) {
-        return NextResponse.json({ error: 'Este signatário ainda não tem essa foto capturada.' }, { status: 400 });
-      }
-
-      const fieldLabel = field === 'documentFrontImage' ? 'frente do documento' : field === 'documentBackImage' ? 'verso do documento' : 'selfie (prova de presença)';
-      const reason = typeof body.reason === 'string' ? body.reason.trim().slice(0, 500) : '';
-
-      await prisma.signer.update({
-        where: { id: signer.id },
-        data: { [field]: null },
-      });
-
-      // Limpa o PDF assinado já gerado (se houver) para forçar a regeneração
-      // do certificado na próxima vez que for baixado/visualizado - do
-      // contrário o download continuaria servindo o certificado antigo, com
-      // a foto que o escritório acabou de pedir para trocar.
-      if (document.signedFileId) {
-        await prisma.document.update({ where: { id: document.id }, data: { signedFileId: null } });
-      }
-
-      await prisma.documentEvent.create({
-        data: {
-          documentId: document.id,
-          signerId: signer.id,
-          userId: user.id,
-          eventType: 'PHOTO_REDO_REQUESTED',
-          description: `Escritório solicitou nova foto (${fieldLabel}) para ${signer.name}, por ${user.name}${reason ? `. Motivo: ${reason}` : '.'} A foto anterior foi removida; o link de assinatura do signatário retoma diretamente nesta etapa.`,
-          // Guarda qual campo foi pedido em formato estruturado - a rota
-          // pública GET /api/sign/[token] usa isso para saber, quando a
-          // assinatura já está concluída, para qual etapa retomar o link em
-          // vez de mostrar direto a tela de sucesso.
-          metadata: JSON.stringify({ field }),
-        },
-      });
-
-      await logAuditEvent({
-        officeId: user.officeId,
-        userId: user.id,
-        eventType: 'PHOTO_REDO_REQUESTED',
-        description: `Solicitada nova foto (${fieldLabel}) para ${signer.name} em "${document.title}", por ${user.name}.`,
-      });
-
-      return NextResponse.json({ success: true });
     }
 
     if (action === 'send') {
@@ -427,6 +226,8 @@ export async function POST(
 
     return NextResponse.json({ error: 'Ação inválida.' }, { status: 400 });
   } catch (error: any) {
+    if (error instanceof DocumentReviewError) return NextResponse.json({ error: error.message }, { status: error.status });
+    if (error?.code === 'P2034') return NextResponse.json({ error: 'O documento foi atualizado durante a operação. Atualize a tela e tente novamente.' }, { status: 409 });
     console.error('Erro na ação do documento:', error);
     return NextResponse.json({ error: 'Erro ao processar ação no documento.' }, { status: 500 });
   }
@@ -458,26 +259,16 @@ export async function DELETE(
     if (user.role !== 'OFFICE_ADMIN') {
       return NextResponse.json({ error: 'Apenas o administrador pode excluir documentos.' }, { status: 403 });
     }
+    if (isApprovedDocument(document)) return NextResponse.json({ error: 'O documento aprovado deve ser preservado.' }, { status: 409 });
     // Permite a exclusão de qualquer documento do escritório (rascunhos, em andamento ou concluídos)
     // pelo usuário autorizado do escritório.
 
     const documentTitle = document.title;
-    const originalFileId = document.originalFileId;
-    const signedFileId = document.signedFileId;
-    const originalStorageKey = document.originalFile?.storageKey;
-    const signedStorageKey = document.signedFile?.storageKey;
-
-    // 1. Exclui o documento — signatários e trilha de eventos são removidos em cascata
-    //    (onDelete: Cascade no schema.prisma).
-    await prisma.document.delete({ where: { id: document.id } });
-
-    // 2. Remove os registros StorageFile órfãos e os arquivos físicos correspondentes.
-    const storageFileIds = [originalFileId, signedFileId].filter(Boolean) as string[];
-    if (storageFileIds.length > 0) {
-      await prisma.storageFile.deleteMany({ where: { id: { in: storageFileIds } } });
+    const removed = await prisma.document.deleteMany({ where: { id: document.id, officeId: user.officeId, NOT: { status: 'CONCLUIDO', reviewStatus: 'APROVADO' } } });
+    if (!removed.count) return NextResponse.json({ error: 'O documento foi aprovado e deve ser preservado.' }, { status: 409 });
+    for (const file of [document.originalFile, document.signedFile]) {
+      if (file) await removeUnusedDocumentFile(file.id, file.storageKey);
     }
-    if (originalStorageKey) await deleteFile(originalStorageKey);
-    if (signedStorageKey) await deleteFile(signedStorageKey);
 
     await logAuditEvent({
       officeId: user.officeId,

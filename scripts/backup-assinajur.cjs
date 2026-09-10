@@ -120,7 +120,23 @@ async function main() {
     return;
   }
   checkRun();
-  if (mode === 'diagnose') {
+  if (mode === 'refresh-db') {
+    // Atualiza o banco mantendo uma cópia independente dos arquivos já verificados.
+    // restore-test exige novamente que todos os arquivos/hash referenciados confiram.
+    const manifest = JSON.parse(unseal(path.join(run, 'blobs-manifest.enc')));
+    const destination = path.join(ROOT, 'snapshot-' + new Date().toISOString().replaceAll(':', '-').replace(/\.\d+Z$/, 'Z'));
+    fs.mkdirSync(destination);
+    fs.mkdirSync(path.join(destination, 'blobs'));
+    for (const name of ['backup-key.dpapi', 'blobs-manifest.enc', 'blobs-summary.json']) fs.copyFileSync(path.join(run, name), path.join(destination, name), fs.constants.COPYFILE_EXCL);
+    for (const entry of manifest) {
+      assert(/^blobs[\\/][a-f0-9]{64}\.enc$/.test(entry.file), 'Caminho de arquivo inválido');
+      const buffer = unseal(path.join(run, entry.file));
+      assert.equal(digest(buffer), entry.sha256);
+      fs.copyFileSync(path.join(run, entry.file), path.join(destination, entry.file), fs.constants.COPYFILE_EXCL);
+    }
+    fs.writeFileSync(path.join(destination, 'files-provenance.json'), JSON.stringify({ filesCapturedAt: JSON.parse(fs.readFileSync(path.join(run, 'blobs-summary.json'), 'utf8')).capturedAt, sourceSnapshot: path.basename(run), copiedAndVerified: manifest.length }, null, 2));
+    console.log(JSON.stringify({ runDirectory: destination, reusedVerifiedFiles: manifest.length, databaseCaptureRequired: true }));
+  } else if (mode === 'diagnose') {
     for (const file of fs.readdirSync(run).filter((name) => /^(error|failure)-.*\.enc$/.test(name))) {
       const detail = JSON.parse(unseal(path.join(run, file)));
       const message = String(detail.message || detail.stderr || detail.error || '');

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, Fragment } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -110,6 +110,8 @@ export default function DocumentsPage() {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isOfficeAdmin, setIsOfficeAdmin] = useState(false);
+  const [canCorrect, setCanCorrect] = useState(false);
+  const restartRequests = useRef<Record<string, string>>({});
   const [redoingIds, setRedoingIds] = useState<Set<string>>(new Set());
   // Ids no formato "signerId:campo" das solicitações de "refazer só uma
   // foto" em andamento - separado de redoingIds (que é por documento) porque
@@ -141,7 +143,7 @@ export default function DocumentsPage() {
     fetchTags();
     fetch('/api/auth/me')
       .then((res) => res.json())
-      .then((data) => setIsOfficeAdmin(data?.user?.role === 'OFFICE_ADMIN'))
+      .then((data) => { setIsOfficeAdmin(data?.user?.role === 'OFFICE_ADMIN'); setCanCorrect(['OFFICE_ADMIN', 'LAWYER', 'STAFF'].includes(data?.user?.role)); })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -284,32 +286,22 @@ export default function DocumentsPage() {
     }
   };
 
-  // Desfaz uma aprovação feita por engano, devolvendo o documento (ou pacote) para
-  // "Aguardando revisão" - só assim o botão Refazer volta a aparecer. Nenhuma evidência
-  // já registrada é apagada, só o status de revisão muda.
-  const handleUnapproveSignature = async (doc: DocumentItem, mode: 'unapprove-document' | 'unapprove-package') => {
+  const handleRestartApproved = async (doc: DocumentItem, mode: 'restart-document' | 'restart-package') => {
+    if (!window.confirm(`Criar um novo envio ${mode === 'restart-package' ? 'do kit inteiro' : 'deste documento'}? O aprovado será mantido intacto. Os participantes receberão novos links e precisarão assinar novamente. O novo envio conta no limite do plano.`)) return;
+    const key = `${doc.id}:${mode}`;
+    const requestId = restartRequests.current[key] ||= crypto.randomUUID();
     setRedoingIds((current) => new Set(current).add(doc.id));
     try {
-      const res = await fetch(`/api/documents/${doc.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: mode }),
-      });
+      const res = await fetch(`/api/documents/${doc.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: mode, requestId }) });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Não foi possível desfazer a aprovação.');
-      await fetchDocuments();
-      setSelectedDoc(null);
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setRedoingIds((current) => {
-        const next = new Set(current);
-        next.delete(doc.id);
-        return next;
-      });
-    }
+      if (!res.ok) throw new Error(data.error || 'Não foi possível criar o novo envio.');
+      const updated = await fetchDocuments();
+      setSelectedDoc(updated?.find((item) => item.id === data.newDocumentId) || null);
+      delete restartRequests.current[key];
+      alert('Novo envio criado. Confira os participantes e use os novos links para solicitar as assinaturas. O documento aprovado foi preservado.');
+    } catch (err: any) { alert(err.message); }
+    finally { setRedoingIds((current) => { const next = new Set(current); next.delete(doc.id); return next; }); }
   };
-
   // Reabre a assinatura de um documento (ou do pacote inteiro) já concluído, para o caso
   // de a prova de presença ter saído ruim (selo mal posicionado, selfie não aproveitável
   // etc.). Reaproveita o mesmo link/token já enviado e todo o conteúdo do documento já
@@ -362,7 +354,7 @@ export default function DocumentsPage() {
   // a foto é substituída e o certificado é regenerado com a foto nova.
   const handleRequestPhotoRedo = async (doc: DocumentItem, signer: Signer, field: 'documentFrontImage' | 'documentBackImage' | 'selfieCenterImage') => {
     const fieldLabel = REDOABLE_FIELD_LABELS[field];
-    if (!window.confirm(`Pedir para ${signer.name} refazer a foto de ${fieldLabel}? A foto atual será removida e o link de assinatura dele(a) retomará direto nessa etapa.${signer.status === 'ASSINADO' ? ' A assinatura já concluída continua válida.' : ''}`)) return;
+    if (!window.confirm(`Pedir para ${signer.name} refazer a foto de ${fieldLabel}? A foto atual será removida e o link de assinatura dele(a) retomará direto nessa etapa.${signer.status === 'ASSINADO' ? ' As demais etapas serão mantidas.' : ''}`)) return;
     const reason = window.prompt('Motivo (opcional, fica registrado na trilha de auditoria):') || '';
 
     const key = `${signer.id}:${field}`;
@@ -393,6 +385,7 @@ export default function DocumentsPage() {
   };
 
   const handleDelete = async (doc: DocumentItem) => {
+    if (doc.status === 'CONCLUIDO' && doc.reviewStatus === 'APROVADO') { alert('O documento aprovado deve ser preservado.'); return; }
     const isConcluded = doc.status === 'CONCLUIDO';
     const warning = isConcluded
       ? `Este documento já foi ASSINADO e CONCLUÍDO. Excluir "${doc.title}" apaga permanentemente o certificado de evidências — tem certeza?`
@@ -795,21 +788,21 @@ export default function DocumentsPage() {
             </Link>
           )}
 
-          {isCompleted && isOfficeAdmin && doc.reviewStatus !== 'APROVADO' && (
+          {isCompleted && canCorrect && doc.reviewStatus !== 'APROVADO' && (
             <>
               {/* Documento faz parte de um kit (mesma sessão de assinatura com
                   vários PDFs) - aprovar/refazer precisa agir no PACOTE inteiro,
                   não só neste card individual, senão os documentos do mesmo
                   kit ficam dessincronizados (um aprovado/reaberto e os outros
                   não, quando na prática são uma única assinatura). */}
-              <button
+              {isOfficeAdmin && <button
                 onClick={() => handleApproveSignature(doc, doc.kitBatchId ? 'approve-package' : 'approve-document')}
                 disabled={redoingIds.has(doc.id)}
                 title={doc.kitBatchId ? 'Aprovar todo o pacote - confirma que as assinaturas estão corretas e remove o botão Refazer' : 'Aprovar - confirma que a assinatura está correta e remove o botão Refazer'}
                 className="p-1 text-emerald-600 hover:text-emerald-700 disabled:opacity-50 rounded-lg border border-emerald-200 transition-colors"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
-              </button>
+              </button>}
               <button
                 onClick={() => handleRedoSignature(doc, doc.kitBatchId ? 'redo-package' : 'redo-document')}
                 disabled={redoingIds.has(doc.id)}
@@ -865,9 +858,9 @@ export default function DocumentsPage() {
         </div>
         <div className="p-3 border-t border-slate-100 flex flex-wrap gap-2">
           <button onClick={() => setSelectedDoc(lead)} className="flex-1 py-2 bg-[#071B3A] hover:bg-[#0B1D3D] text-white rounded-xl text-[10px] font-extrabold">Abrir dossiê do pacote</button>
-          {isPendingReview && isOfficeAdmin && (
+          {isPendingReview && canCorrect && (
             <>
-              <button
+              {isOfficeAdmin && <button
                 type="button"
                 onClick={() => handleApproveSignature(lead, 'approve-package')}
                 disabled={redoingIds.has(lead.id)}
@@ -875,7 +868,7 @@ export default function DocumentsPage() {
                 className="px-3 py-2 border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 disabled:opacity-50 rounded-xl text-[10px] font-extrabold inline-flex items-center gap-1"
               >
                 <CheckCircle2 className="w-3 h-3" /> Aprovar
-              </button>
+              </button>}
               <button
                 type="button"
                 onClick={() => handleRedoSignature(lead, 'redo-package')}
@@ -1228,9 +1221,9 @@ export default function DocumentsPage() {
                         {item.status === 'CONCLUIDO' && item.reviewStatus === 'APROVADO' && (
                           <span title="Revisado e aprovado" className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5" /> Aprovado</span>
                         )}
-                        {isOfficeAdmin && item.status === 'CONCLUIDO' && item.reviewStatus !== 'APROVADO' && selectedPackageDocuments.length > 1 && (
+                        {canCorrect && item.status === 'CONCLUIDO' && item.reviewStatus !== 'APROVADO' && selectedPackageDocuments.length > 1 && (
                           <>
-                            <button
+                            {isOfficeAdmin && <button
                               type="button"
                               onClick={() => handleApproveSignature(item, 'approve-document')}
                               disabled={redoingIds.has(item.id)}
@@ -1238,12 +1231,12 @@ export default function DocumentsPage() {
                               className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700 hover:text-emerald-800 disabled:opacity-50"
                             >
                               <CheckCircle2 className="w-3.5 h-3.5" /> Aprovar
-                            </button>
+                            </button>}
                             <button
                               type="button"
-                              onClick={() => handleRedoSignature(item, 'redo-package')}
+                              onClick={() => handleRedoSignature(item, 'redo-document')}
                               disabled={redoingIds.has(item.id)}
-                              title="Refazer todo o pacote (kit) para manter os documentos sincronizados na mesma sessão de assinatura"
+                              title="Refazer a assinatura somente deste documento"
                               className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-700 hover:text-amber-800 disabled:opacity-50"
                             >
                               {redoingIds.has(item.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />} Refazer
@@ -1262,26 +1255,26 @@ export default function DocumentsPage() {
                 </button>
               )}
 
-              {isOfficeAdmin && selectedDoc.status === 'CONCLUIDO' && selectedDoc.reviewStatus === 'APROVADO' && (
+              {canCorrect && selectedDoc.status === 'CONCLUIDO' && selectedDoc.reviewStatus === 'APROVADO' && (
                 <div className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs font-extrabold text-emerald-800">
                   <div className="flex items-center justify-center gap-2">
                     <CheckCircle2 className="w-4 h-4" /> Assinatura revisada e aprovada
                   </div>
                   <button
                     type="button"
-                    onClick={() => handleUnapproveSignature(selectedDoc, selectedPackageDocuments.length > 1 ? 'unapprove-package' : 'unapprove-document')}
+                    onClick={() => handleRestartApproved(selectedDoc, 'restart-document')}
                     disabled={redoingIds.has(selectedDoc.id)}
-                    title="Volta o documento (ou pacote) para Aguardando revisão, liberando o botão Refazer de novo"
+                    title="Cria outro envio com novos links e preserva este documento aprovado"
                     className="mx-auto mt-1.5 block text-[10px] font-bold text-emerald-700 underline decoration-dotted hover:text-emerald-900 disabled:opacity-50"
                   >
-                    Aprovei por engano, desfazer aprovação
-                  </button>
+                    Refazer documento completo em novo envio
+                  </button>                  {selectedPackageDocuments.length > 1 && <button type="button" disabled={redoingIds.has(selectedDoc.id)} onClick={() => handleRestartApproved(selectedDoc, 'restart-package')} className="mx-auto mt-2 block text-[10px] font-bold underline disabled:opacity-50">Refazer kit completo em novo envio</button>}
                 </div>
               )}
 
-              {isOfficeAdmin && selectedDoc.status === 'CONCLUIDO' && selectedDoc.reviewStatus !== 'APROVADO' && (
+              {canCorrect && selectedDoc.status === 'CONCLUIDO' && selectedDoc.reviewStatus !== 'APROVADO' && (
                 <div className="flex gap-2">
-                  <button
+                  {isOfficeAdmin && <button
                     type="button"
                     onClick={() => handleApproveSignature(selectedDoc, selectedPackageDocuments.length > 1 ? 'approve-package' : 'approve-document')}
                     disabled={redoingIds.has(selectedDoc.id)}
@@ -1289,7 +1282,7 @@ export default function DocumentsPage() {
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     {selectedPackageDocuments.length > 1 ? 'Aprovar todo o pacote' : 'Aprovar assinatura'}
-                  </button>
+                  </button>}
                   <button
                     type="button"
                     onClick={() => handleRedoSignature(selectedDoc, selectedPackageDocuments.length > 1 ? 'redo-package' : 'redo-document')}
@@ -1298,7 +1291,7 @@ export default function DocumentsPage() {
                   >
                     {redoingIds.has(selectedDoc.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
                     {selectedPackageDocuments.length > 1 ? 'Refazer todo o pacote' : 'Refazer assinatura'}
-                  </button>
+                  </button>                  {selectedPackageDocuments.length > 1 && <button type="button" onClick={() => handleRedoSignature(selectedDoc, 'redo-document')} disabled={redoingIds.has(selectedDoc.id)} className="flex-1 rounded-xl border border-amber-200 text-xs font-bold text-amber-900 disabled:opacity-50">Refazer só este documento</button>}
                 </div>
               )}
 
@@ -1318,7 +1311,7 @@ export default function DocumentsPage() {
                               para refazer, envie o link individual DELE (botão "Copiar
                               link"/"Enviar" acima) para a pessoa retomar direto na foto
                               pedida, sem precisar do celular do titular de novo. */}
-                          {isOfficeAdmin && (s.documentFrontImage || s.documentBackImage || s.selfieCenterImage) && (
+                          {canCorrect && !(selectedDoc.status === 'CONCLUIDO' && selectedDoc.reviewStatus === 'APROVADO') && !['CANCELADO', 'EXPIRADO'].includes(selectedDoc.status) && (s.documentFrontImage || s.documentBackImage || s.selfieCenterImage) && (
                             <div className="mt-1.5 flex flex-wrap gap-1">
                               {([
                                 ['documentFrontImage', 'Frente'],
@@ -1352,7 +1345,7 @@ export default function DocumentsPage() {
               </div>
 
               {/* Botão de Exclusão no Dossiê */}
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end">
+              {isOfficeAdmin && !(selectedDoc.status === 'CONCLUIDO' && selectedDoc.reviewStatus === 'APROVADO') && <div className="pt-3 border-t border-slate-100 flex items-center justify-end">
                 <button
                   type="button"
                   onClick={() => {
@@ -1364,7 +1357,7 @@ export default function DocumentsPage() {
                 >
                   <Trash2 className="w-3.5 h-3.5 text-rose-600" /> Excluir Documento Definitivamente
                 </button>
-              </div>
+              </div>}
             </div>
           </div>
         </div>

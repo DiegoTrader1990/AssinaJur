@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { pendingPhotoCorrection, isIndividualRetry } from '@/lib/photo-review';
 import { getSignatureOrderBlock, signatureOrderError } from '@/lib/signatureOrder';
 
 export const dynamic = 'force-dynamic';
@@ -67,9 +68,9 @@ export async function GET(
           },
         })
       : null;
-    const kitDocuments = document.kitBatchId && signer.role === 'CLIENTE'
+    const kitDocuments = document.kitBatchId && signer.role === 'CLIENTE' && !(document.status === 'CONCLUIDO' && document.reviewStatus === 'APROVADO') && !(await isIndividualRetry(prisma, document.id))
       ? await prisma.document.findMany({
-          where: { kitBatchId: document.kitBatchId, clientId: document.clientId },
+          where: { officeId: document.officeId, kitBatchId: document.kitBatchId, clientId: document.clientId, NOT: { status: 'CONCLUIDO', reviewStatus: 'APROVADO' } },
           select: {
             id: true, title: true, status: true,
             signers: { select: { id: true, role: true } },
@@ -89,28 +90,8 @@ export async function GET(
     // Localiza o pedido mais recente e, se o campo pedido ainda estiver vazio
     // (ou seja, a foto nova ainda não chegou), devolve qual campo retomar -
     // com prioridade sobre a ordem normal (ver handleConfirmCpf no front-end).
-    let redoPendingField: string | null = null;
-    {
-      const lastRedoRequest = await prisma.documentEvent.findFirst({
-        where: { signerId: signer.id, eventType: 'PHOTO_REDO_REQUESTED' },
-        orderBy: { createdAt: 'desc' },
-        select: { metadata: true },
-      });
-      if (lastRedoRequest?.metadata) {
-        try {
-          const parsedField = JSON.parse(lastRedoRequest.metadata)?.field;
-          if (
-            (parsedField === 'documentFrontImage' && !signer.documentFrontImage) ||
-            (parsedField === 'documentBackImage' && !signer.documentBackImage) ||
-            (parsedField === 'selfieCenterImage' && !signer.selfieCenterImage)
-          ) {
-            redoPendingField = parsedField;
-          }
-        } catch {
-          // metadata mal formado - ignora, trata como sem pedido pendente.
-        }
-      }
-    }
+    const redoPendingField = document.status === 'CONCLUIDO' && document.reviewStatus === 'APROVADO'
+      ? null : (await pendingPhotoCorrection(prisma, signer))?.field || null;
 
     if (document.status === 'CANCELADO') {
       return NextResponse.json({ error: 'Este documento foi cancelado pelo escritório responsável.' }, { status: 400 });
@@ -119,8 +100,8 @@ export async function GET(
     if (document.status === 'EXPIRADO') {
       return NextResponse.json({ error: 'O prazo de validade deste link de assinatura expirou.' }, { status: 400 });
     }
-    if (document.expirationDate && new Date(document.expirationDate).getTime() < Date.now()) {
-      await prisma.document.update({ where: { id: document.id }, data: { status: 'EXPIRADO' } });
+    if (document.status !== 'CONCLUIDO' && document.expirationDate && new Date(document.expirationDate).getTime() < Date.now()) {
+      await prisma.document.updateMany({ where: { id: document.id, status: { notIn: ['CONCLUIDO', 'CANCELADO'] } }, data: { status: 'EXPIRADO' } });
       return NextResponse.json({ error: 'O prazo de validade deste link de assinatura expirou.' }, { status: 400 });
     }
 

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
-import { deleteFile } from '@/lib/storage';
+import { removeUnusedDocumentFile } from '@/lib/document-files';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,12 +24,14 @@ export async function POST(req: Request) {
     const protectedDocuments = documents.filter((document) => document.status === 'CONCLUIDO');
     const deletableDocuments = documents.filter((document) => document.status !== 'CONCLUIDO');
 
+    const deletedIds: string[] = [];
     for (const document of deletableDocuments) {
-      await prisma.document.delete({ where: { id: document.id } });
+      const removed = await prisma.document.deleteMany({ where: { id: document.id, officeId: user.officeId, status: { not: 'CONCLUIDO' } } });
+      if (!removed.count) continue;
+      deletedIds.push(document.id);
       const files = [document.originalFile, document.signedFile].filter(Boolean) as Array<{ id: string; storageKey: string }>;
       for (const file of files) {
-        await prisma.storageFile.deleteMany({ where: { id: file.id } });
-        await deleteFile(file.storageKey);
+        await removeUnusedDocumentFile(file.id, file.storageKey);
       }
     }
 
@@ -37,9 +39,9 @@ export async function POST(req: Request) {
       officeId: user.officeId,
       userId: user.id,
       eventType: 'DOCUMENTS_BULK_DELETED',
-      description: `${deletableDocuments.length} documento(s) excluído(s) em lote por ${user.name}.`,
+      description: `${deletedIds.length} documento(s) excluído(s) em lote por ${user.name}.`,
     });
-    return NextResponse.json({ success: true, deletedIds: deletableDocuments.map((item) => item.id), protectedCount: protectedDocuments.length });
+    return NextResponse.json({ success: true, deletedIds, protectedCount: documents.length - deletedIds.length });
   } catch (error) {
     console.error('Erro ao excluir documentos em lote:', error);
     return NextResponse.json({ error: 'Erro ao excluir documentos em lote.' }, { status: 500 });
