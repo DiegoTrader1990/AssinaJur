@@ -1,5 +1,8 @@
 'use client';
 
+import SignerStampEditor from '@/components/SignerStampEditor';
+import { editorParticipants, encodeStamps, type SignerStamp } from '@/lib/signer-stamps';
+
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -39,6 +42,7 @@ interface UploadedFile {
 }
 
 interface DocumentSettings {
+  signerStamps?: SignerStamp[];
   title: string;
   documentType: string;
   signaturePosition: 'CUSTOM' | 'BOTTOM' | 'TOP' | 'RIGHT_MARGIN' | 'LEFT_MARGIN';
@@ -121,6 +125,7 @@ export default function NewDocumentPage() {
   // Dados do Passo 3: Título e Detalhes
   const [title, setTitle] = useState('');
   const [documentType, setDocumentType] = useState('Contrato');
+  const [signerStamps, setSignerStamps] = useState<SignerStamp[]>([]);
   const [signaturePosition, setSignaturePosition] = useState<'CUSTOM' | 'BOTTOM' | 'TOP' | 'RIGHT_MARGIN' | 'LEFT_MARGIN'>('CUSTOM');
   const [placementPage, setPlacementPage] = useState(1);
   const [pdfPageCount, setPdfPageCount] = useState(1);
@@ -246,70 +251,7 @@ export default function NewDocumentPage() {
     }
   };
 
-  useEffect(() => {
-    if ((!file && !uploadedFile?.id) || step !== 3 || signaturePosition !== 'CUSTOM') return;
-    let cancelled = false;
-    let activeRender: any = null;
-    const renderPage = async () => {
-      setRenderingPreview(true);
-      try {
-        const pdfjs = await import('pdfjs-dist');
-        const pdfjsVersion = pdfjs.version || '4.10.38';
-        pdfjs.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
 
-        let bytes: Uint8Array | null = null;
-        if (file) {
-          bytes = new Uint8Array(await file.arrayBuffer());
-        } else if (uploadedFile?.id) {
-          const res = await fetch(`/api/documents/upload?fileId=${uploadedFile.id}`);
-          if (res.ok) {
-            bytes = new Uint8Array(await res.arrayBuffer());
-          }
-        }
-
-        if (!bytes || cancelled) return;
-
-        const loadingTask = pdfjs.getDocument({
-          data: bytes,
-          cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/cmaps/`,
-          cMapPacked: true,
-          standardFontDataUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/standard_fonts/`,
-        });
-        const pdf = await loadingTask.promise;
-        if (cancelled) return;
-        setPdfPageCount(pdf.numPages);
-        const safePage = Math.min(Math.max(1, placementPage), pdf.numPages);
-        if (safePage !== placementPage) setPlacementPage(safePage);
-        const pdfPage = await pdf.getPage(safePage);
-        const viewport = pdfPage.getViewport({ scale: 1.5 });
-        let canvas = previewCanvasRef.current;
-        if (!canvas) {
-          await new Promise((res) => setTimeout(res, 200));
-          canvas = previewCanvasRef.current;
-        }
-        if (!canvas || cancelled) return;
-        const context = canvas.getContext('2d');
-        if (!context) return;
-        canvas.width = Math.round(viewport.width);
-        canvas.height = Math.round(viewport.height);
-        canvas.style.width = '100%';
-        canvas.style.height = 'auto';
-        context.fillStyle = '#FFFFFF';
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        activeRender = pdfPage.render({ canvasContext: context, viewport });
-        await activeRender.promise;
-      } catch (previewError) {
-        if (!cancelled) console.error('Erro ao renderizar prévia do PDF:', previewError);
-      } finally {
-        if (!cancelled) setRenderingPreview(false);
-      }
-    };
-    renderPage();
-    return () => {
-      cancelled = true;
-      activeRender?.cancel?.();
-    };
-  }, [file, uploadedFile, step, placementPage, signaturePosition]);
 
   const moveStamp = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!previewContainerRef.current) return;
@@ -394,7 +336,13 @@ export default function NewDocumentPage() {
     }
   }, [clients, searchParams, selectedClientId]);
 
-  const currentSettings = (): DocumentSettings => ({ title, documentType, signaturePosition, placementPage, stampPlacement });
+  const stampIdentity = JSON.stringify([signers.map((p) => [p.name, p.cpf, p.role]), isIlliterate, rogoName]);
+  useEffect(() => {
+    setSignerStamps([]);
+    setDocumentSettings((current) => Object.fromEntries(Object.entries(current).map(([id, settings]) => [id, { ...settings, signerStamps: [] }])));
+  }, [stampIdentity]);
+
+  const currentSettings = (): DocumentSettings => ({ title, documentType, signaturePosition, placementPage, stampPlacement, signerStamps });
 
   const saveCurrentSettings = () => {
     if (!uploadedFile?.id) return;
@@ -415,7 +363,7 @@ export default function NewDocumentPage() {
     };
     setUploadedFile(target); setFile(null); setSelectedDocumentId(fileId);
     setTitle(settings.title); setDocumentType(settings.documentType); setSignaturePosition(settings.signaturePosition);
-    setPlacementPage(settings.placementPage); setStampPlacement(settings.stampPlacement);
+    setPlacementPage(settings.placementPage); setStampPlacement(settings.stampPlacement); setSignerStamps(settings.signerStamps || []);
   };
 
   const processFiles = async (files: File[]) => {
@@ -543,7 +491,7 @@ export default function NewDocumentPage() {
           kitBatchId: batchId,
           clientId: selectedClientId || null,
           signaturePosition: settings.signaturePosition === 'CUSTOM'
-            ? `CUSTOM:${settings.placementPage}:${settings.stampPlacement.x.toFixed(4)}:${settings.stampPlacement.y.toFixed(4)}:${settings.stampPlacement.width.toFixed(4)}:${settings.stampPlacement.height.toFixed(4)}`
+            ? encodeStamps(settings.signerStamps || [])
             : settings.signaturePosition,
           customMessage,
           signers,
@@ -1247,148 +1195,8 @@ export default function NewDocumentPage() {
             </div>
           </div>
 
-          {signaturePosition === 'CUSTOM' && (
-            <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50/70 via-white to-amber-50/50 p-4 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="font-heading text-sm font-extrabold text-[#071B3A] flex items-center gap-2">
-                    <Move className="w-4 h-4 text-blue-600" /> Posicione o selo na linha de assinatura
-                  </h3>
-                  <p className="text-[11px] text-slate-600 mt-1">Arraste o selo sobre a página. Ele será aplicado exatamente neste local após a assinatura.</p>
-                </div>
-                <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1.5 shadow-xs">
-                  <button
-                    type="button"
-                    onClick={() => setPlacementPage((current) => Math.max(1, current - 1))}
-                    disabled={placementPage <= 1}
-                    className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-30"
-                    aria-label="Página anterior"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <span className="text-[11px] font-extrabold text-[#071B3A] min-w-[82px] text-center">Página {placementPage} de {pdfPageCount}</span>
-                  <button
-                    type="button"
-                    onClick={() => setPlacementPage((current) => Math.min(pdfPageCount, current + 1))}
-                    disabled={placementPage >= pdfPageCount}
-                    className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-30"
-                    aria-label="Próxima página"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 rounded-xl bg-white border border-slate-200 px-3 py-2">
-                <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 whitespace-nowrap">Tamanho do selo</span>
-                <input
-                  type="range"
-                  min="22"
-                  max="52"
-                  value={Math.round(stampPlacement.width * 100)}
-                  onChange={(event) => {
-                    const width = Number(event.target.value) / 100;
-                    setStampPlacement((current) => ({ ...current, width, height: Math.max(0.075, width * 0.28), x: Math.min(current.x, 1 - width) }));
-                  }}
-                  className="w-full accent-blue-600"
-                />
-                <span className="text-[11px] font-bold text-slate-700 w-9 text-right">{Math.round(stampPlacement.width * 100)}%</span>
-              </div>
-
-              <div className="overflow-auto rounded-xl border border-slate-300 bg-slate-200/70 p-3 max-h-[680px]">
-                <div
-                  ref={previewContainerRef}
-                  className="relative mx-auto w-full max-w-[640px] shadow-2xl bg-white touch-none select-none rounded-xl overflow-hidden"
-                  onPointerMove={moveStamp}
-                  onPointerUp={() => {
-                    dragOffsetRef.current = null;
-                    isResizingRef.current = false;
-                    resizeStartRef.current = null;
-                  }}
-                  onPointerCancel={() => {
-                    dragOffsetRef.current = null;
-                    isResizingRef.current = false;
-                    resizeStartRef.current = null;
-                  }}
-                >
-                  <canvas ref={previewCanvasRef} className="block w-full h-auto rounded-xl pointer-events-none min-h-[500px]" />
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    className="absolute cursor-move overflow-hidden group"
-                    style={{
-                      left: `${stampPlacement.x * 100}%`,
-                      top: `${stampPlacement.y * 100}%`,
-                      width: `${stampPlacement.width * 100}%`,
-                      height: `${stampPlacement.height * 100}%`,
-                    }}
-                    onPointerDown={(event) => {
-                      const bounds = previewContainerRef.current?.getBoundingClientRect();
-                      if (!bounds) return;
-                      event.currentTarget.setPointerCapture(event.pointerId);
-                      dragOffsetRef.current = {
-                        x: event.clientX - bounds.left - stampPlacement.x * bounds.width,
-                        y: event.clientY - bounds.top - stampPlacement.y * bounds.height,
-                      };
-                    }}
-                  >
-                    {/* Selo final: sem moldura nem fundo (fica transparente sobre o
-                        papel timbrado), QR centralizado à esquerda e texto empilhado
-                        à direita, com o traço dourado colado logo abaixo do código -
-                        mesmo desenho aplicado no documento assinado de verdade. */}
-                    <div className="flex h-full items-center text-[#071B3A] leading-tight select-none">
-                      <div className="h-full flex items-center shrink-0 pr-1.5">
-                        <div className="aspect-square h-[70%] bg-white border border-slate-300 rounded-[2px] flex items-center justify-center">
-                          <span className="text-[7px] sm:text-[9px] font-black tracking-widest text-[#0B1D3D]">QR</span>
-                        </div>
-                      </div>
-                      <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
-                        <div className="text-[7px] sm:text-[9.5px] font-black text-[#0B1D3D] truncate font-heading tracking-wide uppercase">
-                          {signers[0]?.name || 'DOMINICK QUINTO SOARES'}
-                        </div>
-                        <div className="text-[6px] sm:text-[8px] font-bold text-slate-700 font-mono tracking-tight">
-                          CPF: {signers[0]?.cpf ? formatFullCpf(signers[0].cpf) : '000.000.000-00'}
-                        </div>
-                        <div className="text-[5px] sm:text-[6.8px] font-extrabold text-emerald-700 uppercase">
-                          Assinatura Eletrônica Qualificada
-                        </div>
-                        <div className="text-[6.5px] sm:text-[9px] font-mono font-black text-[#0B1D3D]">
-                          CÓD: AJ-A1B2-C3D4
-                        </div>
-                        <div className="h-[2px] w-[46%] bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-600 rounded-full" />
-                      </div>
-                    </div>
-
-                    {/* ALÇA INTERATIVA DE REDIMENSIONAMENTO NO PRÓPRIO SELO */}
-                    <div
-                      onPointerDown={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        const bounds = previewContainerRef.current?.getBoundingClientRect();
-                        if (!bounds) return;
-                        e.currentTarget.setPointerCapture(e.pointerId);
-                        isResizingRef.current = true;
-                        resizeStartRef.current = { startX: e.clientX, startWidth: stampPlacement.width * bounds.width };
-                      }}
-                      onPointerUp={(e) => {
-                        e.stopPropagation();
-                        isResizingRef.current = false;
-                        resizeStartRef.current = null;
-                      }}
-                      className="absolute bottom-0 right-0 w-4 h-4 bg-[#D4AF37] hover:bg-amber-400 cursor-se-resize flex items-center justify-center rounded-tl-sm shadow-md z-30 transition-transform active:scale-125"
-                      title="Arraste aqui para redimensionar o selo"
-                    >
-                      <div className="w-1.5 h-1.5 border-r-2 border-b-2 border-[#071B3A]" />
-                    </div>
-                  </div>
-                  {renderingPreview && (
-                    <div className="absolute inset-0 bg-white/75 flex items-center justify-center text-xs font-bold text-[#071B3A]">
-                      <Loader2 className="w-5 h-5 animate-spin mr-2 text-blue-600" /> Carregando página…
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+          {signaturePosition === 'CUSTOM' && (file || uploadedFile?.id) && (
+            <SignerStampEditor source={file || `/api/documents/upload?fileId=${uploadedFile!.id}`} participants={editorParticipants(signers, isIlliterate, rogoName)} value={signerStamps} onChange={setSignerStamps} />
           )}
 
           <div>

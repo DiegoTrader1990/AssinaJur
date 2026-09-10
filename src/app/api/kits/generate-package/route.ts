@@ -1,3 +1,4 @@
+import { stampParticipants, validateStamps, encodeStamps, suggestStamps } from '@/lib/signer-stamps';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
@@ -472,7 +473,14 @@ export async function POST(req: Request) {
       // compilador detectou automaticamente a partir do texto do documento.
       const manualOverride = stampOverrides && typeof stampOverrides === 'object' ? stampOverrides[template.id] : null;
       const normalizedOverride = manualOverride ? normalizeManualStampOverride(manualOverride, compiledResult.pageCount) : null;
-      const finalSignaturePosition = normalizedOverride || compiledResult.signaturePosition;
+      const targets = stampParticipants(orderedSignerInputs, Boolean(isIlliterate));
+      let finalSignaturePosition = normalizedOverride || compiledResult.signaturePosition;
+      if (Array.isArray(manualOverride) || targets.length > 1) {
+        try {
+          const stamps = Array.isArray(manualOverride) ? validateStamps(manualOverride, compiledResult.pageCount, targets) : suggestStamps(compiledResult.signaturePlacements, targets);
+          finalSignaturePosition = encodeStamps(stamps);
+        } catch { return NextResponse.json({ error: 'Confira as posições e os participantes dos selos antes de enviar.' }, { status: 400 }); }
+      }
 
       const doc = await prisma.document.create({
         data: {

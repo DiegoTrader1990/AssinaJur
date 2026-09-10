@@ -1,3 +1,4 @@
+import { decodeStamps, stampParticipants, isWitnessStamp, type SignerStamp } from './signer-stamps';
 import { PDFDocument, PDFPage, rgb, StandardFonts, LineCapStyle, PDFName, PDFString, degrees } from 'pdf-lib';
 import fs from 'fs';
 import path from 'path';
@@ -390,7 +391,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
   const totalOrigPages = originalPages.length;
   const sigPos = (doc as any).signaturePosition || 'BOTTOM';
   const customStampMatch = String(sigPos).match(/^CUSTOM:(\d+):([\d.]+):([\d.]+):([\d.]+):([\d.]+)$/);
-  const customStamp = customStampMatch ? {
+  const legacyCustomStamp = customStampMatch ? {
     page: Math.max(1, Number(customStampMatch[1])),
     x: Math.min(0.92, Math.max(0, Number(customStampMatch[2]))),
     y: Math.min(0.92, Math.max(0, Number(customStampMatch[3]))),
@@ -398,8 +399,60 @@ export async function generateFinalPdfCertificate(documentId: string) {
     height: Math.min(0.22, Math.max(0.065, Number(customStampMatch[5]))),
   } : null;
 
+  // ── PARTES x TESTEMUNHAS ──
+  // Até aqui o sistema desenhava UM selo, numa única posição, tentando resumir
+  // todo mundo. Isso funciona no documento de uma parte (com ou sem assinante a
+  // rogo), mas falhava no acordo entre duas partes: o selo saía com os dois
+  // nomes e um CPF só, e a partir de três participantes trocava os nomes por
+  // "N PARTICIPANTES COM EVIDÊNCIAS INDIVIDUAIS" - ninguém identificado.
+  // Documentos com mais de uma PARTE passam a ganhar uma Folha de Assinaturas
+  // própria no fim, com um bloco por parte e um bloco separado para as
+  // testemunhas. Página nova em vez de mais selos sobre o texto: num documento
+  // jurídico, selo cobrindo cláusula é o pior defeito possível.
+  const isWitnessRole = (role?: string | null) => String(role || '').startsWith('TESTEMUNHA');
+  const multiStamps = decodeStamps(String(sigPos), originalPages.length, stampParticipants(doc.signers, doc.isIlliterate));
+  const documentParties = doc.signers.filter((item) => !isWitnessRole(item.role) && !(multiStamps && doc.isIlliterate && item.role === 'ASSINANTE_A_ROGO'));
+  const documentWitnesses = doc.signers.filter((item) => isWitnessRole(item.role));
+  // No fluxo a rogo, cliente e acompanhante são UMA parte assinando em
+  // conjunto - o selo dedicado que já existe para esse caso continua valendo.
+  const needsSignaturePage = multiStamps !== null || (!doc.isIlliterate && documentParties.length > 1);
+
+  const drawSignerStamp = (page: PDFPage, box: SignerStamp, person: typeof doc.signers[number]) => {
+    if (person.status !== 'ASSINADO') return;
+    const { width, height } = page.getSize();
+    const x = box.x * width, top = (1 - box.y) * height, w = box.width * width, h = box.height * height;
+    const witness = isWitnessStamp(person.role);
+    const qrSize = witness ? 0 : Math.min(30, h - 12);
+    const tx = x + (witness ? 4 : qrSize + 10), tw = w - (tx - x) - 4;
+    const stampLines = [signerRoleLabel(person.role).toUpperCase(), person.name,
+      `CPF: ${formatFullCpf(person.cpf)}`,
+      person.signedAt ? formatBrasiliaDateTime(person.signedAt, false).replace(/\s*\(.+$/, '') : 'Horário não registrado',
+      `Código: ${verificationCode}`];
+    let size = 7;
+    let lines = stampLines.flatMap((line) => wrapTextToWidth(line, bold, size, tw));
+    while (lines.length * (size + 2) + 8 > h && size > 4.5) {
+      size -= 0.5; lines = stampLines.flatMap((line) => wrapTextToWidth(line, bold, size, tw));
+    }
+    // Nunca deixar um selo transbordar sobre cláusulas: a folha contém a identificação completa.
+    if (lines.length * (size + 2) + 8 > h) return;
+    lines.forEach((line, i) => page.drawText(line, { x: tx, y: top - 8 - i * (size + 2), size, font: bold, color: i === 0 ? muted : navy }));
+    if (!witness) page.drawImage(qrImage, { x: x + 3, y: top - qrSize - 6, width: qrSize, height: qrSize });
+    const lineY = top - 8 - lines.length * (size + 2);
+    page.drawLine({ start: { x: tx, y: lineY }, end: { x: tx + Math.min(90, tw), y: lineY }, thickness: 1, color: gold });
+  };
+
   originalPages.forEach((p, idx) => {
     const { width: pW, height: pH } = p.getSize();
+    const jointOrder = doc.isIlliterate ? doc.signers.find((person) => person.role === 'CLIENTE')?.signatureOrder : undefined;
+    const customStamp = multiStamps ? multiStamps.find((box) => box.order === jointOrder && box.page === idx + 1) || null : legacyCustomStamp;
+    if (multiStamps) {
+      for (const box of multiStamps.filter((box) => box.page === idx + 1 && box.order !== jointOrder)) {
+        const person = doc.signers.find((person) => person.signatureOrder === box.order);
+        if (person) drawSignerStamp(p, box, person);
+      }
+      if (!customStamp) return;
+    }
+
     // O carimbo precisa caber em qualquer página sem abreviar dados com "...".
     // Os nomes completos permanecem no certificado de evidências.
     const stampText = `Documento assinado eletronicamente  |  Código: ${verificationCode}  |  Página ${idx + 1}/${totalOrigPages}  |  AssinaJur`;
@@ -431,6 +484,15 @@ export async function generateFinalPdfCertificate(documentId: string) {
           `CPF A ROGO: ${formatFullCpf(rogoSigner?.cpf || doc.rogoCpf || '')}`,
           ...(witnesses.length ? [`+ ${witnesses.length} TESTEMUNHA${witnesses.length > 1 ? 'S' : ''} COM EVIDÊNCIAS INDIVIDUAIS`] : []),
         ];
+      } else if (needsSignaturePage) {
+        // Multiparte: o selo não tenta mais resumir todo mundo - não cabe, e
+        // saía enganoso (um CPF só, ou nome nenhum). Ele identifica o ato e
+        // remete à Folha de Assinaturas, onde cada parte tem seu bloco.
+        const witnessSuffix = documentWitnesses.length
+          ? ` + ${documentWitnesses.length} TESTEMUNHA${documentWitnesses.length > 1 ? 'S' : ''}`
+          : '';
+        signerSummary = `${documentParties.length} PARTES${witnessSuffix}`;
+        cpfLines = ['IDENTIFICAÇÃO DE CADA PARTE NA FOLHA DE ASSINATURAS'];
       } else {
         signerSummary = doc.signers.length > 2
           ? `${doc.signers.length} PARTICIPANTES COM EVIDÊNCIAS INDIVIDUAIS`
@@ -631,6 +693,141 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const subtitleWidth = bold.widthOfTextAtSize(cleanSubtitle, 7.4);
     p.drawText(cleanSubtitle, { x: CR - subtitleWidth, y: 782, size: 7.4, font: bold, color: navy });
   };
+
+  // ── 1.5. FOLHA DE ASSINATURAS (DOCUMENTOS COM MAIS DE UMA PARTE) ──
+  // Vem logo depois das páginas do documento e antes do certificado: ela é
+  // parte do contrato (por isso usa o papel timbrado do escritório), não do
+  // certificado de evidências. Cada parte ganha um bloco com papel, nome, CPF,
+  // horário e as evidências coletadas; as testemunhas ficam num bloco próprio,
+  // compacto - do mesmo jeito que num documento em papel, onde elas assinam
+  // embaixo e não na linha das partes.
+  if (needsSignaturePage) {
+    const SHEET_BOTTOM = 132;
+    let sheetPage = pdfDoc.addPage([PAGE_W, PAGE_H]);
+    let sheetCount = 1;
+    drawFrame(sheetPage, 'FOLHA DE ASSINATURAS');
+
+    let cursor = 712;
+    sheetPage.drawText('FOLHA DE ASSINATURAS', { x: CX, y: cursor, size: 15, font: bold, color: navy });
+    sheetPage.drawRectangle({ x: CX, y: cursor - 9, width: 126, height: 2.4, color: gold });
+    cursor -= 30;
+
+    wrapTextToWidth(certDisplayTitle, bold, 10.5, CW).slice(0, 2).forEach((line) => {
+      sheetPage.drawText(line, { x: CX, y: cursor, size: 10.5, font: bold, color: navy });
+      cursor -= 13;
+    });
+    cursor -= 3;
+    sheetPage.drawText(`Código de Autenticidade: ${verificationCode}`, { x: CX, y: cursor, size: 7.4, font: mono, color: muted });
+    const concludedAt = formatBrasiliaDateTime(doc.completedAt || new Date(), false).replace(/\s*\(.+$/, '');
+    const concludedText = `Concluído em ${concludedAt}`;
+    sheetPage.drawText(concludedText, { x: CR - regular.widthOfTextAtSize(concludedText, 7.4), y: cursor, size: 7.4, font: regular, color: muted });
+    cursor -= 12;
+    sheetPage.drawLine({ start: { x: CX, y: cursor }, end: { x: CR, y: cursor }, thickness: 0.8, color: panelBorder });
+    cursor -= 26;
+
+    // Abre uma continuação quando o próximo bloco não cabe no que sobrou da
+    // página - com muitas partes, a folha simplesmente continua na seguinte.
+    const ensureSheetSpace = (needed: number) => {
+      if (cursor - needed >= SHEET_BOTTOM) return;
+      sheetPage = pdfDoc.addPage([PAGE_W, PAGE_H]);
+      sheetCount += 1;
+      drawFrame(sheetPage, `FOLHA DE ASSINATURAS (Continuação ${sheetCount})`);
+      cursor = 726;
+    };
+
+    const drawSectionBar = (label: string) => {
+      sheetPage.drawRectangle({ x: CX, y: cursor - 17, width: CW, height: 20, color: navy });
+      sheetPage.drawRectangle({ x: CX, y: cursor + 3, width: CW, height: 2.6, color: gold });
+      sheetPage.drawText(label, { x: CX + 12, y: cursor - 11, size: 7.4, font: bold, color: rgb(1, 1, 1) });
+      cursor -= 30;
+    };
+
+    drawSectionBar(documentParties.length > 2 ? 'PARTES SIGNATÁRIAS' : 'PARTES');
+
+    documentParties.forEach((party) => {
+      const partyNameLines = wrapTextToWidth(party.name, bold, 10, CW - 40);
+      const extraNameHeight = Math.max(0, partyNameLines.length - 2) * 11;
+      const BLOCK_H = (doc.isIlliterate && party.role === 'CLIENTE' ? 104 : 84) + extraNameHeight;
+      ensureSheetSpace(BLOCK_H + 8);
+      const blockTop = cursor;
+      const blockY = blockTop - BLOCK_H;
+      sheetPage.drawRectangle({ x: CX, y: blockY, width: CW, height: BLOCK_H, color: rgb(1, 1, 1), borderWidth: 0.8, borderColor: panelBorder });
+      sheetPage.drawRectangle({ x: CX, y: blockY, width: 3.4, height: BLOCK_H, color: gold });
+
+      sheetPage.drawText(signerRoleLabel(party.role).toUpperCase(), { x: CX + 14, y: blockTop - 15, size: 6, font: bold, color: muted });
+
+      const signedOk = party.status === 'ASSINADO';
+      const badgeText = signedOk ? 'ASSINADO' : String(party.status || 'PENDENTE').replace(/_/g, ' ');
+      const badgeW = bold.widthOfTextAtSize(badgeText, 6.2) + 16;
+      sheetPage.drawRectangle({ x: CR - badgeW - 12, y: blockTop - 19, width: badgeW, height: 14, color: signedOk ? green : muted });
+      sheetPage.drawText(badgeText, { x: CR - badgeW - 4, y: blockTop - 15, size: 6.2, font: bold, color: rgb(1, 1, 1) });
+
+      partyNameLines.forEach((line, i) => sheetPage.drawText(line, { x: CX + 14, y: blockTop - 32 - i * 11, size: 10, font: bold, color: navy }));
+
+      sheetPage.drawText(`CPF ${formatFullCpf(party.cpf || '')}`, { x: CX + 14, y: blockTop - 57 - extraNameHeight, size: 8, font: mono, color: text });
+      const signedAtText = party.signedAt
+        ? `Assinado em ${formatBrasiliaDateTime(party.signedAt, false).replace(/\s*\(.+$/, '')}`
+        : 'Assinatura pendente';
+      sheetPage.drawText(signedAtText, { x: CX + 190, y: blockTop - 57 - extraNameHeight, size: 8, font: regular, color: text });
+
+      // Resumo das evidências efetivamente coletadas desta parte - o detalhe
+      // completo (imagens, IP, aparelho) fica no certificado anexo.
+      const evidence: string[] = [];
+      if (party.selfieCenterImage) evidence.push('selfie de prova de presença');
+      if (party.documentFrontImage || party.documentBackImage) evidence.push('documento de identificação');
+      if (party.geoLat && party.geoLng) evidence.push('geolocalização');
+      if (party.signatureImage) evidence.push('rubrica');
+      const evidenceText = evidence.length
+        ? `Evidências: ${evidence.join(' · ')}`
+        : 'Evidências detalhadas no certificado anexo';
+      sheetPage.drawText(safeText(evidenceText, 120), { x: CX + 14, y: blockTop - 72 - extraNameHeight, size: 6.6, font: regular, color: muted });
+
+      if (doc.isIlliterate && party.role === 'CLIENTE') {
+        const rogo = doc.signers.find((person) => person.role === 'ASSINANTE_A_ROGO');
+        const rogoLine = `A rogo: ${rogo?.name || doc.rogoName || ''} · CPF ${formatFullCpf(rogo?.cpf || doc.rogoCpf || '')}`;
+        wrapTextToWidth(rogoLine, bold, 8, CW - 30).forEach((line, i) => sheetPage.drawText(line, { x: CX + 14, y: blockTop - 86 - extraNameHeight - i * 10, size: 8, font: bold, color: navy }));
+      }
+
+      cursor = blockY - 10;
+    });
+
+    if (documentWitnesses.length) {
+      ensureSheetSpace(104);
+      drawSectionBar('TESTEMUNHAS');
+      for (const witness of documentWitnesses) {
+        const nameLines = wrapTextToWidth(witness.name, bold, 9, CW - 28);
+        const blockH = 42 + nameLines.length * 11;
+        ensureSheetSpace(blockH + 8);
+        sheetPage.drawRectangle({ x: CX, y: cursor - blockH, width: CW, height: blockH, color: rgb(1, 1, 1), borderWidth: 0.8, borderColor: panelBorder });
+        sheetPage.drawText(signerRoleLabel(witness.role), { x: CX + 14, y: cursor - 13, size: 7, font: bold, color: muted });
+        nameLines.forEach((line, i) => sheetPage.drawText(line, { x: CX + 14, y: cursor - 26 - i * 11, size: 9, font: bold, color: navy }));
+        const witnessAt = witness.signedAt ? formatBrasiliaDateTime(witness.signedAt, false).replace(/\s*\(.+$/, '') : 'Assinatura pendente';
+        sheetPage.drawText(`CPF ${formatFullCpf(witness.cpf || '')}`, { x: CX + 14, y: cursor - blockH + 10, size: 7.5, font: mono, color: text });
+        sheetPage.drawText(witnessAt, { x: CX + 225, y: cursor - blockH + 10, size: 7.5, font: regular, color: text });
+        cursor -= blockH + 8;
+      }
+    }
+
+    // Rodapé de verificação: QR e base legal, ancorados na base da página para
+    // não ficarem flutuando quando houver poucas partes.
+    const footerY = Math.min(cursor - 6, 196);
+    const qrSheetSize = 62;
+    sheetPage.drawLine({ start: { x: CX, y: footerY + 4 }, end: { x: CR, y: footerY + 4 }, thickness: 0.8, color: panelBorder });
+    sheetPage.drawImage(qrImage, { x: CX, y: footerY - qrSheetSize - 4, width: qrSheetSize, height: qrSheetSize });
+
+    const footerTextX = CX + qrSheetSize + 16;
+    sheetPage.drawText('CONFIRA A AUTENTICIDADE DESTE DOCUMENTO', { x: footerTextX, y: footerY - 14, size: 6.4, font: bold, color: muted });
+    sheetPage.drawText(verificationUrl, { x: footerTextX, y: footerY - 26, size: 8, font: bold, color: linkBlue });
+    sheetPage.drawText(`Código: ${verificationCode}`, { x: footerTextX, y: footerY - 38, size: 7.6, font: mono, color: navy });
+    wrapTextToWidth(
+      'Assinado eletronicamente nos termos da MP 2.200-2/2001 e da Lei 14.063/2020. As evidências individuais de cada participante (selfie, documento de identificação, geolocalização, IP e aparelho) constam do Certificado de Evidências Jurídicas anexo a este documento.',
+      regular,
+      6.4,
+      CR - footerTextX,
+    ).slice(0, 4).forEach((line, index) => {
+      sheetPage.drawText(line, { x: footerTextX, y: footerY - 52 - index * 8, size: 6.4, font: regular, color: muted });
+    });
+  }
 
   // ── 2. CERTIFICADO COMPACTO DE 1 PÁGINA (APENAS PARA DOCUMENTOS SIMPLES DE 1 ÚNICO SIGNATÁRIO) ──
   const hasAnyDocumentPhotos = doc.signers.some((s) => s.documentFrontImage || s.documentBackImage);

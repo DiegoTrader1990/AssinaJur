@@ -147,6 +147,7 @@ export async function POST(req: Request) {
       applyClientGenderToQualification(previewWithoutDuplicateAddress, client.gender),
     );
     const rendered = await compileTemplatePreviewToPdf({ title: title || 'Documento', contentHtml: finalContentHtml, variables, officeName: office.tradeName || office.name, version: 1, letterheadBuffer });
-    return new NextResponse(rendered.pdfBuffer, { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="minuta.pdf"' } });
+    const placementHeader = encodeURIComponent(JSON.stringify(rendered.signaturePlacements.map((position) => ({ ...position, caption: position.caption.slice(0, 200) }))));
+    return new NextResponse(new Uint8Array(rendered.pdfBuffer), { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="minuta.pdf"', 'X-Signature-Placements': placementHeader.length <= 6000 ? placementHeader : '%5B%5D' } });
   } catch (error) { console.error(error); return NextResponse.json({ error: 'Não foi possível gerar a prévia.' }, { status: 500 }); }
 }

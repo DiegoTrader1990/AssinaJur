@@ -43,6 +43,7 @@ async function main() {
     templates.push(await prisma.template.create({ data: { officeId: offices[i].id, title: `Modelo fictício ${i}`, contentHtml: '<p>Somente teste</p>' } }));
   }
   const inactive = await prisma.template.create({ data: { officeId: offices[0].id, title: 'Inativo fictício', contentHtml: '<p>Teste</p>', active: false } });
+  dependencies['@/lib/signer-stamps'] = load('src/lib/signer-stamps.ts');
   dependencies['@/lib/kit-security'] = load('src/lib/kit-security.ts');
   const kits = load('src/app/api/kits/route.ts');
   const kit = load('src/app/api/kits/[id]/route.ts');

@@ -465,6 +465,7 @@ async function renderTemplatePdf({
   const maxWidth = width - marginX * 2;
   const paragraphs = applyDynamicSignatureFooter(parseRichParagraphs(presentationHtml), variables);
   let signaturePlacement: { page: number; x: number; y: number; width: number; height: number } | null = null;
+  const signaturePlacements: Array<{ page: number; x: number; y: number; width: number; height: number; caption: string }> = [];
   let explicitSignatureLineFound = false;
   const ensureLineSpace = (lineHeight: number) => {
     if (currentY - lineHeight < bottomMarginLimit) {
@@ -543,7 +544,11 @@ async function renderTemplatePdf({
           ? Math.min(0.82, Math.max(0.08, labelY + 0.085))
           : Math.min(0.82, Math.max(0.08, labelY));
         signaturePlacement = { page: pdfDoc.getPageCount(), x: 0.31, y: topY, width: 0.38, height: 0.085 };
-        if (isExplicitSignatureLine) explicitSignatureLineFound = true;
+        if (isExplicitSignatureLine) {
+          explicitSignatureLineFound = true;
+          const caption = paragraphs.slice(paragraphIndex + 1, paragraphIndex + 3).map((p) => p.runs.map((r) => r.text).join(' ')).join(' ');
+          if (!signaturePlacements.some((p) => p.page === signaturePlacement!.page && p.y === signaturePlacement!.y)) signaturePlacements.push({ ...signaturePlacement, caption });
+        }
       }
 
       // ALINHAMENTO JUSTIFICADO MATEMÁTICO PERFEITO (Margem direita retíssima)
@@ -643,7 +648,7 @@ async function renderTemplatePdf({
 
   const pageCount = pdfDoc.getPageCount();
   const pdfBuffer = Buffer.from(await pdfDoc.save());
-  return { pdfBuffer, hash: calculateHash(pdfBuffer), compiledText, pageCount, signaturePlacement };
+  return { pdfBuffer, hash: calculateHash(pdfBuffer), compiledText, pageCount, signaturePlacement, signaturePlacements };
 }
 
 export async function compileTemplatePreviewToPdf({
@@ -713,7 +718,7 @@ export async function compileTemplateToPdf({
   const position = detectedPlacement
     ? `CUSTOM:${detectedPlacement.page}:${detectedPlacement.x.toFixed(4)}:${detectedPlacement.y.toFixed(4)}:${detectedPlacement.width.toFixed(4)}:${detectedPlacement.height.toFixed(4)}`
     : `CUSTOM:${rendered.pageCount}:0.3100:0.6200:0.3800:0.0850`;
-  return { storageRecord, hash: rendered.hash, compiledText: rendered.compiledText, pageCount: rendered.pageCount, signaturePosition: position };
+  return { storageRecord, hash: rendered.hash, compiledText: rendered.compiledText, pageCount: rendered.pageCount, signaturePosition: position, signaturePlacements: rendered.signaturePlacements };
 }
 
 export async function applyLetterheadToPdfBuffer(pdfBuffer: Buffer, letterheadBuffer: Buffer): Promise<Buffer> {

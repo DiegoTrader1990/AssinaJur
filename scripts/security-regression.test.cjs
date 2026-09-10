@@ -18,6 +18,7 @@ function load(file, dependencies = {}, env = {}) {
     module, exports: module.exports, process: { env }, Buffer, URL, Response,
     console: { ...console, error: () => {} },
     require(id) {
+      if (id === '@/lib/signer-stamps') return load('src/lib/signer-stamps.ts');
       if (id === 'next/server') return { NextResponse: Response };
       if (Object.hasOwn(dependencies, id)) return dependencies[id];
       throw new Error(`Dependência não simulada bloqueada: ${id}`);

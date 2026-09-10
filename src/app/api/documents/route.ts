@@ -1,3 +1,4 @@
+import { decodeStamps, encodeStamps, stampParticipants } from '@/lib/signer-stamps';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
@@ -174,7 +175,7 @@ export async function POST(req: Request) {
 
     const verifiedOriginalHash = calculateHash(finalBuffer);
     const originalPdf = await PDFDocument.load(finalBuffer, { ignoreEncryption: true });
-    const safeSignaturePosition = normalizeSignaturePosition(signaturePosition, originalPdf.getPageCount());
+    let safeSignaturePosition = normalizeSignaturePosition(signaturePosition, originalPdf.getPageCount());
     if (clientId && !linkedClient) {
       return NextResponse.json({ error: 'O cliente informado não pertence a este escritório.' }, { status: 400 });
     }
@@ -223,6 +224,11 @@ export async function POST(req: Request) {
           ...rogoAdditionalSigners.map((signer: any, index: number) => ({ ...signer, signatureOrder: index + 3 + rogoWitnesses.length })),
         ]
       : signers.map((signer: any, index: number) => ({ ...signer, signatureOrder: index + 1 }));
+
+    if (typeof signaturePosition === 'string' && signaturePosition.startsWith('MULTI:')) {
+      try { safeSignaturePosition = encodeStamps(decodeStamps(signaturePosition, originalPdf.getPageCount(), stampParticipants(orderedSignerInputs, Boolean(isIlliterate))) || []); }
+      catch { return NextResponse.json({ error: 'Confira as posições e os participantes dos selos antes de enviar.' }, { status: 400 }); }
+    }
 
     // Criar documento e signatários em transação
     const result = await prisma.$transaction(async (tx) => {

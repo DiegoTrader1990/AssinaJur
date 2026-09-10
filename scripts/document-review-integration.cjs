@@ -25,6 +25,7 @@ module.exports = async function run(prisma, admin, outsider) {
       require(id) { if (id === 'next/server') return { NextResponse: Response }; if (deps[id]) return deps[id]; throw new Error(`Import bloqueado: ${id}`); } });
     return module.exports;
   }
+  deps['./signer-stamps'] = deps['@/lib/signer-stamps'] = load('src/lib/signer-stamps.ts');
   deps['./photo-review'] = deps['@/lib/photo-review'] = load('src/lib/photo-review.ts');
   const review = deps['@/lib/document-review'] = load('src/lib/document-review.ts');
   deps['@/lib/document-files'] = load('src/lib/document-files.ts');
@@ -193,5 +194,18 @@ module.exports = async function run(prisma, admin, outsider) {
   pdfFailure = false;
   const recoveredDownload = await download.GET(new Request('http://127.0.0.1/download'), params(atomic));
   assert.equal(recoveredDownload.status, 200); assert.equal(await recoveredDownload.text(), 'pdf-final-ficticio'); checks++;
+  const blankPdf = await require('pdf-lib').PDFDocument.create(); blankPdf.addPage();
+  const pdfBytes = Buffer.from(await blankPdf.save());
+  deps['@/lib/storage'] = { getFileBuffer: async () => pdfBytes };
+  deps['@/lib/pdfHash'] = { calculateHash: () => 'hash-ficticio' };
+  const createDoc = load('src/app/api/documents/route.ts');
+  const stampLib = deps['@/lib/signer-stamps'];
+  const positions = [{ order: 1, page: 1, x: 0.1, y: 0.5, width: 0.35, height: 0.1 }, { order: 2, page: 1, x: 0.55, y: 0.5, width: 0.35, height: 0.1 }];
+  const creationPayload = { title: 'Novo envio com selos fictícios', originalFileId: original.id, signaturePosition: stampLib.encodeStamps(positions),
+    signers: [{ name: 'Pessoa Alfa', cpf: '52998224725', role: 'CLIENTE' }, { name: 'Pessoa Beta', cpf: '11144477735', role: 'PARTE' }] };
+  const createdWithStamps = await status(createDoc.POST(request(creationPayload)), 200);
+  assert.equal(createdWithStamps.document.signaturePosition, creationPayload.signaturePosition); checks++;
+  await status(createDoc.POST(request({ ...creationPayload, signaturePosition: stampLib.encodeStamps([{ ...positions[0], order: 99 }]) })), 400);
+  await status(createDoc.POST(request({ ...creationPayload, signaturePosition: stampLib.encodeStamps([{ ...positions[0], page: 2 }]) })), 400);
   return checks;
 };
