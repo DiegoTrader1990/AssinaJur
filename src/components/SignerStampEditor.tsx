@@ -14,6 +14,7 @@ export default function SignerStampEditor({ source, participants, value, onChang
   const canvas = useRef<HTMLCanvasElement>(null);
   const surface = useRef<HTMLDivElement>(null);
   const drag = useRef<null | { order: number; dx: number; dy: number }>(null);
+  const resize = useRef<null | { order: number; pointerId: number; startX: number; startY: number; box: SignerStamp }>(null);
   const chosen = participants.find((p) => p.signatureOrder === selected) || participants[0];
   const box = value.find((s) => s.order === chosen?.signatureOrder);
   useEffect(() => {
@@ -52,7 +53,7 @@ export default function SignerStampEditor({ source, participants, value, onChang
     update({ order: chosen.signatureOrder, page: pageNumber, x: Math.max(0, Math.min(1 - width, x)), y: Math.max(0, Math.min(1 - height, y)), width, height });
   };
   return <div className="space-y-3">
-    <p className="text-sm text-slate-700">Selecione um nome e clique em uma área livre da página para colocar seu selo. Depois, arraste para ajustar. Quem ficar sem posição será identificado na Folha de Assinaturas.</p>
+    <p className="text-sm text-slate-700">Selecione um nome e clique em uma área livre da página para colocar seu selo. Arraste o selo para mover ou segure o canto inferior direito para aumentar e diminuir. Quem ficar sem posição será identificado na Folha de Assinaturas.</p>
     <div className="flex flex-wrap gap-2" aria-label="Participantes dos selos">{participants.map((person) => <button type="button" key={person.signatureOrder} aria-pressed={chosen?.signatureOrder === person.signatureOrder}
       className={`rounded-lg border px-3 py-2 text-xs ${chosen?.signatureOrder === person.signatureOrder ? 'bg-blue-700 text-white' : 'bg-white text-slate-800'}`}
       onClick={() => { setSelected(person.signatureOrder); const position = value.find((s) => s.order === person.signatureOrder); if (position) setPageNumber(position.page); }}>
@@ -78,7 +79,13 @@ export default function SignerStampEditor({ source, participants, value, onChang
             onPointerMove={(e) => { if (drag.current?.order !== s.order) return; const r = surface.current!.getBoundingClientRect(); update({ ...s, x: Math.max(0, Math.min(1 - s.width, (e.clientX - r.left) / r.width - drag.current.dx)), y: Math.max(0, Math.min(1 - s.height, (e.clientY - r.top) / r.height - drag.current.dy)) }); }}
             onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}
             onKeyDown={(e) => { const delta = { ArrowLeft: [-0.005, 0], ArrowRight: [0.005, 0], ArrowUp: [0, -0.005], ArrowDown: [0, 0.005] }[e.key]; if (!delta) return; e.preventDefault(); update({ ...s, x: Math.max(0, Math.min(1 - s.width, s.x + delta[0])), y: Math.max(0, Math.min(1 - s.height, s.y + delta[1])) }); }}>
-            <strong className="block">{person.name}</strong><span>{isWitnessStamp(person.role) ? 'TESTEMUNHA · sem QR' : 'ASSINATURA ELETRÔNICA · QR'}</span><span className="block">CPF: {person.cpf}</span><span className="block">Horário e código após a assinatura</span>
+            <button type="button" aria-label={`Redimensionar selo de ${person.name}`} title="Arraste para redimensionar; use as setas para ajuste fino"
+              className="absolute bottom-0 right-0 h-6 w-6 cursor-nwse-resize touch-none bg-blue-700 text-white rounded-tl text-base"
+              onPointerDown={(e) => { e.stopPropagation(); setSelected(s.order); drag.current = null; resize.current = { order: s.order, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, box: { ...s } }; e.currentTarget.setPointerCapture(e.pointerId); }}
+              onPointerMove={(e) => { e.stopPropagation(); const action = resize.current; if (!action || action.order !== s.order || action.pointerId !== e.pointerId) return; const r = surface.current!.getBoundingClientRect(); update({ ...action.box, width: Math.max(0.22, Math.min(0.65, 1 - action.box.x, action.box.width + (e.clientX - action.startX) / r.width)), height: Math.max(0.07, Math.min(0.25, 1 - action.box.y, action.box.height + (e.clientY - action.startY) / r.height)) }); }}
+              onPointerUp={(e) => { e.stopPropagation(); resize.current = null; }} onPointerCancel={(e) => { e.stopPropagation(); resize.current = null; }} onLostPointerCapture={() => { resize.current = null; }}
+              onKeyDown={(e) => { e.stopPropagation(); const delta = { ArrowLeft: [-0.005, 0], ArrowRight: [0.005, 0], ArrowUp: [0, -0.005], ArrowDown: [0, 0.005] }[e.key]; if (!delta) return; e.preventDefault(); update({ ...s, width: Math.max(0.22, Math.min(0.65, 1 - s.x, s.width + delta[0])), height: Math.max(0.07, Math.min(0.25, 1 - s.y, s.height + delta[1])) }); }}>↘</button>
+            <strong className="block">{person.name}</strong><span>{isWitnessStamp(person.role) ? 'TESTEMUNHA · QR' : 'ASSINATURA ELETRÔNICA · QR'}</span><span className="block">CPF: {person.cpf}</span><span className="block">Horário e código após a assinatura</span>
           </div>;
         })}
         {busy && <div className="absolute inset-0 bg-white/80 flex items-center justify-center">Carregando página…</div>}

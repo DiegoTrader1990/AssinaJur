@@ -1,4 +1,4 @@
-import { decodeStamps, stampParticipants, isWitnessStamp, type SignerStamp } from './signer-stamps';
+import { decodeStamps, stampParticipants, type SignerStamp } from './signer-stamps';
 import { PDFDocument, PDFPage, rgb, StandardFonts, LineCapStyle, PDFName, PDFString, degrees } from 'pdf-lib';
 import fs from 'fs';
 import path from 'path';
@@ -421,9 +421,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
     if (person.status !== 'ASSINADO') return;
     const { width, height } = page.getSize();
     const x = box.x * width, top = (1 - box.y) * height, w = box.width * width, h = box.height * height;
-    const witness = isWitnessStamp(person.role);
-    const qrSize = witness ? 0 : Math.min(30, h - 12);
-    const tx = x + (witness ? 4 : qrSize + 10), tw = w - (tx - x) - 4;
+    const qrSize = Math.min(30, h - 12);
+    const tx = x + qrSize + 10, tw = w - (tx - x) - 4;
     const stampLines = [signerRoleLabel(person.role).toUpperCase(), person.name,
       `CPF: ${formatFullCpf(person.cpf)}`,
       person.signedAt ? formatBrasiliaDateTime(person.signedAt, false).replace(/\s*\(.+$/, '') : 'Horário não registrado',
@@ -436,7 +435,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     // Nunca deixar um selo transbordar sobre cláusulas: a folha contém a identificação completa.
     if (lines.length * (size + 2) + 8 > h) return;
     lines.forEach((line, i) => page.drawText(line, { x: tx, y: top - 8 - i * (size + 2), size, font: bold, color: i === 0 ? muted : navy }));
-    if (!witness) page.drawImage(qrImage, { x: x + 3, y: top - qrSize - 6, width: qrSize, height: qrSize });
+    page.drawImage(qrImage, { x: x + 3, y: top - qrSize - 6, width: qrSize, height: qrSize });
     const lineY = top - 8 - lines.length * (size + 2);
     page.drawLine({ start: { x: tx, y: lineY }, end: { x: tx + Math.min(90, tw), y: lineY }, thickness: 1, color: gold });
   };

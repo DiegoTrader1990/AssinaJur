@@ -23,8 +23,13 @@ Continuação de `CONTINUACAO_SELOS_MULTIPARTE.md`. A Folha de Assinaturas que e
 
 ## Preservação e publicação
 
-O banco foi atualizado pelo uso desde o snapshot anterior; documentos, participantes e arquivos continuavam iguais. Novo snapshot preparado em `snapshot-2026-09-10T20-37-06Z`, com cópia independente dos 209 arquivos criptografados previamente verificados e nova captura do banco. Recuperação local aprovada às 20:40 UTC: 25 tabelas idênticas, 20 clientes, 12 documentos, 8 concluídos em 2 lotes; 209 arquivos e 20 hashes de PDFs verificados. Publicação aguardando confirmação Ready.
+O banco foi atualizado pelo uso desde o snapshot anterior; documentos, participantes e arquivos continuavam iguais. Novo snapshot preparado em `snapshot-2026-09-10T20-37-06Z`, com cópia independente dos 209 arquivos criptografados previamente verificados e nova captura do banco. Recuperação local aprovada às 20:40 UTC: 25 tabelas idênticas, 20 clientes, 12 documentos, 8 concluídos em 2 lotes; 209 arquivos e 20 hashes de PDFs verificados. Publicação confirmada Ready em produção: commit fdd3163cf1bda7bba25f1244a7611917f943c5b5, deployment ddBYtH75TSLbmgmYZy3nZa8zzmXK. Após a publicação, a comparação por leitura confirmou todas as 25 tabelas da aplicação idênticas ao novo snapshot: 20 clientes, 12 documentos, 8 concluídos em 2 lotes e 25 registros de arquivo. A página de documentos carregou na sessão existente e mostrou os 8 concluídos. Nenhuma assinatura real foi criada nos testes. O servidor local de exemplos foi encerrado.
 
 ## Limites
 
 A prévia do editor identifica a área e o dono de cada selo; horário e código reais entram após a assinatura. Quem posiciona deve escolher área livre e revisar o documento. Uma caixa pequena demais para o texto não pode transbordar: a identificação integral permanece na folha. Os testes não substituem homologação em celulares físicos e não encerram os demais itens da auditoria comercial.
+
+## Ajuste solicitado após publicação
+
+Testemunhas agora incluem QR no selo individual. Editor permite redimensionar pelo canto inferior direito com ponteiro/toque e ajuste fino pelas setas; limites da página e dimensões continuam aplicados. Compilação completa e 73 testes passaram; três PDFs fictícios gerados e página com QR das testemunhas inspecionada. Controle do canto conferido no navegador por teclado: largura mudou de 0,38 para 0,385 mantendo x/y. Arraste com toque em aparelho físico ainda não homologado. Sem alteração de estrutura ou atualização de registros existentes.
+
