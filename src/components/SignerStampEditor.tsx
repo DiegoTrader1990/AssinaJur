@@ -53,16 +53,17 @@ export default function SignerStampEditor({ source, participants, value, onChang
     update({ order: chosen.signatureOrder, page: pageNumber, x: Math.max(0, Math.min(1 - width, x)), y: Math.max(0, Math.min(1 - height, y)), width, height });
   };
   return <div className="space-y-3">
-    <p className="text-sm text-slate-700">Selecione um nome e clique em uma área livre da página para colocar seu selo. Arraste o selo para mover ou segure o canto inferior direito para aumentar e diminuir. Quem ficar sem posição será identificado na Folha de Assinaturas.</p>
+    <p className="text-sm text-slate-700">Arraste os selos para posicionar. Use o canto inferior direito para ajustar o tamanho. Para um participante sem posição, selecione seu nome e clique numa área livre do PDF. Os selos são uma prévia; QR e dados definitivos serão inseridos após a assinatura.</p>
     <div className="flex flex-wrap gap-2" aria-label="Participantes dos selos">{participants.map((person) => <button type="button" key={person.signatureOrder} aria-pressed={chosen?.signatureOrder === person.signatureOrder}
       className={`rounded-lg border px-3 py-2 text-xs ${chosen?.signatureOrder === person.signatureOrder ? 'bg-blue-700 text-white' : 'bg-white text-slate-800'}`}
       onClick={() => { setSelected(person.signatureOrder); const position = value.find((s) => s.order === person.signatureOrder); if (position) setPageNumber(position.page); }}>
-      {person.name} · {isWitnessStamp(person.role) ? 'Testemunha' : person.role === 'CLIENTE' ? 'Parte' : person.role} · {value.some((s) => s.order === person.signatureOrder) ? 'na página' : 'na folha'}
+      {person.name} · {isWitnessStamp(person.role) ? 'Testemunha' : person.role === 'CLIENTE' ? 'Parte' : person.role} · {value.some((s) => s.order === person.signatureOrder) ? 'Posicionado' : 'Sem posição · folha de assinaturas'}
     </button>)}</div>
     <div className="flex flex-wrap items-center gap-3 text-xs">
       <button type="button" disabled={pageNumber <= 1} onClick={() => setPageNumber((p) => p - 1)}>← Página anterior</button>
       <span>Página {pageNumber} de {pageCount}</span>
       <button type="button" disabled={pageNumber >= pageCount} onClick={() => setPageNumber((p) => p + 1)}>Próxima página →</button>
+      {!box && <span className="rounded-lg bg-amber-50 border border-amber-300 px-3 py-2 font-semibold text-amber-900">{chosen?.name}: clique numa área livre do PDF para posicionar o selo, ou mantenha na folha de assinaturas.</span>}
       {box && <><label>Largura <input aria-label="Largura do selo selecionado" type="range" min="22" max="65" value={Math.round(box.width * 100)} onChange={(e) => { const width = Number(e.target.value) / 100; update({ ...box, width, x: Math.min(box.x, 1 - width) }); }} /></label>
         <label>Altura <input aria-label="Altura do selo selecionado" type="range" min="7" max="25" value={Math.round(box.height * 100)} onChange={(e) => { const height = Number(e.target.value) / 100; update({ ...box, height, y: Math.min(box.y, 1 - height) }); }} /></label>
         <button type="button" onClick={() => onChange(value.filter((s) => s.order !== chosen.signatureOrder))}>Usar somente a folha</button></>}
@@ -85,7 +86,7 @@ export default function SignerStampEditor({ source, participants, value, onChang
               onPointerMove={(e) => { e.stopPropagation(); const action = resize.current; if (!action || action.order !== s.order || action.pointerId !== e.pointerId) return; const r = surface.current!.getBoundingClientRect(); update({ ...action.box, width: Math.max(0.22, Math.min(0.65, 1 - action.box.x, action.box.width + (e.clientX - action.startX) / r.width)), height: Math.max(0.07, Math.min(0.25, 1 - action.box.y, action.box.height + (e.clientY - action.startY) / r.height)) }); }}
               onPointerUp={(e) => { e.stopPropagation(); resize.current = null; }} onPointerCancel={(e) => { e.stopPropagation(); resize.current = null; }} onLostPointerCapture={() => { resize.current = null; }}
               onKeyDown={(e) => { e.stopPropagation(); const delta = { ArrowLeft: [-0.005, 0], ArrowRight: [0.005, 0], ArrowUp: [0, -0.005], ArrowDown: [0, 0.005] }[e.key]; if (!delta) return; e.preventDefault(); update({ ...s, width: Math.max(0.22, Math.min(0.65, 1 - s.x, s.width + delta[0])), height: Math.max(0.07, Math.min(0.25, 1 - s.y, s.height + delta[1])) }); }}>↘</button>
-            <strong className="block">{person.name}</strong><span>{isWitnessStamp(person.role) ? 'TESTEMUNHA · QR' : 'ASSINATURA ELETRÔNICA · QR'}</span><span className="block">CPF: {person.cpf}</span><span className="block">Horário e código após a assinatura</span>
+            <span className="block font-bold text-blue-800">PRÉVIA DO SELO</span><strong className="block">{person.name}</strong><span>{isWitnessStamp(person.role) ? 'TESTEMUNHA · QR' : 'ASSINATURA ELETRÔNICA · QR'}</span><span className="block">CPF: {person.cpf}</span><span className="block">Horário e código após a assinatura</span>
           </div>;
         })}
         {busy && <div className="absolute inset-0 bg-white/80 flex items-center justify-center">Carregando página…</div>}

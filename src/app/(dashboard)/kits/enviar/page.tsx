@@ -152,7 +152,6 @@ export default function DispatchKitPage() {
   // (chave = template.id), igual ao arrastar-e-soltar do envio de PDF avulso.
   // Quando ausente para um item, o sistema detecta a posição automaticamente.
   const [stampOverrides, setStampOverrides] = useState<Record<string, SignerStamp[]>>({});
-  const [adjustingStamp, setAdjustingStamp] = useState(false);
   const [stampDraft, setStampDraft] = useState<SignerStamp[]>([]);
   const [detectedStamps, setDetectedStamps] = useState<Array<StampBox & { caption?: string }>>([]);
   const previousStampContents = useRef(customContents);
@@ -323,7 +322,6 @@ export default function DispatchKitPage() {
     setReviewClientData({});
     setCustomContents({});
     setStampOverrides({});
-    setAdjustingStamp(false);
     if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl);
     setReviewPdfUrl(null);
   };
@@ -533,7 +531,9 @@ export default function DispatchKitPage() {
       if (!response.ok) throw new Error();
       const placements = JSON.parse(decodeURIComponent(response.headers.get('X-Signature-Placements') || '%5B%5D'));
       setDetectedStamps(placements);
-      setStampDraft(stampOverrides[item.template.id] || suggestStamps(placements, stampPeople));
+      const positions = stampOverrides[item.template.id] ?? suggestStamps(placements, stampPeople);
+      setStampDraft(positions);
+      setStampOverrides(current => ({ ...current, [item.template.id]: positions }));
       const url = URL.createObjectURL(await response.blob());
       if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl);
       setReviewPdfUrl(url);
@@ -544,26 +544,15 @@ export default function DispatchKitPage() {
   const openReviewItem = (item: LegalKit['items'][number]) => {
     setReviewItem(item);
     setEditingReview(false);
-    setAdjustingStamp(false);
     const existingOverride = stampOverrides[item.template.id];
     setStampDraft(existingOverride || []);
     void generateReviewPdf(item);
   };
 
-  const handleSaveStampPosition = () => {
+  const updateReviewStamps = (positions: SignerStamp[]) => {
     if (!reviewItem) return;
-    setStampOverrides((current) => ({ ...current, [reviewItem.template.id]: stampDraft }));
-    setAdjustingStamp(false);
-  };
-
-  const handleResetStampPosition = () => {
-    if (!reviewItem) return;
-    setStampOverrides((current) => {
-      const next = { ...current };
-      delete next[reviewItem.template.id];
-      return next;
-    });
-    setStampDraft(suggestStamps(detectedStamps, stampPeople));
+    setStampDraft(positions);
+    setStampOverrides(current => ({ ...current, [reviewItem.template.id]: positions }));
   };
 
   const handleGeneratePackage = async (e: React.FormEvent) => {
@@ -1168,35 +1157,23 @@ export default function DispatchKitPage() {
                   <div className="flex flex-wrap gap-2">{signers.filter(s => !s.role.startsWith('TESTEMUNHA')).map((person, index) => <button type="button" key={index} className="text-xs border rounded px-3 py-2 text-blue-700" onClick={() => setCustomContents(prev => { const source = prev[reviewItem.template.id] ?? reviewItem.template.contentHtml; const block = `<p><strong>{{parte${index + 2}_papel}}:</strong> {{parte${index + 2}_qualificacao}}.</p>`; return { ...prev, [reviewItem.template.id]: block + source }; })}>Inserir qualificação de {person.name || `parte ${index + 2}`}</button>)}</div>
                   <div className="rounded-xl border border-slate-200 bg-white p-4"><DocumentRichEditor key={reviewItem.id} value={customContents[reviewItem.template.id] ?? reviewItem.template.contentHtml} onChange={(html) => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: html }))} showTags={true} showAiCopilot={false} placeholder="Redija ou ajuste o documento..." /></div>
                 </div>
-              ) : adjustingStamp ? (
-                reviewPdfUrl ? <SignerStampEditor source={reviewPdfUrl} participants={stampPeople} value={stampDraft} onChange={setStampDraft} /> : <p>Carregando a prévia…</p>
               ) : reviewPdfUrl ? (
-                <iframe src={reviewPdfUrl} className="w-full h-full bg-white rounded-xl border border-slate-200" title="Prévia final do documento" />
+                <SignerStampEditor source={reviewPdfUrl} participants={stampPeople} value={stampDraft} onChange={updateReviewStamps} />
               ) : (
                 <div className="h-full flex items-center justify-center text-sm text-slate-500">Não foi possível carregar a prévia.</div>
               )}
             </div>
             <div className="px-6 py-3 border-t border-slate-200 flex justify-between gap-3">
-              {adjustingStamp ? (
-                <>
-                  {stampOverrides[reviewItem.template.id] ? (
-                    <button type="button" onClick={handleResetStampPosition} className="text-xs font-bold text-slate-600">Voltar ao automático</button>
-                  ) : <span className="text-xs text-slate-500 self-center">Posição padrão detectada automaticamente</span>}
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setAdjustingStamp(false)} className="px-4 py-2.5 border border-slate-300 text-slate-600 rounded-lg text-xs font-bold">Cancelar</button>
-                    <button type="button" onClick={handleSaveStampPosition} className="px-5 py-2.5 bg-[#071B3A] text-white rounded-lg text-xs font-bold">Salvar posições</button>
-                  </div>
-                </>
-              ) : editingReview ? (
+              {editingReview ? (
                 <>
                   <button type="button" onClick={() => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: reviewItem.template.contentHtml }))} className="text-xs font-bold text-slate-600">Restaurar modelo</button>
-                  <div className="flex gap-2"><button type="button" onClick={() => void generateReviewPdf(reviewItem)} className="px-4 py-2.5 border border-[#071B3A] text-[#071B3A] rounded-lg text-xs font-bold">Atualizar prévia final</button><button type="button" onClick={() => { if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl); setReviewPdfUrl(null); setReviewItem(null); }} className="px-5 py-2.5 bg-[#071B3A] text-white rounded-lg text-xs font-bold">Concluir revisão</button></div>
+                  <div className="flex gap-2"><button type="button" onClick={() => void generateReviewPdf(reviewItem)} className="px-4 py-2.5 border border-[#071B3A] text-[#071B3A] rounded-lg text-xs font-bold">Atualizar prévia final</button></div>
                 </>
               ) : (
                 <>
-                  <span className="text-xs text-slate-500 self-center">Prévia com a diagramação final do documento</span>
+                  <span className="text-xs text-slate-500 self-center">Posições guardadas neste envio. Selos ilustrativos; dados finais após assinatura.</span>
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => setAdjustingStamp(true)} className="px-4 py-2.5 border border-blue-600 text-blue-700 rounded-lg text-xs font-bold flex items-center gap-1.5"><Move className="w-3.5 h-3.5" /> Ajustar selos por participante</button>
+
                     <button type="button" onClick={() => { setAutoDetectKitMessage(''); setEditingReview(true); }} className="px-4 py-2.5 border border-[#071B3A] text-[#071B3A] rounded-lg text-xs font-bold">Editar conteúdo</button>
                     <button type="button" onClick={() => { if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl); setReviewPdfUrl(null); setReviewItem(null); }} className="px-5 py-2.5 bg-[#071B3A] text-white rounded-lg text-xs font-bold">Concluir revisão</button>
                   </div>
