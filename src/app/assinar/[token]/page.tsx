@@ -248,7 +248,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [document, setDocument] = useState<DocumentInfo | null>(null);
   const [office, setOffice] = useState<OfficeInfo | null>(null);
   const [kit, setKit] = useState<KitInfo | null>(null);
-  const isRogadoConsent = Boolean(document?.isIlliterate && signer?.role === 'CLIENTE');
+  const isRogadoConsent = Boolean(document?.isIlliterate);
   const isRogoSigner = signer?.role === 'ASSINANTE_A_ROGO';
   // Marca de quem enviou o documento. Prefere o nome fantasia (é como o
   // escritório se apresenta ao cliente) e cai no nome oficial; "AssinaJur" só
@@ -390,7 +390,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     // aparecer, é porque a conexão realmente caiu, e aí o aviso é legítimo: a
     // foto continua guardada na página, esperando a conexão voltar.
     const SILENT_ATTEMPTS = 3;
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((resolve, reject) => {
       const attempt = async (silentAttemptsLeft = SILENT_ATTEMPTS) => {
         setRetryingProgress(true);
         const controller = new AbortController();
@@ -407,6 +407,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             // por regra - link cancelado, documento já aprovado - não muda com
             // a repetição e precisa aparecer na hora.
             failure.transient = Boolean(data.retryable) || response.status >= 500;
+            failure.terminal = !failure.transient;
             throw failure;
           }
           setProgressRetry(null);
@@ -414,6 +415,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         } catch (error: any) {
           // AbortError = estourou o tempo; TypeError = o fetch nem completou
           // (aparelho sem rede no momento do envio).
+          if (error.terminal) { setProgressRetry(null); setError(error.message); reject(error); void fetchSignatureData(); return; }
           const isNetworkFailure = error.name === 'AbortError' || error.name === 'TypeError';
           if ((isNetworkFailure || error.transient) && silentAttemptsLeft > 1) {
             const wait = (SILENT_ATTEMPTS - silentAttemptsLeft + 1) * 700;
@@ -530,7 +532,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     setLoading(true);
     try {
       const res = await fetch(`/api/sign/${params.token}`);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Link de assinatura inválido ou expirado.');
 
       setSigner(data.signer);
@@ -631,7 +633,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cpf }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Erro ao autenticar CPF.');
 
       // Pedido de refazer uma foto específica (assinatura já concluída) tem
@@ -654,8 +656,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       // de sempre reiniciar em DOCUMENT/FRENTE. A ordem de checagem segue a
       // ordem real do fluxo: primeiro a selfie do titular (etapa mais
       // avançada), depois verso, depois frente do documento.
+      } else if (!signer?.documentFrontImage) {
+        setStep('DOCUMENT'); setDocumentSide('FRENTE'); setActivePerson('CLIENT');
+      } else if (!signer?.documentBackImage) {
+        setStep('DOCUMENT'); setDocumentSide('VERSO'); setActivePerson('CLIENT');
       } else if (signer?.selfieCenterImage) {
-        const rogoAlreadyDone = Boolean(rogoProgress?.selfieCenterImage);
+        const rogoAlreadyDone = Boolean(rogoProgress?.selfieCenterImage && rogoProgress?.documentFrontImage && rogoProgress?.documentBackImage);
         if (isRogadoConsent && !rogoAlreadyDone) {
           setStep('ROGO_TRANSITION');
         } else {
@@ -710,7 +716,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         // a selfie) já tinham sido capturados numa tentativa anterior, NÃO
         // pede para refazer essas etapas de novo só porque a frente estava
         // sendo refeita; sem isso, o fluxo parecia estar "recomeçando tudo".
-        if (selfieImages.center) {
+        if (selfieImages.center && documentBackImage) {
           setStep(isRogadoConsent ? 'ROGO_TRANSITION' : 'SIGN');
           return;
         }
@@ -1183,7 +1189,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         setGeo((prev) => ({ ...prev, lat: latitude, lng: longitude, accuracy }));
         try {
           const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=pt`);
-          const data = await res.json();
+          const data = await res.json().catch(() => ({}));
           setGeo((prev) => ({ ...prev, city: data.city || data.locality || null, state: data.principalSubdivision || null }));
         } catch {}
       },
@@ -1255,12 +1261,20 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const rogoLeft = rogoSelfieImages.left || rogoSelfieImagesRef.current.left;
     const rogoRight = rogoSelfieImages.right || rogoSelfieImagesRef.current.right;
 
+    if (!documentFrontImage || !documentBackImage) {
+      setError('Fotografe a frente e o verso da identidade antes de assinar.');
+      setDocumentSide(!documentFrontImage ? 'FRENTE' : 'VERSO'); setStep('DOCUMENT'); return;
+    }
     if (!clientCenter) {
       setError('É necessário concluir a prova de presença do cliente (selfie) antes de assinar.');
       return;
     }
 
     if (isRogadoConsent) {
+      if (!rogoDocumentFrontImage || !rogoDocumentBackImage) {
+        setError('Fotografe a frente e o verso da identidade do assinante a rogo.');
+        setRogoDocumentSide(!rogoDocumentFrontImage ? 'FRENTE' : 'VERSO'); setStep('ROGO_DOCUMENT'); return;
+      }
       if (!rogoCenter) {
         setError('O Assinante a Rogo também deve concluir a prova de presença com a selfie no mesmo aparelho.');
         return;
@@ -1348,8 +1362,8 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao processar assinatura.');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { if (res.status >= 500) { await fetchSignatureData(); throw new Error('Não foi possível confirmar a resposta agora. Suas etapas salvas serão retomadas ao abrir este link.'); } throw new Error(data.error || 'Não foi possível concluir esta participação.'); }
       try { sessionStorage.setItem(`assinajur-signed-${params.token}`, '1'); } catch { /* A confirmação do servidor independe do armazenamento do navegador. */ }
       if (data.nextSigner?.token) {
         setNextParticipant(data.nextSigner);
@@ -1555,7 +1569,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
             <div className="text-center space-y-0.5 shrink-0">
               <h2 className="font-heading text-base font-extrabold text-[#071B3A]">Prova de presença ({signer?.name})</h2>
               <p className="text-xs text-slate-500 font-medium leading-snug">
-                Registramos 1 selfie frontal para confirmar a presença do cliente titular. Segure o documento de identidade ao lado do rosto, dentro da moldura indicada.
+                Registramos 1 selfie frontal para confirmar a presença de quem está nesta etapa. Segure o documento de identidade ao lado do rosto, dentro da moldura indicada.
               </p>
               {cameraActive && <button type="button" onClick={() => speakCaptureInstruction(SELFIE_VOICE_INSTRUCTION, true)} className="inline-flex items-center gap-1 pt-1 text-[11px] font-bold text-[#071B3A] underline underline-offset-2"><Volume2 className="w-3.5 h-3.5" /> Ouvir instruções</button>}
             </div>
@@ -1730,7 +1744,11 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 setError('');
                 // Retoma da etapa certa do Assinante a Rogo se ele já tinha
                 // capturado algo numa sessão anterior interrompida.
-                if (rogoProgress?.selfieCenterImage) {
+                if (!rogoDocumentFrontImage) {
+                  setRogoDocumentSide('FRENTE'); setStep('ROGO_DOCUMENT');
+                } else if (!rogoDocumentBackImage) {
+                  setRogoDocumentSide('VERSO'); setStep('ROGO_DOCUMENT');
+                } else if (rogoSelfieImages.center) {
                   setStep('SIGN');
                 } else if (rogoProgress?.documentBackImage) {
                   setStep('ROGO_SELFIE');

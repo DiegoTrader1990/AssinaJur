@@ -1,4 +1,5 @@
 'use client';
+import { configuredGroups } from '@/lib/participant-groups';
 
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import Link from 'next/link';
@@ -52,6 +53,7 @@ import {
 import { maskCpfCnpj } from '@/lib/formatters';
 
 interface Signer {
+  signatureOrder: number;
   id: string;
   name: string;
   cpf: string;
@@ -80,6 +82,8 @@ interface Tag {
 }
 
 interface DocumentItem {
+  isIlliterate?: boolean;
+  events?: Array<{ eventType: string; metadata?: string | null }>;
   id: string;
   title: string;
   documentType: string;
@@ -188,6 +192,10 @@ export default function DocumentsPage() {
       `Olá ${signerName}, tudo bem?\n\nSegue o link seguro para sua assinatura eletrônica no documento *${docTitle}* com Prova de Presença ao Vivo:\n\n${link}\n\nAtenciosamente,\nRodrigues & Soares Advocacia.`
     );
     window.open(`https://wa.me/?text=${text}`, '_blank');
+  };
+  const participantLinkToken = (doc: DocumentItem, person: Signer) => {
+    if (person.role !== 'ASSINANTE_A_ROGO' || getPendingRedoField(person)) return person.token;
+    try { const group = configuredGroups(doc, doc.signers).find(g => g.rogoOrder === person.signatureOrder); return doc.signers.find(p => p.signatureOrder === group?.partyOrder)?.token || ''; } catch { return ''; }
   };
   const signerRoleLabel = (role: string) => ({ CLIENTE: 'Cliente', ASSINANTE_A_ROGO: 'Assinante a rogo', TESTEMUNHA_1: '1ª testemunha', TESTEMUNHA_2: '2ª testemunha', TESTEMUNHA: 'Testemunha' }[role] || role.replace(/_/g, ' '));
 
@@ -1337,7 +1345,7 @@ export default function DocumentsPage() {
                             do signatário de volta para ele depois de pedir para
                             refazer uma foto (o link é o mesmo, só retoma direto na
                             etapa da foto pedida em vez de reiniciar tudo). */}
-                        <div className="flex items-center gap-1 shrink-0"><button onClick={() => handleCopyLink(s.token)} title="Copiar link" className="p-2 rounded-lg border border-blue-200 bg-white text-blue-700 hover:bg-blue-50">{copiedToken === s.token ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}</button><button onClick={() => handleOpenWhatsApp(selectedDoc.title, s.name, s.token)} title="Enviar pelo WhatsApp" className="px-2.5 py-2 bg-emerald-50 text-emerald-800 font-extrabold rounded-lg border border-emerald-200 flex items-center gap-1 text-[10px]"><MessageSquare className="w-3.5 h-3.5 text-emerald-600" /> Enviar</button></div>
+                        <div className="flex items-center gap-1 shrink-0"><button disabled={!participantLinkToken(selectedDoc, s)} onClick={() => handleCopyLink(participantLinkToken(selectedDoc, s))} title="Copiar link da participação" className="p-2 rounded-lg border border-blue-200 bg-white text-blue-700 hover:bg-blue-50">{copiedToken === s.token ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}</button><button disabled={!participantLinkToken(selectedDoc, s)} onClick={() => handleOpenWhatsApp(selectedDoc.title, s.name, participantLinkToken(selectedDoc, s))} title="Enviar pelo WhatsApp" className="px-2.5 py-2 bg-emerald-50 text-emerald-800 font-extrabold rounded-lg border border-emerald-200 flex items-center gap-1 text-[10px]"><MessageSquare className="w-3.5 h-3.5 text-emerald-600" /> Enviar</button></div>
                       </div>
                     </div>
                   ))}

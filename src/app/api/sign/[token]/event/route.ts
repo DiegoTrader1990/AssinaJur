@@ -1,3 +1,4 @@
+import { loadParticipantGroups } from '@/lib/participant-groups';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { pendingPhotoCorrection, isIndividualRetry } from '@/lib/photo-review';
@@ -81,10 +82,9 @@ export async function POST(req: Request, { params }: { params: { token: string }
         if (['CANCELADO', 'EXPIRADO'].includes(document.status) || (document.status !== 'CONCLUIDO' && document.expirationDate && document.expirationDate.getTime() < Date.now())) {
           return { status: 409, body: { error: 'Este documento foi cancelado ou o convite expirou.' } };
         }
-        if (forRogo && (signer.role !== 'CLIENTE' || !document.isIlliterate)) return { status: 403, body: { error: 'Participante não autorizado.' } };
-        const target = forRogo
-          ? await tx.signer.findFirst({ where: { documentId: document.id, role: 'ASSINANTE_A_ROGO', signingMode: 'SAME_DEVICE' } })
-          : signer;
+        const participants = forRogo ? await tx.signer.findMany({ where: { documentId: document.id } }) : [];
+        const pair = forRogo ? (await loadParticipantGroups(tx, document, participants)).find(g => g.partyOrder === signer.signatureOrder) : null;
+        const target = forRogo ? participants.find(p => p.signatureOrder === pair?.rogoOrder && p.signingMode === 'SAME_DEVICE') : signer;
         if (!target) return { status: 403, body: { error: 'Participante não autorizado neste aparelho.' } };
         const correction = imageField ? await pendingPhotoCorrection(tx, target, imageField) : null;
         if (target.status === 'ASSINADO' && !correction) {
@@ -107,10 +107,10 @@ export async function POST(req: Request, { params }: { params: { token: string }
         }
         if (eventType) {
           // Não acrescentar eventos em documentos aprovados do mesmo pacote.
-          const targets = document.kitBatchId && signer.role === 'CLIENTE' && !(await isIndividualRetry(tx, document.id))
+          const targets = document.kitBatchId && !(await isIndividualRetry(tx, document.id))
             ? await tx.document.findMany({ where: { officeId: document.officeId, kitBatchId: document.kitBatchId, clientId: document.clientId,
               status: { notIn: ['CANCELADO', 'EXPIRADO'] }, NOT: { status: 'CONCLUIDO', reviewStatus: 'APROVADO' } },
-              include: { signers: { where: { role: 'CLIENTE' }, select: { id: true } } } })
+              include: { signers: { where: { role: target.role, cpf: target.cpf, signatureOrder: target.signatureOrder }, select: { id: true } } } })
             : [{ id: document.id, signers: [{ id: target.id }] }];
           await tx.documentEvent.createMany({ data: targets.flatMap((doc) => doc.signers[0] ? [{ documentId: doc.id, signerId: doc.signers[0].id,
             eventType, description: EVENT_DESCRIPTIONS[eventType], ipAddress, userAgent }] : []) });

@@ -61,6 +61,10 @@ export async function reviewDocument(db: PrismaClient, user: AuthUser, id: strin
           events: { create: { userId: user.id, eventType: 'DOCUMENT_RESTARTED', metadata: requestId,
             description: `Novo envio criado a partir do documento aprovado ${doc.id}, que permanece intacto.${reason ? ` Motivo: ${reason}` : ''}` } },
         } });
+        const groupsConfig = await tx.documentEvent.findFirst({ where: { documentId: doc.id, eventType: 'PARTICIPANT_GROUPS_CONFIGURED' }, orderBy: { createdAt: 'asc' } });
+        if (groupsConfig) await tx.documentEvent.create({ data: { documentId: copy.id, userId: user.id, eventType: groupsConfig.eventType, metadata: groupsConfig.metadata, description: 'Vínculos entre partes e acompanhantes mantidos no novo envio.' } });
+        const detailsConfig = await tx.documentEvent.findFirst({ where: { documentId: doc.id, eventType: 'PARTICIPANT_DETAILS_CONFIGURED' }, orderBy: { createdAt: 'asc' } });
+        if (detailsConfig) await tx.documentEvent.create({ data: { documentId: copy.id, userId: user.id, eventType: detailsConfig.eventType, metadata: detailsConfig.metadata, description: 'Qualificação mantida no novo envio.' } });
         newIds.push(copy.id);
         const ordered = await tx.documentEvent.findFirst({ where: { documentId: doc.id, eventType: 'SIGNATURE_ORDER_ENFORCED' } });
         if (ordered || doc.isIlliterate) await tx.documentEvent.create({ data: { documentId: copy.id, userId: user.id,

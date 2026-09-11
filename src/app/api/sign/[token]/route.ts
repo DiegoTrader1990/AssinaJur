@@ -1,3 +1,4 @@
+import { loadParticipantGroups } from '@/lib/participant-groups';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { pendingPhotoCorrection, isIndividualRetry } from '@/lib/photo-review';
@@ -59,21 +60,15 @@ export async function GET(
     // (signatureOrder 2), então basta buscar o que já foi preenchido nele
     // até agora para permitir retomar a captura dele também, sem repetir o
     // que já foi feito.
-    const rogoSigner = document.isIlliterate && signer.role === 'CLIENTE'
-      ? await prisma.signer.findFirst({
-          where: { documentId: document.id, role: 'ASSINANTE_A_ROGO' },
-          select: {
-            id: true, status: true,
-            documentFrontImage: true, documentBackImage: true, selfieCenterImage: true,
-          },
-        })
-      : null;
-    const kitDocuments = document.kitBatchId && signer.role === 'CLIENTE' && !(document.status === 'CONCLUIDO' && document.reviewStatus === 'APROVADO') && !(await isIndividualRetry(prisma, document.id))
+    const groups = await loadParticipantGroups(prisma, document, document.signers);
+    const pair = groups.find(g => g.partyOrder === signer.signatureOrder);
+    const rogoSigner = pair ? await prisma.signer.findFirst({ where: { documentId: document.id, signatureOrder: pair.rogoOrder, role: 'ASSINANTE_A_ROGO' } }) : null;
+    const kitDocuments = document.kitBatchId && signer.role !== 'ASSINANTE_A_ROGO' && !(document.status === 'CONCLUIDO' && document.reviewStatus === 'APROVADO') && !(await isIndividualRetry(prisma, document.id))
       ? await prisma.document.findMany({
           where: { officeId: document.officeId, kitBatchId: document.kitBatchId, clientId: document.clientId, NOT: { status: 'CONCLUIDO', reviewStatus: 'APROVADO' } },
           select: {
             id: true, title: true, status: true,
-            signers: { select: { id: true, role: true } },
+            signers: { select: { id: true, role: true, signatureOrder: true, cpf: true } },
           },
           orderBy: { createdAt: 'asc' },
         })
@@ -114,7 +109,7 @@ export async function GET(
         waitingFor: { name: blocker.name, role: blocker.role, signatureOrder: blocker.signatureOrder },
         signer: { id: signer.id, name: signer.name, cpf: signer.cpf, email: signer.email, phone: signer.phone, role: signer.role, status: signer.status, signatureOrder: signer.signatureOrder },
         office: document.office,
-        document: { id: document.id, title: document.title, documentType: document.documentType, isIlliterate: document.isIlliterate, status: document.status },
+        document: { id: document.id, title: document.title, documentType: document.documentType, isIlliterate: Boolean(pair), status: document.status },
       });
     }
 
@@ -153,7 +148,7 @@ export async function GET(
         const companionEvents = kitDocuments
           .filter((item) => item.id !== document.id)
           .map((item) => {
-            const companionSigner = item.signers.find((candidate) => candidate.role === 'CLIENTE');
+            const companionSigner = item.signers.find((candidate) => candidate.signatureOrder === signer.signatureOrder && candidate.cpf === signer.cpf);
             return companionSigner ? {
               documentId: item.id,
               signerId: companionSigner.id,
@@ -213,10 +208,10 @@ export async function GET(
         customMessage: document.customMessage,
         status: document.status,
         originalHash: document.originalHash,
-        isIlliterate: document.isIlliterate,
-        rogoName: document.rogoName,
-        rogoCpf: document.rogoCpf,
-        rogoRelationship: document.rogoRelationship,
+        isIlliterate: Boolean(pair),
+        rogoName: rogoSigner?.name || null,
+        rogoCpf: rogoSigner?.cpf || null,
+        rogoRelationship: pair?.details?.relationship || document.rogoRelationship,
         signers: document.signers,
         pdfUrl: `/api/sign/${params.token}/document`,
         mimeType: document.originalFile?.mimeType || 'application/pdf',

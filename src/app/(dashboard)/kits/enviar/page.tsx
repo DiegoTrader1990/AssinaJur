@@ -1,4 +1,7 @@
 'use client';
+import { qualificationFromClient, participantVariables, type ParticipantQualification } from '@/lib/participant-qualification';
+import ParticipantOptions from '@/components/ParticipantOptions';
+import type { RogoDetails } from '@/lib/participant-groups';
 
 import SignerStampEditor from '@/components/SignerStampEditor';
 import { editorParticipants, suggestStamps, type SignerStamp, type StampBox } from '@/lib/signer-stamps';
@@ -34,6 +37,9 @@ interface Client {
 }
 
 interface SignerInput {
+  qualification?: ParticipantQualification;
+  rogo?: RogoDetails;
+  signingMode?: string;
   name: string;
   cpf: string;
   email: string;
@@ -82,6 +88,8 @@ interface GeneratedKitDocument {
 }
 
 interface KitGenerationResult {
+  mainSignerToken: string;
+  participantLinks?: Array<{ name: string; role: string; token: string; signingMode: string }>;
   kitName: string;
   clientName: string;
   documentsCount: number;
@@ -156,7 +164,7 @@ export default function DispatchKitPage() {
     }
     previousStampContents.current = customContents;
   }, [customContents, reviewItem]);
-  const stampIdentity = JSON.stringify([selectedClientId, signers.map((p) => [p.name, p.cpf, p.role]), isIlliterate, rogoName]);
+  const stampIdentity = JSON.stringify([selectedClientId, signers.map((p) => [p.name, p.cpf, p.role, p.rogo]), isIlliterate, rogoName]);
   useEffect(() => { setStampOverrides({}); setStampDraft([]); }, [stampIdentity]);
   useEffect(() => {
     fetchData();
@@ -283,8 +291,8 @@ export default function DispatchKitPage() {
     // de remover - por isso o papel inicial precisa ser outro.
     setSigners([
       ...signers,
-      { name: '', cpf: '', email: '', phone: '', role: 'ADVOGADO', signatureOrder: signers.length + 2 },
-    ]);
+      { name: '', cpf: '', email: '', phone: '', role: 'PARTE', signatureOrder: signers.length + 2 },
+    ].sort((a,b) => Number(a.role.startsWith('TESTEMUNHA')) - Number(b.role.startsWith('TESTEMUNHA'))));
   };
 
   const handleRemoveSigner = (index: number) => {
@@ -296,8 +304,8 @@ export default function DispatchKitPage() {
     if (field === 'cpf') val = maskCpfCnpj(val);
     if (field === 'phone') val = maskPhone(val);
     const updated = [...signers];
-    updated[index] = { ...updated[index], [field]: val };
-    setSigners(updated);
+    updated[index] = { ...updated[index], [field]: val, ...(field === 'role' && String(val).startsWith('TESTEMUNHA') ? { rogo: undefined } : {}) };
+    setSigners(updated.sort((a,b) => Number(a.role.startsWith('TESTEMUNHA')) - Number(b.role.startsWith('TESTEMUNHA'))));
   };
 
   const handleRogoToggle = (enabled: boolean) => {
@@ -469,7 +477,7 @@ export default function DispatchKitPage() {
 
   const handleAutoDetectKitVariables = async () => {
     if (!reviewItem) return;
-    const before = customContents[reviewItem.template.id] ?? renderEditableReview(reviewItem.template.contentHtml);
+    const before = customContents[reviewItem.template.id] ?? reviewItem.template.contentHtml;
     setDetectingKitVariables(true);
     setAutoDetectKitMessage('Analisando o texto com IA...');
     try {
@@ -505,7 +513,7 @@ export default function DispatchKitPage() {
       throw new Error(data?.error || 'IA não retornou alteração.');
     } catch (aiError) {
       // Reserva sem IA: aplica a mesma normalização por padrão de texto usada ao abrir a revisão.
-      const after = renderEditableReview(reviewItem.template.contentHtml);
+      const after = reviewItem.template.contentHtml;
       if (after === before) {
         setAutoDetectKitMessage('Não conseguimos detectar dados fixos automaticamente (a IA está indisponível no momento e o texto não segue um padrão conhecido). Ajuste manualmente ou use "Restaurar modelo".');
         return;
@@ -521,7 +529,7 @@ export default function DispatchKitPage() {
     setLoadingReviewPdf(true);
     setReviewPdfUrl(null);
     try {
-      const response = await fetch('/api/kits/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: selectedClientId, title: item.template.title, contentHtml: customContents[item.template.id] || item.template.contentHtml, customVariables: variables }) });
+      const response = await fetch('/api/kits/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: selectedClientId, title: item.template.title, contentHtml: customContents[item.template.id] || item.template.contentHtml, customVariables: variables, signers }) });
       if (!response.ok) throw new Error();
       const placements = JSON.parse(decodeURIComponent(response.headers.get('X-Signature-Placements') || '%5B%5D'));
       setDetectedStamps(placements);
@@ -653,6 +661,7 @@ export default function DispatchKitPage() {
           </div>
         </div>
 
+        {result.participantLinks?.filter((p: any) => p.token !== result.mainSignerToken && p.signingMode === 'INDIVIDUAL').map((p: any) => <div key={p.token} className="border rounded-xl p-4 flex justify-between gap-3"><span className="text-sm">{p.name} · {p.role}</span><button type="button" className="text-blue-700 text-sm" onClick={async () => { await navigator.clipboard.writeText(`${window.location.origin}/assinar/${p.token}`); setCopiedDocumentId(p.token); }}>{copiedDocumentId === p.token ? 'Copiado!' : 'Copiar link desta pessoa'}</button></div>)}
         <div className="border border-slate-200 rounded-2xl overflow-hidden pt-5">
           <span className="text-xs font-bold text-[#0B1D3D] uppercase tracking-wider block">Documentos incluídos</span>
           <p className="text-xs text-slate-600 leading-relaxed">Confira as minutas abaixo. Os links individuais permanecem internos ao sistema.</p>
@@ -842,7 +851,7 @@ export default function DispatchKitPage() {
               </button>
             </div>
 
-            {signers.filter((s) => s.role !== 'TESTEMUNHA').map((s) => {
+            {signers.filter((s) => !isIlliterate || s.role !== 'TESTEMUNHA').map((s) => {
               const index = signers.indexOf(s);
               return (
               <div key={index} className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3 relative">
@@ -869,6 +878,7 @@ export default function DispatchKitPage() {
                     <label className="block text-[11px] font-bold text-slate-600 mb-1">Papel Jurídico *</label>
                     <select value={s.role} onChange={(e) => handleSignerChange(index, 'role', e.target.value)}
                       className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-bold">
+                      <option value="PARTE">Parte / Signatário</option>
                       <option value="ADVOGADO">Advogado</option>
                       <option value="CONTRATANTE">Contratante</option>
                       <option value="CONTRATADO">Contratado</option>
@@ -888,6 +898,7 @@ export default function DispatchKitPage() {
                       placeholder="(11) 99999-9999" className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium" />
                   </div>
                 </div>
+                <ParticipantOptions qualification={s.qualification} onQualification={(value) => handleSignerChange(index, 'qualification', value)} name={s.name} role={s.role} rogo={s.rogo} signingMode={s.signingMode}  onRogo={(value) => handleSignerChange(index, 'rogo', value)} onMode={(value) => handleSignerChange(index, 'signingMode', value)} />
               </div>
               );
             })}
@@ -1154,7 +1165,8 @@ export default function DispatchKitPage() {
                       <span>{autoDetectKitMessage}</span>
                     </div>
                   )}
-                  <div className="rounded-xl border border-slate-200 bg-white p-4"><DocumentRichEditor key={reviewItem.id} value={customContents[reviewItem.template.id] ?? renderEditableReview(reviewItem.template.contentHtml)} onChange={(html) => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: html }))} showTags={false} showAiCopilot={false} placeholder="Redija ou ajuste o documento..." /></div>
+                  <div className="flex flex-wrap gap-2">{signers.filter(s => !s.role.startsWith('TESTEMUNHA')).map((person, index) => <button type="button" key={index} className="text-xs border rounded px-3 py-2 text-blue-700" onClick={() => setCustomContents(prev => { const source = prev[reviewItem.template.id] ?? reviewItem.template.contentHtml; const block = `<p><strong>{{parte${index + 2}_papel}}:</strong> {{parte${index + 2}_qualificacao}}.</p>`; return { ...prev, [reviewItem.template.id]: block + source }; })}>Inserir qualificação de {person.name || `parte ${index + 2}`}</button>)}</div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-4"><DocumentRichEditor key={reviewItem.id} value={customContents[reviewItem.template.id] ?? reviewItem.template.contentHtml} onChange={(html) => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: html }))} showTags={true} showAiCopilot={false} placeholder="Redija ou ajuste o documento..." /></div>
                 </div>
               ) : adjustingStamp ? (
                 reviewPdfUrl ? <SignerStampEditor source={reviewPdfUrl} participants={stampPeople} value={stampDraft} onChange={setStampDraft} /> : <p>Carregando a prévia…</p>
@@ -1177,7 +1189,7 @@ export default function DispatchKitPage() {
                 </>
               ) : editingReview ? (
                 <>
-                  <button type="button" onClick={() => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: renderEditableReview(reviewItem.template.contentHtml) }))} className="text-xs font-bold text-slate-600">Restaurar modelo</button>
+                  <button type="button" onClick={() => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: reviewItem.template.contentHtml }))} className="text-xs font-bold text-slate-600">Restaurar modelo</button>
                   <div className="flex gap-2"><button type="button" onClick={() => void generateReviewPdf(reviewItem)} className="px-4 py-2.5 border border-[#071B3A] text-[#071B3A] rounded-lg text-xs font-bold">Atualizar prévia final</button><button type="button" onClick={() => { if (reviewPdfUrl) URL.revokeObjectURL(reviewPdfUrl); setReviewPdfUrl(null); setReviewItem(null); }} className="px-5 py-2.5 bg-[#071B3A] text-white rounded-lg text-xs font-bold">Concluir revisão</button></div>
                 </>
               ) : (

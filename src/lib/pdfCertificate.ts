@@ -1,3 +1,5 @@
+import { qualificationDetails, fullQualification } from './participant-qualification';
+import { configuredGroups } from './participant-groups';
 import { decodeStamps, stampParticipants, type SignerStamp } from './signer-stamps';
 import { PDFDocument, PDFPage, rgb, StandardFonts, LineCapStyle, PDFName, PDFString, degrees } from 'pdf-lib';
 import fs from 'fs';
@@ -305,16 +307,18 @@ export async function generateFinalPdfCertificate(documentId: string) {
     if (!doc.signedFile || !doc.signedHash || !doc.verificationCode) throw new Error('O arquivo aprovado precisa ser recuperado; ele não pode ser regenerado.');
     return { signedStorageFile: doc.signedFile, signedHash: doc.signedHash, verificationCode: doc.verificationCode };
   }
+  const participantDetails = qualificationDetails(doc);
+  const qualificationFor = (person: typeof doc.signers[number]) => participantDetails.find(p => p.order === person.signatureOrder)?.qualification;
+  const roleFor = (person: typeof doc.signers[number]) => qualificationFor(person)?.roleLabel || signerRoleLabel(person.role);
+  const participantGroups = configuredGroups(doc, doc.signers);
+  const rogoFor = (order: number) => { const group = participantGroups.find(g => g.partyOrder === order); return group ? doc.signers.find(p => p.signatureOrder === group.rogoOrder) : undefined; };
   // A ordem visual do certificado segue a ordem jurídica, inclusive para
   // documentos antigos que possam ter participantes criados fora de ordem.
-  const signerRank = (role: string) => {
-    if (role === 'CLIENTE') return 1;
-    if (role === 'ASSINANTE_A_ROGO') return 2;
-    if (role === 'TESTEMUNHA' || role === 'TESTEMUNHA_1') return 3;
-    if (role === 'TESTEMUNHA_2') return 4;
-    return 10;
+  const visualOrder = (person: typeof doc.signers[number]) => {
+    const group = participantGroups.find(g => g.rogoOrder === person.signatureOrder);
+    return person.role.startsWith('TESTEMUNHA') ? 100000 + person.signatureOrder : group ? group.partyOrder + 0.5 : person.signatureOrder;
   };
-  doc.signers.sort((a, b) => signerRank(a.role) - signerRank(b.role) || a.signatureOrder - b.signatureOrder);
+  doc.signers.sort((a, b) => visualOrder(a) - visualOrder(b));
 
   // O certificado é a trilha de evidências da assinatura, não o histórico interno
   // do escritório. Exibimos apenas os atos que comprovam a manifestação do signatário.
@@ -411,11 +415,11 @@ export async function generateFinalPdfCertificate(documentId: string) {
   // jurídico, selo cobrindo cláusula é o pior defeito possível.
   const isWitnessRole = (role?: string | null) => String(role || '').startsWith('TESTEMUNHA');
   const multiStamps = decodeStamps(String(sigPos), originalPages.length, stampParticipants(doc.signers, doc.isIlliterate));
-  const documentParties = doc.signers.filter((item) => !isWitnessRole(item.role) && !(multiStamps && doc.isIlliterate && item.role === 'ASSINANTE_A_ROGO'));
+  const documentParties = doc.signers.filter((item) => !isWitnessRole(item.role) && !participantGroups.some(g => g.rogoOrder === item.signatureOrder));
   const documentWitnesses = doc.signers.filter((item) => isWitnessRole(item.role));
   // No fluxo a rogo, cliente e acompanhante são UMA parte assinando em
   // conjunto - o selo dedicado que já existe para esse caso continua valendo.
-  const needsSignaturePage = multiStamps !== null || (!doc.isIlliterate && documentParties.length > 1);
+  const needsSignaturePage = multiStamps !== null || participantGroups.length > 1 || (!doc.isIlliterate && documentParties.length > 1) || (!doc.isIlliterate && participantGroups.length > 0);
 
   const drawSignerStamp = (page: PDFPage, box: SignerStamp, person: typeof doc.signers[number]) => {
     if (person.status !== 'ASSINADO') return;
@@ -423,8 +427,11 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const x = box.x * width, top = (1 - box.y) * height, w = box.width * width, h = box.height * height;
     const qrSize = Math.min(30, h - 12);
     const tx = x + qrSize + 10, tw = w - (tx - x) - 4;
-    const stampLines = [signerRoleLabel(person.role).toUpperCase(), person.name,
+    const partner = rogoFor(person.signatureOrder);
+    if (partner && partner.status !== 'ASSINADO') return;
+    const stampLines = [roleFor(person).toUpperCase(), person.name,
       `CPF: ${formatFullCpf(person.cpf)}`,
+      ...(partner ? [`A ROGO: ${partner.name}`, `CPF A ROGO: ${formatFullCpf(partner.cpf)}`] : []),
       person.signedAt ? formatBrasiliaDateTime(person.signedAt, false).replace(/\s*\(.+$/, '') : 'Horário não registrado',
       `Código: ${verificationCode}`];
     let size = 7;
@@ -442,7 +449,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
   originalPages.forEach((p, idx) => {
     const { width: pW, height: pH } = p.getSize();
-    const jointOrder = doc.isIlliterate ? doc.signers.find((person) => person.role === 'CLIENTE')?.signatureOrder : undefined;
+    const jointOrder = undefined;
     const customStamp = multiStamps ? multiStamps.find((box) => box.order === jointOrder && box.page === idx + 1) || null : legacyCustomStamp;
     if (multiStamps) {
       for (const box of multiStamps.filter((box) => box.page === idx + 1 && box.order !== jointOrder)) {
@@ -746,14 +753,14 @@ export async function generateFinalPdfCertificate(documentId: string) {
     documentParties.forEach((party) => {
       const partyNameLines = wrapTextToWidth(party.name, bold, 10, CW - 40);
       const extraNameHeight = Math.max(0, partyNameLines.length - 2) * 11;
-      const BLOCK_H = (doc.isIlliterate && party.role === 'CLIENTE' ? 104 : 84) + extraNameHeight;
+      const BLOCK_H = (rogoFor(party.signatureOrder) ? 104 + Math.max(0, wrapTextToWidth(`A rogo: ${rogoFor(party.signatureOrder)!.name} · CPF ${formatFullCpf(rogoFor(party.signatureOrder)!.cpf)}`, bold, 8, CW - 30).length - 1) * 10 : 84) + extraNameHeight;
       ensureSheetSpace(BLOCK_H + 8);
       const blockTop = cursor;
       const blockY = blockTop - BLOCK_H;
       sheetPage.drawRectangle({ x: CX, y: blockY, width: CW, height: BLOCK_H, color: rgb(1, 1, 1), borderWidth: 0.8, borderColor: panelBorder });
       sheetPage.drawRectangle({ x: CX, y: blockY, width: 3.4, height: BLOCK_H, color: gold });
 
-      sheetPage.drawText(signerRoleLabel(party.role).toUpperCase(), { x: CX + 14, y: blockTop - 15, size: 6, font: bold, color: muted });
+      sheetPage.drawText(roleFor(party).toUpperCase(), { x: CX + 14, y: blockTop - 15, size: 6, font: bold, color: muted });
 
       const signedOk = party.status === 'ASSINADO';
       const badgeText = signedOk ? 'ASSINADO' : String(party.status || 'PENDENTE').replace(/_/g, ' ');
@@ -781,8 +788,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
         : 'Evidências detalhadas no certificado anexo';
       sheetPage.drawText(safeText(evidenceText, 120), { x: CX + 14, y: blockTop - 72 - extraNameHeight, size: 6.6, font: regular, color: muted });
 
-      if (doc.isIlliterate && party.role === 'CLIENTE') {
-        const rogo = doc.signers.find((person) => person.role === 'ASSINANTE_A_ROGO');
+      if (rogoFor(party.signatureOrder)) {
+        const rogo = rogoFor(party.signatureOrder);
         const rogoLine = `A rogo: ${rogo?.name || doc.rogoName || ''} · CPF ${formatFullCpf(rogo?.cpf || doc.rogoCpf || '')}`;
         wrapTextToWidth(rogoLine, bold, 8, CW - 30).forEach((line, i) => sheetPage.drawText(line, { x: CX + 14, y: blockTop - 86 - extraNameHeight - i * 10, size: 8, font: bold, color: navy }));
       }
@@ -798,7 +805,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
         const blockH = 42 + nameLines.length * 11;
         ensureSheetSpace(blockH + 8);
         sheetPage.drawRectangle({ x: CX, y: cursor - blockH, width: CW, height: blockH, color: rgb(1, 1, 1), borderWidth: 0.8, borderColor: panelBorder });
-        sheetPage.drawText(signerRoleLabel(witness.role), { x: CX + 14, y: cursor - 13, size: 7, font: bold, color: muted });
+        sheetPage.drawText(roleFor(witness), { x: CX + 14, y: cursor - 13, size: 7, font: bold, color: muted });
         nameLines.forEach((line, i) => sheetPage.drawText(line, { x: CX + 14, y: cursor - 26 - i * 11, size: 9, font: bold, color: navy }));
         const witnessAt = witness.signedAt ? formatBrasiliaDateTime(witness.signedAt, false).replace(/\s*\(.+$/, '') : 'Assinatura pendente';
         sheetPage.drawText(`CPF ${formatFullCpf(witness.cpf || '')}`, { x: CX + 14, y: cursor - blockH + 10, size: 7.5, font: mono, color: text });
@@ -1262,11 +1269,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const phoneLines = fieldLines(formatFullPhone(signer.phone), halfWidth, { size: 9 });
     const dateLines = fieldLines(formatBrasiliaDateTime(signer.signedAt), halfWidth, { font: bold, size: 8.5 });
     const ipLines = fieldLines(signer.ipAddress || 'Não informado', halfWidth, { font: mono, size: 8 });
-    const roleLines = fieldLines(signerRoleLabel(signer.role), halfWidth, { size: 8.5 });
+    const roleLines = fieldLines(roleFor(signer), halfWidth, { size: 8.5 });
     const userAgentLines = fieldLines(signer.userAgent || 'Não informado', innerWidth, { size: 7.2 });
     const locationLines = fieldLines(locationText, innerWidth, { size: 7.8 });
     const authenticationLines = fieldLines(authenticationText, innerWidth, { size: 7.8 });
-    const dataHeight =
+    const qualificationText = qualificationFor(signer) ? fullQualification({ ...signer, qualification: qualificationFor(signer) }) : '';
+    const qualificationHeight = qualificationText ? 17 + fieldLines(qualificationText, innerWidth, { size: 7.5 }).length * 9 : 0;
+    const dataHeight = qualificationHeight +
       rowHeight(nameLines.length, cpfLines.length, 9.5) +
       rowHeight(phoneLines.length, dateLines.length, 9) +
       rowHeight(ipLines.length, roleLines.length, 8.5) +
@@ -1289,7 +1298,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const pTop = y;
     const pY = pTop - panelH;
     page.drawLine({ start: { x: CX, y: pTop }, end: { x: CR, y: pTop }, thickness: 1.3, color: gold });
-    page.drawText(`2. DADOS DO SIGNATÁRIO — ${signerRoleLabel(signer.role).toUpperCase()}`, {
+    page.drawText(`2. DADOS DO SIGNATÁRIO — ${roleFor(signer).toUpperCase()}`, {
       x: padX,
       y: pTop - 14,
       size: 8,
@@ -1324,10 +1333,11 @@ export async function generateFinalPdfCertificate(documentId: string) {
     );
     drawTwoColumns(
       { label: 'Endereço IP', value: signer.ipAddress || 'Não informado', options: { font: mono, size: 7.8 } },
-      { label: 'Qualificação', value: signerRoleLabel(signer.role), options: { size: 8 } },
+      { label: 'Papel neste documento', value: roleFor(signer), options: { size: 8 } },
       rowHeight(ipLines.length, roleLines.length, 8)
     );
 
+    if (qualificationText) cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Qualificação completa', qualificationText, { size: 7.5, lineHeight: 9 });
     cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Dispositivo e navegador completos', parseUserAgentFriendly(signer.userAgent), { size: 7.5, lineHeight: 9, font: bold, color: navy });
     const locationTop = cursor;
     cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Geolocalização completa do dispositivo', locationText, { size: 7.5, lineHeight: 9, color: hasLocation ? linkBlue : muted });
@@ -1389,7 +1399,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       ensureSpace(36 + 34 + cardH + 20);
 
       page.drawLine({ start: { x: CX, y }, end: { x: CR, y }, thickness: 1.3, color: gold });
-      page.drawText(`3. PROVA DE PRESENÇA AO VIVO — ${signerRoleLabel(signer.role).toUpperCase()} (REGISTRO FACIAL HD)`, {
+      page.drawText(`3. PROVA DE PRESENÇA AO VIVO — ${roleFor(signer).toUpperCase()} (REGISTRO FACIAL HD)`, {
         x: padX, y: y - 14, size: 8, font: bold, color: navy,
       });
       page.drawLine({ start: { x: CX, y: y - 20 }, end: { x: CR, y: y - 20 }, thickness: 0.5, color: panelBorder });
@@ -1538,7 +1548,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       let sectionHeaderDrawn = false;
       const drawSectionHeader = () => {
         page.drawLine({ start: { x: CX, y: dCursor }, end: { x: CR, y: dCursor }, thickness: 1.3, color: gold });
-        page.drawText(`4. DOCUMENTO DE IDENTIFICAÇÃO — ${signerRoleLabel(signer.role).toUpperCase()} (EVIDÊNCIA COMPLEMENTAR)`, {
+        page.drawText(`4. DOCUMENTO DE IDENTIFICAÇÃO — ${roleFor(signer).toUpperCase()} (EVIDÊNCIA COMPLEMENTAR)`, {
           x: padX, y: dCursor - 14, size: 8, font: bold, color: navy,
         });
         page.drawLine({ start: { x: CX, y: dCursor - 20 }, end: { x: CR, y: dCursor - 20 }, thickness: 0.5, color: panelBorder });

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { pendingPhotoCorrection } from '@/lib/photo-review';
+import { pendingPhotoCorrection, isIndividualRetry } from '@/lib/photo-review';
 import { getSignatureOrderBlock, signatureOrderError } from '@/lib/signatureOrder';
 
 export const dynamic = 'force-dynamic';
@@ -65,15 +65,17 @@ export async function POST(
     // Em pacotes, a confirmação de CPF ocorre uma única vez, mas é uma evidência
     // válida para cada documento apresentado na mesma sessão. Registramos no momento
     // correto, antes da câmera e da prova de presença.
-    if (signer.role === 'CLIENTE' && signer.document.kitBatchId) {
+    if (signer.document.kitBatchId && !(await isIndividualRetry(prisma, signer.document.id))) {
       const companions = await prisma.document.findMany({
         where: {
           kitBatchId: signer.document.kitBatchId,
+          officeId: signer.document.officeId,
+          NOT: { status: 'CONCLUIDO', reviewStatus: 'APROVADO' },
           clientId: signer.document.clientId,
           id: { not: signer.document.id },
           status: { notIn: ['CANCELADO', 'EXPIRADO'] },
         },
-        include: { signers: { where: { role: 'CLIENTE' }, select: { id: true } } },
+        include: { signers: { where: { role: signer.role, cpf: signer.cpf, signatureOrder: signer.signatureOrder }, select: { id: true } } },
       });
       const events = companions.flatMap((document) => {
         const companionSigner = document.signers[0];

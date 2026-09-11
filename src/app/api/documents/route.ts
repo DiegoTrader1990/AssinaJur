@@ -1,3 +1,5 @@
+import { qualificationFromClient, validateParticipantQualifications, participantVariables, PARTICIPANT_DETAILS_EVENT } from '@/lib/participant-qualification';
+import { expandRogoParticipants, PARTICIPANT_GROUPS_EVENT } from '@/lib/participant-groups';
 import { decodeStamps, encodeStamps, stampParticipants } from '@/lib/signer-stamps';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
@@ -70,6 +72,7 @@ export async function GET(req: Request) {
         ],
       },
       include: {
+        events: { where: { eventType: PARTICIPANT_GROUPS_EVENT }, select: { eventType: true, metadata: true } },
         client: {
           select: { id: true, name: true, cpfCnpj: true, phone: true, email: true },
         },
@@ -213,7 +216,7 @@ export async function POST(req: Request) {
 
     const rogoWitnesses = isIlliterate ? signers.slice(1).filter((signer: any) => signer.role === 'TESTEMUNHA') : [];
     const rogoAdditionalSigners = isIlliterate ? signers.slice(1).filter((signer: any) => signer.role !== 'TESTEMUNHA') : [];
-    const orderedSignerInputs = isIlliterate
+    let orderedSignerInputs = isIlliterate
       ? [
           { ...signers[0], signatureOrder: 1 },
           {
@@ -224,6 +227,21 @@ export async function POST(req: Request) {
           ...rogoAdditionalSigners.map((signer: any, index: number) => ({ ...signer, signatureOrder: index + 3 + rogoWitnesses.length })),
         ]
       : signers.map((signer: any, index: number) => ({ ...signer, signatureOrder: index + 1 }));
+    if (linkedClient && !orderedSignerInputs[0].qualification) orderedSignerInputs[0].qualification = qualificationFromClient(linkedClient);
+    let participantGroups;
+    try {
+      for (const person of orderedSignerInputs) {
+        if (person.rogo && (!String(person.rogo.name || '').trim() || !hasValidCpfCnpjCheckDigits(String(person.rogo.cpf || '')) || !person.rogo.birthDate || !String(person.rogo.address || '').trim())) throw new Error('Informe nome, CPF válido, nascimento e endereço de cada assinante a rogo.');
+        if (person.signingMode && !['INDIVIDUAL', 'SAME_DEVICE'].includes(person.signingMode)) throw new Error('Forma de participação inválida.');
+      }
+      const expanded = expandRogoParticipants(orderedSignerInputs, Boolean(isIlliterate));
+      orderedSignerInputs = expanded.participants as typeof orderedSignerInputs;
+      participantGroups = expanded.groups;
+      validateParticipantQualifications(orderedSignerInputs, Boolean(linkedClient));
+      const cpfs = orderedSignerInputs.map((person: any) => String(person.cpf).replace(/\D/g, ''));
+      if (new Set(cpfs).size !== cpfs.length) throw new Error('Cada participante deve ter um CPF diferente neste envio.');
+    } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Confira os participantes.' }, { status: 400 }); }
+
 
     if (typeof signaturePosition === 'string' && signaturePosition.startsWith('MULTI:')) {
       try { safeSignaturePosition = encodeStamps(decodeStamps(signaturePosition, originalPdf.getPageCount(), stampParticipants(orderedSignerInputs, Boolean(isIlliterate))) || []); }
@@ -286,6 +304,8 @@ export async function POST(req: Request) {
         },
       });
 
+      await tx.documentEvent.create({ data: { documentId: doc.id, userId: user.id, eventType: PARTICIPANT_DETAILS_EVENT, metadata: JSON.stringify(orderedSignerInputs.filter((p: any) => p.qualification).map((p: any) => ({ order: p.signatureOrder, qualification: p.qualification }))), description: 'Qualificação dos participantes registrada para este envio.' } });
+      await tx.documentEvent.create({ data: { documentId: doc.id, userId: user.id, eventType: PARTICIPANT_GROUPS_EVENT, metadata: JSON.stringify(participantGroups), description: 'Partes e respectivos assinantes a rogo configurados.' } });
       if (enforceSignatureOrder || isIlliterate) {
         await tx.documentEvent.create({
           data: {

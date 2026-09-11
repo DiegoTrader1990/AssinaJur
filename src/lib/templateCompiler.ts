@@ -37,7 +37,7 @@ export function replaceTemplateVariables(contentHtml: string, variables: Variabl
   };
   for (const [key, val] of Object.entries(allVars)) {
     const regex = new RegExp(`{{\\s*${key}\\s*}}`, 'gi');
-    compiled = compiled.replace(regex, val || '________________');
+    compiled = compiled.replace(regex, () => val ?? '');
   }
   compiled = compiled.replace(/{{\s*[a-zA-Z0-9_]+\s*}}/g, '________________');
 
@@ -100,6 +100,7 @@ function emphasizeDocumentNames(html: string, variables: VariableValues): string
 }
 
 function applyClientGenderToQualification(html: string, variables: VariableValues): string {
+  if (Number(variables.partes_quantidade || 1) > 1) return html;
   const gender = String(variables.cliente_genero || '').toUpperCase();
   if (gender !== 'MASCULINO' && gender !== 'FEMININO') return html;
   const feminine = gender === 'FEMININO';
@@ -337,6 +338,7 @@ function cssFontFamily(style: string): string | undefined {
 // dependemos mais da estrutura de tags do Word: identificamos o bloco final de
 // assinatura e reconstruímos somente seus dados com a cliente desta emissão.
 function applyDynamicSignatureFooter(paragraphs: RichParagraph[], variables: VariableValues): RichParagraph[] {
+  if (Number(variables.partes_quantidade || 1) > 1) return paragraphs;
   const clientName = String(variables.cliente_nome || '').trim();
   const city = String(variables.cidade || '').trim();
   const date = String(variables.data_atual || '').trim();

@@ -1,3 +1,4 @@
+import { loadParticipantGroups } from '@/lib/participant-groups';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { generateFinalPdfCertificate } from '@/lib/pdfCertificate';
@@ -69,11 +70,14 @@ export async function POST(
     if (signer.document.status === 'CONCLUIDO' && signer.document.reviewStatus === 'APROVADO') {
       return NextResponse.json({ error: 'O documento aprovado não pode ser alterado.' }, { status: 409 });
     }
+    const groups = await loadParticipantGroups(prisma, signer.document, signer.document.signers);
+    const pair = groups.find(g => g.partyOrder === signer.signatureOrder);
+    const pairedRogo = pair ? signer.document.signers.find(p => p.signatureOrder === pair.rogoOrder) : null;
     // O link só pode registrar acompanhantes previstos para o mesmo aparelho.
     for (const [input, roles] of [[rogo, ['ASSINANTE_A_ROGO']], [witness1, ['TESTEMUNHA_1', 'TESTEMUNHA']], [witness2, ['TESTEMUNHA_2']]] as const) {
       if (!input) continue;
-      const target = signer.document.signers.find((person) => (roles as readonly string[]).includes(person.role));
-      if (signer.role !== 'CLIENTE' || !target || target.signingMode !== 'SAME_DEVICE' || target.status === 'ASSINADO' ||
+      const target = input === rogo ? pairedRogo : signer.document.signers.find((person) => (roles as readonly string[]).includes(person.role));
+      if ((input === rogo ? !pair : signer.role !== 'CLIENTE') || !target || target.signingMode !== 'SAME_DEVICE' || target.status === 'ASSINADO' ||
           String(input.cpf || '').replace(/\D/g, '') !== target.cpf.replace(/\D/g, '') ||
           String(input.name || '').trim().toLocaleLowerCase('pt-BR') !== target.name.trim().toLocaleLowerCase('pt-BR')) {
         return NextResponse.json({ error: 'Os dados do acompanhante não correspondem ao participante autorizado. Solicite a correção ao escritório.' }, { status: 403 });
@@ -99,6 +103,14 @@ export async function POST(
       );
     }
 
+    // Evidências obrigatórias para qualquer papel, inclusive acompanhantes legados.
+    for (const [person, label] of [[body, 'participante'], [rogo, 'assinante a rogo'], [witness1, 'primeira testemunha'], [witness2, 'segunda testemunha']] as const) {
+      if (!person) continue;
+      if (['documentFrontImage', 'documentBackImage', 'selfieCenterImage'].some(field => typeof person[field] !== 'string' || !person[field].trim())) {
+        return NextResponse.json({ error: `Conclua as três fotos do ${label}: identidade frente, verso e selfie segurando o documento.` }, { status: 400 });
+      }
+    }
+
     // 2. Validação da Prova de Presença (Selfie segurando o documento)
     if (!selfieCenterImage) {
       return NextResponse.json(
@@ -107,7 +119,7 @@ export async function POST(
       );
     }
 
-    const isRogadoConsent = signer.document.isIlliterate && signer.role === 'CLIENTE';
+    const isRogadoConsent = Boolean(pair);
 
     // 3. Se for fluxo a rogo e dados do acompanhante foram enviados no mesmo link, validar dados do Acompanhante
     if (isRogadoConsent && rogo) {
@@ -165,18 +177,7 @@ export async function POST(
 
     // 5. Se for fluxo a rogo e dados do acompanhante foram enviados no mesmo link, atualizar o Assinante a Rogo
     if (isRogadoConsent && rogo) {
-      let rogoSignerRecord = signer.document.signers.find((s) => s.role === 'ASSINANTE_A_ROGO');
-      if (!rogoSignerRecord) {
-        rogoSignerRecord = await prisma.signer.create({
-          data: {
-            documentId: signer.document.id,
-            name: rogo.name || 'Assinante a Rogo',
-            cpf: (rogo.cpf || '').replace(/\D/g, ''),
-            role: 'ASSINANTE_A_ROGO',
-            status: 'PENDENTE',
-          },
-        });
-      }
+      let rogoSignerRecord = pairedRogo || undefined;
       if (rogoSignerRecord) {
         await prisma.signer.update({
           where: { id: rogoSignerRecord.id },
@@ -248,6 +249,8 @@ export async function POST(
           signatureType: witness1.signatureType || 'DESENHADA',
           signatureImage: witness1.signatureImage || null,
           signedConsentText: `Assino como 1ª Testemunha Instrumentária do documento ${signer.document.title}.`,
+          documentFrontImage: witness1.documentFrontImage,
+          documentBackImage: witness1.documentBackImage,
           selfieCenterImage: witness1.selfieCenterImage,
           selfieLeftImage: witness1.selfieLeftImage,
           selfieRightImage: witness1.selfieRightImage,
@@ -298,6 +301,8 @@ export async function POST(
           signatureType: witness2.signatureType || 'DESENHADA',
           signatureImage: witness2.signatureImage || null,
           signedConsentText: `Assino como 2ª Testemunha Instrumentária do documento ${signer.document.title}.`,
+          documentFrontImage: witness2.documentFrontImage,
+          documentBackImage: witness2.documentBackImage,
           selfieCenterImage: witness2.selfieCenterImage,
           selfieLeftImage: witness2.selfieLeftImage,
           selfieRightImage: witness2.selfieRightImage,

@@ -1,3 +1,4 @@
+import { participantVariables, qualificationFromClient } from '@/lib/participant-qualification';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
@@ -49,7 +50,7 @@ export async function POST(req: Request) {
   try {
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
-    const { clientId, title, contentHtml, customVariables } = await req.json();
+    const { clientId, title, contentHtml, customVariables, signers } = await req.json();
     const [client, office, activeLawyers] = await Promise.all([
       prisma.client.findFirst({ where: { id: clientId, officeId: user.officeId } }),
       prisma.office.findUnique({ where: { id: user.officeId } }),
@@ -127,6 +128,7 @@ export async function POST(req: Request) {
       patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),
       data_atual: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date()),
       ...(customVariables || {}),
+      ...participantVariables([{ name: client.name, cpf: client.cpfCnpj, email: client.email, phone: client.phone, role: 'CLIENTE', signatureOrder: 1, qualification: qualificationFromClient(client) }, ...(Array.isArray(signers) ? signers : [])]),
       cidade: [client.city, client.state].filter(Boolean).join('/') || '—',
     };
     const normalizedClientContent = removeStandaloneClientNameBeforeQualification(ensureClientQualificationTokens(contentHtml, title || ''), client.name);

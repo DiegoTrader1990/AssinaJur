@@ -1,3 +1,5 @@
+import { qualificationFromClient, validateParticipantQualifications, participantVariables, PARTICIPANT_DETAILS_EVENT } from '@/lib/participant-qualification';
+import { expandRogoParticipants, PARTICIPANT_GROUPS_EVENT } from '@/lib/participant-groups';
 import { stampParticipants, validateStamps, encodeStamps, suggestStamps } from '@/lib/signer-stamps';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
@@ -181,6 +183,7 @@ export async function POST(req: Request) {
     }
 
     const clientSignerInput = {
+      qualification: qualificationFromClient(client),
       name: client.name,
       cpf: client.cpfCnpj,
       email: client.email || '',
@@ -190,7 +193,7 @@ export async function POST(req: Request) {
     };
     const rogoWitnesses = isIlliterate ? extraSigners.filter((signer: any) => signer.role === 'TESTEMUNHA') : [];
     const rogoAdditionalSigners = isIlliterate ? extraSigners.filter((signer: any) => signer.role !== 'TESTEMUNHA') : [];
-    const orderedSignerInputs = isIlliterate
+    let orderedSignerInputs = isIlliterate
       ? [
           clientSignerInput,
           {
@@ -201,6 +204,20 @@ export async function POST(req: Request) {
           ...rogoAdditionalSigners.map((signer: any, index: number) => ({ ...signer, signatureOrder: index + 3 + rogoWitnesses.length })),
         ]
       : [clientSignerInput, ...extraSigners.map((signer: any, index: number) => ({ ...signer, signatureOrder: index + 2 }))];
+    let participantGroups;
+    try {
+      for (const person of orderedSignerInputs) {
+        if (person.rogo && (!String(person.rogo.name || '').trim() || !hasValidCpfCnpjCheckDigits(String(person.rogo.cpf || '')) || !person.rogo.birthDate || !String(person.rogo.address || '').trim())) throw new Error('Informe nome, CPF válido, nascimento e endereço de cada assinante a rogo.');
+        if (person.signingMode && !['INDIVIDUAL', 'SAME_DEVICE'].includes(person.signingMode)) throw new Error('Forma de participação inválida.');
+      }
+      const expanded = expandRogoParticipants(orderedSignerInputs, Boolean(isIlliterate));
+      orderedSignerInputs = expanded.participants as typeof orderedSignerInputs;
+      participantGroups = expanded.groups;
+      validateParticipantQualifications(orderedSignerInputs, Boolean(client));
+      const cpfs = orderedSignerInputs.map((person: any) => String(person.cpf).replace(/\D/g, ''));
+      if (new Set(cpfs).size !== cpfs.length) throw new Error('Cada participante deve ter um CPF diferente neste envio.');
+    } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Confira os participantes.' }, { status: 400 }); }
+
 
     const office = await prisma.office.findUnique({
       where: { id: user.officeId },
@@ -395,6 +412,7 @@ export async function POST(req: Request) {
           ].filter(Boolean).join(', ')
         : '',
       ...(customVariables || {}),
+      ...participantVariables(orderedSignerInputs),
       // A cidade é um dado do cliente selecionado; um valor antigo salvo no kit não pode sobrescrevê-la.
       cidade: [client.city, client.state].filter(Boolean).join('/') || 'Porto Seguro/BA',
     };
@@ -410,6 +428,7 @@ export async function POST(req: Request) {
       signatureLink: string;
     }> = [];
     let mainSignerToken = '';
+    let participantLinks: Array<{ name: string; role: string; token: string; signingMode: string }> = [];
     const kitBatchId = randomUUID();
 
     // Gerar todos os documentos do kit em transação
@@ -530,6 +549,7 @@ export async function POST(req: Request) {
       const mainSigner = signerRecords[0];
       if (!mainSignerToken) {
         mainSignerToken = mainSigner.token;
+        participantLinks = signerRecords.filter(s => s.role !== 'ASSINANTE_A_ROGO').map(s => ({ name: s.name, role: s.role, token: s.token, signingMode: s.signingMode }));
       }
 
       await prisma.documentEvent.create({
@@ -541,6 +561,8 @@ export async function POST(req: Request) {
         },
       });
 
+      await prisma.documentEvent.create({ data: { documentId: doc.id, userId: user.id, eventType: PARTICIPANT_DETAILS_EVENT, metadata: JSON.stringify(orderedSignerInputs.filter((p: any) => p.qualification).map((p: any) => ({ order: p.signatureOrder, qualification: p.qualification }))), description: 'Qualificação dos participantes registrada para este envio.' } });
+      await prisma.documentEvent.create({ data: { documentId: doc.id, userId: user.id, eventType: PARTICIPANT_GROUPS_EVENT, metadata: JSON.stringify(participantGroups), description: 'Partes e respectivos assinantes a rogo configurados.' } });
       if (enforceSignatureOrder || isIlliterate) {
         await prisma.documentEvent.create({
           data: {
@@ -587,6 +609,7 @@ export async function POST(req: Request) {
       documentsCount: createdDocuments.length,
       documents: createdDocuments,
       mainSignerToken,
+      participantLinks,
       signatureLink,
     });
   } catch (error: any) {

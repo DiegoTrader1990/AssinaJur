@@ -1,4 +1,7 @@
 'use client';
+import { qualificationFromClient, participantVariables, type ParticipantQualification } from '@/lib/participant-qualification';
+import ParticipantOptions from '@/components/ParticipantOptions';
+import type { RogoDetails } from '@/lib/participant-groups';
 
 import SignerStampEditor from '@/components/SignerStampEditor';
 import { editorParticipants, encodeStamps, type SignerStamp } from '@/lib/signer-stamps';
@@ -74,6 +77,9 @@ interface Client {
 }
 
 interface SignerInput {
+  qualification?: ParticipantQualification;
+  rogo?: RogoDetails;
+  signingMode?: string;
   name: string;
   cpf: string;
   email: string;
@@ -296,6 +302,7 @@ export default function NewDocumentPage() {
       const updatedSigners = [...signers];
       updatedSigners[0] = {
         name: client.name,
+        qualification: qualificationFromClient(client),
         cpf: client.cpfCnpj,
         email: client.email || '',
         phone: client.phone || '',
@@ -336,7 +343,7 @@ export default function NewDocumentPage() {
     }
   }, [clients, searchParams, selectedClientId]);
 
-  const stampIdentity = JSON.stringify([signers.map((p) => [p.name, p.cpf, p.role]), isIlliterate, rogoName]);
+  const stampIdentity = JSON.stringify([signers.map((p) => [p.name, p.cpf, p.role, p.rogo]), isIlliterate, rogoName]);
   useEffect(() => {
     setSignerStamps([]);
     setDocumentSettings((current) => Object.fromEntries(Object.entries(current).map(([id, settings]) => [id, { ...settings, signerStamps: [] }])));
@@ -435,10 +442,10 @@ export default function NewDocumentPage() {
         cpf: '',
         email: '',
         phone: '',
-        role: signers.length === 1 ? 'ADVOGADO' : 'TESTEMUNHA',
+        role: 'PARTE',
         signatureOrder: signers.length + 1,
       },
-    ]);
+    ].sort((a,b) => Number(a.role.startsWith('TESTEMUNHA')) - Number(b.role.startsWith('TESTEMUNHA'))));
   };
 
   const handleRogoToggle = (enabled: boolean) => {
@@ -457,8 +464,8 @@ export default function NewDocumentPage() {
     if (field === 'cpf') val = maskCpfCnpj(val);
     if (field === 'phone') val = maskPhone(val);
     const updated = [...signers];
-    updated[index] = { ...updated[index], [field]: val };
-    setSigners(updated);
+    updated[index] = { ...updated[index], [field]: val, ...(field === 'role' && String(val).startsWith('TESTEMUNHA') ? { rogo: undefined } : {}) };
+    setSigners(updated.sort((a,b) => Number(a.role.startsWith('TESTEMUNHA')) - Number(b.role.startsWith('TESTEMUNHA'))));
   };
 
   const handleSubmitDocument = async (e: React.FormEvent) => {
@@ -543,7 +550,7 @@ export default function NewDocumentPage() {
 
         <div className="space-y-3 pt-4 border-t border-slate-100">
           <h2 className="text-xs font-extrabold text-[#071B3A] uppercase tracking-wider font-heading">
-            {createdDocument.isIlliterate || createdDocument.signers.some((s: any) => s.role === 'ASSINANTE_A_ROGO') ? 'Link Único de Assinatura a Rogo (Mesmo Celular)' : 'Links de Assinatura Direta'}
+            {createdDocument.isIlliterate || createdDocument.signers.some((s: any) => s.role === 'ASSINANTE_A_ROGO') ? 'Links das partes e testemunhas' : 'Links de Assinatura Direta'}
           </h2>
           
           {createdDocument.documentCount > 1 ? (
@@ -553,8 +560,8 @@ export default function NewDocumentPage() {
               <button onClick={() => handleCopyLink(createdDocument.signers.find((s: any) => s.role === 'CLIENTE')?.token || createdDocument.signers[0]?.token)} className="px-5 py-3 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-xl text-xs shadow-md transition-all flex items-center justify-center gap-2 font-heading">
                 {copiedToken === (createdDocument.signers.find((s: any) => s.role === 'CLIENTE')?.token || createdDocument.signers[0]?.token) ? <><Check className="w-4 h-4 stroke-[3]" /> Copiado!</> : <><Copy className="w-4 h-4" /> Copiar link único</>}
               </button>
-              {createdDocument.signers.filter((s: any) => String(s.role).startsWith('TESTEMUNHA') && s.signingMode === 'INDIVIDUAL').map((s: any, index: number) => (
-                <div key={s.id} className="rounded-xl border border-amber-200 bg-amber-50 p-3 flex items-center justify-between gap-3"><div><p className="text-xs font-extrabold text-amber-950">Testemunha {index + 1}: {s.name}</p><p className="text-[11px] text-amber-800">Assinatura no próprio aparelho.</p></div><button onClick={() => handleCopyLink(s.token)} className="px-3 py-2 bg-amber-700 text-white font-extrabold rounded-lg text-[11px]">{copiedToken === s.token ? 'Copiado!' : 'Copiar link'}</button></div>
+              {createdDocument.signers.filter((s: any) => s.id !== createdDocument.signers[0]?.id && s.role !== 'ASSINANTE_A_ROGO' && s.signingMode === 'INDIVIDUAL').map((s: any, index: number) => (
+                <div key={s.id} className="rounded-xl border border-amber-200 bg-amber-50 p-3 flex items-center justify-between gap-3"><div><p className="text-xs font-extrabold text-amber-950">{s.name} ({s.role})</p><p className="text-[11px] text-amber-800">Assinatura no próprio aparelho.</p></div><button onClick={() => handleCopyLink(s.token)} className="px-3 py-2 bg-amber-700 text-white font-extrabold rounded-lg text-[11px]">{copiedToken === s.token ? 'Copiado!' : 'Copiar link'}</button></div>
               ))}
             </div>
           ) : createdDocument.isIlliterate || createdDocument.signers.some((s: any) => s.role === 'ASSINANTE_A_ROGO') ? (
@@ -563,9 +570,9 @@ export default function NewDocumentPage() {
                 <div className="space-y-1">
                   <div className="font-extrabold text-[#071B3A] text-sm font-heading flex items-center gap-2">
                     <span>{createdDocument.signers.find((s: any) => s.role === 'CLIENTE')?.name || createdDocument.signers[0]?.name}</span>
-                    <span className="px-2.5 py-0.5 rounded-full bg-blue-600 text-white text-[10px] uppercase tracking-wider font-bold">Fluxo A Rogo Unificado</span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-blue-600 text-white text-[10px] uppercase tracking-wider font-bold">Participação configurada</span>
                   </div>
-                  <div className="text-xs text-slate-600 font-medium leading-relaxed">📱 <strong>Mesmo celular:</strong> cliente e assinante a rogo participam em sequência neste link. As testemunhas seguem conforme a modalidade escolhida.</div>
+                  <div className="text-xs text-slate-600 font-medium leading-relaxed">📱 <strong>Mesmo celular:</strong> cada parte participa com seu próprio acompanhante a rogo, quando houver. Demais participantes seguem a modalidade escolhida.</div>
                 </div>
 
                 <button
@@ -583,9 +590,9 @@ export default function NewDocumentPage() {
                   )}
                 </button>
               </div>
-              {createdDocument.signers.filter((s: any) => String(s.role).startsWith('TESTEMUNHA') && s.signingMode === 'INDIVIDUAL').map((s: any, index: number) => (
+              {createdDocument.signers.filter((s: any) => s.id !== createdDocument.signers[0]?.id && s.role !== 'ASSINANTE_A_ROGO' && s.signingMode === 'INDIVIDUAL').map((s: any, index: number) => (
                 <div key={s.id} className="rounded-xl border border-amber-200 bg-amber-50 p-3 flex items-center justify-between gap-3">
-                  <div><p className="text-xs font-extrabold text-amber-950">Testemunha {index + 1}: {s.name}</p><p className="text-[11px] text-amber-800">Link individual — a pessoa assina no próprio aparelho.</p></div>
+                  <div><p className="text-xs font-extrabold text-amber-950">{s.name} ({s.role})</p><p className="text-[11px] text-amber-800">Link individual — a pessoa assina no próprio aparelho.</p></div>
                   <button onClick={() => handleCopyLink(s.token)} className="px-3 py-2 bg-amber-700 text-white font-extrabold rounded-lg text-[11px]">{copiedToken === s.token ? 'Copiado!' : 'Copiar link'}</button>
                 </div>
               ))}
@@ -879,6 +886,7 @@ export default function NewDocumentPage() {
                       className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 font-bold font-heading"
                     >
                       <option value="CLIENTE">Cliente</option>
+                      <option value="PARTE">Parte / Signatário</option>
                       <option value="ADVOGADO">Advogado</option>
                       <option value="CONTRATANTE">Contratante</option>
                       <option value="CONTRATADO">Contratado</option>
@@ -910,6 +918,7 @@ export default function NewDocumentPage() {
                     />
                   </div>
                 </div>
+                <ParticipantOptions qualification={s.qualification} onQualification={(value) => handleSignerChange(index, 'qualification', value)} name={s.name} role={s.role} rogo={s.rogo} signingMode={s.signingMode} allowRogo={!isIlliterate || index !== 0} onRogo={(value) => handleSignerChange(index, 'rogo', value)} onMode={(value) => handleSignerChange(index, 'signingMode', value)} />
               </div>
             ))}
           </div>
@@ -920,6 +929,7 @@ export default function NewDocumentPage() {
               <input
                 type="checkbox"
                 checked={isIlliterate}
+                disabled={Boolean(signers[0]?.rogo)}
                 onChange={(e) => handleRogoToggle(e.target.checked)}
                 className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
               />

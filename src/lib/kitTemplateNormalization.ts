@@ -98,7 +98,7 @@ export function applyClientGenderToQualification(contentHtml: string, gender?: s
     const text = String(inner);
     const isClientQualification = /{{\s*cliente_(?:nome|cpf|portador|residente_domiciliado)\s*}}/i.test(text);
     if (!isClientQualification) return block;
-    const othersStart = text.search(/{{\s*(?:cliente_representacao|assinante_rogo_qualificacao|representante_qualificacao)\s*}}/i);
+    const othersStart = text.search(/{{\s*(?:cliente_representacao|assinante_rogo_qualificacao|representante_qualificacao|parte\d+_\w+)\s*}}/i);
     const clientPart = othersStart >= 0 ? text.slice(0, othersStart) : text;
     const remainder = othersStart >= 0 ? text.slice(othersStart) : '';
     return `<${tag}${attrs}>${genderize(clientPart)}${remainder}</${tag}>`;

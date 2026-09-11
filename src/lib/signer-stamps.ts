@@ -1,21 +1,25 @@
+import type { RogoDetails } from './participant-groups';
 export type StampBox = { page: number; x: number; y: number; width: number; height: number };
 export type StampParticipant = { signatureOrder: number; name: string; role: string; cpf?: string };
 export type SignerStamp = StampBox & { order: number };
 export const isWitnessStamp = (role: string) => role.startsWith('TESTEMUNHA');
 
-export function editorParticipants(people: Array<{ name: string; role: string; cpf?: string }>, isIlliterate: boolean, rogoName: string): StampParticipant[] {
-  if (!isIlliterate) return people.map((person, i) => ({ ...person, signatureOrder: i + 1 }));
+export function editorParticipants(people: Array<{ name: string; role: string; cpf?: string; rogo?: RogoDetails }>, isIlliterate: boolean, rogoName: string): StampParticipant[] {
+  let nextOrder = 1;
+  const assign = (person: typeof people[number]) => { const order = nextOrder; nextOrder += person.rogo ? 2 : 1; return { ...person, name: person.rogo ? `${person.name} · a rogo: ${person.rogo.name}` : person.name, signatureOrder: order }; };
+  if (!isIlliterate) return [...people.filter(p => !isWitnessStamp(p.role)), ...people.filter(p => isWitnessStamp(p.role))].map(assign);
+  nextOrder = 3;
   const witnesses = people.slice(1).filter((p) => p.role === 'TESTEMUNHA');
   const others = people.slice(1).filter((p) => p.role !== 'TESTEMUNHA');
   return [
     { ...people[0], name: `${people[0]?.name || 'Cliente'} · a rogo: ${rogoName}`, signatureOrder: 1 },
-    ...witnesses.map((person, i) => ({ ...person, role: `TESTEMUNHA_${i + 1}`, signatureOrder: i + 3 })),
-    ...others.map((person, i) => ({ ...person, signatureOrder: i + 3 + witnesses.length })),
+    ...others.map(assign),
+    ...witnesses.map((person, i) => assign({ ...person, role: `TESTEMUNHA_${i + 1}` })),
   ];
 }
 
 export function stampParticipants<T extends StampParticipant>(participants: T[], isIlliterate: boolean): T[] {
-  return participants.filter((person) => !isIlliterate || person.role !== 'ASSINANTE_A_ROGO');
+  return participants.filter((person) => person.role !== 'ASSINANTE_A_ROGO');
 }
 
 export function validateStamps(value: unknown, pageCount: number, participants: StampParticipant[]): SignerStamp[] {

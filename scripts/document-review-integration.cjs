@@ -21,10 +21,12 @@ module.exports = async function run(prisma, admin, outsider) {
   function load(file) {
     const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, esModuleInterop: true } }).outputText;
     const module = { exports: {} };
-    vm.runInNewContext(code, { module, exports: module.exports, URL, Response, Buffer, console: { error: () => {} },
+    vm.runInNewContext(code, { module, exports: module.exports, URL, Response, Buffer, process: { env: { NEXT_PUBLIC_APP_URL: 'http://127.0.0.1' } }, console: { error: () => {} },
       require(id) { if (id === 'next/server') return { NextResponse: Response }; if (deps[id]) return deps[id]; throw new Error(`Import bloqueado: ${id}`); } });
     return module.exports;
   }
+  deps['./participant-qualification'] = deps['@/lib/participant-qualification'] = load('src/lib/participant-qualification.ts');
+  deps['./participant-groups'] = deps['@/lib/participant-groups'] = load('src/lib/participant-groups.ts');
   deps['./signer-stamps'] = deps['@/lib/signer-stamps'] = load('src/lib/signer-stamps.ts');
   deps['./photo-review'] = deps['@/lib/photo-review'] = load('src/lib/photo-review.ts');
   const review = deps['@/lib/document-review'] = load('src/lib/document-review.ts');
@@ -35,7 +37,7 @@ module.exports = async function run(prisma, admin, outsider) {
   const submit = load('src/app/api/sign/[token]/submit/route.ts');
   const getSign = load('src/app/api/sign/[token]/route.ts');
   const request = (body) => new Request('http://127.0.0.1/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  async function status(result, expected) { const response = await result; assert.equal(response.status, expected); checks++; return response.json(); }
+  async function status(result, expected) { const response = await result; const payload = await response.json(); assert.equal(response.status, expected, JSON.stringify(payload)); checks++; return payload; }
   const params = (doc) => ({ params: { id: doc.id } });
   const tokenParams = (signer) => ({ params: { token: signer.token } });
   const original = await prisma.storageFile.create({ data: { officeId: admin.officeId, originalName: 'ficticio.pdf', mimeType: 'application/pdf', sizeBytes: 100, storageKey: 'somente-local/ficticio.pdf' } });
@@ -100,8 +102,8 @@ module.exports = async function run(prisma, admin, outsider) {
   // O fluxo legítimo de cliente + a rogo continua funcionando no mesmo aparelho.
   const clientSigner = reset.signers.find((s) => s.role === 'CLIENTE');
   await status(event.POST(request({ forRogo: true, imageField: 'selfieCenterImage', imageData: 'foto-rogo-ficticia' }), tokenParams(clientSigner)), 200);
-  await status(submit.POST(request({ confirmCpf: clientSigner.cpf, selfieCenterImage: 'foto-cliente-ficticia', signatureType: 'SELO_DIGITAL', signedConsentText: 'Aceite fictício',
-    rogo: { name: 'A rogo fictício', cpf: '11144477735', selfieCenterImage: 'foto-rogo-ficticia', signatureType: 'SELO_DIGITAL' } }), tokenParams(clientSigner)), 200);
+  await status(submit.POST(request({ confirmCpf: clientSigner.cpf, documentFrontImage: 'frente-cliente', documentBackImage: 'verso-cliente', selfieCenterImage: 'foto-cliente-ficticia', signatureType: 'SELO_DIGITAL', signedConsentText: 'Aceite fictício',
+    rogo: { name: 'A rogo fictício', cpf: '11144477735', documentFrontImage: 'frente-rogo', documentBackImage: 'verso-rogo', selfieCenterImage: 'foto-rogo-ficticia', signatureType: 'SELO_DIGITAL' } }), tokenParams(clientSigner)), 200);
   const completed = await prisma.document.findUnique({ where: { id: redo.id }, include: { signers: true } });
   assert.equal(completed.status, 'CONCLUIDO'); assert(completed.signers.every((s) => s.status === 'ASSINADO')); checks++;
   Object.assign(deps, { 'pdf-lib': require('pdf-lib'), fs, path, qrcode: require('qrcode'), sharp: require('sharp'),
@@ -122,16 +124,16 @@ module.exports = async function run(prisma, admin, outsider) {
   assert.equal(await deps['@/lib/photo-review'].isIndividualRetry(prisma, single.id), true);
   assert.equal(JSON.stringify(await prisma.document.findUnique({ where: { id: sibling.id }, include: { signers: true } })), siblingBefore); checks++;
   const singleClient = single.signers.find((s) => s.role === 'CLIENTE');
-  await status(submit.POST(request({ confirmCpf: singleClient.cpf, selfieCenterImage: 'foto-cliente-ficticia', signatureType: 'SELO_DIGITAL', signedConsentText: 'Aceite fictício',
-    rogo: { name: 'A rogo fictício', cpf: '11144477735', selfieCenterImage: 'foto-rogo-ficticia', signatureType: 'SELO_DIGITAL' } }), tokenParams(singleClient)), 200);
+  await status(submit.POST(request({ confirmCpf: singleClient.cpf, documentFrontImage: 'frente-cliente', documentBackImage: 'verso-cliente', selfieCenterImage: 'foto-cliente-ficticia', signatureType: 'SELO_DIGITAL', signedConsentText: 'Aceite fictício',
+    rogo: { name: 'A rogo fictício', cpf: '11144477735', documentFrontImage: 'frente-rogo', documentBackImage: 'verso-rogo', selfieCenterImage: 'foto-rogo-ficticia', signatureType: 'SELO_DIGITAL' } }), tokenParams(singleClient)), 200);
   assert.equal(JSON.stringify(await prisma.document.findUnique({ where: { id: sibling.id }, include: { signers: true } })), siblingBefore); checks++;
   // Falhas reais de transação: nada do envio pode ficar parcialmente assinado.
   const atomic = await make('PENDENTE_REVISAO', crypto.randomUUID());
   const atomicSibling = await make('PENDENTE_REVISAO', atomic.kitBatchId);
   await status(route.POST(request({ action: 'redo-package' }), params(atomic)), 200);
   const atomicClient = atomic.signers.find((s) => s.role === 'CLIENTE');
-  const payload = { confirmCpf: atomicClient.cpf, selfieCenterImage: 'foto-cliente-ficticia', signatureType: 'SELO_DIGITAL',
-    rogo: { name: 'A rogo fictício', cpf: '11144477735', selfieCenterImage: 'foto-rogo-ficticia', signatureType: 'SELO_DIGITAL' } };
+  const payload = { confirmCpf: atomicClient.cpf, documentFrontImage: 'frente-cliente', documentBackImage: 'verso-cliente', selfieCenterImage: 'foto-cliente-ficticia', signatureType: 'SELO_DIGITAL',
+    rogo: { name: 'A rogo fictício', cpf: '11144477735', documentFrontImage: 'frente-rogo', documentBackImage: 'verso-rogo', selfieCenterImage: 'foto-rogo-ficticia', signatureType: 'SELO_DIGITAL' } };
   const state = async () => JSON.stringify(await prisma.document.findMany({ where: { id: { in: [atomic.id, atomicSibling.id] } }, include: { signers: { orderBy: { id: 'asc' } }, events: { orderBy: { id: 'asc' } } }, orderBy: { id: 'asc' } }));
   const beforeFailure = await state();
   for (const failAt of [2, 3]) {
@@ -173,14 +175,24 @@ module.exports = async function run(prisma, admin, outsider) {
         { name: 'Cliente fictício', cpf: '52998224725', role: 'CLIENTE', signatureOrder: 1 },
         { name: 'Testemunha fictícia', cpf: '11144477735', role: 'TESTEMUNHA_1', signatureOrder: 2, signingMode: mode },
       ] } }, include: { signers: { orderBy: { signatureOrder: 'asc' } } } });
-    const send = { confirmCpf: multi.signers[0].cpf, selfieCenterImage: 'foto-cliente' };
+    const send = { confirmCpf: multi.signers[0].cpf, documentFrontImage: 'frente-cliente', documentBackImage: 'verso-cliente', selfieCenterImage: 'foto-cliente' };
+    for (const field of ['documentFrontImage', 'documentBackImage', 'selfieCenterImage']) {
+      const missing = { ...send }; delete missing[field];
+      await status(submit.POST(request(missing), tokenParams(multi.signers[0])), 400);
+      assert.equal((await prisma.signer.findUnique({ where: { id: multi.signers[0].id } })).status, 'PENDENTE'); checks++;
+    }
     const attempts = await Promise.all([submit.POST(request(send), tokenParams(multi.signers[0])), submit.POST(request(send), tokenParams(multi.signers[0]))]);
     assert(attempts.every((r) => [200, 409].includes(r.status))); assert(attempts.some((r) => r.status === 200)); checks++;
     const resumed = await status(submit.POST(request(send), tokenParams(multi.signers[0])), 200);
     assert.equal(Boolean(resumed.nextSigner), mode === 'SAME_DEVICE'); assert.equal(resumed.pendingParticipants.length, 1); checks++;
     const reopened = await status(getSign.GET(request({}), tokenParams(multi.signers[0])), 200);
     assert.equal(Boolean(reopened.nextSigner), mode === 'SAME_DEVICE'); checks++;
-    await status(submit.POST(request({ confirmCpf: multi.signers[1].cpf, selfieCenterImage: 'foto-testemunha' }), tokenParams(multi.signers[1])), 200);
+    const witnessPayload = { confirmCpf: multi.signers[1].cpf, documentFrontImage: 'frente-testemunha', documentBackImage: 'verso-testemunha', selfieCenterImage: 'foto-testemunha' };
+    for (const field of ['documentFrontImage', 'documentBackImage', 'selfieCenterImage']) {
+      const missing = { ...witnessPayload }; delete missing[field];
+      await status(submit.POST(request(missing), tokenParams(multi.signers[1])), 400);
+    }
+    await status(submit.POST(request(witnessPayload), tokenParams(multi.signers[1])), 200);
     assert.equal((await prisma.document.findUnique({ where: { id: multi.id } })).status, 'CONCLUIDO');
     assert.equal(await prisma.documentEvent.count({ where: { documentId: multi.id, signerId: multi.signers[0].id, eventType: 'SIGNATURE_SUBMITTED' } }), 1); checks++;
   }
@@ -201,11 +213,65 @@ module.exports = async function run(prisma, admin, outsider) {
   const createDoc = load('src/app/api/documents/route.ts');
   const stampLib = deps['@/lib/signer-stamps'];
   const positions = [{ order: 1, page: 1, x: 0.1, y: 0.5, width: 0.35, height: 0.1 }, { order: 2, page: 1, x: 0.55, y: 0.5, width: 0.35, height: 0.1 }];
+  const qualificationFixture = { nationality: 'Brasileira', birthDate: '1980-01-01', maritalStatus: 'Solteiro', profession: 'Profissão fictícia', address: 'Endereço fictício', city: 'Cidade fictícia', state: 'BA', cep: '00000000' };
   const creationPayload = { title: 'Novo envio com selos fictícios', originalFileId: original.id, signaturePosition: stampLib.encodeStamps(positions),
-    signers: [{ name: 'Pessoa Alfa', cpf: '52998224725', role: 'CLIENTE' }, { name: 'Pessoa Beta', cpf: '11144477735', role: 'PARTE' }] };
+    signers: [{ qualification: qualificationFixture, name: 'Pessoa Alfa', cpf: '52998224725', role: 'CLIENTE' }, { qualification: qualificationFixture, name: 'Pessoa Beta', cpf: '11144477735', role: 'PARTE' }] };
   const createdWithStamps = await status(createDoc.POST(request(creationPayload)), 200);
   assert.equal(createdWithStamps.document.signaturePosition, creationPayload.signaturePosition); checks++;
   await status(createDoc.POST(request({ ...creationPayload, signaturePosition: stampLib.encodeStamps([{ ...positions[0], order: 99 }]) })), 400);
   await status(createDoc.POST(request({ ...creationPayload, signaturePosition: stampLib.encodeStamps([{ ...positions[0], page: 2 }]) })), 400);
+  // Quatro partes, duas com acompanhantes distintos, mais duas testemunhas.
+  const cpfFixture = (n) => { let digits = String(800000000 + n).split('').map(Number); for (const factor of [10, 11]) { const mod = digits.reduce((sum, d, i) => sum + d * (factor - i), 0) * 10 % 11; digits.push(mod === 10 ? 0 : mod); } return digits.join(''); };
+  const rogoFixture = (n) => ({ name: `Acompanhante fictício ${n}`, cpf: cpfFixture(n), birthDate: '1980-01-01', address: 'Endereço fictício' });
+  const parties = Array.from({ length: 4 }, (_, i) => ({ qualification: qualificationFixture, name: `Parte fictícia ${i}`, cpf: cpfFixture(i + 1), role: i === 0 ? 'CLIENTE' : 'PARTE', signingMode: i % 2 ? 'INDIVIDUAL' : 'SAME_DEVICE', ...(i < 2 ? { rogo: rogoFixture(i + 10) } : {}) }));
+  parties.push(...[20, 21].map(n => ({ name: `Testemunha fictícia ${n}`, cpf: cpfFixture(n), role: 'TESTEMUNHA', signingMode: 'INDIVIDUAL' })));
+  const grouped = await status(createDoc.POST(request({ ...creationPayload, signaturePosition: 'MULTI:[]', signers: parties })), 200);
+  const groupDoc = await prisma.document.findUnique({ where: { id: grouped.document.id }, include: { signers: { orderBy: { signatureOrder: 'asc' } } } });
+  const groupPeople = groupDoc.signers;
+  assert.equal(groupPeople.length, 8); checks++;
+  const pairConfig = await deps['@/lib/participant-groups'].loadParticipantGroups(prisma, groupDoc, groupPeople);
+  assert.deepEqual(JSON.parse(JSON.stringify(pairConfig)).map(g => [g.partyOrder, g.rogoOrder]), [[1, 2], [3, 4]]); checks++;
+  const photoPayload = { documentFrontImage: 'frente-ficticia', documentBackImage: 'verso-ficticio', selfieCenterImage: 'selfie-ficticia' };
+  const partySend = { confirmCpf: groupPeople[0].cpf, ...photoPayload, rogo: { ...photoPayload, name: groupPeople[1].name, cpf: groupPeople[1].cpf } };
+  await status(submit.POST(request({ ...partySend, rogo: { ...partySend.rogo, name: groupPeople[3].name, cpf: groupPeople[3].cpf } }), tokenParams(groupPeople[0])), 403);
+  assert.equal((await prisma.signer.findUnique({ where: { id: groupPeople[3].id } })).status, 'PENDENTE'); checks++;
+  for (const field of Object.keys(photoPayload)) { const incomplete = { ...partySend.rogo }; delete incomplete[field]; await status(submit.POST(request({ ...partySend, rogo: incomplete }), tokenParams(groupPeople[0])), 400); }
+  await status(submit.POST(request(partySend), tokenParams(groupPeople[0])), 200);
+  const secondView = await status(getSign.GET(request({}), tokenParams(groupPeople[2])), 200);
+  assert.equal(secondView.document.isIlliterate, true); assert.equal(secondView.document.rogoCpf, groupPeople[3].cpf); checks++;
+  await status(event.POST(request({ forRogo: true, imageField: 'documentFrontImage', imageData: 'frente-da-segunda-dupla' }), tokenParams(groupPeople[2])), 200);
+  assert.equal((await prisma.signer.findUnique({ where: { id: groupPeople[1].id } })).documentFrontImage, photoPayload.documentFrontImage); checks++;
+  assert.equal((await prisma.signer.findUnique({ where: { id: groupPeople[3].id } })).documentFrontImage, 'frente-da-segunda-dupla'); checks++;
+  await status(submit.POST(request({ confirmCpf: groupPeople[2].cpf, ...photoPayload, rogo: { name: groupPeople[3].name, cpf: groupPeople[3].cpf, ...photoPayload } }), tokenParams(groupPeople[2])), 200);
+  for (const person of groupPeople.slice(4)) await status(submit.POST(request({ confirmCpf: person.cpf, ...photoPayload }), tokenParams(person)), 200);
+  const completedGroup = await prisma.document.findUnique({ where: { id: groupDoc.id }, include: { signers: true } });
+  assert.equal(completedGroup.status, 'CONCLUIDO'); assert(completedGroup.signers.every(p => p.documentFrontImage && p.documentBackImage && p.selfieCenterImage)); checks++;
+  await prisma.document.update({ where: { id: groupDoc.id }, data: { reviewStatus: 'APROVADO', signedFileId: original.id, signedHash: 'hash-aprovado-ficticio', verificationCode: 'GRUPOS-FICTICIOS' } });
+  const approvedGroupBefore = await prisma.document.findUnique({ where: { id: groupDoc.id }, include: { signers: true } });
+  const copiedGroup = await status(route.POST(request({ action: 'restart-document', requestId: crypto.randomUUID() }), params(groupDoc)), 200);
+  const newGroup = await prisma.document.findUnique({ where: { id: copiedGroup.newDocumentId }, include: { signers: true } });
+  assert.equal(JSON.stringify(await deps['@/lib/participant-groups'].loadParticipantGroups(prisma, newGroup, newGroup.signers)), JSON.stringify(pairConfig)); checks++;
+  assert(newGroup.signers.every(p => p.status === 'PENDENTE' && !p.selfieCenterImage)); checks++;
+  assert.deepEqual(await prisma.document.findUnique({ where: { id: groupDoc.id }, include: { signers: true } }), approvedGroupBefore); checks++;
+  // Pacote real na base fictícia: cliente a rogo legado + outra parte com seu a rogo.
+  const kitClient = await prisma.client.create({ data: { officeId: admin.officeId, name: 'Cliente de kit fictício', cpfCnpj: cpfFixture(30), phone: '00000000000' } });
+  const kitTemplates = await Promise.all([1, 2].map(i => prisma.template.create({ data: { officeId: admin.officeId, title: `Minuta fictícia ${i}`, contentHtml: '<p>Acordo fictício</p>' } })));
+  const actualKit = await prisma.legalKit.create({ data: { officeId: admin.officeId, name: 'Kit de grupos fictício', items: { create: kitTemplates.map((t, i) => ({ templateId: t.id, displayOrder: i + 1 })) } } });
+  deps['@/lib/kitTemplateNormalization'] = load('src/lib/kitTemplateNormalization.ts');
+  deps['@/lib/documentLetterhead'] = { getDocumentLetterheadBuffer: async () => null };
+  deps['@/lib/templateCompiler'] = { compileTemplateToPdf: async () => ({ storageRecord: original, hash: 'hash-ficticio', pageCount: 1, signaturePosition: 'BOTTOM', signaturePlacements: [] }) };
+  const createKit = load('src/app/api/kits/generate-package/route.ts');
+  const kitCreated = await status(createKit.POST(request({ clientId: kitClient.id, kitId: actualKit.id, isIlliterate: true, rogoName: 'A rogo principal fictício', rogoCpf: cpfFixture(31), rogoBirthDate: '1980-01-01', rogoAddress: 'Endereço fictício',
+    signers: [{ qualification: qualificationFixture, name: 'Parte adicional fictícia', cpf: cpfFixture(32), role: 'PARTE', rogo: rogoFixture(33), signingMode: 'INDIVIDUAL' }] })), 200);
+  assert.equal(kitCreated.participantLinks.length, 2); assert(kitCreated.participantLinks.every(p => p.role !== 'ASSINANTE_A_ROGO')); checks++;
+  const kitDocs = await prisma.document.findMany({ where: { kitId: actualKit.id }, include: { signers: { orderBy: { signatureOrder: 'asc' } } }, orderBy: { createdAt: 'asc' } });
+  assert.equal(kitDocs.length, 2); assert(kitDocs.every(d => d.signers.length === 4)); checks++;
+  const ks = kitDocs[0].signers;
+  await status(submit.POST(request({ confirmCpf: ks[0].cpf, ...photoPayload, rogo: { name: ks[1].name, cpf: ks[1].cpf, ...photoPayload } }), tokenParams(ks[0])), 200);
+  const kitSecondView = await status(getSign.GET(request({}), tokenParams(ks[2])), 200);
+  assert.equal(kitSecondView.document.rogoCpf, ks[3].cpf); assert.equal(kitSecondView.kit.documents.length, 2); checks++;
+  await status(submit.POST(request({ confirmCpf: ks[2].cpf, ...photoPayload, rogo: { name: ks[3].name, cpf: ks[3].cpf, ...photoPayload } }), tokenParams(ks[2])), 200);
+  const kitCompleted = await prisma.document.findMany({ where: { kitId: actualKit.id }, include: { signers: true } });
+  assert(kitCompleted.every(d => d.status === 'CONCLUIDO' && d.signers.every(p => p.status === 'ASSINADO' && p.documentBackImage))); checks++;
   return checks;
 };
