@@ -6,6 +6,8 @@ import { isWitnessStamp, type SignerStamp, type StampParticipant } from '@/lib/s
 export default function SignerStampEditor({ source, participants, value, onChange }: {
   source: string | File; participants: StampParticipant[]; value: SignerStamp[]; onChange: (value: SignerStamp[]) => void;
 }) {
+  const [zoom, setZoom] = useState(100);
+  const [showParticipants, setShowParticipants] = useState(false);
   const [selected, setSelected] = useState(participants[0]?.signatureOrder || 1);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageCount, setPageCount] = useState(1);
@@ -52,25 +54,56 @@ export default function SignerStampEditor({ source, participants, value, onChang
     const width = box?.width || 0.38, height = box?.height || 0.11;
     update({ order: chosen.signatureOrder, page: pageNumber, x: Math.max(0, Math.min(1 - width, x)), y: Math.max(0, Math.min(1 - height, y)), width, height });
   };
-  return <div className="space-y-3">
-    <p className="text-sm text-slate-700">Arraste os selos para posicionar. Use o canto inferior direito para ajustar o tamanho. Para um participante sem posição, selecione seu nome e clique numa área livre do PDF. Os selos são uma prévia; QR e dados definitivos serão inseridos após a assinatura.</p>
-    <div className="flex flex-wrap gap-2" aria-label="Participantes dos selos">{participants.map((person) => <button type="button" key={person.signatureOrder} aria-pressed={chosen?.signatureOrder === person.signatureOrder}
-      className={`rounded-lg border px-3 py-2 text-xs ${chosen?.signatureOrder === person.signatureOrder ? 'bg-blue-700 text-white' : 'bg-white text-slate-800'}`}
-      onClick={() => { setSelected(person.signatureOrder); const position = value.find((s) => s.order === person.signatureOrder); if (position) setPageNumber(position.page); }}>
-      {person.name} · {isWitnessStamp(person.role) ? 'Testemunha' : person.role === 'CLIENTE' ? 'Parte' : person.role} · {value.some((s) => s.order === person.signatureOrder) ? 'Posicionado' : 'Sem posição · folha de assinaturas'}
-    </button>)}</div>
-    <div className="flex flex-wrap items-center gap-3 text-xs">
-      <button type="button" disabled={pageNumber <= 1} onClick={() => setPageNumber((p) => p - 1)}>← Página anterior</button>
-      <span>Página {pageNumber} de {pageCount}</span>
-      <button type="button" disabled={pageNumber >= pageCount} onClick={() => setPageNumber((p) => p + 1)}>Próxima página →</button>
-      {!box && <span className="rounded-lg bg-amber-50 border border-amber-300 px-3 py-2 font-semibold text-amber-900">{chosen?.name}: clique numa área livre do PDF para posicionar o selo, ou mantenha na folha de assinaturas.</span>}
-      {box && <><label>Largura <input aria-label="Largura do selo selecionado" type="range" min="22" max="65" value={Math.round(box.width * 100)} onChange={(e) => { const width = Number(e.target.value) / 100; update({ ...box, width, x: Math.min(box.x, 1 - width) }); }} /></label>
-        <label>Altura <input aria-label="Altura do selo selecionado" type="range" min="7" max="25" value={Math.round(box.height * 100)} onChange={(e) => { const height = Number(e.target.value) / 100; update({ ...box, height, y: Math.min(box.y, 1 - height) }); }} /></label>
-        <button type="button" onClick={() => onChange(value.filter((s) => s.order !== chosen.signatureOrder))}>Usar somente a folha</button></>}
-    </div>
-    {error && <p role="alert" className="text-red-700">{error}</p>}
-    <div className="max-h-[600px] overflow-auto bg-slate-200 p-3">
-      <div ref={surface} className="relative mx-auto max-w-[700px] bg-white touch-none" onPointerDown={(e) => { if (e.target !== e.currentTarget && e.target !== canvas.current) return; const r = e.currentTarget.getBoundingClientRect(); addAt((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height); }}>
+  const controlClass = 'h-10 min-w-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-35 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600';
+  return <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+    <aside className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 lg:self-start">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-bold text-slate-800">Participantes <span className="text-slate-400">({participants.length})</span></h3>
+        <button type="button" className="rounded-lg px-3 py-2 text-xs font-semibold text-blue-700 lg:hidden" aria-expanded={showParticipants} onClick={() => setShowParticipants(v => !v)}>{showParticipants ? 'Recolher' : 'Mostrar'}</button>
+      </div>
+      <div className={`${showParticipants ? 'block' : 'hidden'} mt-3 space-y-2 lg:block lg:max-h-[450px] lg:overflow-auto`} aria-label="Participantes dos selos">{participants.map(person => {
+        const position = value.find(s => s.order === person.signatureOrder);
+        const active = chosen?.signatureOrder === person.signatureOrder;
+        return <button type="button" key={person.signatureOrder} aria-pressed={active}
+          className={`w-full rounded-xl border p-3 text-left transition-colors ${active ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : 'border-slate-200 bg-white hover:border-blue-300'}`}
+          onClick={() => { setSelected(person.signatureOrder); if (position) setPageNumber(position.page); }}>
+          <span className="block break-words text-xs font-bold text-slate-900">{person.name}</span>
+          <span className="mt-1 block text-[11px] text-slate-500">{isWitnessStamp(person.role) ? 'Testemunha' : person.role === 'CLIENTE' || person.role === 'PARTE' ? 'Parte' : person.role.replace(/_/g, ' ')}</span>
+          <span className={`mt-2 inline-block rounded-md px-2 py-1 text-[10px] font-semibold ${position ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>{position ? `Posicionado · página ${position.page}` : 'Na folha de assinaturas'}</span>
+        </button>;
+      })}</div>
+      <p className="mt-3 text-[11px] leading-relaxed text-slate-500">Selecione a pessoa para destacar seu selo. QR e dados definitivos entram após a assinatura.</p>
+    </aside>
+    <section className="min-w-0 space-y-3" aria-label="Revisão do PDF e selos">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+        <nav className="flex items-center gap-2" aria-label="Páginas do PDF">
+          <button type="button" className={controlClass} aria-label="Página anterior" title="Página anterior" disabled={busy || pageNumber <= 1} onClick={() => setPageNumber(p => p - 1)}>←</button>
+          <span className="min-w-[100px] text-center text-xs font-semibold text-slate-700" aria-live="polite">Página {pageNumber} de {pageCount}</span>
+          <button type="button" className={controlClass} aria-label="Próxima página" title="Próxima página" disabled={busy || pageNumber >= pageCount} onClick={() => setPageNumber(p => p + 1)}>→</button>
+        </nav>
+        <div className="flex items-center gap-1" aria-label="Zoom do PDF">
+          <button type="button" className={controlClass} aria-label="Diminuir zoom" disabled={zoom <= 100} onClick={() => setZoom(z => z - 25)}>−</button>
+          <button type="button" className="h-10 min-w-16 rounded-lg px-2 text-xs font-semibold text-slate-700 hover:bg-slate-50" title="Ajustar à largura" aria-label="Ajustar PDF à largura" onClick={() => setZoom(100)}>{zoom}%</button>
+          <button type="button" className={controlClass} aria-label="Aumentar zoom" disabled={zoom >= 200} onClick={() => setZoom(z => z + 25)}>+</button>
+        </div>
+      </div>
+      <p className="text-xs text-slate-600">Arraste para mover. Puxe o canto para redimensionar.</p>
+      {!box && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><strong>{chosen?.name}</strong>: clique numa área livre do PDF para colocar o selo, ou mantenha na folha de assinaturas.</p>}
+      {box && <details className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+        <summary className="cursor-pointer py-1 text-xs font-semibold text-slate-700">Ajuste fino do selo · {chosen?.name}</summary>
+        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+          <label className="text-xs text-slate-600"><span className="flex justify-between">Largura <span>{Math.round(box.width * 100)}% da página</span></span><input className="mt-2 w-full accent-blue-700" aria-label="Largura do selo selecionado" type="range" min="22" max="65" value={Math.round(box.width * 100)} onChange={e => { const width = Number(e.target.value) / 100; update({ ...box, width, x: Math.min(box.x, 1 - width) }); }} /></label>
+          <label className="text-xs text-slate-600"><span className="flex justify-between">Altura <span>{Math.round(box.height * 100)}% da página</span></span><input className="mt-2 w-full accent-blue-700" aria-label="Altura do selo selecionado" type="range" min="7" max="25" value={Math.round(box.height * 100)} onChange={e => { const height = Number(e.target.value) / 100; update({ ...box, height, y: Math.min(box.y, 1 - height) }); }} /></label>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+          <button type="button" className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50" onClick={() => update({ ...box, width: 0.38, height: 0.11, x: Math.min(box.x, 0.62), y: Math.min(box.y, 0.89) })}>Restaurar tamanho</button>
+          <button type="button" className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50" onClick={() => onChange(value.filter(s => s.order !== chosen.signatureOrder))}>Usar somente a folha</button>
+        </div>
+      </details>}
+      {error && <p role="alert" className="text-red-700">{error}</p>}
+      <div className="max-h-[65vh] overflow-auto rounded-xl border border-slate-300 bg-slate-200 p-2 sm:p-4">
+        <div style={{ width: `${zoom}%` }}>
+          <div ref={surface} className="relative mx-auto bg-white shadow-md touch-none" onPointerDown={(e) => { if (e.target !== e.currentTarget && e.target !== canvas.current) return; const r = e.currentTarget.getBoundingClientRect(); addAt((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height); }}>
         <canvas ref={canvas} className="block w-full h-auto" />
         {value.filter((s) => s.page === pageNumber).map((s) => {
           const person = participants.find((p) => p.signatureOrder === s.order); if (!person) return null;
@@ -91,6 +124,8 @@ export default function SignerStampEditor({ source, participants, value, onChang
         })}
         {busy && <div className="absolute inset-0 bg-white/80 flex items-center justify-center">Carregando página…</div>}
       </div>
-    </div>
+        </div>
+      </div>
+    </section>
   </div>;
 }

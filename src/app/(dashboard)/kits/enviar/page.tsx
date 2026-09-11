@@ -1163,7 +1163,7 @@ export default function DispatchKitPage() {
                 <div className="h-full flex items-center justify-center text-sm text-slate-500">Não foi possível carregar a prévia.</div>
               )}
             </div>
-            <div className="px-6 py-3 border-t border-slate-200 flex justify-between gap-3">
+            <div className="px-4 sm:px-6 py-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-white shrink-0">
               {editingReview ? (
                 <>
                   <button type="button" onClick={() => setCustomContents(prev => ({ ...prev, [reviewItem.template.id]: reviewItem.template.contentHtml }))} className="text-xs font-bold text-slate-600">Restaurar modelo</button>
@@ -1171,7 +1171,7 @@ export default function DispatchKitPage() {
                 </>
               ) : (
                 <>
-                  <span className="text-xs text-slate-500 self-center">Posições guardadas neste envio. Selos ilustrativos; dados finais após assinatura.</span>
+                  <span className="text-xs text-slate-500 self-center">✓ Posições guardadas neste envio</span>
                   <div className="flex gap-2">
 
                     <button type="button" onClick={() => { setAutoDetectKitMessage(''); setEditingReview(true); }} className="px-4 py-2.5 border border-[#071B3A] text-[#071B3A] rounded-lg text-xs font-bold">Editar conteúdo</button>
