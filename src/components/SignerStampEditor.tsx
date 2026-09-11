@@ -6,6 +6,8 @@ import { isWitnessStamp, type SignerStamp, type StampParticipant } from '@/lib/s
 export default function SignerStampEditor({ source, participants, value, onChange }: {
   source: string | File; participants: StampParticipant[]; value: SignerStamp[]; onChange: (value: SignerStamp[]) => void;
 }) {
+  const focusStamp = useRef<number | null>(null);
+  const [placementNotice, setPlacementNotice] = useState('');
   const [zoom, setZoom] = useState(100);
   const [showParticipants, setShowParticipants] = useState(false);
   const [selected, setSelected] = useState(participants[0]?.signatureOrder || 1);
@@ -48,6 +50,24 @@ export default function SignerStampEditor({ source, participants, value, onChang
     })();
     return () => { cancelled = true; render?.cancel(); void task?.destroy(); };
   }, [source, pageNumber]);
+  useEffect(() => {
+    if (busy || focusStamp.current === null) return;
+    const element = surface.current?.querySelector<HTMLElement>(`[data-stamp-order="${focusStamp.current}"]`);
+    if (element) { element.scrollIntoView({ block: 'nearest', inline: 'nearest' }); element.focus({ preventScroll: true }); focusStamp.current = null; }
+  }, [busy, value, pageNumber, selected]);
+  const selectParticipant = (person: StampParticipant) => {
+    setSelected(person.signatureOrder);
+    const existing = value.find(s => s.order === person.signatureOrder);
+    focusStamp.current = person.signatureOrder;
+    if (existing) { setPageNumber(existing.page); setPlacementNotice(''); return; }
+    if (busy || error) return;
+    const width = 0.38, height = 0.11;
+    const candidates = [0.72, 0.56, 0.40, 0.24, 0.08].flatMap(y => [0.08, 0.54].map(x => ({ x, y })));
+    const free = candidates.find(p => !value.some(s => s.page === pageNumber && p.x < s.x + s.width && p.x + width > s.x && p.y < s.y + s.height && p.y + height > s.y));
+    const point = free || candidates[0];
+    onChange([...value, { order: person.signatureOrder, page: pageNumber, ...point, width, height }]);
+    setPlacementNotice(`Selo de ${person.name} adicionado. Arraste para uma área livre e confira se não cobre o texto${free ? '.' : ' ou outro selo.'}`);
+  };
   const update = (next: SignerStamp) => onChange([...value.filter((s) => s.order !== next.order), next]);
   const addAt = (x: number, y: number) => {
     if (!chosen || busy) return;
@@ -66,13 +86,13 @@ export default function SignerStampEditor({ source, participants, value, onChang
         const active = chosen?.signatureOrder === person.signatureOrder;
         return <button type="button" key={person.signatureOrder} aria-pressed={active}
           className={`w-full rounded-xl border p-3 text-left transition-colors ${active ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : 'border-slate-200 bg-white hover:border-blue-300'}`}
-          onClick={() => { setSelected(person.signatureOrder); if (position) setPageNumber(position.page); }}>
+          disabled={busy || Boolean(error)} onClick={() => selectParticipant(person)}>
           <span className="block break-words text-xs font-bold text-slate-900">{person.name}</span>
           <span className="mt-1 block text-[11px] text-slate-500">{isWitnessStamp(person.role) ? 'Testemunha' : person.role === 'CLIENTE' || person.role === 'PARTE' ? 'Parte' : person.role.replace(/_/g, ' ')}</span>
-          <span className={`mt-2 inline-block rounded-md px-2 py-1 text-[10px] font-semibold ${position ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>{position ? `Posicionado · página ${position.page}` : 'Na folha de assinaturas'}</span>
+          <span className={`mt-2 inline-block rounded-md px-2 py-1 text-[10px] font-semibold ${position ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>{position ? `Posicionado · página ${position.page}` : 'Clique para adicionar selo'}</span>
         </button>;
       })}</div>
-      <p className="mt-3 text-[11px] leading-relaxed text-slate-500">Selecione a pessoa para destacar seu selo. QR e dados definitivos entram após a assinatura.</p>
+      <p className="mt-3 text-[11px] leading-relaxed text-slate-500">Clique na pessoa para mostrar seu selo no PDF. QR e dados definitivos entram após a assinatura.</p>
     </aside>
     <section className="min-w-0 space-y-3" aria-label="Revisão do PDF e selos">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
@@ -88,7 +108,8 @@ export default function SignerStampEditor({ source, participants, value, onChang
         </div>
       </div>
       <p className="text-xs text-slate-600">Arraste para mover. Puxe o canto para redimensionar.</p>
-      {!box && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><strong>{chosen?.name}</strong>: clique numa área livre do PDF para colocar o selo, ou mantenha na folha de assinaturas.</p>}
+      {placementNotice && <p role="status" className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">{placementNotice}</p>}
+      {!box && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><strong>{chosen?.name}</strong>: clique no cartão do participante para mostrar o selo no PDF. Sem selo na página, a identificação permanece na folha de assinaturas.</p>}
       {box && <details className="rounded-xl border border-slate-200 bg-white px-3 py-2">
         <summary className="cursor-pointer py-1 text-xs font-semibold text-slate-700">Ajuste fino do selo · {chosen?.name}</summary>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
@@ -107,7 +128,7 @@ export default function SignerStampEditor({ source, participants, value, onChang
         <canvas ref={canvas} className="block w-full h-auto" />
         {value.filter((s) => s.page === pageNumber).map((s) => {
           const person = participants.find((p) => p.signatureOrder === s.order); if (!person) return null;
-          return <div key={s.order} tabIndex={0} role="button" aria-label={`Selo de ${person.name}`} className={`absolute border-2 cursor-move p-1 overflow-hidden text-[9px] ${chosen?.signatureOrder === s.order ? 'border-blue-700 bg-blue-50/80 z-20' : 'border-slate-400 bg-white/70 z-10'}`}
+          return <div key={s.order} data-stamp-order={s.order} tabIndex={0} role="button" aria-label={`Selo de ${person.name}`} className={`absolute border-2 cursor-move p-1 overflow-hidden text-[9px] ${chosen?.signatureOrder === s.order ? 'border-blue-700 bg-blue-50/80 z-20' : 'border-slate-400 bg-white/70 z-10'}`}
             style={{ left: `${s.x * 100}%`, top: `${s.y * 100}%`, width: `${s.width * 100}%`, height: `${s.height * 100}%` }}
             onPointerDown={(e) => { e.stopPropagation(); setSelected(s.order); const r = surface.current!.getBoundingClientRect(); drag.current = { order: s.order, dx: (e.clientX - r.left) / r.width - s.x, dy: (e.clientY - r.top) / r.height - s.y }; e.currentTarget.setPointerCapture(e.pointerId); }}
             onPointerMove={(e) => { if (drag.current?.order !== s.order) return; const r = surface.current!.getBoundingClientRect(); update({ ...s, x: Math.max(0, Math.min(1 - s.width, (e.clientX - r.left) / r.width - drag.current.dx)), y: Math.max(0, Math.min(1 - s.height, (e.clientY - r.top) / r.height - drag.current.dy)) }); }}
