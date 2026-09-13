@@ -436,11 +436,22 @@ export async function generateFinalPdfCertificate(documentId: string) {
       `Código: ${verificationCode}`];
     let size = 7;
     let lines = stampLines.flatMap((line) => wrapTextToWidth(line, bold, size, tw));
-    while (lines.length * (size + 2) + 8 > h && size > 4.5) {
+    while (lines.length * (size + 2) + 8 > h && size > 6) {
       size -= 0.5; lines = stampLines.flatMap((line) => wrapTextToWidth(line, bold, size, tw));
     }
-    // Nunca deixar um selo transbordar sobre cláusulas: a folha contém a identificação completa.
-    if (lines.length * (size + 2) + 8 > h) return;
+    // Mantém uma marca visível no local escolhido mesmo quando a identificação
+    // completa não cabe. Os dados integrais continuam na folha de assinaturas.
+    if (lines.length * (size + 2) + 8 > h || tw < 30) {
+      const compactQr = Math.max(1, Math.min(30, h - 6, w - 6));
+      page.drawImage(qrImage, { x: x + 3, y: top - compactQr - 3, width: compactQr, height: compactQr });
+      const available = w - compactQr - 12;
+      if (available >= 35 && h >= 24) {
+        const compact = [`Signatário ${person.signatureOrder}`, 'Ver folha de assinaturas'];
+        const compactLines = compact.flatMap(line => wrapTextToWidth(line, bold, 6, available));
+        if (compactLines.length * 8 + 6 <= h) compactLines.forEach((line, i) => page.drawText(line, { x: x + compactQr + 8, y: top - 9 - i * 8, size: 6, font: bold, color: navy }));
+      }
+      return;
+    }
     lines.forEach((line, i) => page.drawText(line, { x: tx, y: top - 8 - i * (size + 2), size, font: bold, color: i === 0 ? muted : navy }));
     page.drawImage(qrImage, { x: x + 3, y: top - qrSize - 6, width: qrSize, height: qrSize });
     const lineY = top - 8 - lines.length * (size + 2);

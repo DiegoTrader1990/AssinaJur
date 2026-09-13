@@ -12,6 +12,7 @@ export default function SignerStampEditor({ source, participants, value, onChang
   const [showParticipants, setShowParticipants] = useState(false);
   const [selected, setSelected] = useState(participants[0]?.signatureOrder || 1);
   const [pageNumber, setPageNumber] = useState(1);
+  const [pageSizes, setPageSizes] = useState<Record<number, { width: number; height: number }>>({});
   const [pageCount, setPageCount] = useState(1);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
@@ -22,6 +23,8 @@ export default function SignerStampEditor({ source, participants, value, onChang
   const overlapping = overlappingStampOrders(value);
   const chosen = participants.find((p) => p.signatureOrder === selected) || participants[0];
   const box = value.find((s) => s.order === chosen?.signatureOrder);
+  const selectedSize = box && pageSizes[box.page];
+  const smallStamp = box && selectedSize && (box.width * selectedSize.width < 180 || box.height * selectedSize.height < (chosen?.name.length > 45 ? 100 : 70));
   useEffect(() => {
     let cancelled = false;
     let task: any;
@@ -40,6 +43,8 @@ export default function SignerStampEditor({ source, participants, value, onChang
         const safePage = Math.min(pageNumber, pdf.numPages);
         if (safePage !== pageNumber) { setPageNumber(safePage); return; }
         const page = await pdf.getPage(safePage);
+        const pageSize = page.getViewport({ scale: 1 });
+        setPageSizes(current => ({ ...current, [safePage]: { width: pageSize.width, height: pageSize.height } }));
         const viewport = page.getViewport({ scale: 1.4 });
         const element = canvas.current;
         if (!element || cancelled) return;
@@ -122,6 +127,7 @@ export default function SignerStampEditor({ source, participants, value, onChang
           <button type="button" className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50" onClick={() => onChange(value.filter(s => s.order !== chosen.signatureOrder))}>Usar somente a folha</button>
         </div>
       </details>}
+      {smallStamp && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900"><strong>Este selo pode ficar pequeno para os dados completos.</strong> Aumente a largura ou altura em “Ajuste fino”. Se os dados não couberem, o PDF terá uma marca compacta com QR neste local e a identificação completa na folha de assinaturas.</p>}
       {overlapping.length > 0 && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900"><strong>Há selos sobrepostos.</strong> Afaste os selos de {participants.filter(p => overlapping.includes(p.signatureOrder)).map(p => p.name).join(', ')} antes de concluir a revisão.</p>}
       {error && <p role="alert" className="text-red-700">{error}</p>}
       <div className="max-h-[65vh] overflow-auto rounded-xl border border-slate-300 bg-slate-200 p-2 sm:p-4">
