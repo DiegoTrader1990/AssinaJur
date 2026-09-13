@@ -59,3 +59,28 @@ export function suggestStamps(placements: Array<StampBox & { caption?: string }>
   }
   return result.filter((p) => p.y + p.height <= 1);
 }
+
+// Mesmo retângulo visível usado pelo PDF.js: interseção de CropBox e MediaBox.
+export function stampPageGeometry(media: { x: number; y: number; width: number; height: number }, crop: { x: number; y: number; width: number; height: number }, angle: number) {
+  let x = Math.max(media.x, crop.x), y = Math.max(media.y, crop.y);
+  let width = Math.min(media.x + media.width, crop.x + crop.width) - x;
+  let height = Math.min(media.y + media.height, crop.y + crop.height) - y;
+  if (width <= 0 || height <= 0) ({ x, y, width, height } = media);
+  const rotation = ((angle % 360) + 360) % 360;
+  const transforms: Record<number, [number, number, number, number, number, number]> = {
+    0: [1, 0, 0, 1, x, y],
+    90: [0, 1, -1, 0, x + width, y],
+    180: [-1, 0, 0, -1, x + width, y + height],
+    270: [0, -1, 1, 0, x, y + height],
+  };
+  if (!transforms[rotation]) throw new Error('Rotação da página inválida.');
+  return { width: rotation % 180 ? height : width, height: rotation % 180 ? width : height, transform: transforms[rotation] };
+}
+
+export function overlappingStampOrders(stamps: SignerStamp[]): number[] {
+  const orders = new Set<number>();
+  stamps.forEach((a, index) => stamps.slice(index + 1).forEach(b => {
+    if (a.page === b.page && a.x < b.x + b.width - 0.00001 && a.x + a.width > b.x + 0.00001 && a.y < b.y + b.height - 0.00001 && a.y + a.height > b.y + 0.00001) { orders.add(a.order); orders.add(b.order); }
+  }));
+  return [...orders];
+}

@@ -1,5 +1,5 @@
 const fs=require('fs'),path=require('path'),vm=require('vm'),ts=require('typescript'),assert=require('assert/strict');
-const {PDFDocument,StandardFonts}=require('pdf-lib');
+const {PDFDocument,StandardFonts,degrees}=require('pdf-lib');
 const root=path.resolve(__dirname,'..');const out=path.join(root,'output/pdf');fs.mkdirSync(out,{recursive:true});
 const deps={};
 function load(file){const module={exports:{}};const code=ts.transpileModule(fs.readFileSync(path.join(root,file),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;new Function('require','module','exports','process',code)((id)=>{if(deps[id])return deps[id];if(['pdf-lib','fs','path','qrcode','sharp','crypto'].includes(id))return require(id);throw Error('Dependência não simulada: '+id)},module,module.exports,{cwd:()=>root,env:{NEXT_PUBLIC_APP_URL:'https://example.invalid'}});return module.exports;}
@@ -18,7 +18,14 @@ assert.equal(rendered.signaturePlacements.length,2);
 assert(rendered.signaturePlacements[0].caption.includes('Pessoa Alfa'));
 assert(rendered.signaturePlacements[1].caption.includes('Pessoa Beta'));
 const cert=load('src/lib/pdfCertificate.ts');
-for(const scenario of ['multipartes','muitas-partes','a-rogo','duplas-a-rogo']){
+for(const scenario of ['multipartes','muitas-partes','a-rogo','duplas-a-rogo','rotacao-90','rotacao-180','rotacao-270','recorte']){
+original=Buffer.from(await pdf.save());
+if(scenario.startsWith('rotacao-') || scenario==='recorte') {
+ const variant=await PDFDocument.create(); const page=variant.addPage([700,900]);
+ page.setCropBox(50,80,595.28,741.89);
+ page.setRotation(degrees(scenario.startsWith('rotacao-')?Number(scenario.split('-')[1]):0));
+ original=Buffer.from(await variant.save());
+}
 const count=scenario==='muitas-partes'?12:scenario==='duplas-a-rogo'?6:4;const rogo=scenario==='a-rogo';const now=new Date('2026-09-10T15:00:00Z');
 const signers=Array.from({length:count},(_,i)=>({id:'p'+i,name:i===1?'Participante Ficticio Com Nome Muito Longo Para Conferir a Quebra de Linha':'Participante Ficticio '+(i+1),cpf:'00000000000',role:i===0?'CLIENTE':(rogo&&i===1 || scenario==='duplas-a-rogo' && [1,3].includes(i))?'ASSINANTE_A_ROGO':i>=count-2?'TESTEMUNHA_'+(i-count+3):'PARTE',signatureOrder:i+1,status:'ASSINADO',signedAt:now,signingMode:'INDIVIDUAL',ipAddress:'127.0.0.1',userAgent:'Teste local',selfieCenterImage:null,signatureType:'SELO_DIGITAL'}));
 const targets=stamps.stampParticipants(signers,rogo);const positions=targets.slice(0,4).map((person,i)=>({order:person.signatureOrder,page:1,x:i%2?0.54:0.06,y:0.35+Math.floor(i/2)*0.22,width:0.4,height:0.14}));

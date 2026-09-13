@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { isWitnessStamp, type SignerStamp, type StampParticipant } from '@/lib/signer-stamps';
+import { overlappingStampOrders, isWitnessStamp, type SignerStamp, type StampParticipant } from '@/lib/signer-stamps';
 
 export default function SignerStampEditor({ source, participants, value, onChange }: {
   source: string | File; participants: StampParticipant[]; value: SignerStamp[]; onChange: (value: SignerStamp[]) => void;
@@ -19,6 +19,7 @@ export default function SignerStampEditor({ source, participants, value, onChang
   const surface = useRef<HTMLDivElement>(null);
   const drag = useRef<null | { order: number; dx: number; dy: number }>(null);
   const resize = useRef<null | { order: number; pointerId: number; startX: number; startY: number; box: SignerStamp }>(null);
+  const overlapping = overlappingStampOrders(value);
   const chosen = participants.find((p) => p.signatureOrder === selected) || participants[0];
   const box = value.find((s) => s.order === chosen?.signatureOrder);
   useEffect(() => {
@@ -121,6 +122,7 @@ export default function SignerStampEditor({ source, participants, value, onChang
           <button type="button" className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50" onClick={() => onChange(value.filter(s => s.order !== chosen.signatureOrder))}>Usar somente a folha</button>
         </div>
       </details>}
+      {overlapping.length > 0 && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900"><strong>Há selos sobrepostos.</strong> Afaste os selos de {participants.filter(p => overlapping.includes(p.signatureOrder)).map(p => p.name).join(', ')} antes de concluir a revisão.</p>}
       {error && <p role="alert" className="text-red-700">{error}</p>}
       <div className="max-h-[65vh] overflow-auto rounded-xl border border-slate-300 bg-slate-200 p-2 sm:p-4">
         <div style={{ width: `${zoom}%` }}>

@@ -1,7 +1,7 @@
 import { qualificationDetails, fullQualification } from './participant-qualification';
 import { configuredGroups } from './participant-groups';
-import { decodeStamps, stampParticipants, type SignerStamp } from './signer-stamps';
-import { PDFDocument, PDFPage, rgb, StandardFonts, LineCapStyle, PDFName, PDFString, degrees } from 'pdf-lib';
+import { decodeStamps, stampPageGeometry, stampParticipants, type SignerStamp } from './signer-stamps';
+import { PDFDocument, PDFPage, rgb, StandardFonts, LineCapStyle, PDFName, PDFString, degrees, pushGraphicsState, popGraphicsState, concatTransformationMatrix } from 'pdf-lib';
 import fs from 'fs';
 import path from 'path';
 import QRCode from 'qrcode';
@@ -423,7 +423,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
   const drawSignerStamp = (page: PDFPage, box: SignerStamp, person: typeof doc.signers[number]) => {
     if (person.status !== 'ASSINADO') return;
-    const { width, height } = page.getSize();
+    const { width, height } = stampPageGeometry(page.getMediaBox(), page.getCropBox(), page.getRotation().angle);
     const x = box.x * width, top = (1 - box.y) * height, w = box.width * width, h = box.height * height;
     const qrSize = Math.min(30, h - 12);
     const tx = x + qrSize + 10, tw = w - (tx - x) - 4;
@@ -452,10 +452,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const jointOrder = undefined;
     const customStamp = multiStamps ? multiStamps.find((box) => box.order === jointOrder && box.page === idx + 1) || null : legacyCustomStamp;
     if (multiStamps) {
+      const geometry = stampPageGeometry(p.getMediaBox(), p.getCropBox(), p.getRotation().angle);
+      p.pushOperators(pushGraphicsState(), concatTransformationMatrix(...geometry.transform));
       for (const box of multiStamps.filter((box) => box.page === idx + 1 && box.order !== jointOrder)) {
         const person = doc.signers.find((person) => person.signatureOrder === box.order);
         if (person) drawSignerStamp(p, box, person);
       }
+      p.pushOperators(popGraphicsState());
       if (!customStamp) return;
     }
 

@@ -30,4 +30,12 @@ const vars=q.participantVariables([qualified,{...qualified,name:'Parte Beta',sig
 assert.equal(vars.parte2_papel,'Inventariante');assert.equal(vars.parte1_rg,'');assert(vars.parte1_qualificacao.includes('&lt;Alfa&gt;'));checks++;
 const reordered=groups.expandRogoParticipants([input[0],input[2],input[1]],false);
 assert.deepEqual(reordered.participants.map(p=>p.role),['CLIENTE','ASSINANTE_A_ROGO','PARTE','ASSINANTE_A_ROGO','TESTEMUNHA_1']);checks++;
+const media={x:10,y:20,width:600,height:800}, crop={x:40,y:70,width:500,height:650};
+for (const [angle, dims, matrix] of [[0,[500,650],[1,0,0,1,40,70]],[90,[650,500],[0,1,-1,0,540,70]],[180,[500,650],[-1,0,0,-1,540,720]],[270,[650,500],[0,-1,1,0,40,720]]]) {
+ const g=s.stampPageGeometry(media,crop,angle);assert.deepEqual([g.width,g.height],dims);assert.deepEqual(g.transform,matrix);checks++;
+}
+assert.deepEqual(s.stampPageGeometry(media,{x:-10,y:-20,width:1000,height:1000},0),s.stampPageGeometry(media,media,0));checks++;
+assert.deepEqual(s.overlappingStampOrders([{...good,page:1},{...good,order:2,page:1,x:0.2}]),[1,2]);checks++;
+assert.deepEqual(s.overlappingStampOrders([{...good,page:1},{...good,order:2,page:2}]),[]);checks++;
+assert.deepEqual(s.overlappingStampOrders([{...good,page:1},{...good,order:2,page:1,x:good.x+good.width}]),[]);checks++;
 console.log(JSON.stringify({passed:true,checks}));
