@@ -1,3 +1,4 @@
+import { validateEvidenceImage } from '@/lib/evidence-image';
 import { loadParticipantGroups } from '@/lib/participant-groups';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
@@ -66,8 +67,10 @@ export async function POST(req: Request, { params }: { params: { token: string }
   }
 
   const { eventType, imageField, imageData, forRogo } = body;
+  if (imageField && (!SAVABLE_IMAGE_FIELDS.has(imageField) || !imageData)) return NextResponse.json({ error: 'Envie uma foto válida para esta etapa.' }, { status: 400 });
   if (eventType && !EVENT_DESCRIPTIONS[eventType]) return NextResponse.json({ error: 'Evento inválido.' }, { status: 400 });
 
+  let imageValidation: Promise<void> | undefined;
   for (let attempt = 1; attempt <= MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
     try {
       const result = await prisma.$transaction(async (tx) => {
@@ -98,6 +101,8 @@ export async function POST(req: Request, { params }: { params: { token: string }
         const ipAddress = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '127.0.0.1';
         const userAgent = req.headers.get('user-agent') || 'Navegador';
         if (imageField && imageData && SAVABLE_IMAGE_FIELDS.has(imageField)) {
+          try { await (imageValidation ??= validateEvidenceImage(imageData)); }
+          catch { return { status: 400, body: { error: 'A foto está inválida ou incompleta. Capture novamente esta foto.' } }; }
           await tx.signer.update({ where: { id: target.id }, data: { [imageField]: imageData,
             status: ['PENDENTE', 'VISUALIZADO'].includes(target.status) ? 'EM_ANDAMENTO' : target.status } });
           if (correction) await tx.documentEvent.create({ data: { documentId: document.id, signerId: target.id,

@@ -6,10 +6,34 @@ const ts = require('typescript');
 const crypto = require('node:crypto');
 
 module.exports = async function run(prisma, admin, outsider) {
+  const photos = new Map();
+  { const key='ficticia'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='foto-cliente'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='foto-cliente-ficticia'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='foto-corrigida'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='foto-diferente'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='foto-ficticia'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='foto-rogo-ficticia'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='foto-testemunha'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='frente-cliente'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='frente-da-segunda-dupla'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='frente-ficticia'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='frente-rogo'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='frente-testemunha'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='nao-autorizada'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='nao-substituir'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='nova-foto-ficticia'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='selfie-ficticia'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='substituicao'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='verso-cliente'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='verso-ficticio'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='verso-rogo'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  { const key='verso-testemunha'; const color=crypto.createHash('sha256').update(key).digest(); photos.set(key, 'data:image/jpeg;base64,'+(await require('sharp')({create:{width:320,height:240,channels:3,background:{r:color[0],g:color[1],b:color[2]}}}).jpeg().toBuffer()).toString('base64')); }
+  const photo = key => photos.get(key);
   let checks = 0;
   let actor = admin;
   let deletedFiles = 0;
-  const deps = {
+  const deps = { sharp: require('sharp'),
     '@/lib/prisma': { prisma }, './prisma': { prisma }, crypto,
     '@/lib/auth': { getSessionUser: async () => actor },
     '@/lib/audit': { logAuditEvent: async () => {} },
@@ -25,6 +49,7 @@ module.exports = async function run(prisma, admin, outsider) {
       require(id) { if (id === 'next/server') return { NextResponse: Response }; if (deps[id]) return deps[id]; throw new Error(`Import bloqueado: ${id}`); } });
     return module.exports;
   }
+  deps['@/lib/evidence-image'] = load('src/lib/evidence-image.ts');
   deps['./participant-qualification'] = deps['@/lib/participant-qualification'] = load('src/lib/participant-qualification.ts');
   deps['./participant-groups'] = deps['@/lib/participant-groups'] = load('src/lib/participant-groups.ts');
   deps['./signer-stamps'] = deps['@/lib/signer-stamps'] = load('src/lib/signer-stamps.ts');
@@ -47,8 +72,8 @@ module.exports = async function run(prisma, admin, outsider) {
     return prisma.document.create({ data: { officeId: admin.officeId, title: 'Documento fictício', originalFileId: original.id, originalHash: 'hash-original-ficticio',
       signedFileId: original.id, signedHash: 'hash-assinado-ficticio', verificationCode: crypto.randomUUID(), status: 'CONCLUIDO', reviewStatus,
       kitBatchId, completedAt: new Date(), expirationDate: new Date('2020-01-01'), isIlliterate: true, rogoName: 'A rogo fictício', rogoCpf: '11144477735',
-      signers: { create: [{ name: 'Cliente fictício', cpf: '52998224725', role: 'CLIENTE', signatureOrder: 1, status: 'ASSINADO', selfieCenterImage: 'foto-ficticia', documentFrontImage: 'frente-ficticia', signedAt: new Date() },
-        { name: 'A rogo fictício', cpf: '11144477735', role: 'ASSINANTE_A_ROGO', signingMode: 'SAME_DEVICE', signatureOrder: 2, status: 'ASSINADO', selfieCenterImage: 'foto-rogo-ficticia', signedAt: new Date() }] },
+      signers: { create: [{ name: 'Cliente fictício', cpf: '52998224725', role: 'CLIENTE', signatureOrder: 1, status: 'ASSINADO', selfieCenterImage: photo('foto-ficticia'), documentFrontImage: photo('frente-ficticia'), signedAt: new Date() },
+        { name: 'A rogo fictício', cpf: '11144477735', role: 'ASSINANTE_A_ROGO', signingMode: 'SAME_DEVICE', signatureOrder: 2, status: 'ASSINADO', selfieCenterImage: photo('foto-rogo-ficticia'), signedAt: new Date() }] },
     }, include: { signers: true } });
   }
   const a = await make(); const b = await make();
@@ -56,7 +81,7 @@ module.exports = async function run(prisma, admin, outsider) {
   for (const action of ['unapprove-document', 'unapprove-package', 'redo-document', 'redo-package']) await status(route.POST(request({ action }), params(a)), 409);
   await status(route.POST(request({ action: 'redo-photo', signerId: a.signers[0].id, field: 'selfieCenterImage' }), params(a)), 409);
   await status(route.DELETE(request({}), params(a)), 409);
-  await status(event.POST(request({ imageField: 'selfieCenterImage', imageData: 'substituicao' }), tokenParams(a.signers[0])), 409);
+  await status(event.POST(request({ imageField: 'selfieCenterImage', imageData: photo('substituicao') }), tokenParams(a.signers[0])), 409);
   await status(getSign.GET(request({}), tokenParams(a.signers[0])), 200); // Prazo antigo não expira aprovado.
   actor = { ...admin, role: 'STAFF' };
   const requestId = crypto.randomUUID();
@@ -86,24 +111,27 @@ module.exports = async function run(prisma, admin, outsider) {
   await status(route.POST(request({ action: 'redo-photo', signerId: pending.signers[0].id, field: 'documentFrontImage' }), params(pending)), 200);
   actor = admin;
   await status(route.POST(request({ action: 'approve-document' }), params(pending)), 409);
-  for (const field of ['selfieCenterImage', 'documentFrontImage']) await status(event.POST(request({ imageField: field, imageData: 'nova-foto-ficticia' }), tokenParams(pending.signers[0])), 200);
-  await status(event.POST(request({ imageField: 'selfieCenterImage', imageData: 'nao-autorizada' }), tokenParams(pending.signers[0])), 409);
+  const beforeInvalidPhoto = await prisma.signer.findUnique({where:{id:pending.signers[0].id}});
+  await status(event.POST(request({imageField:'selfieCenterImage',imageData:'data:image/jpeg;base64,AAAA'}),tokenParams(pending.signers[0])),400);
+  assert.equal((await prisma.signer.findUnique({where:{id:pending.signers[0].id}})).selfieCenterImage,beforeInvalidPhoto.selfieCenterImage);checks++;
+  for (const field of ['selfieCenterImage', 'documentFrontImage']) await status(event.POST(request({ imageField: field, imageData: photo('nova-foto-ficticia') }), tokenParams(pending.signers[0])), 200);
+  await status(event.POST(request({ imageField: 'selfieCenterImage', imageData: photo('nao-autorizada') }), tokenParams(pending.signers[0])), 409);
   await prisma.document.update({ where: { id: pending.id }, data: { signedFileId: original.id, signedHash: 'novo-hash-ficticio' } });
   await status(route.POST(request({ action: 'approve-document' }), params(pending)), 200);
-  await status(event.POST(request({ imageField: 'selfieCenterImage', imageData: 'nao-autorizada' }), tokenParams(pending.signers[0])), 409);
+  await status(event.POST(request({ imageField: 'selfieCenterImage', imageData: photo('nao-autorizada') }), tokenParams(pending.signers[0])), 409);
   const redo = await make('PENDENTE_REVISAO', crypto.randomUUID());
   actor = { ...admin, role: 'STAFF' };
   await status(route.POST(request({ action: 'redo-package' }), params(redo)), 200);
   const reset = await prisma.document.findUnique({ where: { id: redo.id }, include: { signers: true } });
   assert.equal(reset.signedFileId, null); assert(reset.signers.every((s) => s.status === 'PENDENTE' && !s.selfieCenterImage && !s.signedAt)); checks++;
   const signedWitness = await prisma.signer.create({ data: { documentId: redo.id, name: 'Testemunha fictícia', cpf: '12345678900', role: 'TESTEMUNHA_1', status: 'ASSINADO', signingMode: 'INDIVIDUAL' } });
-  await status(submit.POST(request({ witness1: { name: 'Outra pessoa', cpf: '12345678900', selfieCenterImage: 'ficticia' } }), tokenParams(reset.signers[0])), 403);
+  await status(submit.POST(request({ witness1: { name: 'Outra pessoa', cpf: '12345678900', selfieCenterImage: photo('ficticia') } }), tokenParams(reset.signers[0])), 403);
   assert.equal((await prisma.signer.findUnique({ where: { id: signedWitness.id } })).name, 'Testemunha fictícia'); checks++;
   // O fluxo legítimo de cliente + a rogo continua funcionando no mesmo aparelho.
   const clientSigner = reset.signers.find((s) => s.role === 'CLIENTE');
-  await status(event.POST(request({ forRogo: true, imageField: 'selfieCenterImage', imageData: 'foto-rogo-ficticia' }), tokenParams(clientSigner)), 200);
-  await status(submit.POST(request({ confirmCpf: clientSigner.cpf, documentFrontImage: 'frente-cliente', documentBackImage: 'verso-cliente', selfieCenterImage: 'foto-cliente-ficticia', signatureType: 'SELO_DIGITAL', signedConsentText: 'Aceite fictício',
-    rogo: { name: 'A rogo fictício', cpf: '11144477735', documentFrontImage: 'frente-rogo', documentBackImage: 'verso-rogo', selfieCenterImage: 'foto-rogo-ficticia', signatureType: 'SELO_DIGITAL' } }), tokenParams(clientSigner)), 200);
+  await status(event.POST(request({ forRogo: true, imageField: 'selfieCenterImage', imageData: photo('foto-rogo-ficticia') }), tokenParams(clientSigner)), 200);
+  await status(submit.POST(request({ confirmCpf: clientSigner.cpf, documentFrontImage: photo('frente-cliente'), documentBackImage: photo('verso-cliente'), selfieCenterImage: photo('foto-cliente-ficticia'), signatureType: 'SELO_DIGITAL', signedConsentText: 'Aceite fictício',
+    rogo: { name: 'A rogo fictício', cpf: '11144477735', documentFrontImage: photo('frente-rogo'), documentBackImage: photo('verso-rogo'), selfieCenterImage: photo('foto-rogo-ficticia'), signatureType: 'SELO_DIGITAL' } }), tokenParams(clientSigner)), 200);
   const completed = await prisma.document.findUnique({ where: { id: redo.id }, include: { signers: true } });
   assert.equal(completed.status, 'CONCLUIDO'); assert(completed.signers.every((s) => s.status === 'ASSINADO')); checks++;
   Object.assign(deps, { 'pdf-lib': require('pdf-lib'), fs, path, qrcode: require('qrcode'), sharp: require('sharp'),
@@ -124,16 +152,16 @@ module.exports = async function run(prisma, admin, outsider) {
   assert.equal(await deps['@/lib/photo-review'].isIndividualRetry(prisma, single.id), true);
   assert.equal(JSON.stringify(await prisma.document.findUnique({ where: { id: sibling.id }, include: { signers: true } })), siblingBefore); checks++;
   const singleClient = single.signers.find((s) => s.role === 'CLIENTE');
-  await status(submit.POST(request({ confirmCpf: singleClient.cpf, documentFrontImage: 'frente-cliente', documentBackImage: 'verso-cliente', selfieCenterImage: 'foto-cliente-ficticia', signatureType: 'SELO_DIGITAL', signedConsentText: 'Aceite fictício',
-    rogo: { name: 'A rogo fictício', cpf: '11144477735', documentFrontImage: 'frente-rogo', documentBackImage: 'verso-rogo', selfieCenterImage: 'foto-rogo-ficticia', signatureType: 'SELO_DIGITAL' } }), tokenParams(singleClient)), 200);
+  await status(submit.POST(request({ confirmCpf: singleClient.cpf, documentFrontImage: photo('frente-cliente'), documentBackImage: photo('verso-cliente'), selfieCenterImage: photo('foto-cliente-ficticia'), signatureType: 'SELO_DIGITAL', signedConsentText: 'Aceite fictício',
+    rogo: { name: 'A rogo fictício', cpf: '11144477735', documentFrontImage: photo('frente-rogo'), documentBackImage: photo('verso-rogo'), selfieCenterImage: photo('foto-rogo-ficticia'), signatureType: 'SELO_DIGITAL' } }), tokenParams(singleClient)), 200);
   assert.equal(JSON.stringify(await prisma.document.findUnique({ where: { id: sibling.id }, include: { signers: true } })), siblingBefore); checks++;
   // Falhas reais de transação: nada do envio pode ficar parcialmente assinado.
   const atomic = await make('PENDENTE_REVISAO', crypto.randomUUID());
   const atomicSibling = await make('PENDENTE_REVISAO', atomic.kitBatchId);
   await status(route.POST(request({ action: 'redo-package' }), params(atomic)), 200);
   const atomicClient = atomic.signers.find((s) => s.role === 'CLIENTE');
-  const payload = { confirmCpf: atomicClient.cpf, documentFrontImage: 'frente-cliente', documentBackImage: 'verso-cliente', selfieCenterImage: 'foto-cliente-ficticia', signatureType: 'SELO_DIGITAL',
-    rogo: { name: 'A rogo fictício', cpf: '11144477735', documentFrontImage: 'frente-rogo', documentBackImage: 'verso-rogo', selfieCenterImage: 'foto-rogo-ficticia', signatureType: 'SELO_DIGITAL' } };
+  const payload = { confirmCpf: atomicClient.cpf, documentFrontImage: photo('frente-cliente'), documentBackImage: photo('verso-cliente'), selfieCenterImage: photo('foto-cliente-ficticia'), signatureType: 'SELO_DIGITAL',
+    rogo: { name: 'A rogo fictício', cpf: '11144477735', documentFrontImage: photo('frente-rogo'), documentBackImage: photo('verso-rogo'), selfieCenterImage: photo('foto-rogo-ficticia'), signatureType: 'SELO_DIGITAL' } };
   const state = async () => JSON.stringify(await prisma.document.findMany({ where: { id: { in: [atomic.id, atomicSibling.id] } }, include: { signers: { orderBy: { id: 'asc' } }, events: { orderBy: { id: 'asc' } } }, orderBy: { id: 'asc' } }));
   const beforeFailure = await state();
   for (const failAt of [2, 3]) {
@@ -157,17 +185,17 @@ module.exports = async function run(prisma, admin, outsider) {
   const atomicResult = await status(submit.POST(request(payload), tokenParams(atomicClient)), 200);
   assert.equal(atomicResult.kitDocumentsSigned, 2); assert.equal(atomicResult.certificatePending, true); checks++;
   const saved = await state();
-  const repeat = await status(submit.POST(request({ ...payload, selfieCenterImage: 'nao-substituir' }), tokenParams(atomicClient)), 200);
+  const repeat = await status(submit.POST(request({ ...payload, selfieCenterImage: photo('nao-substituir') }), tokenParams(atomicClient)), 200);
   assert.equal(repeat.alreadySigned, true); assert.equal(await state(), saved); checks++;
   const resulting = await prisma.document.findMany({ where: { id: { in: [atomic.id, atomicSibling.id] } } });
   assert(resulting.every((d) => d.status === 'CONCLUIDO' && d.reviewStatus === 'PENDENTE_REVISAO')); checks++;
   // Perda da resposta de uma foto corrigida: confirmar a mesma foto não a troca novamente.
   await status(route.POST(request({ action: 'redo-photo', signerId: atomicClient.id, field: 'selfieCenterImage' }), params(atomic)), 200);
-  await status(event.POST(request({ imageField: 'selfieCenterImage', imageData: 'foto-corrigida' }), tokenParams(atomicClient)), 200);
+  await status(event.POST(request({ imageField: 'selfieCenterImage', imageData: photo('foto-corrigida') }), tokenParams(atomicClient)), 200);
   const photoSaved = await state();
-  await status(event.POST(request({ imageField: 'selfieCenterImage', imageData: 'foto-corrigida' }), tokenParams(atomicClient)), 200);
+  await status(event.POST(request({ imageField: 'selfieCenterImage', imageData: photo('foto-corrigida') }), tokenParams(atomicClient)), 200);
   assert.equal(await state(), photoSaved); checks++;
-  await status(event.POST(request({ imageField: 'selfieCenterImage', imageData: 'foto-diferente' }), tokenParams(atomicClient)), 409);
+  await status(event.POST(request({ imageField: 'selfieCenterImage', imageData: photo('foto-diferente') }), tokenParams(atomicClient)), 409);
   // Testemunha em outro aparelho e passagem no mesmo aparelho continuam opcionais.
   for (const mode of ['INDIVIDUAL', 'SAME_DEVICE']) {
     const multi = await prisma.document.create({ data: { officeId: admin.officeId, title: 'Participantes fictícios', originalFileId: original.id, originalHash: 'hash-ficticio',
@@ -175,7 +203,7 @@ module.exports = async function run(prisma, admin, outsider) {
         { name: 'Cliente fictício', cpf: '52998224725', role: 'CLIENTE', signatureOrder: 1 },
         { name: 'Testemunha fictícia', cpf: '11144477735', role: 'TESTEMUNHA_1', signatureOrder: 2, signingMode: mode },
       ] } }, include: { signers: { orderBy: { signatureOrder: 'asc' } } } });
-    const send = { confirmCpf: multi.signers[0].cpf, documentFrontImage: 'frente-cliente', documentBackImage: 'verso-cliente', selfieCenterImage: 'foto-cliente' };
+    const send = { confirmCpf: multi.signers[0].cpf, documentFrontImage: photo('frente-cliente'), documentBackImage: photo('verso-cliente'), selfieCenterImage: photo('foto-cliente') };
     for (const field of ['documentFrontImage', 'documentBackImage', 'selfieCenterImage']) {
       const missing = { ...send }; delete missing[field];
       await status(submit.POST(request(missing), tokenParams(multi.signers[0])), 400);
@@ -187,7 +215,7 @@ module.exports = async function run(prisma, admin, outsider) {
     assert.equal(Boolean(resumed.nextSigner), mode === 'SAME_DEVICE'); assert.equal(resumed.pendingParticipants.length, 1); checks++;
     const reopened = await status(getSign.GET(request({}), tokenParams(multi.signers[0])), 200);
     assert.equal(Boolean(reopened.nextSigner), mode === 'SAME_DEVICE'); checks++;
-    const witnessPayload = { confirmCpf: multi.signers[1].cpf, documentFrontImage: 'frente-testemunha', documentBackImage: 'verso-testemunha', selfieCenterImage: 'foto-testemunha' };
+    const witnessPayload = { confirmCpf: multi.signers[1].cpf, documentFrontImage: photo('frente-testemunha'), documentBackImage: photo('verso-testemunha'), selfieCenterImage: photo('foto-testemunha') };
     for (const field of ['documentFrontImage', 'documentBackImage', 'selfieCenterImage']) {
       const missing = { ...witnessPayload }; delete missing[field];
       await status(submit.POST(request(missing), tokenParams(multi.signers[1])), 400);
@@ -231,7 +259,7 @@ module.exports = async function run(prisma, admin, outsider) {
   assert.equal(groupPeople.length, 8); checks++;
   const pairConfig = await deps['@/lib/participant-groups'].loadParticipantGroups(prisma, groupDoc, groupPeople);
   assert.deepEqual(JSON.parse(JSON.stringify(pairConfig)).map(g => [g.partyOrder, g.rogoOrder]), [[1, 2], [3, 4]]); checks++;
-  const photoPayload = { documentFrontImage: 'frente-ficticia', documentBackImage: 'verso-ficticio', selfieCenterImage: 'selfie-ficticia' };
+  const photoPayload = { documentFrontImage: photo('frente-ficticia'), documentBackImage: photo('verso-ficticio'), selfieCenterImage: photo('selfie-ficticia') };
   const partySend = { confirmCpf: groupPeople[0].cpf, ...photoPayload, rogo: { ...photoPayload, name: groupPeople[1].name, cpf: groupPeople[1].cpf } };
   await status(submit.POST(request({ ...partySend, rogo: { ...partySend.rogo, name: groupPeople[3].name, cpf: groupPeople[3].cpf } }), tokenParams(groupPeople[0])), 403);
   assert.equal((await prisma.signer.findUnique({ where: { id: groupPeople[3].id } })).status, 'PENDENTE'); checks++;
@@ -239,9 +267,9 @@ module.exports = async function run(prisma, admin, outsider) {
   await status(submit.POST(request(partySend), tokenParams(groupPeople[0])), 200);
   const secondView = await status(getSign.GET(request({}), tokenParams(groupPeople[2])), 200);
   assert.equal(secondView.document.isIlliterate, true); assert.equal(secondView.document.rogoCpf, groupPeople[3].cpf); checks++;
-  await status(event.POST(request({ forRogo: true, imageField: 'documentFrontImage', imageData: 'frente-da-segunda-dupla' }), tokenParams(groupPeople[2])), 200);
+  await status(event.POST(request({ forRogo: true, imageField: 'documentFrontImage', imageData: photo('frente-da-segunda-dupla') }), tokenParams(groupPeople[2])), 200);
   assert.equal((await prisma.signer.findUnique({ where: { id: groupPeople[1].id } })).documentFrontImage, photoPayload.documentFrontImage); checks++;
-  assert.equal((await prisma.signer.findUnique({ where: { id: groupPeople[3].id } })).documentFrontImage, 'frente-da-segunda-dupla'); checks++;
+  assert.equal((await prisma.signer.findUnique({ where: { id: groupPeople[3].id } })).documentFrontImage, photo('frente-da-segunda-dupla')); checks++;
   await status(submit.POST(request({ confirmCpf: groupPeople[2].cpf, ...photoPayload, rogo: { name: groupPeople[3].name, cpf: groupPeople[3].cpf, ...photoPayload } }), tokenParams(groupPeople[2])), 200);
   for (const person of groupPeople.slice(4)) await status(submit.POST(request({ confirmCpf: person.cpf, ...photoPayload }), tokenParams(person)), 200);
   const completedGroup = await prisma.document.findUnique({ where: { id: groupDoc.id }, include: { signers: true } });

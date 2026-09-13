@@ -1,3 +1,4 @@
+import { validateEvidenceImage } from '@/lib/evidence-image';
 import { loadParticipantGroups } from '@/lib/participant-groups';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
@@ -109,6 +110,9 @@ export async function POST(
       if (['documentFrontImage', 'documentBackImage', 'selfieCenterImage'].some(field => typeof person[field] !== 'string' || !person[field].trim())) {
         return NextResponse.json({ error: `Conclua as três fotos do ${label}: identidade frente, verso e selfie segurando o documento.` }, { status: 400 });
       }
+      try {
+        for (const field of ['documentFrontImage', 'documentBackImage', 'selfieCenterImage']) await validateEvidenceImage(person[field]);
+      } catch { return NextResponse.json({ error: `Uma foto do ${label} está inválida ou incompleta. Capture novamente antes de concluir.` }, { status: 400 }); }
     }
 
     // 2. Validação da Prova de Presença (Selfie segurando o documento)
