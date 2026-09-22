@@ -228,9 +228,29 @@ export default function DocumentsPage() {
   // andamento" - segue a mesma ordem real do fluxo de captura (frente →
   // verso → selfie), do menos avançado para o mais avançado. Um pedido de
   // refazer pendente tem prioridade sobre essa ordem normal.
+  // Rótulo de campo, só para a mensagem de tentativas recusadas - a foto em
+  // si nunca chega a ser salva nesse caso, então não dá para reusar
+  // REDOABLE_FIELD_LABELS (que descreve o que já está salvo).
+  const FIELD_ATTEMPT_LABELS: Record<string, string> = {
+    documentFrontImage: 'frente do documento',
+    documentBackImage: 'verso do documento',
+    selfieCenterImage: 'selfie (prova de presença)',
+  };
   const signerProgressDetail = (signer: Signer) => {
     const pendingRedoField = getPendingRedoField(signer);
     if (pendingRedoField) return `aguardando novo envio: ${REDOABLE_FIELD_LABELS[pendingRedoField]}`;
+    // O sistema recusou uma ou mais fotos enviadas (formato inválido, foto
+    // pequena demais, arquivo corrompido no envio) - a pessoa está tentando,
+    // mas travando na validação automática. Antes disso essas tentativas não
+    // deixavam rastro nenhum e ficavam indistinguíveis de "ainda não abriu o
+    // link". Prioridade alta: é exatamente a situação em que ligar e orientar
+    // ajuda mais.
+    const rejections = signer.events?.filter((e) => e.eventType === 'PHOTO_VALIDATION_REJECTED') ?? [];
+    if (rejections.length > 0) {
+      let field = '';
+      try { field = FIELD_ATTEMPT_LABELS[JSON.parse(rejections[0].metadata || '{}').field] || 'uma foto'; } catch { field = 'uma foto'; }
+      return `o sistema recusou ${field} ${rejections.length > 1 ? `(${rejections.length} tentativas)` : ''} - ligar para orientar`.trim();
+    }
     if (signer.selfieCenterImage) return 'parou na prova de presença (selfie)';
     // Chegou a abrir a câmera da selfie (evento LIVENESS_STARTED já
     // registrado), mas fechou antes de confirmar a foto.

@@ -90,7 +90,7 @@ export async function GET(req: Request) {
             // atendido, no lugar da última etapa concluída (que pode estar
             // desatualizada depois de um campo anterior ser limpo pelo pedido).
             events: {
-              where: { eventType: { in: ['LIVENESS_STARTED', 'PHOTO_REDO_REQUESTED'] } },
+              where: { eventType: { in: ['LIVENESS_STARTED', 'PHOTO_REDO_REQUESTED', 'PHOTO_VALIDATION_REJECTED'] } },
               select: { id: true, eventType: true, metadata: true },
               orderBy: { createdAt: 'desc' },
               take: 5,

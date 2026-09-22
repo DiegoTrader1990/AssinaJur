@@ -1,0 +1,4 @@
+Versao: aa0348cfac9cf21a268d718eb1d879eb584fe4e9
+Vercel: HpQfxdbywWN8Z3dfJ9wkQAf1oR3D
+Estado Ready confirmado no painel, 11/09/2026, 14:52 BRT.
+Tela /documentos/novo aberta em producao com sessao existente; nenhum envio criado.

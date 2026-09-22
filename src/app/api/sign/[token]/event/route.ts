@@ -1,4 +1,4 @@
-import { validateEvidenceImage } from '@/lib/evidence-image';
+import { validateEvidenceImage, InvalidEvidenceImageError } from '@/lib/evidence-image';
 import { loadParticipantGroups } from '@/lib/participant-groups';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
@@ -102,7 +102,24 @@ export async function POST(req: Request, { params }: { params: { token: string }
         const userAgent = req.headers.get('user-agent') || 'Navegador';
         if (imageField && imageData && SAVABLE_IMAGE_FIELDS.has(imageField)) {
           try { await (imageValidation ??= validateEvidenceImage(imageData)); }
-          catch { return { status: 400, body: { error: 'A foto está inválida ou incompleta. Capture novamente esta foto.' } }; }
+          catch (validationError) {
+            // A recusa também é uma tentativa real: precisa aparecer no painel
+            // do escritório (para saber que a pessoa está travada e em que
+            // etapa) e na trilha (para dar suporte por telefone com o motivo
+            // técnico exato, em vez de só orientar "tente de novo"). Antes
+            // disso a recusa não deixava rastro nenhum - nem status, nem
+            // evento - e um signatário recusado repetidas vezes aparecia
+            // idêntico a alguém que nunca tinha aberto o link.
+            const reason = validationError instanceof InvalidEvidenceImageError ? validationError.reason : 'desconhecido';
+            const message = validationError instanceof InvalidEvidenceImageError ? validationError.message : 'A foto está inválida ou incompleta. Capture novamente esta foto.';
+            await tx.signer.update({ where: { id: target.id }, data: {
+              status: ['PENDENTE', 'VISUALIZADO'].includes(target.status) ? 'EM_ANDAMENTO' : target.status } });
+            await tx.documentEvent.create({ data: { documentId: document.id, signerId: target.id,
+              eventType: 'PHOTO_VALIDATION_REJECTED',
+              description: `Tentativa de envio de foto (${imageField}) recusada pela validação automática: ${message}`,
+              metadata: JSON.stringify({ field: imageField, reason }), ipAddress, userAgent } });
+            return { status: 400, body: { error: message } };
+          }
           await tx.signer.update({ where: { id: target.id }, data: { [imageField]: imageData,
             status: ['PENDENTE', 'VISUALIZADO'].includes(target.status) ? 'EM_ANDAMENTO' : target.status } });
           if (correction) await tx.documentEvent.create({ data: { documentId: document.id, signerId: target.id,
