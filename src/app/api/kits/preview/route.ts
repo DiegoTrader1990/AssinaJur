@@ -1,28 +1,14 @@
+import { ensureJointAttorneyQualification, attorneyLabel, validateAttorneyRoster, validateAttorneyQualification } from '@/lib/attorney-qualification';
 import { participantVariables, qualificationFromClient } from '@/lib/participant-qualification';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
-import { compileTemplatePreviewToPdf } from '@/lib/templateCompiler';
+import { compileTemplatePreviewToPdf, replaceTemplateVariables } from '@/lib/templateCompiler';
 import { getDocumentLetterheadBuffer } from '@/lib/documentLetterhead';
 import { applyClientGenderToQualification, ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, genderizeNeutralWord, removeDuplicateClientAddressWhenShared, removeDuplicateParagraphs, removeEmptyRgFromQualification, removeStandaloneClientNameBeforeQualification, trimTrailingPeriod } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
-function ensureJointAttorneyQualification(contentHtml: string, title: string) {
-  if (!/(procura[cç][aã]o|contrato)/i.test(title) || /{{\s*patronos_qualificacao_conjunta\s*}}/i.test(contentHtml)) return contentHtml;
-  const labels = /OUTORGADOS?|CONTRATADOS?/i;
-  let replaced = false;
-  const prepared = contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
-    const text = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
-    if (!new RegExp(`^${labels.source}\\s*:`, 'i').test(text)) return block;
-    replaced = true;
-    const label = /^CONTRATADOS?/i.test(text) ? 'CONTRATADOS' : 'OUTORGADOS';
-    const fontOpen = String(innerHtml).match(/<font\b[^>]*>/i)?.[0] || '';
-    const fontClose = fontOpen ? '</font>' : '';
-    return `<${tag}${attributes}>${fontOpen}<strong>${label}:</strong> {{patronos_qualificacao_conjunta}}.${fontClose}</${tag}>`;
-  });
-  return replaced ? prepared : contentHtml;
-}
 
 function ensureClientRepresentativeQualification(contentHtml: string, title: string, hasRepresentative: boolean) {
   const isPowerOfAttorney = /procura[cç][aã]o/i.test(title);
@@ -31,7 +17,7 @@ function ensureClientRepresentativeQualification(contentHtml: string, title: str
   if (!hasRepresentative || (!isPowerOfAttorney && !isContract && !isDeclaration) || /{{\s*cliente_representacao\s*}}/i.test(contentHtml)) return contentHtml;
   const label = isContract ? 'CONTRATANTE' : isPowerOfAttorney ? 'OUTORGANTE' : '';
   let included = false;
-  return contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
+  return contentHtml.replace(/<(p|div)([^>]*)>((?:(?!<\/?(?:p|div)\b)[\s\S])*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
     const visibleText = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
     const matchesClientQualification = label ? new RegExp(`^${label}\\s*:`, 'i').test(visibleText) : /{{\s*cliente_nome\s*}}/i.test(innerHtml);
     if (included || !matchesClientQualification) return block;
@@ -50,13 +36,17 @@ export async function POST(req: Request) {
   try {
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
-    const { clientId, title, contentHtml, customVariables, signers } = await req.json();
+    const { clientId, title, documentType, contentHtml, customVariables, signers } = await req.json();
     const [client, office, activeLawyers] = await Promise.all([
       prisma.client.findFirst({ where: { id: clientId, officeId: user.officeId } }),
       prisma.office.findUnique({ where: { id: user.officeId } }),
       prisma.user.findMany({ where: { officeId: user.officeId, active: true, role: { in: ['LAWYER', 'OFFICE_ADMIN'] } }, select: { name: true, oabNumber: true, gender: true }, orderBy: { createdAt: 'asc' } }),
     ]);
     if (!client || !office) return NextResponse.json({ error: 'Cliente ou escritório não encontrado.' }, { status: 404 });
+    if (attorneyLabel(documentType || '', title || '')) {
+      try { validateAttorneyRoster(activeLawyers); }
+      catch (error) { return NextResponse.json({ error: (error as Error).message }, { status: 400 }); }
+    }
     const letterheadBuffer = await getDocumentLetterheadBuffer(office);
     const officeState = String((office as any).address || '').match(/(?:\/|,|\s)(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b/i)?.[1]?.toUpperCase() || 'BA';
     const fullAddress = String((office as any).address || '').trim() || 'endereço profissional informado na configuração';
@@ -124,18 +114,18 @@ export async function POST(req: Request) {
       advogado_nome: lawyer?.name || 'Advogado responsável', advogado_oab: lawyer?.oabNumber || '—', escritorio_nome: office.tradeName || office.name,
       // Sem o ponto final do endereço cadastrado: o modelo já fecha a frase
       // com o próprio ponto, e saía ".." no documento.
-      patronos_qualificacao_conjunta: trimTrailingPeriod(`${patronosQualification}, com escritório profissional na ${fullAddress}`),
-      patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),
       data_atual: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date()),
       ...(customVariables || {}),
+      patronos_qualificacao_conjunta: trimTrailingPeriod(`${patronosQualification}, com escritório profissional na ${fullAddress}`),
+      patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),
       ...participantVariables([{ name: client.name, cpf: client.cpfCnpj, email: client.email, phone: client.phone, role: 'CLIENTE', signatureOrder: 1, qualification: qualificationFromClient(client) }, ...(Array.isArray(signers) ? signers : [])]),
       cidade: [client.city, client.state].filter(Boolean).join('/') || '—',
     };
-    const normalizedClientContent = removeStandaloneClientNameBeforeQualification(ensureClientQualificationTokens(contentHtml, title || ''), client.name);
+    const normalizedClientContent = removeStandaloneClientNameBeforeQualification(ensureClientQualificationTokens(contentHtml, title || '', documentType || ''), client.name);
     const clientContentHtml = ensureClientRepresentativeQualification(normalizedClientContent, title || '', Boolean(client.legalRepresentative));
     // Mesma regra da geração do kit: cliente sem RG (CIN) não deve ver o
     // trecho "portador(a) do RG nº —" na prévia da minuta.
-    const jointAttorneyPreviewHtml = ensureJointAttorneyQualification(clientContentHtml, title || '');
+    const jointAttorneyPreviewHtml = ensureJointAttorneyQualification(clientContentHtml, documentType || '', title || '');
     const previewWithoutEmptyRg = String(client.rg || '').trim()
       ? jointAttorneyPreviewHtml
       : removeEmptyRgFromQualification(jointAttorneyPreviewHtml);
@@ -148,6 +138,7 @@ export async function POST(req: Request) {
     const finalContentHtml = removeDuplicateParagraphs(
       applyClientGenderToQualification(previewWithoutDuplicateAddress, client.gender),
     );
+    validateAttorneyQualification(replaceTemplateVariables(finalContentHtml, variables), documentType || '', title || '', variables.patronos_qualificacao_conjunta);
     const rendered = await compileTemplatePreviewToPdf({ title: title || 'Documento', contentHtml: finalContentHtml, variables, officeName: office.tradeName || office.name, version: 1, letterheadBuffer });
     const placementHeader = encodeURIComponent(JSON.stringify(rendered.signaturePlacements.map((position) => ({ ...position, caption: position.caption.slice(0, 200) }))));
     return new NextResponse(new Uint8Array(rendered.pdfBuffer), { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="minuta.pdf"', 'X-Signature-Placements': placementHeader.length <= 6000 ? placementHeader : '%5B%5D' } });

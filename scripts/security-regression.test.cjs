@@ -18,6 +18,7 @@ function load(file, dependencies = {}, env = {}) {
     module, exports: module.exports, process: { env }, Buffer, URL, Response,
     console: { ...console, error: () => {} },
     require(id) {
+      if (id === '@/lib/attorney-qualification' || id === './attorney-qualification') return load('src/lib/attorney-qualification.ts');
       if (id === '@/lib/participant-qualification') return load('src/lib/participant-qualification.ts');
       if (id === '@/lib/participant-groups') return load('src/lib/participant-groups.ts');
       if (id === '@/lib/signer-stamps') return load('src/lib/signer-stamps.ts');
@@ -287,5 +288,98 @@ for (const [name, kit, user, expected] of [
     const response = await routes.POST(request({ clientId: 'client-a', kitId: 'kit-a' }));
     assert.equal(response.status, expected);
     assert.equal(sideEffect, false);
+  });
+}
+
+const attorneyRules = load('src/lib/attorney-qualification.ts');
+const normalization = load('src/lib/kitTemplateNormalization.ts');
+const qualification = 'ANA TESTE, advogada, inscrita na OAB/BA 12345 e BRUNO TESTE, advogado, inscrito na OAB/BA 67890, com escritório profissional na Rua Teste, 10';
+const missingAttorneys = '<h1><p><b>PROCURAÇÃO</b></p><p><font size="2"><strong>OUTORGANTE:</strong> {{cliente_nome}}, CPF {{cliente_cpf}}.</font></p><p><b>PODERES GERAIS:</b> confere aos OUTORGADOS poderes para representar a cliente.</p><p>{{cidade}}, {{data_atual}}.</p><p>{{cliente_nome}}<br>Outorgante</p></h1>';
+for (const [name, input, type, title, label] of [
+  ['Word com parágrafo ausente (caso reportado)', missingAttorneys, 'PROCURACAO', 'Procuração Ad Judicia', 'OUTORGADOS'],
+  ['contrato sem contratados', '<p>CONTRATANTE: {{cliente_nome}}</p><p>OBJETO: assessoria.</p>', 'CONTRATO', 'Honorários', 'CONTRATADOS'],
+  ['texto simples', 'PROCURAÇÃO\nOUTORGANTE: {{cliente_nome}}\nPODERES: atuar.', 'PROCURACAO', 'Mandato', 'OUTORGADOS'],
+  ['blocos dentro de div', '<div><p>OUTORGANTE: {{cliente_nome}}</p><p>OUTORGADOS: nome antigo.</p><p>PODERES: atuar.</p></div>', 'PROCURACAO', 'Mandato', 'OUTORGADOS'],
+  ['rótulo singular', '<p>OUTORGADO: nome antigo.</p><p>PODERES: atuar.</p>', 'PROCURACAO', 'Mandato', 'OUTORGADOS'],
+  ['token apenas em comentário', '<!-- {{patronos_qualificacao_conjunta}} --><p>OUTORGANTE: {{cliente_nome}}</p><p>PODERES: atuar.</p>', 'PROCURACAO', 'Mandato', 'OUTORGADOS'],
+]) {
+  test(`patronos: restaura e mantém estável ${name}`, () => {
+    const html = normalization.ensureClientQualificationTokens(input, title, type);
+    assert.match(html, new RegExp(`<strong>${label}:</strong> {{patronos_qualificacao_conjunta}}`));
+    assert.equal(attorneyRules.ensureJointAttorneyQualification(html, type, title), html);
+    const rendered = html.replace(/{{patronos_qualificacao_conjunta}}/g, qualification);
+    attorneyRules.validateAttorneyQualification(rendered, type, title, qualification);
+    assert.match(html, /PODERES|OBJETO/);
+  });
+}
+test('declaração não recebe outorgados; ausência e valores vazios são recusados', () => {
+  const html = '<p>Declaro minha residência.</p>';
+  assert.equal(attorneyRules.ensureJointAttorneyQualification(html, 'DECLARACAO', 'Residência'), html);
+  assert.throws(() => attorneyRules.validateAttorneyQualification(missingAttorneys, 'PROCURACAO', 'Mandato', qualification), /qualificação completa/);
+  assert.throws(() => attorneyRules.validateAttorneyQualification('<p>OUTORGADOS: .</p>', 'PROCURACAO', 'Mandato', ''), /qualificação completa/);
+  for (const roster of [[], [{ name: 'Ana', oabNumber: '' }], [{ name: '', oabNumber: '12345' }]]) {
+    assert.throws(() => attorneyRules.validateAttorneyRoster(roster), /OAB/);
+  }
+});
+
+function testCompiler() {
+  // pdf-lib usa instanceof Array; executar no mesmo contexto evita diferenças
+  // de identidade de Array/Uint8Array da sandbox, sem carregar storage real.
+  const dependencies = {
+    'pdf-lib': require('pdf-lib'),
+    './storage': { saveFile: async () => { throw new Error('Teste não pode salvar arquivo'); } },
+    './pdfHash': { calculateHash: () => 'hash-teste' },
+    './attorney-qualification': attorneyRules,
+  };
+  const compiled = ts.transpileModule(fs.readFileSync(path.join(root, 'src/lib/templateCompiler.ts'), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+  }).outputText;
+  const module = { exports: {} };
+  new Function('module', 'exports', 'require', compiled)(module, module.exports, id => {
+    if (Object.hasOwn(dependencies, id)) return dependencies[id];
+    throw new Error(`Dependência bloqueada: ${id}`);
+  });
+  return module.exports;
+}
+test('PDF real preserva ambos os advogados e recusa parágrafo vazio após diagramação', async () => {
+  const compiler = testCompiler();
+  const html = normalization.ensureClientQualificationTokens(missingAttorneys, 'Procuração Ad Judicia', 'PROCURACAO');
+  const variables = { cliente_nome: 'CLIENTE TESTE', cliente_cpf: '000.000.000-00', patronos_qualificacao_conjunta: qualification, patronos_nomes: 'ANA TESTE|BRUNO TESTE' };
+  const result = await compiler.compileTemplatePreviewToPdf({ title: 'Procuração Ad Judicia', contentHtml: html, variables, officeName: 'Escritório teste' });
+  assert.ok(result.pdfBuffer.length > 1000);
+  assert.ok(result.compiledText.includes(qualification));
+  await assert.rejects(compiler.compileTemplatePreviewToPdf({ title: 'Procuração', contentHtml: html, variables: { ...variables, patronos_qualificacao_conjunta: '' }, officeName: 'Teste' }), /qualificação completa/);
+});
+
+for (const invalidRoster of [false, true]) {
+  test(`envio real do kit ${invalidRoster ? 'bloqueia OAB ausente antes de gravar' : 'restaura procuração e contrato e ignora sobrescrita vazia da tela'}`, async () => {
+    const compiled = []; let documents = 0;
+    const compiler = testCompiler();
+    const templates = [
+      { id: 'p', title: 'Procuração', documentType: 'PROCURACAO', contentHtml: missingAttorneys },
+      { id: 'c', title: 'Contrato', documentType: 'CONTRATO', contentHtml: '<p>CONTRATANTE: {{cliente_nome}}</p><p>OBJETO: assessoria.</p>' },
+    ].map(t => ({ template: { ...t, officeId: actor.officeId, active: true } }));
+    const routes = load('src/app/api/kits/generate-package/route.ts', {
+      '@/lib/auth': { getSessionUser: async () => actor }, '@/lib/audit': audit,
+      '@/lib/templateCompiler': { replaceTemplateVariables: compiler.replaceTemplateVariables, compileTemplateToPdf: async (args) => {
+        compiled.push(compiler.replaceTemplateVariables(args.contentHtml, args.variables));
+        return { storageRecord: { id: 'file' }, hash: 'hash', pageCount: 1, signaturePosition: 'BOTTOM' };
+      } },
+      '@/lib/documentLetterhead': { getDocumentLetterheadBuffer: async () => undefined },
+      '@/lib/kitTemplateNormalization': normalization, crypto: { randomUUID: () => 'batch' },
+      '@/lib/prisma': { prisma: {
+        client: { findFirst: async () => ({ id: 'client-a', name: 'CLIENTE TESTE', cpfCnpj: '00000000000' }) },
+        office: { findUnique: async () => ({ id: actor.officeId, name: 'Teste', address: 'Rua Teste, 10' }) },
+        legalKit: { findFirst: async () => ({ id: 'kit', name: 'Kit teste', active: true, items: templates }) },
+        user: { findMany: async () => [{ name: 'ANA TESTE', oabNumber: invalidRoster ? '' : '12345', gender: 'FEMININO' }] },
+        document: { create: async ({ data }) => { documents++; return { ...data, id: 'doc' }; } },
+        signer: { create: async ({ data }) => ({ ...data, token: 'test' }) },
+        documentEvent: { create: async () => ({}) },
+      } },
+    });
+    const response = await routes.POST(request({ clientId: 'client-a', kitId: 'kit-a', customVariables: { patronos_qualificacao_conjunta: '', patronos_nomes: '' } }));
+    assert.equal(response.status, invalidRoster ? 400 : 200, JSON.stringify(await response.json()));
+    assert.equal(documents, invalidRoster ? 0 : 2);
+    if (!invalidRoster) for (const html of compiled) { assert.match(html, /ANA TESTE/); assert.match(html, /12345/); }
   });
 }

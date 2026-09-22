@@ -76,7 +76,7 @@ interface LegalKit {
   items: Array<{
     id: string;
     displayOrder: number;
-    template: { id: string; title: string; contentHtml: string };
+    template: { id: string; title: string; contentHtml: string; documentType?: string };
   }>;
 }
 
@@ -413,7 +413,7 @@ export default function DispatchKitPage() {
 
   const renderEditableReview = (html: string) => {
     let rendered = removeStandaloneClientNameBeforeQualification(
-      renderForReview(ensureClientQualificationTokens(html, reviewItem?.template.title || '')),
+      renderForReview(ensureClientQualificationTokens(html, reviewItem?.template.title || '', reviewItem?.template.documentType || '')),
       reviewClientData.cliente_nome || '',
     );
     if (/(procura[cç][aã]o|contrato)/i.test(reviewItem?.template.title || '')) {
@@ -527,7 +527,7 @@ export default function DispatchKitPage() {
     setLoadingReviewPdf(true);
     setReviewPdfUrl(null);
     try {
-      const response = await fetch('/api/kits/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: selectedClientId, title: item.template.title, contentHtml: customContents[item.template.id] || item.template.contentHtml, customVariables: variables, signers }) });
+      const response = await fetch('/api/kits/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: selectedClientId, title: item.template.title, documentType: item.template.documentType, contentHtml: customContents[item.template.id] || item.template.contentHtml, customVariables: variables, signers }) });
       if (!response.ok) throw new Error();
       const placements = JSON.parse(decodeURIComponent(response.headers.get('X-Signature-Placements') || '%5B%5D'));
       setDetectedStamps(placements);

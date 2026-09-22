@@ -1,3 +1,4 @@
+import { validateAttorneyQualification } from './attorney-qualification';
 ﻿import { degrees, PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { saveFile } from './storage';
 import { calculateHash } from './pdfHash';
@@ -466,6 +467,12 @@ async function renderTemplatePdf({
   const marginX = embeddedLetterhead ? 62 : 40;
   const maxWidth = width - marginX * 2;
   const paragraphs = applyDynamicSignatureFooter(parseRichParagraphs(presentationHtml), variables);
+  // Última barreira: validar o texto que será desenhado, após limpeza do HTML
+  // e ajuste do rodapé, antes de persistir qualquer PDF.
+  if (/{{\s*patronos_qualificacao_conjunta\s*}}/i.test(contentHtml)) {
+    const type = /OUTORGADOS?\s*:/i.test(contentHtml.replace(/<[^>]+>/g, ' ')) ? 'PROCURACAO' : /CONTRATADOS?\s*:/i.test(contentHtml.replace(/<[^>]+>/g, ' ')) ? 'CONTRATO' : '';
+    validateAttorneyQualification(paragraphs.map(paragraph => paragraph.runs.map(run => run.text).join('')).join(' '), type, title, variables.patronos_qualificacao_conjunta || '');
+  }
   let signaturePlacement: { page: number; x: number; y: number; width: number; height: number } | null = null;
   const signaturePlacements: Array<{ page: number; x: number; y: number; width: number; height: number; caption: string }> = [];
   let explicitSignatureLineFound = false;

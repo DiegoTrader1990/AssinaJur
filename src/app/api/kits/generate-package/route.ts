@@ -1,3 +1,4 @@
+import { ensureJointAttorneyQualification, attorneyLabel, validateAttorneyRoster, validateAttorneyQualification } from '@/lib/attorney-qualification';
 import { qualificationFromClient, validateParticipantQualifications, participantVariables, PARTICIPANT_DETAILS_EVENT } from '@/lib/participant-qualification';
 import { expandRogoParticipants, PARTICIPANT_GROUPS_EVENT } from '@/lib/participant-groups';
 import { stampParticipants, validateStamps, encodeStamps, suggestStamps } from '@/lib/signer-stamps';
@@ -5,7 +6,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
-import { compileTemplateToPdf } from '@/lib/templateCompiler';
+import { compileTemplateToPdf, replaceTemplateVariables } from '@/lib/templateCompiler';
 import { getDocumentLetterheadBuffer } from '@/lib/documentLetterhead';
 import { randomUUID } from 'crypto';
 import { applyClientGenderToQualification, ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, genderizeNeutralWord, removeDuplicateClientAddressWhenShared, removeDuplicateParagraphs, removeEmptyRgFromQualification, removeStandaloneClientNameBeforeQualification, trimTrailingPeriod } from '@/lib/kitTemplateNormalization';
@@ -49,40 +50,6 @@ function hasValidCpfCnpjCheckDigits(value: string): boolean {
   return digit(12) === Number(digits[12]) && digit(13) === Number(digits[13]);
 }
 
-function ensureJointAttorneyQualification(contentHtml: string, documentType: string, title: string) {
-  const isPowerOfAttorney = /PROCUR/i.test(documentType) || /procura[cç][aã]o/i.test(title);
-  const isContract = /CONTRAT/i.test(documentType) || /contrato/i.test(title);
-  if ((!isPowerOfAttorney && !isContract) || /{{\s*patronos_qualificacao_conjunta\s*}}/i.test(contentHtml)) {
-    return contentHtml;
-  }
-
-  // Modelos antigos trazem apenas o primeiro advogado. Ao gerar documentos de kit,
-  // aproveitamos os patronos ativos configurados pelo escritório sem alterar o modelo salvo.
-  const labels = isPowerOfAttorney ? 'OUTORGADOS?' : 'CONTRATADOS?';
-  const replacementLabel = isPowerOfAttorney ? 'OUTORGADOS' : 'CONTRATADOS';
-  const labelAtStart = new RegExp(`^\\s*${labels}\\s*:`, 'i');
-  let replaced = false;
-
-  // O editor pode salvar o rótulo puro, em <strong>, <b> ou junto com outras tags.
-  // Por isso analisamos cada parágrafo isoladamente, sem depender de uma única estrutura HTML.
-  const withBlockQualification = contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
-    const visibleText = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
-    if (!labelAtStart.test(visibleText)) return block;
-    replaced = true;
-    const fontOpen = String(innerHtml).match(/<font\b[^>]*>/i)?.[0] || '';
-    const fontClose = fontOpen ? '</font>' : '';
-    return `<${tag}${attributes}>${fontOpen}<strong>${replacementLabel}:</strong> {{patronos_qualificacao_conjunta}}.${fontClose}</${tag}>`;
-  });
-
-  if (replaced) return withBlockQualification;
-
-  // Compatibilidade com modelos antigos em texto simples, sem tags de parágrafo.
-  const plainLinePattern = new RegExp(`(^|\\n)\\s*${labels}\\s*:[^\\n]*`, 'i');
-  return withBlockQualification.replace(
-    plainLinePattern,
-    (_match, prefix) => `${prefix}<p><strong>${replacementLabel}:</strong> {{patronos_qualificacao_conjunta}}.</p>`,
-  );
-}
 
 function ensureClientRepresentativeQualification(contentHtml: string, documentType: string, title: string, hasRepresentative: boolean) {
   const isPowerOfAttorney = /PROCUR/i.test(documentType) || /procura[cç][aã]o/i.test(title);
@@ -91,7 +58,7 @@ function ensureClientRepresentativeQualification(contentHtml: string, documentTy
   if (!hasRepresentative || (!isPowerOfAttorney && !isContract && !isDeclaration) || /{{\s*cliente_representacao\s*}}/i.test(contentHtml)) return contentHtml;
   const label = isPowerOfAttorney ? 'OUTORGANTE' : isContract ? 'CONTRATANTE' : '';
   let included = false;
-  return contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
+  return contentHtml.replace(/<(p|div)([^>]*)>((?:(?!<\/?(?:p|div)\b)[\s\S])*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
     const visibleText = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
     const matchesClientQualification = label ? new RegExp(`^${label}\\s*:`, 'i').test(visibleText) : /{{\s*cliente_nome\s*}}/i.test(innerHtml);
     if (included || !matchesClientQualification) return block;
@@ -246,6 +213,11 @@ export async function POST(req: Request) {
       orderBy: { name: 'asc' },
     });
 
+    if (kit.items.some(({ template }) => attorneyLabel(template.documentType, template.title))) {
+      try { validateAttorneyRoster(activeLawyers); }
+      catch (error) { return NextResponse.json({ error: (error as Error).message }, { status: 400 }); }
+    }
+
     const fullAddress = (office as any).address
       ? String((office as any).address)
       : 'Rua José Rodrigues, nº 219, Centro, Porto Seguro/BA, CEP 45810-000';
@@ -383,11 +355,6 @@ export async function POST(req: Request) {
       escritorio_telefone: office.phone || '(73) 98117-1111 / (73) 98825-0201',
       escritorio_email: office.email || 'contato@rodriguesesoares.adv.br',
       escritorio_qualificacao: trimTrailingPeriod(fullOfficeQualification),
-      // O modelo fecha a qualificação dos patronos com o próprio ponto final.
-      // Como o endereço do escritório costuma estar cadastrado terminando em
-      // ponto ("... CEP 45810-000."), o documento saía com ".." no fim.
-      patronos_qualificacao_conjunta: trimTrailingPeriod(jointPatronosQualification),
-      patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),
       // Qualificação completa do assinante a rogo (nome, CPF, RG, nascimento e
       // endereço), para modelos que precisem identificá-lo formalmente no corpo
       // do documento - mesmo padrão usado para representante_qualificacao.
@@ -412,6 +379,10 @@ export async function POST(req: Request) {
           ].filter(Boolean).join(', ')
         : '',
       ...(customVariables || {}),
+      // Dados dos patronos vêm do cadastro, nunca de campos livres da tela.
+      // O modelo já acrescenta o ponto final da qualificação.
+      patronos_qualificacao_conjunta: trimTrailingPeriod(jointPatronosQualification),
+      patronos_nomes: orderedLawyers.map((lawyer) => lawyer.name).join('|'),
       ...participantVariables(orderedSignerInputs),
       // A cidade é um dado do cliente selecionado; um valor antigo salvo no kit não pode sobrescrevê-la.
       cidade: [client.city, client.state].filter(Boolean).join('/') || 'Porto Seguro/BA',
@@ -431,8 +402,8 @@ export async function POST(req: Request) {
     let participantLinks: Array<{ name: string; role: string; token: string; signingMode: string }> = [];
     const kitBatchId = randomUUID();
 
-    // Gerar todos os documentos do kit em transação
-    for (const item of kit.items) {
+    // Validar todas as minutas antes de salvar qualquer documento do lote.
+    const preparedItems = kit.items.map((item) => {
       const template = item.template;
 
       // Usar conteúdo customizado (editado pelo advogado) se disponível
@@ -477,6 +448,11 @@ export async function POST(req: Request) {
         applyClientGenderToQualification(withoutDuplicateAddress, client.gender),
       );
 
+      validateAttorneyQualification(replaceTemplateVariables(finalContentHtml, variableValues), template.documentType, template.title, variableValues.patronos_qualificacao_conjunta);
+      return { template, finalContentHtml };
+    });
+
+    for (const { template, finalContentHtml } of preparedItems) {
       const compiledResult = await compileTemplateToPdf({
         officeId: user.officeId,
         uploadedBy: user.id,

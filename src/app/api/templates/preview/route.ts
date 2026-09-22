@@ -1,3 +1,4 @@
+import { ensureJointAttorneyQualification } from '@/lib/attorney-qualification';
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
@@ -17,24 +18,6 @@ const EXAMPLES = {
   valor_honorarios: 'R$ 3.000,00', percentual_exito: '30%', cidade: 'Porto Seguro', data_atual: '12 de agosto de 2026',
 };
 
-function ensureJointAttorneyQualification(contentHtml: string, documentType: string, title: string) {
-  const isPowerOfAttorney = /PROCUR/i.test(documentType) || /procura[cç][aã]o/i.test(title);
-  const isContract = /CONTRAT/i.test(documentType) || /contrato/i.test(title);
-  if ((!isPowerOfAttorney && !isContract) || /{{\s*patronos_qualificacao_conjunta\s*}}/i.test(contentHtml)) return contentHtml;
-  const labels = isPowerOfAttorney ? 'OUTORGADOS?' : 'CONTRATADOS?';
-  const replacementLabel = isPowerOfAttorney ? 'OUTORGADOS' : 'CONTRATADOS';
-  const labelAtStart = new RegExp(`^\\s*${labels}\\s*:`, 'i');
-  let replaced = false;
-  const prepared = contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
-    const text = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
-    if (!labelAtStart.test(text)) return block;
-    replaced = true;
-    return `<${tag}${attributes}><strong>${replacementLabel}:</strong> {{patronos_qualificacao_conjunta}}.</${tag}>`;
-  });
-  if (replaced) return prepared;
-  const plainLinePattern = new RegExp(`(^|\\n)\\s*${labels}\\s*:[^\\n]*`, 'i');
-  return prepared.replace(plainLinePattern, (_match, prefix) => `${prefix}<p><strong>${replacementLabel}:</strong> {{patronos_qualificacao_conjunta}}.</p>`);
-}
 
 export async function GET() {
   try {

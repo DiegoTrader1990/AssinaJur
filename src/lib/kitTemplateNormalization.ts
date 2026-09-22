@@ -1,3 +1,5 @@
+import { ensureJointAttorneyQualification } from './attorney-qualification';
+
 export function formatCpfCnpj(value: string | null | undefined): string {
   const digits = String(value || '').replace(/\D/g, '');
   if (digits.length === 11) return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
@@ -55,7 +57,7 @@ export function trimTrailingPeriod(value: string): string {
 // final. Só mexe no parágrafo que realmente traz a representação/rogo - uma
 // Declaração de Residência, por exemplo, continua com o endereço intacto.
 export function removeDuplicateClientAddressWhenShared(contentHtml: string): string {
-  return contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attrs, inner) => {
+  return contentHtml.replace(/<(p|div)([^>]*)>((?:(?!<\/?(?:p|div)\b)[\s\S])*?)<\/\1>/gi, (block, tag, attrs, inner) => {
     const sharesAddressBelow = /{{\s*(?:cliente_representacao|assinante_rogo_qualificacao)\s*}}/i.test(inner);
     if (!sharesAddressBelow) return block;
     const cleaned = String(inner)
@@ -94,7 +96,7 @@ export function applyClientGenderToQualification(contentHtml: string, gender?: s
       .replace(/nascido\(a\)/gi, `nascid${ending}`)
       .replace(/domiciliado\(a\)/gi, `domiciliad${ending}`);
 
-  return contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attrs, inner) => {
+  return contentHtml.replace(/<(p|div)([^>]*)>((?:(?!<\/?(?:p|div)\b)[\s\S])*?)<\/\1>/gi, (block, tag, attrs, inner) => {
     const text = String(inner);
     const isClientQualification = /{{\s*cliente_(?:nome|cpf|portador|residente_domiciliado)\s*}}/i.test(text);
     if (!isClientQualification) return block;
@@ -202,7 +204,7 @@ export function removeStandaloneClientNameBeforeQualification(contentHtml: strin
 export function removeDuplicateParagraphs(contentHtml: string): string {
   const seen = new Set<string>();
   const MIN_LENGTH_TO_DEDUPE = 60;
-  return contentHtml.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attrs, inner) => {
+  return contentHtml.replace(/<(p|div)([^>]*)>((?:(?!<\/?(?:p|div)\b)[\s\S])*?)<\/\1>/gi, (block, tag, attrs, inner) => {
     const visibleText = String(inner).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
     if (visibleText.length < MIN_LENGTH_TO_DEDUPE) return block;
     const signature = visibleText.toLocaleLowerCase('pt-BR');
@@ -242,7 +244,7 @@ export function ensureClientQualificationTokens(contentHtml: string, title: stri
   const label = isPower ? 'OUTORGANTE' : isContract ? 'CONTRATANTE' : '';
   if (label) {
     let replaced = false;
-    result = result.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attrs, inner) => {
+    result = result.replace(/<(p|div)([^>]*)>((?:(?!<\/?(?:p|div)\b)[\s\S])*?)<\/\1>/gi, (block, tag, attrs, inner) => {
       const text = String(inner).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
       // Não basta existir uma variável em outro trecho da minuta. A qualificação
       // inicial precisa ser dinâmica por si só; caso ainda tenha dados fixos de
@@ -266,7 +268,7 @@ export function ensureClientQualificationTokens(contentHtml: string, title: stri
   // de identificação dinâmico, preservando o restante da declaração.
   if (isDeclaration) {
     let declarationQualificationReplaced = false;
-    result = result.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attrs, inner) => {
+    result = result.replace(/<(p|div)([^>]*)>((?:(?!<\/?(?:p|div)\b)[\s\S])*?)<\/\1>/gi, (block, tag, attrs, inner) => {
       const text = String(inner).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
       const hasClientToken = /{{\s*cliente_(?:nome|cpf|rg|endereco)\s*}}/i.test(inner);
       const looksLikeQualification = /(?:CPF(?:\s*\/\s*MF)?|RG\s*(?:n[ºo.]?)?|residente\s+e\s+domiciliad)/i.test(text);
@@ -276,29 +278,7 @@ export function ensureClientQualificationTokens(contentHtml: string, title: stri
     });
   }
 
-  // O parágrafo "OUTORGADOS:"/"CONTRATADOS:" traz o(s) advogado(s) responsáveis
-  // pelo caso (nome, OAB, endereço). Modelos antigos ou colados do Word trazem
-  // sempre os mesmos nomes fixos, mas o escritório pode ter outros advogados
-  // atuando depois. Convertendo para {{patronos_qualificacao_conjunta}} o
-  // sistema preenche automaticamente com quem estiver responsável no momento
-  // de gerar o documento (1, 2 ou mais advogados), do mesmo jeito que já
-  // acontece na geração de kits (generate-package/route.ts).
-  if (isPower || isContract) {
-    const attorneyLabel = isPower ? 'OUTORGADOS?' : 'CONTRATADOS?';
-    const attorneyReplacementLabel = isPower ? 'OUTORGADOS' : 'CONTRATADOS';
-    const attorneyLabelAtStart = new RegExp(`^${attorneyLabel}\\s*:`, 'i');
-    let attorneyReplaced = false;
-    result = result.replace(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi, (block, tag, attrs, inner) => {
-      const text = String(inner).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
-      if (attorneyReplaced || /{{\s*patronos_qualificacao_conjunta\s*}}/i.test(inner) || !attorneyLabelAtStart.test(text)) return block;
-      attorneyReplaced = true;
-      const fontOpen = String(inner).match(/<font\b[^>]*>/i)?.[0] || '';
-      const fontClose = fontOpen ? '</font>' : '';
-      return `<${tag}${attrs}>${fontOpen}<strong>${attorneyReplacementLabel}:</strong> {{patronos_qualificacao_conjunta}}.${fontClose}</${tag}>`;
-    });
-  }
-
-  const blocks = [...result.matchAll(/<(p|div)([^>]*)>([\s\S]*?)<\/\1>/gi)];
+  const blocks = [...result.matchAll(/<(p|div)([^>]*)>((?:(?!<\/?(?:p|div)\b)[\s\S])*?)<\/\1>/gi)];
   const textOf = (block: RegExpMatchArray) => String(block[3]).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
   const roleIndex = blocks.map(textOf).map((text, index) => /^(OUTORGANTE|CONTRATANTE|DECLARANTE)\b/i.test(text) ? index : -1).filter((index) => index >= 0).at(-1);
   const replaceBlock = (block: RegExpMatchArray, content: string) => {
@@ -315,5 +295,5 @@ export function ensureClientQualificationTokens(contentHtml: string, title: stri
     const dateBlock = blocks.slice(0, Math.max(0, roleIndex - 1)).reverse().find((block) => /\d{1,2}\s+de\s+/i.test(textOf(block)) || /\d{1,2}[\/.\-]\d{2,4}/.test(textOf(block)));
     if (dateBlock) replaceBlock(dateBlock, '{{cidade}}, {{data_atual}}.');
   }
-  return result;
+  return ensureJointAttorneyQualification(result, documentType, title);
 }
