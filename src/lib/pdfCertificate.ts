@@ -828,9 +828,15 @@ export async function generateFinalPdfCertificate(documentId: string) {
       }
     }
 
-    // Rodapé de verificação: QR e base legal, ancorados na base da página para
-    // não ficarem flutuando quando houver poucas partes.
-    const footerY = Math.min(cursor - 6, 196);
+    // Rodapé de verificação: QR e base legal. Antes ficava sempre travado em
+    // y=196 (perto da base da página) quando havia poucas partes - isso é o
+    // que deixava um vão enorme e vazio entre o card da(s) parte(s) e o
+    // rodapé em documentos de 1-2 signatários (o card termina perto do topo,
+    // mas o rodapé só aparecia lá embaixo). Agora o rodapé acompanha o fim
+    // real do conteúdo (com um respiro de 40pt), e só usa 196 como piso de
+    // segurança para documentos com muitas partes/testemunhas, onde o
+    // conteúdo já desce quase até lá.
+    const footerY = Math.max(cursor - 40, 132);
     const qrSheetSize = 62;
     sheetPage.drawLine({ start: { x: CX, y: footerY + 4 }, end: { x: CR, y: footerY + 4 }, thickness: 0.8, color: panelBorder });
     sheetPage.drawImage(qrImage, { x: CX, y: footerY - qrSheetSize - 4, width: qrSheetSize, height: qrSheetSize });

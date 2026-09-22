@@ -66,6 +66,12 @@ export async function GET(
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `${inlinePreview ? 'inline' : 'attachment'}; filename="${encodeURIComponent(fileToServe.originalName)}"`,
+        // Sem isto, o navegador podia reutilizar o PDF baixado ANTES de uma
+        // correção de foto (mesma URL, mesmo id) mesmo depois do certificado
+        // já ter sido regenerado no servidor com a foto nova - o escritório
+        // via a assinatura corrigida na tela de acompanhamento, mas o PDF
+        // baixado continuava sendo o antigo (do cache do navegador).
+        'Cache-Control': 'no-store, must-revalidate',
       },
     });
   } catch (error: any) {

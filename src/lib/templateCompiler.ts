@@ -584,11 +584,21 @@ async function renderTemplatePdf({
           color: heading ? navyColor : textColor,
         });
 
-        // Advance cursorX by word width + (space width + extraWordSpacing if not last word)
+        // Advance cursorX by word width + (space width + extraWordSpacing if not last word).
+        // Palavras em negrito (nomes) terminam em uma "run" separada da pontuação que
+        // vem em seguida (ex.: "</strong>," vindo do destaque de nomes em
+        // emphasizeDocumentNames) - por isso o próximo token pode ser só a vírgula.
+        // O mesmo teste de "próximo token começa com pontuação" já era usado no cálculo
+        // de largura/quebra de linha (mais abaixo) para não contar espaço extra ali;
+        // aqui ele fazia falta, e o espaço era desenhado mesmo assim, produzindo
+        // "NOME ," em vez de "NOME,".
         let wordWidth = font.widthOfTextAtSize(cleanText, token.fontSize);
         if (index < line.length - 1) {
-          const spaceWidth = font.widthOfTextAtSize(' ', token.fontSize);
-          wordWidth += spaceWidth + (shouldJustify ? extraWordSpacing : 0);
+          const nextIsPunctuation = /^[,.;:!?)]/.test(line[index + 1].text);
+          if (!nextIsPunctuation) {
+            const spaceWidth = font.widthOfTextAtSize(' ', token.fontSize);
+            wordWidth += spaceWidth + (shouldJustify ? extraWordSpacing : 0);
+          }
         }
         cursorX += wordWidth;
       });

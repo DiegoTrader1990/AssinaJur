@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { compileTemplatePreviewToPdf, replaceTemplateVariables } from '@/lib/templateCompiler';
 import { getDocumentLetterheadBuffer } from '@/lib/documentLetterhead';
-import { applyClientGenderToQualification, ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, genderizeNeutralWord, removeDuplicateClientAddressWhenShared, removeDuplicateParagraphs, removeEmptyRgFromQualification, removeStandaloneClientNameBeforeQualification, trimTrailingPeriod } from '@/lib/kitTemplateNormalization';
+import { applyClientGenderToQualification, ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, genderizeNationality, genderizeNeutralWord, removeDuplicateClientAddressWhenShared, removeDuplicateParagraphs, removeEmptyRgFromQualification, removeStandaloneClientNameBeforeQualification, trimTrailingPeriod } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,7 +104,7 @@ export async function POST(req: Request) {
       representante_legal: client.legalRepresentative || '', representante_cpf: formatCpfCnpj(client.representativeCpf) || '', representante_rg: client.representativeRg || '', representante_telefone: formatPhone(client.representativePhone) || '',
       representante_qualificacao: representativeQualificationParts.join(', '),
       cliente_representacao: client.legalRepresentative ? `neste ato ${representadoWord} por ${client.legalRepresentative}, ${representativeQualificationParts.join(', ')}` : '',
-      cliente_nome: client.name, cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '', cliente_nacionalidade: client.nationality || 'Brasileira',
+      cliente_nome: client.name, cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '', cliente_nacionalidade: genderizeNationality(client.nationality, client.gender) || 'Brasileiro(a)',
       // "Solteiro(a)" do cadastro sai como "Solteira"/"Solteiro" no documento.
       cliente_estado_civil: genderizeNeutralWord(client.maritalStatus, client.gender) || '—', cliente_profissao: client.profession || '—',
       cliente_nascimento_qualificacao: client.birthDate ? `, ${nascidoWord} em ${formatBirthDate(client.birthDate)}` : '',

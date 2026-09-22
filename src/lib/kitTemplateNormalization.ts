@@ -37,6 +37,23 @@ export function genderizeNeutralWord(value: string | null | undefined, gender?: 
   return raw;
 }
 
+// Nacionalidade não segue o padrão "Palavra(a)" das outras opções do cadastro -
+// o campo nasce preenchido sozinho com "Brasileira" (valor padrão do cadastro,
+// nunca ajustado ao gênero da pessoa; ver Client.nationality no schema). Um
+// cliente homem cujo cadastro nunca teve esse campo tocado à mão saía com
+// "DIAMANTINO ..., Brasileira, ..." no documento assinado - erro visível bem
+// na abertura da qualificação. Corrige só o par Brasileiro/Brasileira, que é o
+// único que o próprio sistema preenche sozinho; qualquer outra nacionalidade
+// digitada à mão (estrangeira) é mantida exatamente como foi escrita, sem
+// tentar adivinhar a forma certa.
+export function genderizeNationality(value: string | null | undefined, gender?: string | null): string {
+  const raw = String(value || '').trim();
+  if (raw !== 'Brasileiro' && raw !== 'Brasileira') return raw;
+  if (gender === 'FEMININO') return 'Brasileira';
+  if (gender === 'MASCULINO') return 'Brasileiro';
+  return raw;
+}
+
 // Tira o ponto final de um trecho que vai ser emendado dentro de outra frase.
 // O endereço do escritório, por exemplo, costuma estar cadastrado terminando em
 // ponto ("... CEP 45810-000."); como o modelo fecha a qualificação dos patronos

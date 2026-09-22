@@ -9,7 +9,7 @@ import { logAuditEvent } from '@/lib/audit';
 import { compileTemplateToPdf, replaceTemplateVariables } from '@/lib/templateCompiler';
 import { getDocumentLetterheadBuffer } from '@/lib/documentLetterhead';
 import { randomUUID } from 'crypto';
-import { applyClientGenderToQualification, ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, genderizeNeutralWord, removeDuplicateClientAddressWhenShared, removeDuplicateParagraphs, removeEmptyRgFromQualification, removeStandaloneClientNameBeforeQualification, trimTrailingPeriod } from '@/lib/kitTemplateNormalization';
+import { applyClientGenderToQualification, ensureClientQualificationTokens, formatBirthDate, formatCpfCnpj, formatPhone, genderizeNationality, genderizeNeutralWord, removeDuplicateClientAddressWhenShared, removeDuplicateParagraphs, removeEmptyRgFromQualification, removeStandaloneClientNameBeforeQualification, trimTrailingPeriod } from '@/lib/kitTemplateNormalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -326,7 +326,7 @@ export async function POST(req: Request) {
       // Sem RG o token sai vazio (e o trecho inteiro já foi removido do texto
       // por removeEmptyRgFromQualification) - o traço antigo virava "RG nº —".
       cliente_rg: client.rg || '',
-      cliente_nacionalidade: client.nationality || 'Brasileira',
+      cliente_nacionalidade: genderizeNationality(client.nationality, client.gender) || 'Brasileiro(a)',
       cliente_genero: client.gender || '',
       cliente_telefone: client.whatsapp || client.phone || '—',
       cliente_endereco: clienteEnderecoText,
