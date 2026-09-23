@@ -92,6 +92,7 @@ interface DocumentItem {
   verificationCode?: string;
   createdAt: string;
   completedAt?: string;
+  updatedAt?: string;
   kitBatchId?: string | null;
   kitId?: string | null;
   processId?: string | null;
@@ -785,7 +786,7 @@ export default function DocumentsPage() {
         <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1">
           {isCompleted ? (
             <a
-              href={`/api/documents/${doc.id}/download`}
+              href={`/api/documents/${doc.id}/download${doc.updatedAt ? `?v=${encodeURIComponent(doc.updatedAt)}` : ''}`}
               download
               title="Baixar PDF Assinado"
               className="flex-1 py-1 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-[10px] flex items-center justify-center gap-1 font-heading"
@@ -882,7 +883,7 @@ export default function DocumentsPage() {
           <div className="mt-2 flex items-center justify-between"><div>{getStatusBadge(isCompleted ? 'CONCLUIDO' : lead.status)}</div>{lead.client?.cpfCnpj && <span className="font-mono text-[9px] text-slate-500">{maskCpfCnpj(lead.client.cpfCnpj)}</span>}</div>
         </div>
         <div className="divide-y divide-slate-100">
-          {packageDocuments.map((item, index) => <div key={item.id} className="px-3.5 py-2.5 flex items-center justify-between gap-2"><div className="min-w-0 flex items-center gap-2"><span className="w-5 h-5 shrink-0 rounded-md bg-slate-100 text-slate-600 grid place-items-center text-[10px] font-black">{index + 1}</span><span className="truncate text-[11px] font-bold text-slate-700">{item.title}</span></div>{item.status === 'CONCLUIDO' && <a href={`/api/documents/${item.id}/download`} download title={`Baixar ${item.title}`} className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50"><Download className="w-3.5 h-3.5" /></a>}</div>)}
+          {packageDocuments.map((item, index) => <div key={item.id} className="px-3.5 py-2.5 flex items-center justify-between gap-2"><div className="min-w-0 flex items-center gap-2"><span className="w-5 h-5 shrink-0 rounded-md bg-slate-100 text-slate-600 grid place-items-center text-[10px] font-black">{index + 1}</span><span className="truncate text-[11px] font-bold text-slate-700">{item.title}</span></div>{item.status === 'CONCLUIDO' && <a href={`/api/documents/${item.id}/download${item.updatedAt ? `?v=${encodeURIComponent(item.updatedAt)}` : ''}`} download title={`Baixar ${item.title}`} className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50"><Download className="w-3.5 h-3.5" /></a>}</div>)}
         </div>
         <div className="p-3 border-t border-slate-100 flex flex-wrap gap-2">
           <button onClick={() => setSelectedDoc(lead)} className="flex-1 py-2 bg-[#071B3A] hover:bg-[#0B1D3D] text-white rounded-xl text-[10px] font-extrabold">Abrir dossiê do pacote</button>
@@ -1245,7 +1246,7 @@ export default function DocumentsPage() {
                     <div key={item.id} className="flex items-center justify-between gap-2 bg-white rounded-xl border border-emerald-100 px-3 py-2">
                       <span className="text-xs font-bold text-slate-700 truncate">{item.title}</span>
                       <div className="shrink-0 flex items-center gap-2">
-                        {(item.status === 'CONCLUIDO' || item.status === 'PARCIALMENTE_ASSINADO') && <a href={`/api/documents/${item.id}/download`} download className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700"><Download className="w-3.5 h-3.5" /> Baixar PDF</a>}
+                        {(item.status === 'CONCLUIDO' || item.status === 'PARCIALMENTE_ASSINADO') && <a href={`/api/documents/${item.id}/download${item.updatedAt ? `?v=${encodeURIComponent(item.updatedAt)}` : ''}`} download className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700"><Download className="w-3.5 h-3.5" /> Baixar PDF</a>}
                         {item.status === 'CONCLUIDO' && item.reviewStatus === 'APROVADO' && (
                           <span title="Revisado e aprovado" className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5" /> Aprovado</span>
                         )}

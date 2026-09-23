@@ -11,6 +11,7 @@ import { calculateHash } from './pdfHash';
 import { formatBrasiliaDateTime } from './dateUtils';
 import sharp from 'sharp';
 import { dedupePublicAuditEvents } from './publicAuditTrail';
+import { pendingPhotoCorrection } from './photo-review';
 
 // CPF e Telefone completos (SEM MASCARAMENTO no certificado oficial de evidências)
 export function formatFullCpf(cpf: string): string {
@@ -306,6 +307,21 @@ export async function generateFinalPdfCertificate(documentId: string) {
   if (doc.status === 'CONCLUIDO' && doc.reviewStatus === 'APROVADO') {
     if (!doc.signedFile || !doc.signedHash || !doc.verificationCode) throw new Error('O arquivo aprovado precisa ser recuperado; ele não pode ser regenerado.');
     return { signedStorageFile: doc.signedFile, signedHash: doc.signedHash, verificationCode: doc.verificationCode };
+  }
+  // Nunca gerar (e, pior, SALVAR como definitivo) um certificado enquanto uma
+  // foto pedida para refazer ainda não chegou. Sem esta checagem, um download
+  // feito bem no intervalo entre o escritório pedir "refazer foto" e o
+  // signatário reenviar a nova imagem gravava um PDF com a foto antiga/em
+  // branco como se fosse o certificado final (signedFileId era salvo aqui
+  // embaixo de qualquer forma) - depois disso, mesmo com a foto corrigida já
+  // salva no signatário, todo download seguinte só reaproveitava esse arquivo
+  // errado, porque a rota de download só gera de novo quando não existe
+  // nenhum arquivo salvo ainda.
+  const stillAwaitingPhotoCorrection = (
+    await Promise.all(doc.signers.map((signer) => pendingPhotoCorrection(prisma, signer)))
+  ).some(Boolean);
+  if (stillAwaitingPhotoCorrection) {
+    throw new Error('Uma foto foi solicitada para correção e ainda não foi reenviada pelo signatário. O certificado será gerado automaticamente assim que a nova foto chegar.');
   }
   const participantDetails = qualificationDetails(doc);
   const qualificationFor = (person: typeof doc.signers[number]) => participantDetails.find(p => p.order === person.signatureOrder)?.qualification;
