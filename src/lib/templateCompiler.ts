@@ -51,6 +51,12 @@ export function replaceTemplateVariables(contentHtml: string, variables: Variabl
   if (city && date) {
     compiled = compiled.replace(/>[^<]{2,120},\s*\d{1,2}\s+de\s+[^\s<]+\s+de\s+\d{4}\.?\s*(?=<\/(?:p|div)>)/gi, `>${city}, ${date}.`);
   }
+  // Modelos digitados no Word às vezes colam a vírgula na palavra seguinte
+  // ("{{cidade}},{{data_atual}}" vira "Ribeirão Preto/SP,22 de setembro";
+  // "SP,CEP"). Só no texto visível (nunca dentro de tags/atributos) e só
+  // quando antes da vírgula há letra - números como "3.000,00" ficam intactos.
+  compiled = compiled.replace(/>([^<]+)</g, (_match, text: string) =>
+    `>${text.replace(/([A-Za-zÀ-ÿ)]),(?=[A-Za-zÀ-ÿ0-9])/g, '$1, ')}<`);
   // O rodapé de assinatura é ajustado depois da conversão para parágrafos,
   // em applyDynamicSignatureFooter. A antiga substituição ampla neste ponto
   // também alcançava a área logo abaixo do título da procuração e criava um

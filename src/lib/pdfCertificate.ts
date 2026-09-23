@@ -440,8 +440,16 @@ export async function generateFinalPdfCertificate(documentId: string) {
   const drawSignerStamp = (page: PDFPage, box: SignerStamp, person: typeof doc.signers[number]) => {
     if (person.status !== 'ASSINADO') return;
     const { width, height } = stampPageGeometry(page.getMediaBox(), page.getCropBox(), page.getRotation().angle);
-    const x = box.x * width, top = (1 - box.y) * height, w = box.width * width, h = box.height * height;
-    const qrSize = Math.min(30, h - 12);
+    const top = (1 - box.y) * height;
+    // O selo precisa sempre mostrar a identificação completa (nome, CPF, a
+    // rogo, horário e código). Antes, quando a caixa escolhida no editor era
+    // pequena, ele virava só "Signatário 1 / Ver folha de assinaturas". Agora a
+    // caixa cresce (largura mínima e altura necessária) dentro da página.
+    const minStampW = Math.min(190, width - 16);
+    let w = Math.max(box.width * width, minStampW);
+    let x = Math.max(8, Math.min(box.x * width, width - 8 - w));
+    let h = box.height * height;
+    const qrSize = Math.min(30, Math.max(18, h - 12));
     const tx = x + qrSize + 10, tw = w - (tx - x) - 4;
     const partner = rogoFor(person.signatureOrder);
     if (partner && partner.status !== 'ASSINADO') return;
@@ -455,6 +463,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
     while (lines.length * (size + 2) + 8 > h && size > 6) {
       size -= 0.5; lines = stampLines.flatMap((line) => wrapTextToWidth(line, bold, size, tw));
     }
+    const neededH = lines.length * (size + 2) + 8;
+    if (neededH > h) h = Math.min(neededH, top - 16);
     // Mantém uma marca visível no local escolhido mesmo quando a identificação
     // completa não cabe. Os dados integrais continuam na folha de assinaturas.
     if (lines.length * (size + 2) + 8 > h || tw < 30) {
@@ -462,7 +472,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       page.drawImage(qrImage, { x: x + 3, y: top - compactQr - 3, width: compactQr, height: compactQr });
       const available = w - compactQr - 12;
       if (available >= 35 && h >= 24) {
-        const compact = [`Signatário ${person.signatureOrder}`, 'Ver folha de assinaturas'];
+        const compact = [`Signatário ${person.signatureOrder}`, 'Ver certificado anexo'];
         const compactLines = compact.flatMap(line => wrapTextToWidth(line, bold, 6, available));
         if (compactLines.length * 8 + 6 <= h) compactLines.forEach((line, i) => page.drawText(line, { x: x + compactQr + 8, y: top - 9 - i * 8, size: 6, font: bold, color: navy }));
       }
@@ -528,7 +538,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
           ? ` + ${documentWitnesses.length} TESTEMUNHA${documentWitnesses.length > 1 ? 'S' : ''}`
           : '';
         signerSummary = `${documentParties.length} PARTES${witnessSuffix}`;
-        cpfLines = ['IDENTIFICAÇÃO DE CADA PARTE NA FOLHA DE ASSINATURAS'];
+        cpfLines = ['IDENTIFICAÇÃO DE CADA PARTE NO CERTIFICADO ANEXO'];
       } else {
         signerSummary = doc.signers.length > 2
           ? `${doc.signers.length} PARTICIPANTES COM EVIDÊNCIAS INDIVIDUAIS`
@@ -737,7 +747,11 @@ export async function generateFinalPdfCertificate(documentId: string) {
   // horário e as evidências coletadas; as testemunhas ficam num bloco próprio,
   // compacto - do mesmo jeito que num documento em papel, onde elas assinam
   // embaixo e não na linha das partes.
-  if (needsSignaturePage) {
+  // Folha de Assinaturas desativada: todas as partes já aparecem com dados
+  // completos no Certificado de Evidências anexo e no próprio selo - a folha
+  // só repetia a mesma informação e deixava uma página quase vazia no PDF.
+  const SHOW_SIGNATURE_SHEET = false as boolean;
+  if (SHOW_SIGNATURE_SHEET && needsSignaturePage) {
     const SHEET_BOTTOM = 132;
     let sheetPage = pdfDoc.addPage([PAGE_W, PAGE_H]);
     let sheetCount = 1;

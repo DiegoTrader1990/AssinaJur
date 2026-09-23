@@ -3,6 +3,7 @@ import { loadParticipantGroups } from '@/lib/participant-groups';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { pendingPhotoCorrection, isIndividualRetry } from '@/lib/photo-review';
+import { generateFinalPdfCertificate } from '@/lib/pdfCertificate';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,6 +74,7 @@ export async function POST(req: Request, { params }: { params: { token: string }
   let imageValidation: Promise<void> | undefined;
   for (let attempt = 1; attempt <= MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
     try {
+      let regenerateDocumentId: string | null = null;
       const result = await prisma.$transaction(async (tx) => {
         const link = await tx.signer.findUnique({ where: { token: params.token }, select: { documentId: true } });
         if (!link) return { status: 404, body: { error: 'Link não encontrado.' } };
@@ -126,6 +128,7 @@ export async function POST(req: Request, { params }: { params: { token: string }
             eventType: 'PHOTO_REDO_COMPLETED', metadata: JSON.stringify({ field: imageField, requestId: correction.id }),
             description: 'Foto solicitada pelo escritório foi reenviada.', ipAddress, userAgent } });
           if (target.status === 'ASSINADO') await tx.document.update({ where: { id: document.id }, data: { signedFileId: null, signedHash: null } });
+          if (target.status === 'ASSINADO') regenerateDocumentId = document.id;
         }
         if (eventType) {
           // Não acrescentar eventos em documentos aprovados do mesmo pacote.
@@ -139,6 +142,14 @@ export async function POST(req: Request, { params }: { params: { token: string }
         }
         return { status: 200, body: { success: true } };
       }, { isolationLevel: 'Serializable' });
+      // Correção de foto num documento já assinado: gera o certificado novo
+      // na hora, em vez de esperar alguém clicar em "Baixar". Assim o PDF que o
+      // escritório abre depois já é o corrigido. Se ainda faltar outra foto
+      // pedida, a geração recusa e fica para quando a última chegar.
+      if (result.status === 200 && regenerateDocumentId) {
+        try { await generateFinalPdfCertificate(regenerateDocumentId); }
+        catch (regenError) { console.warn('Certificado não regenerado após correção:', regenError); }
+      }
       return NextResponse.json(result.body, { status: result.status });
     } catch (error) {
       if (isRetryableConflict(error) && attempt < MAX_TRANSACTION_ATTEMPTS) {
