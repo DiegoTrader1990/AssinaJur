@@ -1324,6 +1324,23 @@ export default function DocumentsPage() {
                 </div>
               )}
 
+              {/* Erro no TEXTO do documento (vírgula, endereço, qualificação):
+                  refazer foto/assinatura reaproveita o mesmo texto antigo, então o
+                  erro nunca some. Aqui o escritório corrige o cadastro e gera um
+                  envio novo pelo fluxo normal do kit, com o texto montado de novo
+                  e nova assinatura do cliente (a assinatura só vale para o texto
+                  que ele viu). */}
+              {canCorrect && selectedDoc.kitId && selectedDoc.client?.id && !['CANCELADO', 'EXPIRADO'].includes(selectedDoc.status) && (
+                <Link
+                  href={`/kits/enviar?clientId=${encodeURIComponent(selectedDoc.client.id)}&kitId=${encodeURIComponent(selectedDoc.kitId)}`}
+                  title="Gera o documento de novo com os dados atuais do cadastro e envia um novo link para assinatura"
+                  className="mt-2 w-full py-3 rounded-xl border border-slate-200 bg-white text-slate-800 text-xs font-extrabold flex items-center justify-center gap-2 hover:bg-slate-50"
+                >
+                  <FileText className="w-4 h-4" />
+                  Corrigir texto e reenviar para assinatura
+                </Link>
+              )}
+
               <div>
                 <div className="flex items-center justify-between mb-2"><h3 className="text-xs font-extrabold text-[#071B3A] uppercase tracking-wider font-heading">Acompanhamento dos participantes</h3><span className="text-[10px] font-bold text-slate-500">{selectedDoc.signers.filter((s) => s.status === 'ASSINADO').length}/{selectedDoc.signers.length} concluídos</span></div>
                 <p className="mb-2 text-[11px] text-slate-500">Acompanhe se cada pessoa abriu o link e reenvie-o sem precisar copiar manualmente.</p>
