@@ -75,6 +75,19 @@ const RAMPA = ['#9AAAC4', '#7386A8', '#4D688F', '#28456E', '#0A1F42'];
 
 /* ─────────────────────────── Utilidades ──────────────────────────────── */
 
+// Número do processo no padrão do CNJ quando tiver 20 dígitos.
+function formatarNumeroProcesso(v?: string | null): string {
+  const raw = String(v || '').trim();
+  const d = raw.replace(/\D/g, '');
+  return d.length === 20 ? `${d.slice(0, 7)}-${d.slice(7, 9)}.${d.slice(9, 13)}.${d.slice(13, 14)}.${d.slice(14, 16)}.${d.slice(16)}` : raw;
+}
+
+// Dias até o prazo (negativo = vencido).
+function diasAtePrazo(v?: string | null): number | null {
+  if (!v) return null;
+  return Math.round((new Date(v).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000);
+}
+
 function soDigitos(v?: string | null): string {
   return String(v || '').replace(/\D/g, '');
 }
@@ -1691,22 +1704,24 @@ export function BlocoAcompanhamento({
     }
   }, [pendencies]);
 
-  // Processos protocolados são uma visão de consulta: não são pendências e
-  // portanto não recebem drag & drop no Kanban.
-  const processosProtocolados = useMemo(() => {
+  // Próximos prazos: só processos em aberto com prazo vencido ou nos próximos
+  // 7 dias, no máximo 5, do mais urgente ao menos. Antes a coluna listava todos
+  // os processos protocolados e crescia a cada processo novo.
+  const LIMITE_PRAZOS = 5;
+  const prazosUrgentes = useMemo(() => {
     return [...processos]
-      .filter((processo) => Boolean(
-        processo?.protocolNumber ||
-        processo?.processNumber ||
-        String(processo?.status || '').toUpperCase() === 'PROTOCOLADO'
-      ))
-      .sort((a, b) => {
-        const aDate = new Date(a.lastActivityAt || a.updatedAt || a.createdAt || 0).getTime();
-        const bDate = new Date(b.lastActivityAt || b.updatedAt || b.createdAt || 0).getTime();
-        return bDate - aDate;
+      .filter((processo) => {
+        const dias = diasAtePrazo(processo?.dueDate);
+        const aberto = !['CONCLUIDO', 'ARQUIVADO', 'CANCELADO'].includes(String(processo?.status || '').toUpperCase());
+        return aberto && dias !== null && dias <= 7;
       })
-      .slice(0, 12);
+      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
   }, [processos]);
+  const processosProtocolados = prazosUrgentes.slice(0, LIMITE_PRAZOS);
+
+  // Colunas de tarefas mostram 5 cards; "ver mais" abre o restante.
+  const LIMITE_CARDS = 5;
+  const [colunasAbertas, setColunasAbertas] = useState<Set<string>>(new Set());
 
   // Form de Novo Acompanhamento Modal State
   const [formClientId, setFormClientId] = useState('');
@@ -1806,7 +1821,7 @@ export function BlocoAcompanhamento({
        { id: 'PARA_FAZER', label: 'Para fazer', badgeBg: 'bg-blue-100 text-blue-800' },
        { id: 'AGUARDANDO_CLIENTE', label: 'Aguardando cliente', badgeBg: 'bg-amber-100 text-amber-800' },
        { id: 'AGUARDANDO_TERCEIRO', label: 'Aguardando terceiro', badgeBg: 'bg-indigo-100 text-indigo-800' },
-       { id: 'PROCESSOS', label: 'Processos', badgeBg: 'bg-emerald-100 text-emerald-800', isProcessColumn: true },
+       { id: 'PROCESSOS', label: 'Próximos prazos', badgeBg: 'bg-rose-100 text-rose-800', isProcessColumn: true },
      ];
 
      return cols.map((col) => {
@@ -1821,9 +1836,11 @@ export function BlocoAcompanhamento({
        return {
          ...col,
          items: colItems,
+         total: col.id === 'PROCESSOS' ? prazosUrgentes.length : colItems.length,
+         shown: col.id === 'PROCESSOS' || colunasAbertas.has(col.id) ? colItems : colItems.slice(0, LIMITE_CARDS),
        };
      });
-   }, [filteredItems, processosProtocolados]);
+   }, [filteredItems, processosProtocolados, prazosUrgentes, colunasAbertas]);
 
   // Mutações da API (Resolução, Drag & Drop e Reagendamento)
   const handleResolve = async (id: string, currentResolved: boolean) => {
@@ -2150,7 +2167,7 @@ export function BlocoAcompanhamento({
             <div className="flex items-center justify-between pb-2.5 border-b border-slate-200/60 mb-2.5">
               <h3 className="text-xs font-extrabold text-[#071B3A]">{col.label}</h3>
               <span className={`px-2 py-0.5 rounded-md text-[10.5px] font-black ${col.badgeBg}`}>
-                {col.items.length}
+                {col.total}
               </span>
             </div>
 
@@ -2159,29 +2176,32 @@ export function BlocoAcompanhamento({
               {col.items.length === 0 ? (
                 <div className="flex items-center justify-center h-28 border border-dashed border-slate-200 rounded-lg p-3 text-center">
                   <p className="text-[11px] font-medium text-slate-400">
-                    {col.isProcessColumn ? 'Nenhum processo protocolado ainda.' : `Nenhum acompanhamento em "${col.label.toLowerCase()}"`}
+                    {col.isProcessColumn ? 'Nenhum prazo vencido ou nos próximos 7 dias.' : `Nenhum acompanhamento em "${col.label.toLowerCase()}"`}
                   </p>
                 </div>
               ) : (
-                col.isProcessColumn ? col.items.map((processo: any) => {
-                  const processDate = processo.lastActivityAt || processo.updatedAt || processo.createdAt;
+                col.isProcessColumn ? col.shown.map((processo: any) => {
+                  const dias = diasAtePrazo(processo.dueDate) ?? 0;
+                  const vencido = dias < 0;
+                  const situacao = vencido ? `vencido há ${-dias} dia${-dias > 1 ? 's' : ''}` : dias === 0 ? 'vence hoje' : `vence em ${dias} dia${dias > 1 ? 's' : ''}`;
+                  const numero = formatarNumeroProcesso(processo.processNumber) || processo.protocolNumber;
                   return (
                     <button
                       key={processo.id}
                       type="button"
                       onClick={() => router.push(`/processos?clienteId=${processo.clientId || processo.client?.id || ''}`)}
-                      className="group w-full rounded-xl border border-emerald-100 bg-white p-3 text-left shadow-2xs transition-all hover:border-emerald-300 hover:shadow-md"
+                      className={`group w-full rounded-xl border bg-white p-3 text-left shadow-2xs transition-all hover:shadow-md ${vencido ? 'border-l-4 border-l-rose-500 border-rose-200/70' : 'border-l-4 border-l-amber-500 border-amber-200/70'}`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-emerald-700"><Scale className="h-3 w-3" /> Protocolado</span>
-                        <span className="shrink-0 text-[9px] font-bold text-slate-400">{processDate ? new Date(processDate).toLocaleDateString('pt-BR') : ''}</span>
+                        <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-black ${vencido ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-800'}`}><Scale className="h-3 w-3" /> {situacao}</span>
+                        <span className="shrink-0 text-[9px] font-bold text-slate-400">{new Date(processo.dueDate).toLocaleDateString('pt-BR')}</span>
                       </div>
-                      <h4 className="mt-2 line-clamp-2 text-xs font-extrabold leading-4 text-[#071B3A] transition-colors group-hover:text-emerald-700">{processo.title || 'Processo sem título'}</h4>
+                      <h4 className="mt-2 line-clamp-2 text-xs font-extrabold leading-4 text-[#071B3A]">{processo.title || 'Processo sem título'}</h4>
                       <p className="mt-1 truncate text-[10px] font-medium text-slate-600">{processo.client?.name || 'Cliente não identificado'}</p>
-                      <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2 text-[9px] font-bold text-slate-400"><span className="truncate">{processo.protocolNumber ? 'Protocolo' : 'Processo'}: <strong className="text-slate-700">{processo.protocolNumber || processo.processNumber || 'Registrado'}</strong></span><span className="inline-flex items-center gap-1 text-emerald-700">Abrir <ChevronRight className="h-3 w-3" /></span></div>
+                      {numero && <p className="mt-1.5 truncate font-mono text-[9px] text-slate-400">{numero}</p>}
                     </button>
                   );
-                }) : col.items.map((item) => {
+                }) : col.shown.map((item) => {
                   const overdue = isOverdue(item.dueDate);
                   const today = isToday(item.dueDate);
 
@@ -2264,6 +2284,19 @@ export function BlocoAcompanhamento({
                 })
               )}
             </div>
+            {col.isProcessColumn ? (
+              <button type="button" onClick={() => router.push('/processos')} className="mt-2.5 w-full rounded-lg border border-slate-200 bg-white py-1.5 text-[10.5px] font-extrabold text-[#071B3A] hover:bg-slate-50">
+                {col.total > col.shown.length ? `Ver todos os prazos (${col.total})` : 'Ver todos os processos'}
+              </button>
+            ) : col.items.length > LIMITE_CARDS ? (
+              <button
+                type="button"
+                onClick={() => setColunasAbertas((atual) => { const prox = new Set(atual); if (prox.has(col.id)) prox.delete(col.id); else prox.add(col.id); return prox; })}
+                className="mt-2.5 w-full rounded-lg border border-slate-200 bg-white py-1.5 text-[10.5px] font-extrabold text-slate-600 hover:bg-slate-50"
+              >
+                {colunasAbertas.has(col.id) ? 'Ver menos' : `Ver mais (${col.items.length - LIMITE_CARDS})`}
+              </button>
+            ) : null}
           </div>
         ))}
       </div>
