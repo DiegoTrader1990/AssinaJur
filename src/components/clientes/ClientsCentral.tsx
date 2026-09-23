@@ -196,7 +196,7 @@ function clientOperational(client: CentralClient) {
   else if ((client.processes || []).some((item) => item.status === 'CONCLUIDO')) status = 'CONCLUIDO';
 
   const currentProcess = activeProcesses[0] || client.processes?.[0];
-  const nextAction = mainPendency?.title || mainPendency?.description || (pendingDocuments.length ? 'Concluir assinatura pendente' : processDue ? `Acompanhar ${processDue.title}` : activeProcesses.length ? 'Acompanhar demanda' : 'Criar primeira demanda');
+  const nextAction = mainPendency?.title || mainPendency?.description || (pendingDocuments.length ? 'Concluir assinatura pendente' : processDue ? `Prazo do processo: ${processDue.title}` : activeProcesses.length ? 'Acompanhar demanda' : 'Criar primeira demanda');
   const activityDescription = mainPendency
     ? mainPendency.status === 'AGUARDANDO_CLIENTE' ? 'Aguardando retorno do cliente' : 'Acompanhamento atualizado'
     : pendingDocuments[0]
@@ -406,32 +406,25 @@ export default function ClientsCentral({
     { label: 'Prazos críticos', value: metrics.attention, Icon: AlertTriangle, color: metrics.attention ? 'text-rose-600' : 'text-slate-500', quick: 'ATENCAO' },
     { label: 'Processos ativos', value: metrics.activeProcesses, Icon: FolderKanban, color: 'text-violet-600', statusKey: 'ANDAMENTO' },
     { label: 'Aguardando assinatura', value: metrics.awaitingSignature, Icon: FileCheck2, color: 'text-sky-600', statusKey: 'ASSINATURA' },
-    { label: 'Movimentações', value: metrics.movements, Icon: Zap, color: 'text-[#ad8214]', quick: 'TODOS' },
   ];
 
   return (
     <div className="space-y-5">
-      <section className="relative overflow-hidden rounded-[24px] border border-slate-200 bg-white px-5 py-5 shadow-[0_14px_40px_-32px_rgba(7,27,58,.45)] sm:px-6">
-        <span className="absolute inset-y-0 left-0 w-1 bg-[#d6b23f]" />
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 items-center gap-4">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#071B3A] text-[#e3c45e] shadow-[0_12px_24px_-15px_rgba(7,27,58,.85)]"><UsersRound className="h-5 w-5" /></span>
-            <div className="min-w-0">
-              <div className="mb-1 text-[9px] font-black uppercase tracking-[.2em] text-[#b79222]">Carteira do escritório</div>
-              <h1 className="font-heading text-2xl font-black tracking-tight text-[#071B3A] sm:text-[28px]">Central de Clientes</h1>
-              <p className="mt-1 max-w-2xl text-[11px] font-medium leading-5 text-slate-500 sm:text-xs">Uma visão única para localizar clientes, acompanhar pendências e acessar toda a operação jurídica.</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 sm:pl-16 lg:pl-0">
-            <button onClick={onRefresh} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-[11px] font-extrabold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"><Clock3 className="h-3.5 w-3.5" /> Atualizar</button>
-            <button onClick={onCreate} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#071B3A] px-4 text-[11px] font-black text-white shadow-[0_12px_24px_-16px_rgba(7,27,58,.9)] transition hover:bg-[#12335e]"><UserPlus className="h-4 w-4 text-[#e3c45e]" /> Novo cliente</button>
-          </div>
+      {/* Cabeçalho enxuto, no mesmo padrão da página de Documentos. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="font-heading text-xl font-black tracking-tight text-[#071B3A]">Clientes</h1>
+          <p className="text-[11px] text-slate-500">Localize clientes, acompanhe prazos e pendências.</p>
         </div>
-      </section>
+        <div className="flex items-center gap-2">
+          <button onClick={onRefresh} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-[11px] font-extrabold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"><Clock3 className="h-3.5 w-3.5" /> Atualizar</button>
+          <button onClick={onCreate} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#071B3A] px-4 text-[11px] font-black text-white shadow-[0_12px_24px_-16px_rgba(7,27,58,.9)] transition hover:bg-[#12335e]"><UserPlus className="h-4 w-4 text-[#e3c45e]" /> Novo cliente</button>
+        </div>
+      </div>
 
-      <section className="grid grid-cols-2 overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_12px_32px_-30px_rgba(7,27,58,.4)] sm:grid-cols-3 xl:grid-cols-6">
+      <section className="grid grid-cols-2 overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_12px_32px_-30px_rgba(7,27,58,.4)] sm:grid-cols-3 xl:grid-cols-5">
         {metricItems.map(({ label, value, Icon, color, quick, statusKey }) => (
-          <button key={label} onClick={() => applyMetricFilter(quick, statusKey)} className="group flex min-h-[76px] items-center gap-3 border-b border-r border-slate-100 px-4 text-left transition hover:bg-[#fafbfc] xl:border-b-0">
+          <button key={label} onClick={() => applyMetricFilter(quick, statusKey)} title="Clique para filtrar a lista" className={`group flex min-h-[76px] items-center gap-3 border-b border-r border-slate-100 px-4 text-left transition hover:bg-[#fafbfc] xl:border-b-0 ${(statusKey ? status === statusKey : quick && quick !== 'TODOS' && quickFilter === quick) ? 'bg-blue-50/70 ring-2 ring-inset ring-blue-200' : ''}`}>
             <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-100 bg-slate-50 ${color}`}><Icon className="h-4 w-4" /></span>
             <span><strong className="block font-heading text-[19px] font-black leading-none text-[#071B3A]">{value}</strong><span className="mt-1.5 block text-[8px] font-black uppercase leading-3 tracking-[.08em] text-slate-400">{label}</span></span>
           </button>
@@ -485,7 +478,7 @@ export default function ClientsCentral({
             <div className="flex flex-col gap-2 border-b border-slate-200 bg-white px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <label className="inline-flex cursor-pointer items-center gap-2 text-[10px] font-extrabold text-slate-600"><input type="checkbox" checked={visible.length > 0 && visible.every(({ client }) => selected.has(client.id))} onChange={toggleAllVisible} className="h-4 w-4 rounded border-slate-300 text-blue-600" /> Selecionar clientes desta página</label>
               <div className="flex items-center gap-3">
-                <div className="hidden items-center gap-2 text-[9px] font-black uppercase tracking-[.13em] text-slate-400 sm:flex"><span className="h-px w-6 bg-[#d6b23f]" /> Carteira operacional</div>
+                
                 <div className="inline-flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
                   {([['LISTA', 'Lista', List], ['CARTOES', 'Cartões', LayoutGrid]] as const).map(([key, label, Icon]) => (
                     <button
@@ -508,7 +501,7 @@ export default function ClientsCentral({
                 <span className="col-span-4 pl-7">Cliente</span>
                 <span className="col-span-3">Situação e demanda</span>
                 <span className="col-span-3">Próxima ação</span>
-                <span className="col-span-2 text-right">Carteira</span>
+                <span className="col-span-2 text-right">Resumo</span>
               </div>
             )}
 
@@ -544,7 +537,7 @@ export default function ClientsCentral({
                       <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5 xl:col-span-3 xl:mt-0 xl:block">
                         <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[8px] font-black ${alertInfo?.classes || statusInfo.classes}`}><span className={`h-1.5 w-1.5 rounded-full ${alertInfo?.dot || statusInfo.dot}`} />{alertInfo?.label || statusInfo.label}</span>
                         {info.pendingDocuments.length > 0 && <span className="rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[8px] font-black text-sky-700">Assinatura pendente</span>}
-                        <span className="block min-w-0 truncate text-[9px] font-semibold text-slate-500 xl:mt-1">{info.currentProcess?.title || client.legalArea || 'Sem demanda ativa'} · {client.lawyerInCharge?.name || 'Responsável a definir'}</span>
+                        <span className="block min-w-0 truncate text-[9px] font-semibold text-slate-500 xl:mt-1">{info.currentProcess?.title || client.legalArea || 'Sem demanda ativa'}{client.lawyerInCharge?.name ? ` · ${client.lawyerInCharge.name}` : ''}</span>
                       </div>
 
                       <div className="mt-1.5 min-w-0 xl:col-span-3 xl:mt-0">
@@ -562,10 +555,11 @@ export default function ClientsCentral({
                           a linha fica limpa para leitura e as ações ficam a um
                           clique. Em telas menores as duas coisas aparecem. */}
                       <div className="mt-2 flex items-center justify-between gap-2 xl:col-span-2 xl:mt-0 xl:justify-end">
-                        <div className="flex items-center gap-1 text-[8px] font-bold text-slate-400 xl:group-hover:hidden">
-                          <span title="Processos" className="rounded bg-slate-50 px-1.5 py-0.5 tabular-nums">{client.movementSummary?.processes || 0}p</span>
-                          <span title="Documentos" className="rounded bg-slate-50 px-1.5 py-0.5 tabular-nums">{info.documentCount}d</span>
-                          {info.openAlerts > 0 && <span title="Alertas em aberto" className="rounded bg-[#fdf6e3] px-1.5 py-0.5 tabular-nums text-[#8a6810]">{info.openAlerts}a</span>}
+                        <div className="flex flex-wrap items-center justify-end gap-1 text-[8px] font-bold text-slate-400 xl:group-hover:hidden">
+                          {/* Por extenso: "1p 0d 1a" não dava para entender sem legenda. */}
+                          <span className="rounded bg-slate-50 px-1.5 py-0.5 tabular-nums">{client.movementSummary?.processes || 0} {(client.movementSummary?.processes || 0) === 1 ? 'processo' : 'processos'}</span>
+                          <span className="rounded bg-slate-50 px-1.5 py-0.5 tabular-nums">{info.documentCount} {info.documentCount === 1 ? 'documento' : 'documentos'}</span>
+                          {info.openAlerts > 0 && <span className="rounded bg-[#fdf6e3] px-1.5 py-0.5 tabular-nums text-[#8a6810]">{info.openAlerts} {info.openAlerts === 1 ? 'alerta' : 'alertas'}</span>}
                         </div>
                         <div className="flex shrink-0 items-center gap-1 xl:hidden xl:group-hover:flex" onClick={(event) => event.stopPropagation()}>
                           {whatsapp && <a href={`https://wa.me/${whatsapp.startsWith('55') ? whatsapp : `55${whatsapp}`}`} target="_blank" rel="noreferrer" title={`WhatsApp de ${client.name}`} className="flex h-7 w-7 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-600 transition hover:bg-emerald-100"><MessageCircle className="h-3.5 w-3.5" /></a>}
