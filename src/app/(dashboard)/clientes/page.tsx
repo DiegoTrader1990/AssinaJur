@@ -140,6 +140,15 @@ function formatOwnAddress(data: typeof EMPTY_CLIENT_FORM): string {
   ].filter(Boolean).join(', ');
 }
 
+// Prazos de processos em aberto. A lista de clientes já marcava "Prazo crítico"
+// a partir deles, mas a ficha do cliente só mostrava as pendências avulsas e
+// dizia "Nenhuma pendência aberta" mesmo com prazo de processo vencido.
+function openProcessDeadlines(client: { processes?: Array<{ id: string; title: string; status: string; dueDate?: string | null }> }) {
+  return (client.processes || [])
+    .filter((process) => process.dueDate && !['CONCLUIDO', 'ARQUIVADO', 'CANCELADO'].includes(String(process.status || '').toUpperCase()))
+    .sort((a, b) => new Date(String(a.dueDate)).getTime() - new Date(String(b.dueDate)).getTime());
+}
+
 export default function ClientsPage() {
   const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
@@ -249,6 +258,34 @@ export default function ClientsPage() {
     if (name === 'phone' || name === 'whatsapp' || name === 'representativePhone') value = maskPhone(value);
     if (name === 'representativeCpf') value = maskCpfCnpj(value);
     setFormData({ ...formData, [name]: value });
+  };
+
+  // CEP -> endereço automático (ViaCEP): digitou os 8 dígitos, preenche rua,
+  // bairro, cidade e UF. Só completa o que estiver vazio ou for do CEP anterior;
+  // o número a pessoa digita. Evita erro de digitação no endereço que vai para
+  // a qualificação dos documentos.
+  const [cepStatus, setCepStatus] = useState<'idle' | 'loading' | 'notfound'>('idle');
+  const handleCepChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const digits = e.target.value.replace(/\D/g, '').slice(0, 8);
+    const masked = digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits;
+    setFormData((prev: typeof formData) => ({ ...prev, cep: masked }));
+    if (digits.length !== 8) { setCepStatus('idle'); return; }
+    setCepStatus('loading');
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+      const data = await res.json();
+      if (!res.ok || data.erro) { setCepStatus('notfound'); return; }
+      const street = [data.logradouro, data.bairro].filter(Boolean).join(' - ');
+      setFormData((prev: typeof formData) => ({
+        ...prev,
+        address: prev.address?.trim() ? prev.address : street,
+        city: data.localidade || prev.city,
+        state: data.uf || prev.state,
+      }));
+      setCepStatus('idle');
+    } catch {
+      setCepStatus('notfound');
+    }
   };
 
   const closeClientForm = () => {
@@ -839,6 +876,20 @@ export default function ClientsPage() {
               {/* Coluna da Direita: Formulário de Cadastro */}
               <div className={ocrDocPreview ? 'md:col-span-6' : 'w-full'}>
                 <form onSubmit={handleSaveClient} className="space-y-4 text-xs">
+                  {/* O que falta para a qualificação sair completa nos documentos. */}
+                  {(() => {
+                    const missing = ([
+                      ['birthDate', 'data de nascimento'], ['maritalStatus', 'estado civil'], ['profession', 'profissão'],
+                      ['address', 'endereço'], ['cep', 'CEP'], ['city', 'cidade'], ['state', 'UF'],
+                    ] as const).filter(([key]) => !String((formData as Record<string, unknown>)[key] || '').trim()).map(([, label]) => label);
+                    if (!missing.length) return null;
+                    return (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] text-amber-900">
+                        <strong className="font-extrabold">Faltam para a qualificação nos documentos:</strong> {missing.join(', ')}.
+                        <span className="block mt-0.5 text-[10px] text-amber-800">Sem esses dados, a procuração e o contrato saem com lacunas. O RG é opcional para quem tem a nova identidade (CIN).</span>
+                      </div>
+                    );
+                  })()}
                   <div className="grid md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">
@@ -850,7 +901,7 @@ export default function ClientsPage() {
                         required
                         value={formData.name}
                         onChange={handleFormChange}
-                        placeholder="João da Silva"
+                        placeholder="Ex.: Maria da Silva"
                         className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none"
                       />
                     </div>
@@ -879,7 +930,7 @@ export default function ClientsPage() {
                         name="rg"
                         value={formData.rg}
                         onChange={handleFormChange}
-                        placeholder="MG-12.345.678"
+                        placeholder="Ex.: 12.345.678-9"
                         className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none"
                       />
                     </div>
@@ -890,7 +941,7 @@ export default function ClientsPage() {
                         name="issuingOrgan"
                         value={formData.issuingOrgan}
                         onChange={handleFormChange}
-                        placeholder="SSP/SP"
+                        placeholder="Ex.: SSP/BA"
                         className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none"
                       />
                     </div>
@@ -945,7 +996,7 @@ export default function ClientsPage() {
                         name="profession"
                         value={formData.profession}
                         onChange={handleFormChange}
-                        placeholder="Comerciante"
+                        placeholder="Ex.: lavradora"
                         className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none"
                       />
                     </div>
@@ -977,7 +1028,7 @@ export default function ClientsPage() {
                         required
                         value={formData.phone}
                         onChange={handleFormChange}
-                        placeholder="(11) 99999-9999"
+                        placeholder="(00) 00000-0000"
                         className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none"
                       />
                     </div>
@@ -995,54 +1046,27 @@ export default function ClientsPage() {
                     </div>
                   </div>
 
-                  <div className="grid md:grid-cols-3 gap-4">
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Endereço Residencial (Rua - Nº - Bairro)</label>
-                      <input
-                        type="text"
-                        name="address"
-                        value={formData.address}
-                        onChange={handleFormChange}
-                        placeholder="Rua Botafogo - 112 - Novo Prado"
-                        className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none"
-                      />
-                    </div>
+                  <div className="grid md:grid-cols-4 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">CEP</label>
-                      <input
-                        type="text"
-                        name="cep"
-                        value={formData.cep}
-                        onChange={handleFormChange}
-                        placeholder="00000-000"
-                        className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none"
-                      />
+                      <input type="text" name="cep" inputMode="numeric" value={formData.cep} onChange={handleCepChange} placeholder="00000-000" className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none" />
+                      {cepStatus === 'loading' && <p className="mt-1 text-[10px] text-slate-400">Buscando endereço...</p>}
+                      {cepStatus === 'notfound' && <p className="mt-1 text-[10px] text-amber-700">CEP não encontrado. Preencha o endereço à mão.</p>}
                     </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Cidade</label>
-                      <input
-                        type="text"
-                        name="city"
-                        value={formData.city}
-                        onChange={handleFormChange}
-                        placeholder="Porto Seguro"
-                        className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none"
-                      />
+                    <div className="md:col-span-3">
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Endereço residencial (rua, nº, bairro)</label>
+                      <input type="text" name="address" value={formData.address} onChange={handleFormChange} placeholder="Preenchido pelo CEP; complete com o número" className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none" />
                     </div>
                   </div>
 
                   <div className="grid md:grid-cols-4 gap-4">
+                    <div className="md:col-span-3">
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">Cidade</label>
+                      <input type="text" name="city" value={formData.city} onChange={handleFormChange} placeholder="Preenchido pelo CEP" className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:border-blue-600 focus:outline-none" />
+                    </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 font-heading">UF</label>
-                      <input
-                        type="text"
-                        name="state"
-                        value={formData.state}
-                        onChange={handleFormChange}
-                        maxLength={2}
-                        placeholder="BA"
-                        className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium uppercase focus:border-blue-600 focus:outline-none"
-                      />
+                      <input type="text" name="state" value={formData.state} onChange={handleFormChange} maxLength={2} placeholder="UF" className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium uppercase focus:border-blue-600 focus:outline-none" />
                     </div>
                   </div>
 
@@ -1183,8 +1207,13 @@ export default function ClientsPage() {
             <div className="flex-1 overflow-y-auto bg-[#f7f9fc] px-5 py-5 text-xs sm:px-7">
               {activeTab === 'resumo' && (
                 <div className="space-y-5">
-                  <section><div className="mb-2.5 flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-[.14em] text-slate-400">Pendências e próxima ação</p><span className="rounded-full bg-white px-2 py-1 text-[9px] font-bold text-slate-500 shadow-sm">{selectedClient.pendencies?.length || 0} abertas</span></div>
-                    <div className="space-y-2">{selectedClient.pendencies?.slice(0, 4).map((pendency) => <div key={pendency.id} className={`rounded-2xl border bg-white p-3.5 shadow-sm ${pendency.priority === 'URGENTE' ? 'border-rose-200' : 'border-slate-200'}`}><div className="flex items-start gap-3"><span className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${pendency.priority === 'URGENTE' ? 'bg-rose-500' : pendency.status === 'AGUARDANDO_CLIENTE' ? 'bg-violet-500' : 'bg-amber-500'}`} /><div className="min-w-0 flex-1"><strong className="block text-[11px] font-black text-[#071B3A]">{pendency.title || pendency.description}</strong><p className="mt-1 line-clamp-2 text-[10px] leading-4 text-slate-500">{pendency.description}</p><div className="mt-2 flex flex-wrap items-center gap-2 text-[8px] font-bold uppercase tracking-wide text-slate-400">{pendency.dueDate && <span className={new Date(pendency.dueDate) < new Date() ? 'text-rose-600' : 'text-amber-700'}>Prazo {new Date(pendency.dueDate).toLocaleDateString('pt-BR')}</span>}{pendency.responsible && <span>Responsável: {pendency.responsible.name}</span>}</div></div></div></div>)}{!selectedClient.pendencies?.length && <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 text-[11px] font-bold text-emerald-700"><Check className="mr-2 inline h-4 w-4" />Nenhuma pendência aberta para este cliente.</div>}</div>
+                  <section><div className="mb-2.5 flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-[.14em] text-slate-400">Pendências e próxima ação</p><span className="rounded-full bg-white px-2 py-1 text-[9px] font-bold text-slate-500 shadow-sm">{(selectedClient.pendencies?.length || 0) + openProcessDeadlines(selectedClient).length} abertas</span></div>
+                    <div className="space-y-2">{selectedClient.pendencies?.slice(0, 4).map((pendency) => <div key={pendency.id} className={`rounded-2xl border bg-white p-3.5 shadow-sm ${pendency.priority === 'URGENTE' ? 'border-rose-200' : 'border-slate-200'}`}><div className="flex items-start gap-3"><span className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${pendency.priority === 'URGENTE' ? 'bg-rose-500' : pendency.status === 'AGUARDANDO_CLIENTE' ? 'bg-violet-500' : 'bg-amber-500'}`} /><div className="min-w-0 flex-1"><strong className="block text-[11px] font-black text-[#071B3A]">{pendency.title || pendency.description}</strong><p className="mt-1 line-clamp-2 text-[10px] leading-4 text-slate-500">{pendency.description}</p><div className="mt-2 flex flex-wrap items-center gap-2 text-[8px] font-bold uppercase tracking-wide text-slate-400">{pendency.dueDate && <span className={new Date(pendency.dueDate) < new Date() ? 'text-rose-600' : 'text-amber-700'}>Prazo {new Date(pendency.dueDate).toLocaleDateString('pt-BR')}</span>}{pendency.responsible && <span>Responsável: {pendency.responsible.name}</span>}</div></div></div></div>)}{openProcessDeadlines(selectedClient).map((process) => {
+                      const dueDate = new Date(String(process.dueDate));
+                      const days = Math.floor((new Date().setHours(0, 0, 0, 0) - new Date(dueDate).setHours(0, 0, 0, 0)) / 86400000);
+                      const overdue = days > 0;
+                      return <a key={`prazo-${process.id}`} href={`/processos?clienteId=${selectedClient.id}`} className={`block rounded-2xl border bg-white p-3.5 shadow-sm transition hover:border-blue-200 ${overdue ? 'border-rose-200' : 'border-slate-200'}`}><div className="flex items-start gap-3"><span className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${overdue ? 'bg-rose-500' : 'bg-amber-500'}`} /><div className="min-w-0 flex-1"><span className="block text-[8px] font-black uppercase tracking-wide text-slate-400">Prazo do processo</span><strong className="block text-[11px] font-black text-[#071B3A]">{process.title}</strong><div className={`mt-1 text-[9px] font-bold ${overdue ? 'text-rose-600' : 'text-amber-700'}`}>Prazo {dueDate.toLocaleDateString('pt-BR')}{overdue ? ` · atrasado há ${days} dia${days > 1 ? 's' : ''}` : days === 0 ? ' · vence hoje' : ''}</div></div></div></a>;
+                    })}{!selectedClient.pendencies?.length && !openProcessDeadlines(selectedClient).length && <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 text-[11px] font-bold text-emerald-700"><Check className="mr-2 inline h-4 w-4" />Nenhuma pendência nem prazo aberto para este cliente.</div>}</div>
                   </section>
 
                   <section className="grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Contato principal</p><div className="mt-3 flex items-center gap-2 font-black text-[#071B3A]"><Phone className="h-4 w-4 text-blue-600" />{maskPhone(selectedClient.phone)}</div><div className="mt-2 flex min-w-0 items-center gap-2 text-[10px] font-semibold text-slate-500"><Mail className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{selectedClient.email || 'E-mail não informado'}</span></div></div><div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Gestão jurídica</p><div className="mt-3 flex items-center gap-2 font-black text-[#071B3A]"><Scale className="h-4 w-4 text-blue-600" />{selectedClient.legalArea || 'Área geral'}</div><p className="mt-2 text-[10px] font-semibold text-slate-500">Responsável: {selectedClient.lawyerInCharge?.name || 'Não definido'}</p></div></section>
