@@ -1581,8 +1581,11 @@ export async function generateFinalPdfCertificate(documentId: string) {
   // ultrapassaria o rodapé e colidiria com a Seção 5 / Hash SHA-256).
   if (docPhotoSigners.length > 0) {
     const docInnerWidth = CW - 28;
-    const docBoxW = Math.min(docInnerWidth, 370);
-    const docBoxH = 184;
+    // Fotos do documento maiores (antes 370x184): 250pt de altura ainda deixa
+    // frente + verso da mesma pessoa cabendo juntos numa página
+    // (52 + 2 x (250 + 32) = 616pt, dentro dos 646pt úteis).
+    const docBoxW = Math.min(docInnerWidth, 470);
+    const docBoxH = 250;
     const docX = padX + (docInnerWidth - docBoxW) / 2;
     let dCursor = y;
 
