@@ -107,7 +107,21 @@ export async function GET(req: Request) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return NextResponse.json({ documents });
+    // O painel só precisa saber SE cada foto/assinatura existe (para mostrar a
+    // etapa e o botão "Refazer"), nunca a imagem em si. Antes a lista devolvia
+    // todas as fotos em base64 de todos os documentos - a cada teste a resposta
+    // crescia, até passar do limite de ~4,5 MB da Vercel e a lista (com o
+    // registro das etapas) parar de carregar.
+    const IMAGE_FIELDS = ['documentFrontImage', 'documentBackImage', 'selfieCenterImage', 'selfieLeftImage', 'selfieRightImage', 'signatureImage'] as const;
+    const lightDocuments = documents.map((doc) => ({
+      ...doc,
+      signers: doc.signers.map((signer) => {
+        const light: Record<string, unknown> = { ...signer };
+        for (const field of IMAGE_FIELDS) if (field in light) light[field] = light[field] ? 'capturada' : null;
+        return light;
+      }),
+    }));
+    return NextResponse.json({ documents: lightDocuments });
   } catch (error: any) {
     console.error('Erro ao listar documentos:', error);
     return NextResponse.json({ error: 'Erro ao carregar lista de documentos.' }, { status: 500 });
