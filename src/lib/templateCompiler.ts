@@ -353,6 +353,28 @@ function applyDynamicSignatureFooter(paragraphs: RichParagraph[], variables: Var
   if (!clientName && !(city && date)) return paragraphs;
 
   const paragraphText = (paragraph: RichParagraph) => paragraph.runs.map((run) => run.text).join(' ').replace(/\s+/g, ' ').trim();
+
+  // Representação legal com rodapé "NOME<br>Outorgante" (quebra curta no
+  // mesmo parágrafo) ou "NOME" seguido do parágrafo "Outorgante": o nome do
+  // cliente dá lugar ao representante. Só troca parágrafos compostos
+  // exclusivamente pelo nome e pelo rótulo, perto do fim do documento.
+  const representationLine = String(variables.assinatura_representacao || '').trim();
+  const clientOnlyName = String(variables.cliente_nome || '').trim().toLowerCase();
+  if (representationLine && clientOnlyName) {
+    const roleLabel = /^(?:OUTORGANTE|CONTRATANTE|DECLARANTE|ASSINATURA\s+DO\s+CLIENTE)\.?$/i;
+    const segmentsOf = (paragraph: RichParagraph) => paragraph.runs.map((run) => run.text).join('').split('[[AJ_BR]]').map((part) => part.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    const start = Math.max(0, paragraphs.length - 8);
+    paragraphs = paragraphs.map((paragraph, index) => {
+      if (index < start) return paragraph;
+      const segments = segmentsOf(paragraph);
+      const hasName = segments.some((part) => part.toLowerCase() === clientOnlyName);
+      const onlyNameAndRole = segments.every((part) => part.toLowerCase() === clientOnlyName || roleLabel.test(part));
+      const hasRoleHere = segments.some((part) => roleLabel.test(part));
+      const nextIsRole = paragraphs[index + 1] ? roleLabel.test(paragraphText(paragraphs[index + 1])) : false;
+      if (!hasName || !onlyNameAndRole || (!hasRoleHere && !nextIsRole)) return paragraph;
+      return { ...paragraph, runs: paragraph.runs.map((run) => ({ ...run, text: run.text.split('[[AJ_BR]]').map((part) => part.trim().toLowerCase() === clientOnlyName ? part.replace(part.trim(), representationLine) : part).join('[[AJ_BR]]') })) };
+    });
+  }
   const roleIndex = paragraphs
     .map((paragraph, index) => /^(?:OUTORGANTE|CONTRATANTE|DECLARANTE|ASSINATURA\s+DO\s+CLIENTE)\.?$/i.test(paragraphText(paragraph)) ? index : -1)
     .filter((index) => index >= 0)
