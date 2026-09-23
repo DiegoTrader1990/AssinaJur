@@ -1468,6 +1468,40 @@ export async function generateFinalPdfCertificate(documentId: string) {
     y = pY - 6;
   }
 
+  // ── Acabamento das evidências fotográficas (selfie e documento) ──
+  // Foto com passe-partout branco e fio dourado (como foto de documento
+  // oficial), selo discreto em vez de "botão", e dados reais da captura.
+  const drawFramedPhoto = (target: PDFPage, image: any, slotX: number, slotY: number, slotW: number, slotH: number) => {
+    const matte = 4;
+    const scale = image ? Math.min((slotW - 2 * matte) / image.width, (slotH - 2 * matte) / image.height) : 1;
+    const w = image ? Math.round(image.width * scale) : slotW - 2 * matte;
+    const h = image ? Math.round(image.height * scale) : slotH - 2 * matte;
+    const ix = slotX + (slotW - w) / 2;
+    const iy = slotY + (slotH - h) / 2;
+    target.drawRectangle({ x: ix - matte + 1.3, y: iy - matte - 1.3, width: w + 2 * matte, height: h + 2 * matte, color: rgb(0.86, 0.88, 0.91), opacity: 0.7 });
+    target.drawRectangle({ x: ix - matte, y: iy - matte, width: w + 2 * matte, height: h + 2 * matte, color: rgb(1, 1, 1), borderColor: gold, borderWidth: 0.6 });
+    if (image) target.drawImage(image, { x: ix, y: iy, width: w, height: h });
+    else target.drawText('Imagem indisponível', { x: ix + 8, y: iy + h / 2, size: 7, font: regular, color: muted });
+    return { x: ix - matte, y: iy - matte, width: w + 2 * matte, height: h + 2 * matte };
+  };
+  const drawCheckSeal = (target: PDFPage, cx: number, cy: number, r = 6.5) => {
+    target.drawCircle({ x: cx, y: cy, size: r, color: gold });
+    target.drawLine({ start: { x: cx - r * 0.45, y: cy + r * 0.02 }, end: { x: cx - r * 0.1, y: cy - r * 0.35 }, thickness: 1.3, color: rgb(1, 1, 1) });
+    target.drawLine({ start: { x: cx - r * 0.1, y: cy - r * 0.35 }, end: { x: cx + r * 0.5, y: cy + r * 0.4 }, thickness: 1.3, color: rgb(1, 1, 1) });
+  };
+  const imageFingerprint = (dataUrl?: string | null) => {
+    const base64 = String(dataUrl || '').split(',')[1];
+    return base64 ? calculateHash(Buffer.from(base64, 'base64')) : '';
+  };
+  const selfieCapturedAt = (signer: typeof doc.signers[number]) => {
+    const times = doc.events
+      .filter((ev: any) => ev.signerId === signer.id && (
+        ev.eventType === 'SELFIE_CENTER_VALIDATED' || ev.eventType === 'LIVENESS_CAPTURED' ||
+        (ev.eventType === 'PHOTO_REDO_COMPLETED' && String(ev.metadata || '').includes('selfieCenterImage'))))
+      .map((ev: any) => new Date(ev.createdAt).getTime());
+    return times.length ? new Date(Math.max(...times)) : signer.signedAt;
+  };
+
   // SEÇÃO 3: PROVA DE PRESENÇA AO VIVO (REGISTRO FACIAL HD)
   // Um cartão de evidência por signatário, todos aqui reunidos depois da
   // Seção 2 (dados). O cartão é grande (380x210) para dar destaque à selfie,
@@ -1522,48 +1556,41 @@ export async function generateFinalPdfCertificate(documentId: string) {
       // sólido usado antes lia como uma etiqueta colada por cima do papel
       // timbrado; este friso integra a foto ao certificado em vez de
       // emoldurá-la como um objeto à parte.
-      page.drawRectangle({ x: photoX, y: imgFrameY, width: boxW, height: boxH, color: rgb(0.96, 0.97, 0.985), opacity: 0.82, borderColor: rgb(0.82, 0.86, 0.92), borderWidth: 0.8 });
+      // Cartão branco com borda fina e friso dourado no topo - mesmo padrão
+      // das demais seções, sem o fundo cinza que parecia "colado" no papel.
+      page.drawRectangle({ x: photoX, y: imgFrameY, width: boxW, height: boxH, color: rgb(1, 1, 1), opacity: 0.9, borderColor: panelBorder, borderWidth: 0.7 });
       page.drawRectangle({ x: photoX, y: imgFrameY + boxH - 1.4, width: boxW, height: 1.4, color: gold });
 
       const photoFrameMaxW = 209;
       const photoFrameMaxH = 216;
-      const photoSlotY = imgFrameY + 19;
-      // A moldura é calculada do tamanho exato da foto já escalada dentro do
-      // espaço disponível (até 167x173), então sempre encosta nas quatro
-      // bordas da imagem, landscape ou retrato, sem sobra em branco.
-      const photoScale = embedded
-        ? Math.min(photoFrameMaxW / embedded.width, photoFrameMaxH / embedded.height)
-        : 1;
-      const photoFrameW = embedded ? Math.round(embedded.width * photoScale) : photoFrameMaxW;
-      const photoFrameH = embedded ? Math.round(embedded.height * photoScale) : photoFrameMaxH;
-      const photoFrameX = photoX + 18 + (photoFrameMaxW - photoFrameW) / 2;
-      const photoFrameY = photoSlotY + (photoFrameMaxH - photoFrameH) / 2;
-      page.drawRectangle({ x: photoFrameX, y: photoFrameY, width: photoFrameW, height: photoFrameH, color: rgb(1, 1, 1), borderColor: rgb(0.8, 0.84, 0.9), borderWidth: 0.7 });
+      const framed = drawFramedPhoto(page, embedded, photoX + 16, imgFrameY + (boxH - photoFrameMaxH) / 2 - 1, photoFrameMaxW, photoFrameMaxH);
 
-      if (embedded) {
-        page.drawImage(embedded, {
-          x: photoFrameX,
-          y: photoFrameY,
-          width: photoFrameW,
-          height: photoFrameH,
-        });
-      }
+      // Coluna de dados reais da captura, no lugar das frases genéricas.
+      const infoX = photoX + 16 + photoFrameMaxW + 18;
+      const infoW = photoX + boxW - 16 - infoX;
+      const capturedAt = selfieCapturedAt(signer);
+      const locationValue = signer.geoCity ? `${signer.geoCity}${signer.geoState ? '/' + signer.geoState : ''}` : 'Não coletada';
+      const fingerprint = imageFingerprint(img);
+      let rowY = framed.y + framed.height - 6;
+      const infoRow = (label: string, value: string, options: any = {}) => {
+        page.drawText(label.toUpperCase(), { x: infoX, y: rowY, size: 5.8, font: bold, color: muted });
+        const size = options.size || 7.8;
+        const lines = wrapTextToWidth(value, options.font || bold, size, infoW);
+        lines.forEach((line, index) => page.drawText(line, { x: infoX, y: rowY - 10 - index * (size + 2.4), size, font: options.font || bold, color: options.color || navy }));
+        rowY -= 10 + lines.length * (size + 2.4) + 8;
+      };
+      infoRow('Tipo de evidência', 'Selfie de prova de presença');
+      infoRow('Capturada em', `${formatBrasiliaDateTime(capturedAt).replace(/\s*\(.+$/, '')} (horário de Brasília)`);
+      infoRow('Dispositivo', parseUserAgentFriendly(signer.userAgent));
+      infoRow('Localização', locationValue);
+      if (fingerprint) infoRow('Impressão digital da imagem (SHA-256)', `${fingerprint.slice(0, 32)} ${fingerprint.slice(32)}`, { font: mono, size: 6.2, color: text });
 
-      const infoX = photoX + 18 + photoFrameMaxW + 14;
-      // Bloco de texto alinhado ao TOPO da moldura da foto (não mais
-      // centralizado mais abaixo no cartão) - com a foto maior, o texto
-      // "flutuava" visualmente bem abaixo do topo da foto, dando a
-      // impressão de desalinhamento entre os dois lados do cartão.
-      const photoFrameTop = photoFrameY + photoFrameH;
-      page.drawText('EVIDÊNCIA FOTOGRÁFICA', { x: infoX, y: photoFrameTop - 7, size: 8.4, font: bold, color: navy });
-      page.drawText('SELFIE COM DOCUMENTO', { x: infoX, y: photoFrameTop - 27, size: 7.4, font: bold, color: muted });
-      page.drawLine({ start: { x: infoX, y: photoFrameTop - 38 }, end: { x: photoX + boxW - 19, y: photoFrameTop - 38 }, thickness: 0.5, color: rgb(0.8, 0.84, 0.9) });
-      page.drawText('Identidade e presença', { x: infoX, y: photoFrameTop - 65, size: 7.6, font: regular, color: muted });
-      page.drawText('confirmadas na sessão', { x: infoX, y: photoFrameTop - 82, size: 10.3, font: bold, color: navy });
-      page.drawText('Imagem original preservada', { x: infoX, y: photoFrameTop - 111, size: 7.6, font: regular, color: muted });
-      page.drawText('junto aos registros técnicos.', { x: infoX, y: photoFrameTop - 124, size: 7.6, font: regular, color: muted });
-      page.drawRectangle({ x: infoX, y: photoFrameTop - 149, width: 149, height: 18, borderColor: green, borderWidth: 0.7 });
-      page.drawText('EVIDÊNCIA VINCULADA', { x: infoX + 12, y: photoFrameTop - 144, size: 6.8, font: bold, color: green });
+      // Selo discreto alinhado à base da foto.
+      const sealY = framed.y + 8;
+      page.drawLine({ start: { x: infoX, y: sealY + 16 }, end: { x: infoX + infoW, y: sealY + 16 }, thickness: 0.5, color: panelBorder });
+      drawCheckSeal(page, infoX + 6.5, sealY + 1);
+      page.drawText('EVIDÊNCIA VINCULADA', { x: infoX + 18, y: sealY + 2.5, size: 6.6, font: bold, color: navy });
+      page.drawText('a este documento', { x: infoX + 18, y: sealY - 6, size: 6, font: regular, color: muted });
 
       // Respiro generoso entre o fim de um cartão e o início do próximo
       // (26pt ainda deixava o selo "EVIDÊNCIA VINCULADA" perto demais da
@@ -1676,25 +1703,17 @@ export async function generateFinalPdfCertificate(documentId: string) {
         // Mesmo friso dourado fino + legenda em texto corrido usado na selfie,
         // sem bloco de cor sólido - a foto do documento passa a parecer parte
         // do certificado, não um recorte colado em cima do papel timbrado.
-        page.drawRectangle({ x: docX, y: frameY + docBoxH - 1.4, width: docBoxW, height: 1.4, color: gold });
+        const docFrame = drawFramedPhoto(page, embedded, docX, frameY, docBoxW, docBoxH);
 
-        if (embedded) {
-          const imgW = embedded.width;
-          const imgH = embedded.height;
-          const scale = Math.min(docBoxW / imgW, docBoxH / imgH);
-          const drawW = Math.round(imgW * scale);
-          const drawH = Math.round(imgH * scale);
-          const offsetX = docX + (docBoxW - drawW) / 2;
-          const offsetY = frameY + (docBoxH - drawH) / 2;
-          page.drawImage(embedded, { x: offsetX, y: offsetY, width: drawW, height: drawH });
-        }
-
-        page.drawText(safeText(label, 40).toUpperCase(), {
-          x: docX, y: frameY - 13, size: 6.6, font: bold, color: muted,
-        });
-        const validText = 'EVIDÊNCIA COLETADA';
-        const validW = bold.widthOfTextAtSize(validText, 5.8);
-        page.drawText(validText, { x: docX + docBoxW - validW, y: frameY - 13, size: 5.8, font: bold, color: green });
+        // Legenda na largura da própria foto: tipo à esquerda, selo à direita
+        // e a impressão digital (SHA-256) da imagem logo abaixo.
+        page.drawText(safeText(label, 40).toUpperCase(), { x: docFrame.x, y: frameY - 12, size: 6.6, font: bold, color: navy });
+        const sealText = 'EVIDÊNCIA VINCULADA';
+        const sealW = bold.widthOfTextAtSize(sealText, 5.8);
+        page.drawText(sealText, { x: docFrame.x + docFrame.width - sealW, y: frameY - 12, size: 5.8, font: bold, color: navy });
+        drawCheckSeal(page, docFrame.x + docFrame.width - sealW - 8, frameY - 10, 4.2);
+        const docPrint = imageFingerprint(img);
+        if (docPrint) page.drawText(`SHA-256: ${docPrint}`, { x: docFrame.x, y: frameY - 21, size: 5, font: mono, color: muted });
         dCursor = frameY - docCaptionH - 14;
       }
       dCursor -= 4;
