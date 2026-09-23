@@ -1476,7 +1476,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 <Scale className="w-3 h-3" /> {document?.documentType || 'DOCUMENTO JURÍDICO'}
               </span>
               <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                Olá, <strong className="text-[#071B3A]">{signer?.name}</strong>! Confirme seu CPF abaixo para acessar o documento e iniciar a prova de presença ao vivo.
+                Olá, <strong className="text-[#071B3A]">{signer?.name}</strong>! {isRepresentativeSigner ? 'Confira seu CPF abaixo e toque em confirmar para acessar o documento.' : 'Confirme seu CPF abaixo para acessar o documento e iniciar a prova de presença ao vivo.'}
               </p>
             </div>
 
@@ -1505,7 +1505,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
             <form onSubmit={handleConfirmCpf} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 font-heading text-center">CPF do Cliente Titular *</label>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 font-heading text-center">{isRepresentativeSigner ? 'Seu CPF (representante legal) *' : 'CPF do Cliente Titular *'}</label>
                 <input
                   type="text"
                   required
