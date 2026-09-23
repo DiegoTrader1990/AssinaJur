@@ -1,3 +1,4 @@
+import { genderizeNationality, genderizeNeutralWord } from './kitTemplateNormalization';
 export const PARTICIPANT_DETAILS_EVENT = 'PARTICIPANT_DETAILS_CONFIGURED';
 export type ParticipantQualification = { roleLabel?: string; rg?: string; issuingOrgan?: string; birthDate?: string; nationality?: string; gender?: string; maritalStatus?: string; profession?: string; cep?: string; address?: string; city?: string; state?: string };
 export type QualifiedParticipant = { name: string; cpf?: string; email?: string | null; phone?: string | null; role: string; signatureOrder: number; qualification?: ParticipantQualification };
@@ -21,7 +22,9 @@ const escapeHtml = (value: string) => value.replace(/&/g,'&amp;').replace(/</g,'
 export function fullQualification(person: QualifiedParticipant): string {
  const q = person.qualification || {};
  const address = [q.address, [q.city,q.state].filter(Boolean).join('/'), q.cep ? `CEP ${q.cep}` : ''].filter(Boolean).join(', ');
- return [person.name, q.nationality, q.maritalStatus, q.profession, q.rg ? `RG nº ${q.rg}${q.issuingOrgan ? ' '+q.issuingOrgan : ''}` : '', person.cpf ? `CPF nº ${cpf(person.cpf)}` : '', q.birthDate ? `nascimento: ${q.birthDate.slice(0,10).split('-').reverse().join('/')}` : '', address ? `residência: ${address}` : '', person.email ? `e-mail: ${person.email}` : '', person.phone ? `telefone: ${person.phone}` : ''].filter(Boolean).join(', ');
+ // Nacionalidade e estado civil concordam com o gênero cadastrado (o cadastro
+ // guarda "Brasileira" como padrão e "Solteiro(a)" na forma neutra).
+ return [person.name, genderizeNationality(q.nationality, q.gender), genderizeNeutralWord(q.maritalStatus, q.gender), q.profession, q.rg ? `RG nº ${q.rg}${q.issuingOrgan ? ' '+q.issuingOrgan : ''}` : '', person.cpf ? `CPF nº ${cpf(person.cpf)}` : '', q.birthDate ? `nascimento: ${q.birthDate.slice(0,10).split('-').reverse().join('/')}` : '', address ? `residência: ${address}` : '', person.email ? `e-mail: ${person.email}` : '', person.phone ? `telefone: ${person.phone}` : ''].filter(Boolean).join(', ');
 }
 export function participantVariables(people: QualifiedParticipant[]): Record<string,string> {
  const values: Record<string,string> = {}; let part = 0, witness = 0;

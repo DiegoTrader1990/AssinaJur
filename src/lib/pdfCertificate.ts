@@ -288,6 +288,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     where: { id: documentId },
     include: {
       office: true,
+      client: true,
       originalFile: true,
       signedFile: true,
       signers: true,
@@ -326,6 +327,35 @@ export async function generateFinalPdfCertificate(documentId: string) {
   const participantDetails = qualificationDetails(doc);
   const qualificationFor = (person: typeof doc.signers[number]) => participantDetails.find(p => p.order === person.signatureOrder)?.qualification;
   const roleFor = (person: typeof doc.signers[number]) => qualificationFor(person)?.roleLabel || signerRoleLabel(person.role);
+  // Qualificação do assinante a rogo, montada com os mesmos dados usados no
+  // corpo do documento: representante legal cadastrado no cliente (curador,
+  // mãe etc.) ou os dados do acompanhante a rogo informados no envio. Antes o
+  // certificado só qualificava o outorgante.
+  const onlyDigits = (value?: string | null) => String(value || '').replace(/\D/g, '');
+  const sameName = (a?: string | null, b?: string | null) => String(a || '').trim().toUpperCase() === String(b || '').trim().toUpperCase();
+  const formatBirth = (value?: string | null) => {
+    const raw = String(value || '').trim();
+    return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10).split('-').reverse().join('/') : raw;
+  };
+  const rogoQualificationText = (person: typeof doc.signers[number]) => {
+    if (person.role !== 'ASSINANTE_A_ROGO') return '';
+    const c = doc.client;
+    const clientSigner = doc.signers.find((s) => s.role === 'CLIENTE');
+    const clientQ = clientSigner ? qualificationFor(clientSigner) : undefined;
+    const cep = clientQ?.cep || c?.cep;
+    const clientAddress = [clientQ?.address || c?.address, [clientQ?.city || c?.city, clientQ?.state || c?.state].filter(Boolean).join('/'), cep ? `CEP ${cep}` : ''].filter(Boolean).join(', ');
+    const isRepresentative = Boolean(c?.legalRepresentative) && (
+      (onlyDigits(c?.representativeCpf) !== '' && onlyDigits(c?.representativeCpf) === onlyDigits(person.cpf)) || sameName(c?.legalRepresentative, person.name));
+    const relation = isRepresentative ? c?.representativeRole : doc.rogoRelationship;
+    const rg = isRepresentative ? c?.representativeRg : doc.rogoRg;
+    const birth = isRepresentative ? c?.representativeBirthDate : doc.rogoBirthDate;
+    const sameAddress = isRepresentative ? c?.representativeSameAddress : doc.rogoSameAddress;
+    const address = sameAddress ? clientAddress : (isRepresentative ? c?.representativeAddress : doc.rogoAddress);
+    const phone = person.phone || (isRepresentative ? c?.representativePhone : '');
+    return [person.name, relation, rg ? `RG nº ${rg}` : '', person.cpf ? `CPF nº ${formatFullCpf(person.cpf)}` : '',
+      birth ? `nascimento: ${formatBirth(birth)}` : '', address ? `residência: ${address}` : '', phone ? `telefone: ${formatFullPhone(phone)}` : '']
+      .filter(Boolean).join(', ');
+  };
   const participantGroups = configuredGroups(doc, doc.signers);
   const rogoFor = (order: number) => { const group = participantGroups.find(g => g.partyOrder === order); return group ? doc.signers.find(p => p.signatureOrder === group.rogoOrder) : undefined; };
   // A ordem visual do certificado segue a ordem jurídica, inclusive para
@@ -1323,8 +1353,12 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const userAgentLines = fieldLines(signer.userAgent || 'Não informado', innerWidth, { size: 7.2 });
     const locationLines = fieldLines(locationText, innerWidth, { size: 7.8 });
     const authenticationLines = fieldLines(authenticationText, innerWidth, { size: 7.8 });
-    const qualificationText = qualificationFor(signer) ? fullQualification({ ...signer, qualification: qualificationFor(signer) }) : '';
-    const qualificationHeight = qualificationText ? 17 + fieldLines(qualificationText, innerWidth, { size: 7.5 }).length * 9 : 0;
+    const qualificationText = qualificationFor(signer) ? fullQualification({ ...signer, qualification: qualificationFor(signer) }) : rogoQualificationText(signer);
+    // Qualificação em destaque: fonte maior, entrelinha mais aberta e um
+    // painel claro com friso dourado, logo abaixo do nome/CPF.
+    const QUAL_SIZE = 8.8, QUAL_LINE = 12, QUAL_PAD = 8;
+    const qualificationLines = qualificationText ? fieldLines(qualificationText, innerWidth - 2 * QUAL_PAD, { size: QUAL_SIZE }) : [];
+    const qualificationHeight = qualificationText ? 11 + qualificationLines.length * QUAL_LINE + 2 * QUAL_PAD + 8 : 0;
     const dataHeight = qualificationHeight +
       rowHeight(nameLines.length, cpfLines.length, 9.5) +
       rowHeight(phoneLines.length, dateLines.length, 9) +
@@ -1376,6 +1410,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
       { label: 'CPF completo', value: formatFullCpf(signer.cpf), options: { font: bold, size: 9 } },
       rowHeight(nameLines.length, cpfLines.length, 9)
     );
+    if (qualificationText) {
+      const boxH = qualificationHeight - 8;
+      page.drawRectangle({ x: padX - 4, y: cursor - boxH + 9, width: innerWidth + 8, height: boxH, color: rgb(0.965, 0.972, 0.985), borderColor: panelBorder, borderWidth: 0.6 });
+      page.drawRectangle({ x: padX - 4, y: cursor - boxH + 9, width: 2.6, height: boxH, color: gold });
+      drawFieldBlock(padX + QUAL_PAD - 2, cursor - QUAL_PAD + 4, innerWidth - 2 * QUAL_PAD, 'Qualificação completa', qualificationText, { size: QUAL_SIZE, lineHeight: QUAL_LINE, color: navy });
+      cursor -= qualificationHeight;
+    }
     drawTwoColumns(
       { label: 'Telefone completo', value: formatFullPhone(signer.phone), options: { size: 8.5 } },
       { label: 'Data e hora da assinatura', value: formatBrasiliaDateTime(signer.signedAt), options: { font: bold, size: 8 } },
@@ -1387,7 +1428,6 @@ export async function generateFinalPdfCertificate(documentId: string) {
       rowHeight(ipLines.length, roleLines.length, 8)
     );
 
-    if (qualificationText) cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Qualificação completa', qualificationText, { size: 7.5, lineHeight: 9 });
     cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Dispositivo e navegador completos', parseUserAgentFriendly(signer.userAgent), { size: 7.5, lineHeight: 9, font: bold, color: navy });
     const locationTop = cursor;
     cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Geolocalização completa do dispositivo', locationText, { size: 7.5, lineHeight: 9, color: hasLocation ? linkBlue : muted });
