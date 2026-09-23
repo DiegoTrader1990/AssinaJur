@@ -48,7 +48,8 @@ import {
   SortDesc,
   History,
   Eye,
-  RotateCcw
+  RotateCcw,
+  MoreHorizontal
 } from 'lucide-react';
 import { maskCpfCnpj } from '@/lib/formatters';
 
@@ -142,6 +143,9 @@ export default function DocumentsPage() {
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
   const [savingTag, setSavingTag] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDocuments();
@@ -153,22 +157,74 @@ export default function DocumentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A API devolve os envios em blocos (paginação). "Carregar mais" traz o
+  // próximo bloco e junta com o que já está na tela, sem repetir documentos.
+  const sortByNewest = (items: DocumentItem[]) => [...items].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const mergeDocuments = (current: DocumentItem[], incoming: DocumentItem[]) => {
+    const byId = new Map(current.map((item) => [item.id, item]));
+    incoming.forEach((item) => byId.set(item.id, item));
+    return sortByNewest(Array.from(byId.values()));
+  };
+  const requestDocuments = async (cursor?: string) => {
+    const url = new URL('/api/documents', window.location.origin);
+    if (searchQuery) url.searchParams.set('q', searchQuery);
+    if (cursor) url.searchParams.set('cursor', cursor);
+    const res = await fetch(url.toString(), { cache: 'no-store' });
+    return res.json() as Promise<{ documents?: DocumentItem[]; nextCursor?: string | null }>;
+  };
+
   const fetchDocuments = async () => {
     setLoading(true);
     try {
-      const url = new URL('/api/documents', window.location.origin);
-      if (searchQuery) url.searchParams.set('q', searchQuery);
-
-      const res = await fetch(url.toString());
-      const data = await res.json();
-      if (data.documents) setDocuments(data.documents);
-      return data.documents as DocumentItem[] | undefined;
+      const data = await requestDocuments();
+      if (data.documents) {
+        setDocuments(sortByNewest(data.documents));
+        setNextCursor(data.nextCursor || null);
+      }
+      return data.documents;
     } catch (err) {
       console.error('Erro ao carregar documentos:', err);
     } finally {
       setLoading(false);
     }
   };
+
+  const loadMoreDocuments = async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const data = await requestDocuments(nextCursor);
+      if (data.documents) {
+        const incoming = data.documents;
+        setDocuments((current) => mergeDocuments(current, incoming));
+        setNextCursor(data.nextCursor || null);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar mais documentos:', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // Atualização automática enquanto alguém está assinando: a cada 15s (só com
+  // a aba visível) a lista e o dossiê aberto mostram a etapa atual do cliente,
+  // sem precisar recarregar a página durante o atendimento por telefone.
+  const hasActiveSigning = documents.some((item) => ['ENVIADO', 'VISUALIZADO', 'PARCIALMENTE_ASSINADO', 'EM_ASSINATURA'].includes(item.status));
+  useEffect(() => {
+    if (!hasActiveSigning) return;
+    const timer = window.setInterval(async () => {
+      if (window.document.visibilityState !== 'visible') return;
+      try {
+        const data = await requestDocuments();
+        if (!data.documents) return;
+        const fresh = data.documents;
+        setDocuments((current) => mergeDocuments(current, fresh));
+        setSelectedDoc((current) => (current ? fresh.find((item) => item.id === current.id) || current : current));
+      } catch { /* tenta de novo no próximo ciclo */ }
+    }, 15000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasActiveSigning, searchQuery]);
 
   const fetchTags = async () => {
     try {
@@ -868,25 +924,36 @@ export default function DocumentsPage() {
     const isCompleted = packageDocuments.every((item) => item.status === 'CONCLUIDO');
     const isPendingReview = isCompleted && packageDocuments.some((item) => item.reviewStatus !== 'APROVADO');
     const formattedDate = new Date(lead.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    // "(Kit Previdenciário Completo)" repetido em todos os documentos vira o
+    // nome do kit uma vez só, no cabeçalho do card.
+    const kitSuffix = lead.title.match(/\s\(([^()]+)\)$/);
+    const kitName = kitSuffix && packageDocuments.every((item) => item.title.endsWith(kitSuffix[0])) ? kitSuffix[1] : '';
+    const shortTitle = (title: string) => (kitName && kitSuffix ? title.slice(0, -kitSuffix[0].length) : title);
+    const cardKey = lead.kitBatchId || lead.id;
+    const canLinkProcess = isCompleted && Boolean(lead.client) && packageDocuments.every((item) => !item.processId);
+    const hasMenu = isCompleted;
     const togglePackage = () => setSelectedDocIds((current) => {
       const next = new Set(current);
       packageDocuments.forEach((item) => allSelected ? next.delete(item.id) : next.add(item.id));
       return next;
     });
     return (
-      <div key={lead.kitBatchId} className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${isCompleted ? 'border-emerald-300' : 'border-blue-200'}`}>
+      <div key={cardKey} className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${isCompleted ? 'border-emerald-300' : 'border-blue-200'}`}>
         <div className={`p-3.5 ${isCompleted ? 'bg-emerald-50/70' : 'bg-blue-50/70'} border-b ${isCompleted ? 'border-emerald-100' : 'border-blue-100'}`}>
           <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0"><div className="flex items-center gap-1.5"><Layers className={`w-4 h-4 ${isCompleted ? 'text-emerald-600' : 'text-blue-600'}`} /><span className={`text-[10px] font-black uppercase tracking-wider ${isCompleted ? 'text-emerald-800' : 'text-blue-800'}`}>Pacote de assinatura</span></div><h4 className="font-heading font-black text-sm text-[#071B3A] mt-1">{packageDocuments.length} documentos • {lead.client?.name || 'Cliente não vinculado'}</h4><p className="text-[10px] text-slate-500 mt-0.5">Criado em {formattedDate} • uma única sessão de assinatura</p></div>
+            <div className="min-w-0"><div className="flex items-center gap-1.5"><Layers className={`w-4 h-4 ${isCompleted ? 'text-emerald-600' : 'text-blue-600'}`} /><span className={`text-[10px] font-black uppercase tracking-wider ${isCompleted ? 'text-emerald-800' : 'text-blue-800'}`}>Pacote de assinatura</span></div><h4 className="font-heading font-black text-sm text-[#071B3A] mt-1">{packageDocuments.length} documentos • {lead.client?.name || 'Cliente não vinculado'}</h4><p className="text-[10px] text-slate-500 mt-0.5">{kitName ? `${kitName} • ` : ''}Criado em {formattedDate}</p></div>
             <button onClick={togglePackage} className="text-slate-400 hover:text-blue-600 pt-0.5">{allSelected ? <CheckSquare className="w-4 h-4 text-blue-600" /> : <Square className="w-4 h-4" />}</button>
           </div>
-          <div className="mt-2 flex items-center justify-between"><div>{getStatusBadge(isCompleted ? 'CONCLUIDO' : lead.status)}</div>{lead.client?.cpfCnpj && <span className="font-mono text-[9px] text-slate-500">{maskCpfCnpj(lead.client.cpfCnpj)}</span>}</div>
+          <div className="mt-2 flex items-center justify-between"><div>{isCompleted ? (isPendingReview
+            ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 text-amber-800 font-extrabold text-[10px] border border-amber-200 font-heading"><Clock className="w-3 h-3" /> Aguardando revisão</span>
+            : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-extrabold text-[10px] border border-emerald-200 font-heading"><CheckCircle2 className="w-3 h-3" /> Aprovado</span>)
+            : getStatusBadge(lead.status)}</div>{lead.client?.cpfCnpj && <span className="font-mono text-[9px] text-slate-500">{maskCpfCnpj(lead.client.cpfCnpj)}</span>}</div>
         </div>
         <div className="divide-y divide-slate-100">
-          {packageDocuments.map((item, index) => <div key={item.id} className="px-3.5 py-2.5 flex items-center justify-between gap-2"><div className="min-w-0 flex items-center gap-2"><span className="w-5 h-5 shrink-0 rounded-md bg-slate-100 text-slate-600 grid place-items-center text-[10px] font-black">{index + 1}</span><span className="truncate text-[11px] font-bold text-slate-700">{item.title}</span></div>{item.status === 'CONCLUIDO' && <a href={`/api/documents/${item.id}/download${item.updatedAt ? `?v=${encodeURIComponent(item.updatedAt)}` : ''}`} download title={`Baixar ${item.title}`} className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50"><Download className="w-3.5 h-3.5" /></a>}</div>)}
+          {packageDocuments.map((item, index) => <div key={item.id} className="px-3.5 py-2.5 flex items-center justify-between gap-2"><div className="min-w-0 flex items-center gap-2"><span className="w-5 h-5 shrink-0 rounded-md bg-slate-100 text-slate-600 grid place-items-center text-[10px] font-black">{index + 1}</span><span className="truncate text-[11px] font-bold text-slate-700" title={item.title}>{shortTitle(item.title)}</span></div>{item.status === 'CONCLUIDO' && <a href={`/api/documents/${item.id}/download${item.updatedAt ? `?v=${encodeURIComponent(item.updatedAt)}` : ''}`} download title={`Baixar ${item.title}`} className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50"><Download className="w-3.5 h-3.5" /></a>}</div>)}
         </div>
         <div className="p-3 border-t border-slate-100 flex flex-wrap gap-2">
-          <button onClick={() => setSelectedDoc(lead)} className="flex-1 py-2 bg-[#071B3A] hover:bg-[#0B1D3D] text-white rounded-xl text-[10px] font-extrabold">Abrir dossiê do pacote</button>
+          <button onClick={() => setSelectedDoc(lead)} className="flex-1 py-2 bg-[#071B3A] hover:bg-[#0B1D3D] text-white rounded-xl text-[10px] font-extrabold">Abrir</button>
           {isPendingReview && canCorrect && (
             <>
               {isOfficeAdmin && <button
@@ -910,18 +977,24 @@ export default function DocumentsPage() {
               </button>
             </>
           )}
-          {isCompleted && (
-            <button
-              type="button"
-              onClick={() => handleDeleteCompletedPackage(packageDocuments)}
-              disabled={deletingSelected}
-              className="px-3 py-2 border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 disabled:opacity-50 rounded-xl text-[10px] font-extrabold inline-flex items-center gap-1"
-            >
-              {deletingSelected ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-              Excluir kit
-            </button>
+          {/* Ações raras ou destrutivas ficam no menu "⋯", longe do Aprovar -
+              antes o "Excluir kit" vermelho ficava colado no botão de aprovar. */}
+          {hasMenu && (
+            <div className="relative">
+              <button type="button" onClick={() => setOpenMenuKey(openMenuKey === cardKey ? null : cardKey)} title="Mais ações" className="h-full px-2.5 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl"><MoreHorizontal className="w-4 h-4" /></button>
+              {openMenuKey === cardKey && (
+                <>
+                  <button type="button" aria-label="Fechar menu" className="fixed inset-0 z-10 cursor-default" onClick={() => setOpenMenuKey(null)} />
+                  <div className="absolute right-0 bottom-full mb-1 z-20 w-48 bg-white border border-slate-200 rounded-xl shadow-lg py-1 text-[11px] font-bold">
+                    {canLinkProcess && lead.client && <Link href={`/processos?clienteId=${lead.client.id}&documentoIds=${packageDocuments.map((item) => item.id).join(',')}`} onClick={() => setOpenMenuKey(null)} className="block px-3 py-2 text-blue-700 hover:bg-blue-50">Vincular a processo</Link>}
+                    <button type="button" onClick={() => { setOpenMenuKey(null); handleDeleteCompletedPackage(packageDocuments); }} disabled={deletingSelected} className="w-full text-left px-3 py-2 text-rose-700 hover:bg-rose-50 disabled:opacity-50 inline-flex items-center gap-1.5">
+                      <Trash2 className="w-3 h-3" /> Excluir kit
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           )}
-          {isCompleted && lead.client && packageDocuments.every((item) => !item.processId) && <Link href={`/processos?clienteId=${lead.client.id}&documentoIds=${packageDocuments.map((item) => item.id).join(',')}`} className="px-3 py-2 border border-blue-200 text-blue-700 rounded-xl text-[10px] font-extrabold">Processo</Link>}
           {!isCompleted && lead.signers[0] && <button onClick={() => handleCopyLink(lead.signers[0].token)} className="px-3 py-2 border border-blue-200 text-blue-700 rounded-xl text-[10px] font-extrabold">Copiar link</button>}
         </div>
       </div>
@@ -1113,67 +1186,41 @@ export default function DocumentsPage() {
           <p className="text-xs text-slate-500">Tente ajustar o filtro de busca ou período de data acima.</p>
         </div>
       ) : viewFormat === 'KANBAN' ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
-          {/* Coluna 1: Concluídos */}
-          <div className="bg-slate-50/70 p-3 rounded-2xl border border-slate-200 space-y-3">
-            <div className="p-2.5 bg-white border border-emerald-200 rounded-xl flex items-center justify-between shadow-2xs">
-              <span className="font-heading font-black text-xs text-emerald-900 flex items-center gap-1.5 uppercase">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> 1. Concluídos ({kanbanColumns.completed.length})
-              </span>
-              <span className="text-[10px] text-emerald-700 font-mono font-bold">100% Válidos</span>
-            </div>
-
-            <div className="space-y-2.5 max-h-[70vh] overflow-y-auto pr-0.5">
-              {kanbanColumns.completed.length === 0 ? (
-                <div className="p-6 text-center border border-dashed border-slate-200 rounded-xl text-slate-400 text-xs font-medium bg-white/40">
-                  Nenhum concluído neste filtro
+        (() => {
+          // Colunas na ordem do fluxo: cliente assinando → sua revisão →
+          // aprovados. "Concluído" deixou de misturar o que ainda precisa da
+          // sua revisão com o que já foi aprovado. Os contadores contam
+          // envios (cards), não documentos soltos.
+          const completedPackages = groupPackages(kanbanColumns.completed);
+          const columns = [
+            { key: 'progress', title: 'Em assinatura', hint: 'Aguardando o cliente', icon: <Clock className="w-3.5 h-3.5 text-amber-600" />, border: 'border-amber-200', text: 'text-amber-900', hintText: 'text-amber-700', items: groupPackages(kanbanColumns.inProgress), empty: 'Ninguém assinando agora' },
+            { key: 'review', title: 'Aguardando sua revisão', hint: 'Aprovar ou refazer', icon: <Eye className="w-3.5 h-3.5 text-blue-600" />, border: 'border-blue-200', text: 'text-blue-900', hintText: 'text-blue-700', items: completedPackages.filter((items) => items.some((item) => item.reviewStatus !== 'APROVADO')), empty: 'Nada para revisar' },
+            { key: 'approved', title: 'Aprovados', hint: 'Finalizados', icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />, border: 'border-emerald-200', text: 'text-emerald-900', hintText: 'text-emerald-700', items: completedPackages.filter((items) => items.every((item) => item.reviewStatus === 'APROVADO')), empty: 'Nenhum aprovado neste filtro' },
+          ];
+          const draftPackages = groupPackages(kanbanColumns.drafts);
+          if (draftPackages.length) columns.push({ key: 'drafts', title: 'Não enviados / encerrados', hint: 'Prontos, cancelados, expirados', icon: <FileCheck2 className="w-3.5 h-3.5 text-slate-600" />, border: 'border-slate-200', text: 'text-slate-800', hintText: 'text-slate-500', items: draftPackages, empty: '' });
+          return (
+            <div className={`grid grid-cols-1 ${columns.length === 4 ? 'md:grid-cols-2 xl:grid-cols-4' : 'md:grid-cols-3'} gap-4 items-start`}>
+              {columns.map((column) => (
+                <div key={column.key} className="bg-slate-50/70 p-3 rounded-2xl border border-slate-200 space-y-3">
+                  <div className={`p-2.5 bg-white border ${column.border} rounded-xl flex items-center justify-between gap-2 shadow-2xs`}>
+                    <span className={`font-heading font-black text-xs ${column.text} flex items-center gap-1.5 uppercase`}>
+                      {column.icon} {column.title} ({column.items.length})
+                    </span>
+                    <span className={`text-[10px] ${column.hintText} font-bold text-right`}>{column.hint}</span>
+                  </div>
+                  <div className="space-y-2.5 max-h-[70vh] overflow-y-auto pr-0.5">
+                    {column.items.length === 0 ? (
+                      <div className="p-6 text-center border border-dashed border-slate-200 rounded-xl text-slate-400 text-xs font-medium bg-white/40">{column.empty}</div>
+                    ) : (
+                      column.items.map((items) => renderPackageCard(items))
+                    )}
+                  </div>
                 </div>
-              ) : (
-                groupPackages(kanbanColumns.completed).map((items) => renderPackageCard(items))
-              )}
+              ))}
             </div>
-          </div>
-
-          {/* Coluna 2: Em Assinatura */}
-          <div className="bg-slate-50/70 p-3 rounded-2xl border border-slate-200 space-y-3">
-            <div className="p-2.5 bg-white border border-amber-200 rounded-xl flex items-center justify-between shadow-2xs">
-              <span className="font-heading font-black text-xs text-amber-900 flex items-center gap-1.5 uppercase">
-                <Clock className="w-3.5 h-3.5 text-amber-600" /> 2. Em Assinatura ({kanbanColumns.inProgress.length})
-              </span>
-              <span className="text-[10px] text-amber-700 font-mono font-bold">Aguardando Cliente</span>
-            </div>
-
-            <div className="space-y-2.5 max-h-[70vh] overflow-y-auto pr-0.5">
-              {kanbanColumns.inProgress.length === 0 ? (
-                <div className="p-6 text-center border border-dashed border-slate-200 rounded-xl text-slate-400 text-xs font-medium bg-white/40">
-                  Nenhum pendente neste filtro
-                </div>
-              ) : (
-                groupPackages(kanbanColumns.inProgress).map((items) => renderPackageCard(items))
-              )}
-            </div>
-          </div>
-
-          {/* Coluna 3: Rascunhos */}
-          <div className="bg-slate-50/70 p-3 rounded-2xl border border-slate-200 space-y-3">
-            <div className="p-2.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between shadow-2xs">
-              <span className="font-heading font-black text-xs text-slate-800 flex items-center gap-1.5 uppercase">
-                <FileCheck2 className="w-3.5 h-3.5 text-slate-600" /> 3. Prontos ({kanbanColumns.drafts.length})
-              </span>
-              <span className="text-[10px] text-slate-500 font-mono font-bold">Em Preparação</span>
-            </div>
-
-            <div className="space-y-2.5 max-h-[70vh] overflow-y-auto pr-0.5">
-              {kanbanColumns.drafts.length === 0 ? (
-                <div className="p-6 text-center border border-dashed border-slate-200 rounded-xl text-slate-400 text-xs font-medium bg-white/40">
-                  Nenhum rascunho neste filtro
-                </div>
-              ) : (
-                groupPackages(kanbanColumns.drafts).map((items) => renderPackageCard(items))
-              )}
-            </div>
-          </div>
-        </div>
+          );
+        })()
       ) : (
         /* VISÃO TABELA */
         <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
@@ -1219,6 +1266,14 @@ export default function DocumentsPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {!loading && nextCursor && (
+        <div className="flex justify-center">
+          <button type="button" onClick={loadMoreDocuments} disabled={loadingMore} className="px-5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-extrabold text-[#071B3A] hover:bg-slate-50 disabled:opacity-50 inline-flex items-center gap-2">
+            {loadingMore && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Carregar envios mais antigos
+          </button>
         </div>
       )}
 

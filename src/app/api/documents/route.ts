@@ -55,7 +55,14 @@ export async function GET(req: Request) {
     const status = searchParams.get('status') || '';
     const query = searchParams.get('q') || '';
 
-    const documents = await prisma.document.findMany({
+    // Paginação: a lista carrega os envios mais recentes em blocos, em vez de
+    // todos os documentos do escritório de uma vez (com centenas/milhares de
+    // documentos a página ficava lenta e a resposta crescia sem limite).
+    // Os documentos do mesmo kit que caírem fora do bloco vêm junto, para o
+    // pacote nunca aparecer pela metade.
+    const limit = Math.min(200, Math.max(10, Number(searchParams.get('limit')) || 100));
+    const cursor = searchParams.get('cursor') || '';
+    const pageRows = await prisma.document.findMany({
       where: {
         officeId: user.officeId, // MULTI-TENANT ISOLATION
         AND: [
@@ -69,6 +76,24 @@ export async function GET(req: Request) {
                 ],
               }
             : {},
+        ],
+      },
+      select: { id: true, kitBatchId: true },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
+    const hasMore = pageRows.length > limit;
+    const pageItems = pageRows.slice(0, limit);
+    const nextCursor = hasMore ? pageItems[pageItems.length - 1]?.id || null : null;
+    const batchIds = Array.from(new Set(pageItems.map((row) => row.kitBatchId).filter((id): id is string => Boolean(id))));
+
+    const documents = await prisma.document.findMany({
+      where: {
+        officeId: user.officeId, // MULTI-TENANT ISOLATION
+        OR: [
+          { id: { in: pageItems.map((row) => row.id) } },
+          ...(batchIds.length ? [{ kitBatchId: { in: batchIds } }] : []),
         ],
       },
       include: {
@@ -104,7 +129,7 @@ export async function GET(req: Request) {
           select: { id: true, name: true, color: true },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
 
     // O painel só precisa saber SE cada foto/assinatura existe (para mostrar a
@@ -121,7 +146,7 @@ export async function GET(req: Request) {
         return light;
       }),
     }));
-    return NextResponse.json({ documents: lightDocuments });
+    return NextResponse.json({ documents: lightDocuments, nextCursor });
   } catch (error: any) {
     console.error('Erro ao listar documentos:', error);
     return NextResponse.json({ error: 'Erro ao carregar lista de documentos.' }, { status: 500 });
