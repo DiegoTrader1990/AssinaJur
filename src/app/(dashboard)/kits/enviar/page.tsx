@@ -928,12 +928,18 @@ export default function DispatchKitPage() {
               </div>
             )}
 
-            {selectedClient?.legalRepresentative && (
+            {selectedClient && (
               <div className="p-5 rounded-2xl border border-violet-200 bg-violet-50/50 space-y-3">
                 <p className="font-extrabold text-xs text-[#071B3A]">Como este cliente assina?</p>
                 <label className="flex items-start gap-2.5 cursor-pointer">
-                  <input type="radio" name="signature-form" checked={representationMode} onChange={() => chooseSignatureForm('REPRESENTACAO')} className="mt-0.5" />
-                  <span className="text-xs text-slate-700"><strong className="text-[#071B3A]">Representante legal assina em nome do cliente</strong> ({selectedClient.representativeRole || 'representante'}: {selectedClient.legalRepresentative}). Para interditado, curatelado, tutelado ou menor. O cliente não assina, não tira foto e aparece como parte representada.</span>
+                  <input type="radio" name="signature-form" checked={!representationMode && !isIlliterate} onChange={() => { setRepresentationMode(false); handleRogoToggle(false); }} className="mt-0.5" />
+                  <span className="text-xs text-slate-700"><strong className="text-[#071B3A]">O próprio cliente assina</strong>.</span>
+                </label>
+                <label className={`flex items-start gap-2.5 ${selectedClient.legalRepresentative ? 'cursor-pointer' : 'opacity-70'}`}>
+                  <input type="radio" name="signature-form" disabled={!selectedClient.legalRepresentative} checked={representationMode} onChange={() => chooseSignatureForm('REPRESENTACAO')} className="mt-0.5" />
+                  <span className="text-xs text-slate-700"><strong className="text-[#071B3A]">Representante legal assina em nome do cliente</strong>{selectedClient.legalRepresentative ? <> ({selectedClient.representativeRole || 'representante'}: {selectedClient.legalRepresentative})</> : null}. Para interditado, curatelado, tutelado ou menor. O cliente não assina, não tira foto e aparece como parte representada.
+                    {!selectedClient.legalRepresentative && <span className="mt-1 block rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-violet-900">Para usar, cadastre o representante: Clientes → editar {selectedClient.name} → marque "Possui representante legal" e preencha nome, CPF e papel (Curador(a), Tutor(a), Mãe, Pai…). Depois volte aqui.</span>}
+                  </span>
                 </label>
                 <label className="flex items-start gap-2.5 cursor-pointer">
                   <input type="radio" name="signature-form" checked={!representationMode && isIlliterate} onChange={() => chooseSignatureForm('ROGO')} className="mt-0.5" />
@@ -948,7 +954,7 @@ export default function DispatchKitPage() {
               </div>
             )}
 
-            {!representationMode && <div className="p-5 bg-gradient-to-r from-blue-50/80 via-white to-blue-50/40 rounded-2xl border border-blue-200 space-y-3">
+            {!representationMode && isIlliterate && <div className="p-5 bg-gradient-to-r from-blue-50/80 via-white to-blue-50/40 rounded-2xl border border-blue-200 space-y-3">
               <label className="flex items-center gap-2.5 cursor-pointer">
                 <input type="checkbox" checked={isIlliterate} onChange={(e) => handleRogoToggle(e.target.checked)}
                   className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
