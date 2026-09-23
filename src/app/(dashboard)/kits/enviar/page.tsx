@@ -583,11 +583,6 @@ export default function DispatchKitPage() {
       return;
     }
 
-    if (retifySourceId && !retifyReason.trim()) {
-      setError('Informe o motivo da retificação antes de gerar a nova versão.');
-      return;
-    }
-
     setSubmitting(true);
     setError('');
 
@@ -922,14 +917,14 @@ export default function DispatchKitPage() {
 
             {retifySourceId && (
               <div className="p-5 rounded-2xl border border-amber-300 bg-amber-50 space-y-2">
-                <p className="font-extrabold text-xs text-amber-900">Retificação: nova versão de documento já assinado</p>
+                <p className="font-extrabold text-xs text-amber-900">Nova versão corrigida</p>
                 <p className="text-[11px] text-amber-900">
-                  {retifySource ? <>Substitui <strong>{retifySource.title}</strong>{retifySource.verificationCode ? <> (código {retifySource.verificationCode})</> : null}{retifySource.completedAt ? <>, assinado em {new Date(retifySource.completedAt).toLocaleDateString('pt-BR')}</> : null}. </> : null}
+                  {retifySource ? <>Baseada em <strong>{retifySource.title}</strong>{retifySource.verificationCode ? <> (código {retifySource.verificationCode})</> : null}{retifySource.completedAt ? <>, assinado em {new Date(retifySource.completedAt).toLocaleDateString('pt-BR')}</> : null}. </> : null}
                   O original fica guardado sem alteração. As fotos de quem já assinou são reaproveitadas como prova de identidade; a pessoa só confirma a nova versão pelo link (CPF + confirmação), sem tirar fotos de novo.
                 </p>
-                <label className="block text-[11px] font-extrabold text-amber-900 uppercase tracking-wider">Motivo da retificação *</label>
+                <label className="block text-[11px] font-extrabold text-amber-900 uppercase tracking-wider">Anotação interna (opcional)</label>
                 <input type="text" value={retifyReason} onChange={(e) => setRetifyReason(e.target.value)} placeholder="Ex.: correção da forma de assinatura, de assinante a rogo para representação por curadora" className="w-full p-3 border border-amber-200 rounded-xl text-xs bg-white focus:outline-none focus:border-amber-500" />
-                <p className="text-[10px] text-amber-800">O motivo entra na cláusula de retificação do documento e no certificado.</p>
+                <p className="text-[10px] text-amber-800">Fica só no histórico interno. O documento sai como um documento normal, sem menção a retificação, com a data em que for confirmado.</p>
               </div>
             )}
 

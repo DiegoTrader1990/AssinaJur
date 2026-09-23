@@ -223,7 +223,6 @@ export async function POST(req: Request) {
     const retifyReason = String(retifies?.reason || '').trim();
     let retifySources: Array<{ id: string; title: string; templateId: string | null; verificationCode: string | null; completedAt: Date | null; signers: Array<{ id: string; cpf: string; status: string; signedAt: Date | null; documentFrontImage: string | null; documentBackImage: string | null; selfieCenterImage: string | null; selfieLeftImage: string | null; selfieRightImage: string | null }> }> = [];
     if (retifies?.sourceId) {
-      if (!retifyReason) return NextResponse.json({ error: 'Informe o motivo da retificação.' }, { status: 400 });
       const source = await prisma.document.findFirst({ where: { id: String(retifies.sourceId), officeId: user.officeId, clientId: client.id, status: 'CONCLUIDO' } });
       if (!source) return NextResponse.json({ error: 'Documento a retificar não encontrado ou ainda não concluído.' }, { status: 404 });
       retifySources = await prisma.document.findMany({
@@ -233,8 +232,10 @@ export async function POST(req: Request) {
       });
     }
     const escapeHtmlText = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // A nova versão sai como documento normal, sem cláusula de retificação no
+    // texto; o vínculo com a versão anterior fica só no histórico interno.
     const insertRetificationClause = (html: string, templateId: string) => {
-      if (!retifySources.length) return html;
+      if (!retifySources.length || !retifies?.addClause) return html;
       const src = retifySources.find((item) => item.templateId === templateId) || retifySources[0];
       const issued = src.completedAt ? new Date(src.completedAt).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '';
       const clause = `O presente instrumento retifica e substitui, para todos os efeitos, o documento "${src.title}"${issued ? ` emitido em ${issued}` : ''}${src.verificationCode ? ` sob o código de autenticidade ${src.verificationCode}` : ''}, em razão de ${retifyReason.replace(/\.$/, '')}, ratificando-se os atos praticados na forma aqui corrigida.`;
@@ -591,10 +592,10 @@ export async function POST(req: Request) {
         const src = retifySources.find((item) => item.templateId === template.id) || retifySources[0];
         await prisma.documentEvent.create({ data: { documentId: doc.id, userId: user.id, eventType: 'RETIFIES_DOCUMENT',
           metadata: JSON.stringify({ sourceDocumentId: src.id, sourceCode: src.verificationCode, reason: retifyReason }),
-          description: `Retifica e substitui o documento ${src.verificationCode || src.id}. Motivo: ${retifyReason}` } });
+          description: `Nova versão corrigida do documento ${src.verificationCode || src.id}${retifyReason ? `. Motivo: ${retifyReason}` : ''}` } });
         await prisma.documentEvent.create({ data: { documentId: src.id, userId: user.id, eventType: 'RETIFICATION_ISSUED',
           metadata: JSON.stringify({ newDocumentId: doc.id, reason: retifyReason }),
-          description: `Nova versão emitida para retificação. Motivo: ${retifyReason}. Este documento permanece guardado sem alteração.` } });
+          description: `Nova versão corrigida emitida${retifyReason ? `. Motivo: ${retifyReason}` : ''}. Este documento permanece guardado sem alteração.` } });
         // Fotos de identidade reaproveitadas de quem já as fez na v1 (mesmo CPF).
         // Só identidade: geolocalização, horário e assinatura da v2 são novos.
         for (const record of signerRecords) {
@@ -608,7 +609,7 @@ export async function POST(req: Request) {
           } });
           await prisma.documentEvent.create({ data: { documentId: doc.id, signerId: record.id, userId: user.id, eventType: 'IDENTITY_REUSED',
             metadata: JSON.stringify({ sourceDocumentId: previous.item.id, sourceCode: previous.item.verificationCode, verifiedAt: previous.signer.signedAt }),
-            description: `Identidade de ${record.name} verificada em ${previous.signer.signedAt ? new Date(previous.signer.signedAt).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'envio anterior'} no documento ${previous.item.verificationCode || previous.item.id}; fotos reaproveitadas. O ato de assinatura desta versão é colhido novamente.` } });
+            description: `Identidade de ${record.name} verificada em ${previous.signer.signedAt ? new Date(previous.signer.signedAt).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'envio anterior'} (documento e selfie). O ato de assinatura desta versão é colhido novamente.` } });
         }
       }
 

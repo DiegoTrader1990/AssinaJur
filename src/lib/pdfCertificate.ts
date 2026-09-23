@@ -244,8 +244,7 @@ const PUBLIC_EVENT_LABELS: Record<string, string> = {
   BACK_CONTINUED_UNVALIDATED: 'Verso do documento confirmado sem validação automática por IA',
   LIVENESS_STARTED: 'Prova de presença iniciada',
   SELFIE_CENTER_VALIDATED: 'Imagem frontal validada',
-  IDENTITY_REUSED: 'Identidade verificada em envio anterior (fotos reaproveitadas)',
-  RETIFIES_DOCUMENT: 'Retificação de documento anterior',
+  IDENTITY_REUSED: 'Identidade verificada (documento e selfie)',
   SELFIE_LEFT_VALIDATED: 'Perfil esquerdo validado',
   SELFIE_RIGHT_VALIDATED: 'Perfil direito validado',
   LIVENESS_CAPTURED: 'Prova de presença concluída (registro facial)',
@@ -389,7 +388,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     'CAMERA_PERMITTED', 'LIVENESS_STARTED',
     'SELFIE_CENTER_VALIDATED', 'SELFIE_LEFT_VALIDATED', 'SELFIE_RIGHT_VALIDATED',
     'LIVENESS_CAPTURED', 'CONSENT_ACCEPTED', 'SIGNATURE_SUBMITTED', 'ROGO_CONSENT_RECORDED', 'DOCUMENT_COMPLETED',
-    'IDENTITY_REUSED', 'RETIFIES_DOCUMENT',
+    'IDENTITY_REUSED',
   ]);
   const publicEvents = dedupePublicAuditEvents(doc.events.filter((event) => certificateEventTypes.has(event.eventType)));
 
@@ -1362,7 +1361,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       : 'Não coletada (permissão não concedida)';
     const reusedForAuth = reusedIdentity(signer);
     const authenticationText = reusedForAuth
-      ? `CPF + confirmação pelo link individual nesta data. Identidade (documento e selfie) verificada em ${reusedForAuth.verifiedAt ? formatBrasiliaDateTime(reusedForAuth.verifiedAt, false).replace(/\s*\(.+$/, '') : 'envio anterior'} no documento ${reusedForAuth.sourceCode || 'anterior'}`
+      ? `CPF + confirmação pelo link individual. Identidade (documento e selfie) verificada em ${reusedForAuth.verifiedAt ? formatBrasiliaDateTime(reusedForAuth.verifiedAt, false).replace(/\s*\(.+$/, '') : 'envio anterior'}`
       : 'CPF + Prova de presença ao vivo (selfie) + Geolocalização do dispositivo';
     const innerWidth = CW - 28;
     const halfWidth = 226;
@@ -1629,7 +1628,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
         rowY -= 10 + lines.length * (size + 2.4) + 8;
       };
       const reusedSelfie = reusedIdentity(signer);
-      infoRow('Tipo de evidência', reusedSelfie ? `Selfie de identidade (verificada no documento ${reusedSelfie.sourceCode || 'anterior'})` : 'Selfie de prova de presença');
+      infoRow('Tipo de evidência', reusedSelfie ? `Selfie de identidade (verificada em ${reusedSelfie.verifiedAt ? formatBrasiliaDateTime(reusedSelfie.verifiedAt, false).replace(/\s*\(.+$/, '') : 'envio anterior'})` : 'Selfie de prova de presença');
       infoRow('Capturada em', `${formatBrasiliaDateTime(capturedAt).replace(/\s*\(.+$/, '')} (horário de Brasília)`);
       infoRow('Dispositivo', parseUserAgentFriendly(signer.userAgent));
       infoRow('Localização', locationValue);

@@ -977,7 +977,7 @@ export default function DocumentsPage() {
             <div className="min-w-0"><div className="flex items-center gap-1.5"><Layers className={`w-4 h-4 ${isCompleted ? 'text-emerald-600' : 'text-blue-600'}`} /><span className={`text-[10px] font-black uppercase tracking-wider ${isCompleted ? 'text-emerald-800' : 'text-blue-800'}`}>Pacote de assinatura</span></div><h4 className="font-heading font-black text-sm text-[#071B3A] mt-1">{packageDocuments.length} documentos • {lead.client?.name || 'Cliente não vinculado'}</h4><p className="text-[10px] text-slate-500 mt-0.5">{kitName ? `${kitName} • ` : ''}Criado em {formattedDate}</p></div>
             <button onClick={togglePackage} className="text-slate-400 hover:text-blue-600 pt-0.5">{allSelected ? <CheckSquare className="w-4 h-4 text-blue-600" /> : <Square className="w-4 h-4" />}</button>
           </div>
-          <div className="mt-2 flex items-center justify-between"><div className="flex flex-wrap items-center gap-1.5">{packageDocuments.some((item) => item.events?.some((event) => event.eventType === 'RETIFICATION_ISSUED')) && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-extrabold text-[10px] border border-slate-200 font-heading">Retificado: nova versão emitida</span>}{isCompleted ? (isPendingReview
+          <div className="mt-2 flex items-center justify-between"><div className="flex flex-wrap items-center gap-1.5">{isCompleted ? (isPendingReview
             ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 text-amber-800 font-extrabold text-[10px] border border-amber-200 font-heading"><Clock className="w-3 h-3" /> Aguardando revisão</span>
             : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-extrabold text-[10px] border border-emerald-200 font-heading"><CheckCircle2 className="w-3 h-3" /> Aprovado</span>)
             : getStatusBadge(lead.status)}</div>{lead.client?.cpfCnpj && <span className="font-mono text-[9px] text-slate-500">{maskCpfCnpj(lead.client.cpfCnpj)}</span>}</div>
@@ -1401,7 +1401,7 @@ export default function DocumentsPage() {
                   className="mt-2 w-full py-3 rounded-xl border border-slate-200 bg-white text-slate-800 text-xs font-extrabold flex items-center justify-center gap-2 hover:bg-slate-50"
                 >
                   <FileText className="w-4 h-4" />
-                  {selectedDoc.status === 'CONCLUIDO' ? 'Retificar (gerar nova versão corrigida)' : 'Corrigir texto e reenviar para assinatura'}
+                  {selectedDoc.status === 'CONCLUIDO' ? 'Gerar nova versão corrigida' : 'Corrigir texto e reenviar para assinatura'}
                 </Link>
               )}
 
