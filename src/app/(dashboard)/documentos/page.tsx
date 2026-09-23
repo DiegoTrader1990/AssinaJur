@@ -146,6 +146,9 @@ export default function DocumentsPage() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
+  // Fotos reais (base64) só do dossiê aberto - a lista não traz as imagens.
+  const [dossierPhotos, setDossierPhotos] = useState<Record<string, Partial<Record<'documentFrontImage' | 'documentBackImage' | 'selfieCenterImage', string>>>>({});
+  const [photoPreview, setPhotoPreview] = useState<{ src: string; label: string } | null>(null);
 
   useEffect(() => {
     fetchDocuments();
@@ -225,6 +228,31 @@ export default function DocumentsPage() {
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasActiveSigning, searchQuery]);
+
+  // Ao abrir o dossiê, busca as fotos do documento para mostrar miniaturas
+  // (frente, verso, selfie) ao lado dos botões de refazer. Recarrega quando o
+  // documento muda (ex.: uma foto corrigida acabou de chegar).
+  useEffect(() => {
+    if (!selectedDoc) { setDossierPhotos({}); return; }
+    let cancelled = false;
+    fetch(`/api/documents/${selectedDoc.id}`, { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled || !data?.document?.signers) return;
+        const photos: typeof dossierPhotos = {};
+        for (const signer of data.document.signers) {
+          const entry: Partial<Record<'documentFrontImage' | 'documentBackImage' | 'selfieCenterImage', string>> = {};
+          for (const field of ['documentFrontImage', 'documentBackImage', 'selfieCenterImage'] as const) {
+            if (typeof signer[field] === 'string' && signer[field].startsWith('data:image')) entry[field] = signer[field];
+          }
+          photos[signer.id] = entry;
+        }
+        setDossierPhotos(photos);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDoc?.id, selectedDoc?.updatedAt]);
 
   const fetchTags = async () => {
     try {
@@ -737,6 +765,11 @@ export default function DocumentsPage() {
     return [selectedDoc];
   }, [selectedDoc, documents]);
 
+  // Nome do kit repetido nos títulos do pacote aparece uma vez só no dossiê.
+  const dossierKitSuffix = selectedPackageDocuments.length > 1 ? selectedPackageDocuments[0].title.match(/\s\(([^()]+)\)$/) : null;
+  const dossierKitName = dossierKitSuffix && selectedPackageDocuments.every((item) => item.title.endsWith(dossierKitSuffix[0])) ? dossierKitSuffix[1] : '';
+  const dossierShortTitle = (title: string) => (dossierKitName && dossierKitSuffix ? title.slice(0, -dossierKitSuffix[0].length) : title);
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'ENVIADO':
@@ -1003,20 +1036,12 @@ export default function DocumentsPage() {
 
   return (
     <div className="space-y-5 font-sans pb-16">
-      {/* Header Compacto da Página */}
-      <div className="bg-gradient-to-r from-[#071B3A] via-[#0B254C] to-[#071B3A] text-white p-5 rounded-3xl shadow-lg relative overflow-hidden border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-extrabold text-[9px] uppercase tracking-widest font-heading border border-blue-400/30">
-              Central de Documentos
-            </span>
-            <span className="text-[10px] font-mono text-slate-300">MP 2.200-2 / Lei 14.063</span>
-          </div>
-          <h1 className="font-heading text-xl sm:text-2xl font-black text-white tracking-tight">
-            Gestão & Evidências de Assinatura
-          </h1>
+      {/* Cabeçalho enxuto: o banner escuro ocupava uma faixa inteira sem informação útil. */}
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h1 className="font-heading text-xl font-black text-[#071B3A] tracking-tight">Documentos</h1>
+          <p className="text-[11px] text-slate-500">Acompanhe as assinaturas, revise as evidências e aprove.</p>
         </div>
-
         <Link
           href="/documentos/novo"
           className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl shadow-md text-xs font-heading"
@@ -1103,8 +1128,9 @@ export default function DocumentsPage() {
           </div>
         </div>
 
-        {/* Linha 2: Chips de Estágios Otimizados */}
-        <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-slate-100">
+        {/* Linha 2: filtros por estágio - só na visão Tabela; no Kanban as
+            próprias colunas já fazem essa divisão. */}
+        {viewFormat !== 'KANBAN' && <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-slate-100">
           <button
             onClick={() => setCategoryFilter('ALL')}
             className={`px-3 py-1 rounded-lg text-xs font-extrabold font-heading transition-all ${
@@ -1140,11 +1166,11 @@ export default function DocumentsPage() {
           >
             Prontos / Rascunhos ({stats.draft})
           </button>
-        </div>
+        </div>}
       </div>
 
       {/* ÁREA KANBAN DE ALTA DENSIDADE (ORGANIZADO E SEM EMBOLAR) */}
-      <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-3">
+      {(selectedDocIds.size > 0 || viewFormat !== 'KANBAN') && <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-3">
         <button type="button" onClick={toggleSelectAllVisible} className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-extrabold text-[#071B3A] bg-slate-50 border border-slate-200 hover:bg-slate-100">
           {filteredDocuments.length > 0 && filteredDocuments.every((doc) => selectedDocIds.has(doc.id)) ? <CheckSquare className="w-4 h-4 text-blue-600" /> : <Square className="w-4 h-4" />}
           Selecionar todos os resultados ({filteredDocuments.length})
@@ -1172,7 +1198,7 @@ export default function DocumentsPage() {
             )}
           </div>
         )}
-      </div>
+      </div>}
 
       {loading ? (
         <div className="bg-white p-12 rounded-3xl border border-slate-200/80 text-center space-y-2">
@@ -1200,9 +1226,10 @@ export default function DocumentsPage() {
           const draftPackages = groupPackages(kanbanColumns.drafts);
           if (draftPackages.length) columns.push({ key: 'drafts', title: 'Não enviados / encerrados', hint: 'Prontos, cancelados, expirados', icon: <FileCheck2 className="w-3.5 h-3.5 text-slate-600" />, border: 'border-slate-200', text: 'text-slate-800', hintText: 'text-slate-500', items: draftPackages, empty: '' });
           return (
-            <div className={`grid grid-cols-1 ${columns.length === 4 ? 'md:grid-cols-2 xl:grid-cols-4' : 'md:grid-cols-3'} gap-4 items-start`}>
+            <div className="flex flex-col md:flex-row gap-4 items-start">
               {columns.map((column) => (
-                <div key={column.key} className="bg-slate-50/70 p-3 rounded-2xl border border-slate-200 space-y-3">
+                // Coluna vazia fica estreita; as que têm envios dividem o resto.
+                <div key={column.key} className={`bg-slate-50/70 p-3 rounded-2xl border border-slate-200 space-y-3 w-full ${column.items.length ? 'md:flex-1 md:min-w-0' : 'md:w-60 md:shrink-0'}`}>
                   <div className={`p-2.5 bg-white border ${column.border} rounded-xl flex items-center justify-between gap-2 shadow-2xs`}>
                     <span className={`font-heading font-black text-xs ${column.text} flex items-center gap-1.5 uppercase`}>
                       {column.icon} {column.title} ({column.items.length})
@@ -1296,37 +1323,15 @@ export default function DocumentsPage() {
             <div className="space-y-4">
               {selectedPackageDocuments.some((item) => item.status === 'CONCLUIDO' || item.status === 'PARCIALMENTE_ASSINADO') && (
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-3 space-y-2">
-                  <p className="text-xs font-extrabold text-emerald-900">Documentos do pacote</p>
+                  <p className="text-xs font-extrabold text-emerald-900">{selectedPackageDocuments.length > 1 ? 'Documentos do pacote' : 'Documento'}{dossierKitName ? <span className="font-bold text-emerald-700"> • {dossierKitName}</span> : null}</p>
                   {selectedPackageDocuments.map((item) => (
                     <div key={item.id} className="flex items-center justify-between gap-2 bg-white rounded-xl border border-emerald-100 px-3 py-2">
-                      <span className="text-xs font-bold text-slate-700 truncate">{item.title}</span>
+                      <span className="text-xs font-bold text-slate-700 truncate" title={item.title}>{dossierShortTitle(item.title)}</span>
                       <div className="shrink-0 flex items-center gap-2">
-                        {(item.status === 'CONCLUIDO' || item.status === 'PARCIALMENTE_ASSINADO') && <a href={`/api/documents/${item.id}/download${item.updatedAt ? `?v=${encodeURIComponent(item.updatedAt)}` : ''}`} download className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700"><Download className="w-3.5 h-3.5" /> Baixar PDF</a>}
                         {item.status === 'CONCLUIDO' && item.reviewStatus === 'APROVADO' && (
                           <span title="Revisado e aprovado" className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5" /> Aprovado</span>
                         )}
-                        {canCorrect && item.status === 'CONCLUIDO' && item.reviewStatus !== 'APROVADO' && selectedPackageDocuments.length > 1 && (
-                          <>
-                            {isOfficeAdmin && <button
-                              type="button"
-                              onClick={() => handleApproveSignature(item, 'approve-document')}
-                              disabled={redoingIds.has(item.id)}
-                              title="Aprovar só este documento - confirma que está correto e remove o botão Refazer"
-                              className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700 hover:text-emerald-800 disabled:opacity-50"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" /> Aprovar
-                            </button>}
-                            <button
-                              type="button"
-                              onClick={() => handleRedoSignature(item, 'redo-document')}
-                              disabled={redoingIds.has(item.id)}
-                              title="Refazer a assinatura somente deste documento"
-                              className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-700 hover:text-amber-800 disabled:opacity-50"
-                            >
-                              {redoingIds.has(item.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />} Refazer
-                            </button>
-                          </>
-                        )}
+                        {(item.status === 'CONCLUIDO' || item.status === 'PARCIALMENTE_ASSINADO') && <a href={`/api/documents/${item.id}/download${item.updatedAt ? `?v=${encodeURIComponent(item.updatedAt)}` : ''}`} download className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700"><Download className="w-3.5 h-3.5" /> Baixar PDF</a>}
                       </div>
                     </div>
                   ))}
@@ -1362,20 +1367,21 @@ export default function DocumentsPage() {
                     type="button"
                     onClick={() => handleApproveSignature(selectedDoc, selectedPackageDocuments.length > 1 ? 'approve-package' : 'approve-document')}
                     disabled={redoingIds.has(selectedDoc.id)}
-                    className="flex-1 py-3 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-extrabold flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="flex-[2] py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    {selectedPackageDocuments.length > 1 ? 'Aprovar todo o pacote' : 'Aprovar assinatura'}
+                    {selectedPackageDocuments.length > 1 ? 'Aprovar pacote' : 'Aprovar assinatura'}
                   </button>}
                   <button
                     type="button"
                     onClick={() => handleRedoSignature(selectedDoc, selectedPackageDocuments.length > 1 ? 'redo-package' : 'redo-document')}
                     disabled={redoingIds.has(selectedDoc.id)}
+                    title="Reabre a assinatura inteira, mantendo o mesmo link. Para só uma foto, use Refazer Frente/Verso/Selfie abaixo."
                     className="flex-1 py-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-xs font-extrabold flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {redoingIds.has(selectedDoc.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
-                    {selectedPackageDocuments.length > 1 ? 'Refazer todo o pacote' : 'Refazer assinatura'}
-                  </button>                  {selectedPackageDocuments.length > 1 && <button type="button" onClick={() => handleRedoSignature(selectedDoc, 'redo-document')} disabled={redoingIds.has(selectedDoc.id)} className="flex-1 rounded-xl border border-amber-200 text-xs font-bold text-amber-900 disabled:opacity-50">Refazer só este documento</button>}
+                    {selectedPackageDocuments.length > 1 ? 'Refazer pacote' : 'Refazer assinatura'}
+                  </button>
                 </div>
               )}
 
@@ -1413,22 +1419,32 @@ export default function DocumentsPage() {
                               link"/"Enviar" acima) para a pessoa retomar direto na foto
                               pedida, sem precisar do celular do titular de novo. */}
                           {canCorrect && !(selectedDoc.status === 'CONCLUIDO' && selectedDoc.reviewStatus === 'APROVADO') && !['CANCELADO', 'EXPIRADO'].includes(selectedDoc.status) && (s.documentFrontImage || s.documentBackImage || s.selfieCenterImage) && (
-                            <div className="mt-1.5 flex flex-wrap gap-1">
+                            <div className="mt-2 flex flex-wrap gap-2">
                               {([
                                 ['documentFrontImage', 'Frente'],
                                 ['documentBackImage', 'Verso'],
                                 ['selfieCenterImage', 'Selfie'],
                               ] as const).map(([field, label]) => s[field] && (
-                                <button
-                                  key={field}
-                                  type="button"
-                                  onClick={() => handleRequestPhotoRedo(selectedDoc, s, field)}
-                                  disabled={redoingPhotoIds.has(`${s.id}:${field}`)}
-                                  title={`Pedir para refazer a foto: ${REDOABLE_FIELD_LABELS[field]}`}
-                                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[9px] font-bold text-slate-600 hover:border-amber-300 hover:text-amber-700 disabled:opacity-50"
-                                >
-                                  {redoingPhotoIds.has(`${s.id}:${field}`) ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RotateCcw className="w-2.5 h-2.5" />} Refazer {label}
-                                </button>
+                                <div key={field} className="flex flex-col items-center gap-1 w-[76px]">
+                                  {/* Miniatura: clique para ver grande e decidir se precisa refazer. */}
+                                  {dossierPhotos[s.id]?.[field] ? (
+                                    <button type="button" onClick={() => setPhotoPreview({ src: dossierPhotos[s.id]![field]!, label: `${label} - ${s.name}` })} title={`Ver ${REDOABLE_FIELD_LABELS[field]}`} className="block w-[76px] h-[56px] rounded-lg overflow-hidden border border-slate-200 bg-slate-100 hover:ring-2 hover:ring-blue-300">
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={dossierPhotos[s.id]![field]!} alt={label} className="w-full h-full object-cover" />
+                                    </button>
+                                  ) : (
+                                    <div className="w-[76px] h-[56px] rounded-lg border border-dashed border-slate-200 bg-slate-50 grid place-items-center text-[9px] text-slate-400">{label}</div>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRequestPhotoRedo(selectedDoc, s, field)}
+                                    disabled={redoingPhotoIds.has(`${s.id}:${field}`)}
+                                    title={`Pedir para refazer a foto: ${REDOABLE_FIELD_LABELS[field]}`}
+                                    className="w-full inline-flex items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-bold text-slate-600 hover:border-amber-300 hover:text-amber-700 disabled:opacity-50"
+                                  >
+                                    {redoingPhotoIds.has(`${s.id}:${field}`) ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RotateCcw className="w-2.5 h-2.5" />} Refazer {label}
+                                  </button>
+                                </div>
                               ))}
                             </div>
                           )}
@@ -1445,21 +1461,53 @@ export default function DocumentsPage() {
                 </div>
               </div>
 
-              {/* Botão de Exclusão no Dossiê */}
-              {isOfficeAdmin && !(selectedDoc.status === 'CONCLUIDO' && selectedDoc.reviewStatus === 'APROVADO') && <div className="pt-3 border-t border-slate-100 flex items-center justify-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = selectedDoc;
-                    setSelectedDoc(null);
-                    handleDelete(target);
-                  }}
-                  className="px-4 py-2 bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 font-extrabold rounded-xl text-xs flex items-center gap-1.5 font-heading transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-rose-600" /> Excluir Documento Definitivamente
-                </button>
-              </div>}
+              {/* Ações raras e destrutivas ficam recolhidas em "Mais opções",
+                  longe do Aprovar: aprovar/refazer um documento isolado do
+                  pacote e excluir. */}
+              {((canCorrect && selectedPackageDocuments.length > 1 && selectedPackageDocuments.some((item) => item.status === 'CONCLUIDO' && item.reviewStatus !== 'APROVADO')) || (isOfficeAdmin && !(selectedDoc.status === 'CONCLUIDO' && selectedDoc.reviewStatus === 'APROVADO'))) && (
+                <details className="pt-3 border-t border-slate-100 group">
+                  <summary className="cursor-pointer list-none inline-flex items-center gap-1.5 text-[11px] font-extrabold text-slate-500 hover:text-slate-800"><MoreHorizontal className="w-4 h-4" /> Mais opções</summary>
+                  <div className="mt-2 space-y-2">
+                    {canCorrect && selectedPackageDocuments.length > 1 && selectedPackageDocuments.filter((item) => item.status === 'CONCLUIDO' && item.reviewStatus !== 'APROVADO').map((item) => (
+                      <div key={item.id} className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2">
+                        <span className="text-[11px] font-bold text-slate-700 truncate">{dossierShortTitle(item.title)}</span>
+                        <div className="shrink-0 flex items-center gap-3">
+                          {isOfficeAdmin && <button type="button" onClick={() => handleApproveSignature(item, 'approve-document')} disabled={redoingIds.has(item.id)} title="Aprovar só este documento" className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700 disabled:opacity-50"><CheckCircle2 className="w-3.5 h-3.5" /> Aprovar só este</button>}
+                          <button type="button" onClick={() => handleRedoSignature(item, 'redo-document')} disabled={redoingIds.has(item.id)} title="Refazer a assinatura somente deste documento" className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-700 disabled:opacity-50">{redoingIds.has(item.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />} Refazer só este</button>
+                        </div>
+                      </div>
+                    ))}
+                    {isOfficeAdmin && !(selectedDoc.status === 'CONCLUIDO' && selectedDoc.reviewStatus === 'APROVADO') && (
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const target = selectedDoc;
+                            const members = selectedPackageDocuments;
+                            setSelectedDoc(null);
+                            if (members.length > 1 && members.every((item) => item.status === 'CONCLUIDO')) handleDeleteCompletedPackage(members);
+                            else handleDelete(target);
+                          }}
+                          className="px-3 py-2 text-rose-700 hover:bg-rose-50 border border-rose-200 font-extrabold rounded-xl text-[11px] flex items-center gap-1.5"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> {selectedPackageDocuments.length > 1 && selectedPackageDocuments.every((item) => item.status === 'CONCLUIDO') ? 'Excluir pacote' : 'Excluir este documento'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </details>
+              )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {photoPreview && (
+        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4" onClick={() => setPhotoPreview(null)}>
+          <div className="max-w-3xl w-full space-y-2" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between text-white text-xs font-bold"><span>{photoPreview.label}</span><button type="button" onClick={() => setPhotoPreview(null)} className="text-lg">✕</button></div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={photoPreview.src} alt={photoPreview.label} className="w-full max-h-[80vh] object-contain rounded-xl bg-black" />
           </div>
         </div>
       )}
