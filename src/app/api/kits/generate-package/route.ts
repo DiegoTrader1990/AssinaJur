@@ -93,6 +93,7 @@ export async function POST(req: Request) {
       stampOverrides,
       signers: extraSignersInput,
       representation,
+      retifies,
       isIlliterate: isIlliterateInput,
       rogoName,
       rogoCpf,
@@ -214,6 +215,36 @@ export async function POST(req: Request) {
     const office = await prisma.office.findUnique({
       where: { id: user.officeId },
     });
+
+    // RETIFICAÇÃO: nova versão (v2) de um envio já concluído. A v1 nunca é
+    // alterada nem apagada; a v2 cita a v1, reaproveita as fotos de
+    // identidade de quem já as fez e exige um NOVO ato de assinatura
+    // (confirmação), com data, IP e aparelho próprios.
+    const retifyReason = String(retifies?.reason || '').trim();
+    let retifySources: Array<{ id: string; title: string; templateId: string | null; verificationCode: string | null; completedAt: Date | null; signers: Array<{ id: string; cpf: string; status: string; signedAt: Date | null; documentFrontImage: string | null; documentBackImage: string | null; selfieCenterImage: string | null; selfieLeftImage: string | null; selfieRightImage: string | null }> }> = [];
+    if (retifies?.sourceId) {
+      if (!retifyReason) return NextResponse.json({ error: 'Informe o motivo da retificação.' }, { status: 400 });
+      const source = await prisma.document.findFirst({ where: { id: String(retifies.sourceId), officeId: user.officeId, clientId: client.id, status: 'CONCLUIDO' } });
+      if (!source) return NextResponse.json({ error: 'Documento a retificar não encontrado ou ainda não concluído.' }, { status: 404 });
+      retifySources = await prisma.document.findMany({
+        where: source.kitBatchId ? { officeId: user.officeId, kitBatchId: source.kitBatchId, status: 'CONCLUIDO' } : { id: source.id },
+        select: { id: true, title: true, templateId: true, verificationCode: true, completedAt: true,
+          signers: { select: { id: true, cpf: true, status: true, signedAt: true, documentFrontImage: true, documentBackImage: true, selfieCenterImage: true, selfieLeftImage: true, selfieRightImage: true } } },
+      });
+    }
+    const escapeHtmlText = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const insertRetificationClause = (html: string, templateId: string) => {
+      if (!retifySources.length) return html;
+      const src = retifySources.find((item) => item.templateId === templateId) || retifySources[0];
+      const issued = src.completedAt ? new Date(src.completedAt).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '';
+      const clause = `O presente instrumento retifica e substitui, para todos os efeitos, o documento "${src.title}"${issued ? ` emitido em ${issued}` : ''}${src.verificationCode ? ` sob o código de autenticidade ${src.verificationCode}` : ''}, em razão de ${retifyReason.replace(/\.$/, '')}, ratificando-se os atos praticados na forma aqui corrigida.`;
+      const block = `<p>${escapeHtmlText(clause)}</p>`;
+      // Antes do parágrafo de local e data; sem ele, logo no início do texto.
+      const pattern = /<(?:p|div)\b[^>]*>(?:(?!<\/(?:p|div)>)[\s\S])*?\{\{\s*(?:cidade|data_atual)\s*\}\}/gi;
+      let lastIndex = -1;
+      for (let match = pattern.exec(html); match; match = pattern.exec(html)) lastIndex = match.index;
+      return lastIndex >= 0 ? html.slice(0, lastIndex) + block + html.slice(lastIndex) : block + html;
+    };
 
     const kit = await prisma.legalKit.findFirst({
       where: { id: kitId, officeId: user.officeId },
@@ -477,7 +508,7 @@ export async function POST(req: Request) {
       );
 
       validateAttorneyQualification(replaceTemplateVariables(finalContentHtml, variableValues), template.documentType, template.title, variableValues.patronos_qualificacao_conjunta);
-      return { template, finalContentHtml };
+      return { template, finalContentHtml: insertRetificationClause(finalContentHtml, template.id) };
     });
 
     for (const { template, finalContentHtml } of preparedItems) {
@@ -554,6 +585,31 @@ export async function POST(req: Request) {
       if (!mainSignerToken) {
         mainSignerToken = mainSigner.token;
         participantLinks = signerRecords.filter(s => s.role !== 'ASSINANTE_A_ROGO').map(s => ({ name: s.name, role: s.role, token: s.token, signingMode: s.signingMode }));
+      }
+
+      if (retifySources.length) {
+        const src = retifySources.find((item) => item.templateId === template.id) || retifySources[0];
+        await prisma.documentEvent.create({ data: { documentId: doc.id, userId: user.id, eventType: 'RETIFIES_DOCUMENT',
+          metadata: JSON.stringify({ sourceDocumentId: src.id, sourceCode: src.verificationCode, reason: retifyReason }),
+          description: `Retifica e substitui o documento ${src.verificationCode || src.id}. Motivo: ${retifyReason}` } });
+        await prisma.documentEvent.create({ data: { documentId: src.id, userId: user.id, eventType: 'RETIFICATION_ISSUED',
+          metadata: JSON.stringify({ newDocumentId: doc.id, reason: retifyReason }),
+          description: `Nova versão emitida para retificação. Motivo: ${retifyReason}. Este documento permanece guardado sem alteração.` } });
+        // Fotos de identidade reaproveitadas de quem já as fez na v1 (mesmo CPF).
+        // Só identidade: geolocalização, horário e assinatura da v2 são novos.
+        for (const record of signerRecords) {
+          const digits = record.cpf.replace(/\D/g, '');
+          const previous = retifySources.flatMap((item) => item.signers.map((signer) => ({ signer, item })))
+            .find(({ signer }) => signer.cpf.replace(/\D/g, '') === digits && signer.status === 'ASSINADO' && signer.selfieCenterImage && signer.documentFrontImage && signer.documentBackImage);
+          if (!previous) continue;
+          await prisma.signer.update({ where: { id: record.id }, data: {
+            documentFrontImage: previous.signer.documentFrontImage, documentBackImage: previous.signer.documentBackImage,
+            selfieCenterImage: previous.signer.selfieCenterImage, selfieLeftImage: previous.signer.selfieLeftImage, selfieRightImage: previous.signer.selfieRightImage,
+          } });
+          await prisma.documentEvent.create({ data: { documentId: doc.id, signerId: record.id, userId: user.id, eventType: 'IDENTITY_REUSED',
+            metadata: JSON.stringify({ sourceDocumentId: previous.item.id, sourceCode: previous.item.verificationCode, verifiedAt: previous.signer.signedAt }),
+            description: `Identidade de ${record.name} verificada em ${previous.signer.signedAt ? new Date(previous.signer.signedAt).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'envio anterior'} no documento ${previous.item.verificationCode || previous.item.id}; fotos reaproveitadas. O ato de assinatura desta versão é colhido novamente.` } });
+        }
       }
 
       await prisma.documentEvent.create({

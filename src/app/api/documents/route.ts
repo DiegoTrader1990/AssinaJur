@@ -97,7 +97,7 @@ export async function GET(req: Request) {
         ],
       },
       include: {
-        events: { where: { eventType: PARTICIPANT_GROUPS_EVENT }, select: { eventType: true, metadata: true } },
+        events: { where: { eventType: { in: [PARTICIPANT_GROUPS_EVENT, 'RETIFICATION_ISSUED'] } }, select: { eventType: true, metadata: true } },
         client: {
           select: { id: true, name: true, cpfCnpj: true, phone: true, email: true },
         },

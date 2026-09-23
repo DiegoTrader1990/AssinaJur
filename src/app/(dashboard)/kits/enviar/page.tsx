@@ -120,6 +120,16 @@ export default function DispatchKitPage() {
   // assina é o representante, EM NOME do cliente - não é assinatura a rogo.
   // A rogo só serve a quem é capaz e não consegue assinar (analfabeto, cego).
   const [representationMode, setRepresentationMode] = useState(false);
+  // Retificação: nova versão de um envio já concluído (?retificar=<id>).
+  const retifySourceId = searchParams.get('retificar') || '';
+  const [retifyReason, setRetifyReason] = useState('');
+  const [retifySource, setRetifySource] = useState<{ title: string; verificationCode?: string | null; completedAt?: string | null } | null>(null);
+  useEffect(() => {
+    if (!retifySourceId) return;
+    fetch(`/api/documents/${retifySourceId}`).then((res) => res.json()).then((data) => {
+      if (data?.document) setRetifySource({ title: data.document.title, verificationCode: data.document.verificationCode, completedAt: data.document.completedAt });
+    }).catch(() => {});
+  }, [retifySourceId]);
   const [rogoName, setRogoName] = useState('');
   const [rogoCpf, setRogoCpf] = useState('');
   const [rogoRg, setRogoRg] = useState('');
@@ -573,6 +583,11 @@ export default function DispatchKitPage() {
       return;
     }
 
+    if (retifySourceId && !retifyReason.trim()) {
+      setError('Informe o motivo da retificação antes de gerar a nova versão.');
+      return;
+    }
+
     setSubmitting(true);
     setError('');
 
@@ -588,6 +603,7 @@ export default function DispatchKitPage() {
           stampOverrides,
           signers,
           representation: representationMode,
+          retifies: retifySourceId ? { sourceId: retifySourceId, reason: retifyReason.trim() } : undefined,
           isIlliterate: representationMode ? false : isIlliterate,
           rogoName: isIlliterate ? rogoName : null,
           rogoCpf: isIlliterate ? rogoCpf : null,
@@ -903,6 +919,19 @@ export default function DispatchKitPage() {
               </div>
               );
             })}
+
+            {retifySourceId && (
+              <div className="p-5 rounded-2xl border border-amber-300 bg-amber-50 space-y-2">
+                <p className="font-extrabold text-xs text-amber-900">Retificação: nova versão de documento já assinado</p>
+                <p className="text-[11px] text-amber-900">
+                  {retifySource ? <>Substitui <strong>{retifySource.title}</strong>{retifySource.verificationCode ? <> (código {retifySource.verificationCode})</> : null}{retifySource.completedAt ? <>, assinado em {new Date(retifySource.completedAt).toLocaleDateString('pt-BR')}</> : null}. </> : null}
+                  O original fica guardado sem alteração. As fotos de quem já assinou são reaproveitadas como prova de identidade; a pessoa só confirma a nova versão pelo link (CPF + confirmação), sem tirar fotos de novo.
+                </p>
+                <label className="block text-[11px] font-extrabold text-amber-900 uppercase tracking-wider">Motivo da retificação *</label>
+                <input type="text" value={retifyReason} onChange={(e) => setRetifyReason(e.target.value)} placeholder="Ex.: correção da forma de assinatura, de assinante a rogo para representação por curadora" className="w-full p-3 border border-amber-200 rounded-xl text-xs bg-white focus:outline-none focus:border-amber-500" />
+                <p className="text-[10px] text-amber-800">O motivo entra na cláusula de retificação do documento e no certificado.</p>
+              </div>
+            )}
 
             {selectedClient?.legalRepresentative && (
               <div className="p-5 rounded-2xl border border-violet-200 bg-violet-50/50 space-y-3">

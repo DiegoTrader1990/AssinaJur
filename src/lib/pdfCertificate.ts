@@ -244,6 +244,8 @@ const PUBLIC_EVENT_LABELS: Record<string, string> = {
   BACK_CONTINUED_UNVALIDATED: 'Verso do documento confirmado sem validação automática por IA',
   LIVENESS_STARTED: 'Prova de presença iniciada',
   SELFIE_CENTER_VALIDATED: 'Imagem frontal validada',
+  IDENTITY_REUSED: 'Identidade verificada em envio anterior (fotos reaproveitadas)',
+  RETIFIES_DOCUMENT: 'Retificação de documento anterior',
   SELFIE_LEFT_VALIDATED: 'Perfil esquerdo validado',
   SELFIE_RIGHT_VALIDATED: 'Perfil direito validado',
   LIVENESS_CAPTURED: 'Prova de presença concluída (registro facial)',
@@ -340,6 +342,13 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const raw = String(value || '').trim();
     return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10).split('-').reverse().join('/') : raw;
   };
+  // Retificação (v2): fotos de identidade vindas da v1. O certificado mostra a
+  // data e o documento de origem - nunca como se tivessem sido tiradas agora.
+  const reusedIdentity = (signer: typeof doc.signers[number]): { sourceCode?: string; verifiedAt?: string } | null => {
+    const event = doc.events.find((ev: any) => ev.eventType === 'IDENTITY_REUSED' && ev.signerId === signer.id);
+    if (!event) return null;
+    try { return JSON.parse(event.metadata || '{}'); } catch { return {}; }
+  };
   const rogoQualificationText = (person: typeof doc.signers[number]) => {
     if (person.role !== 'ASSINANTE_A_ROGO' && person.role !== 'REPRESENTANTE_LEGAL') return '';
     const c = doc.client;
@@ -380,6 +389,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     'CAMERA_PERMITTED', 'LIVENESS_STARTED',
     'SELFIE_CENTER_VALIDATED', 'SELFIE_LEFT_VALIDATED', 'SELFIE_RIGHT_VALIDATED',
     'LIVENESS_CAPTURED', 'CONSENT_ACCEPTED', 'SIGNATURE_SUBMITTED', 'ROGO_CONSENT_RECORDED', 'DOCUMENT_COMPLETED',
+    'IDENTITY_REUSED', 'RETIFIES_DOCUMENT',
   ]);
   const publicEvents = dedupePublicAuditEvents(doc.events.filter((event) => certificateEventTypes.has(event.eventType)));
 
@@ -1350,7 +1360,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
           signer.geoAccuracy != null ? ` (precisão: ${Math.round(signer.geoAccuracy)}m)` : ''
         }`
       : 'Não coletada (permissão não concedida)';
-    const authenticationText = 'CPF + Prova de presença ao vivo (selfie) + Geolocalização do dispositivo';
+    const reusedForAuth = reusedIdentity(signer);
+    const authenticationText = reusedForAuth
+      ? `CPF + confirmação pelo link individual nesta data. Identidade (documento e selfie) verificada em ${reusedForAuth.verifiedAt ? formatBrasiliaDateTime(reusedForAuth.verifiedAt, false).replace(/\s*\(.+$/, '') : 'envio anterior'} no documento ${reusedForAuth.sourceCode || 'anterior'}`
+      : 'CPF + Prova de presença ao vivo (selfie) + Geolocalização do dispositivo';
     const innerWidth = CW - 28;
     const halfWidth = 226;
     const gapWidth = 34;
@@ -1528,6 +1541,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
     return base64 ? calculateHash(Buffer.from(base64, 'base64')) : '';
   };
   const selfieCapturedAt = (signer: typeof doc.signers[number]) => {
+    const reused = reusedIdentity(signer);
+    if (reused?.verifiedAt) return new Date(reused.verifiedAt);
     const times = doc.events
       .filter((ev: any) => ev.signerId === signer.id && (
         ev.eventType === 'SELFIE_CENTER_VALIDATED' || ev.eventType === 'LIVENESS_CAPTURED' ||
@@ -1613,7 +1628,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
         lines.forEach((line, index) => page.drawText(line, { x: infoX, y: rowY - 10 - index * (size + 2.4), size, font: options.font || bold, color: options.color || navy }));
         rowY -= 10 + lines.length * (size + 2.4) + 8;
       };
-      infoRow('Tipo de evidência', 'Selfie de prova de presença');
+      const reusedSelfie = reusedIdentity(signer);
+      infoRow('Tipo de evidência', reusedSelfie ? `Selfie de identidade (verificada no documento ${reusedSelfie.sourceCode || 'anterior'})` : 'Selfie de prova de presença');
       infoRow('Capturada em', `${formatBrasiliaDateTime(capturedAt).replace(/\s*\(.+$/, '')} (horário de Brasília)`);
       infoRow('Dispositivo', parseUserAgentFriendly(signer.userAgent));
       infoRow('Localização', locationValue);
