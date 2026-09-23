@@ -1206,18 +1206,16 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
 
   // SEÇÃO 1: CABEÇALHO DO CERTIFICADO
-  drawFrame(page, 'CERTIFICADO DE EVIDENCIAS JURIDICAS - REGISTRO IMUTAVEL');
+  drawFrame(page, 'CERTIFICADO DE EVIDÊNCIAS JURÍDICAS - REGISTRO IMUTÁVEL');
   const certificateTitleLines = wrapTextToWidth(certDisplayTitle, bold, 11.5, CW);
   certificateTitleLines.forEach((line, index) => {
     const lineWidth = bold.widthOfTextAtSize(line, 11.5);
     page.drawText(line, { x: CX + (CW - lineWidth) / 2, y: 706 - index * 13, size: 11.5, font: bold, color: navy });
   });
-  page.drawText(`Código de Autenticidade: ${verificationCode}`, {
-    x: CX, y: 666, size: 7.5, font: mono, color: muted,
-  });
-  page.drawText(`ID completo: ${safeText(doc.id, 200)}`, {
-    x: CX, y: 655, size: 7.5, font: mono, color: muted,
-  });
+  // O código de autenticidade já aparece no primeiro cartão logo abaixo;
+  // aqui fica só o identificador interno, legível.
+  page.drawText('IDENTIFICADOR DO DOCUMENTO', { x: CX, y: 668, size: 5.8, font: bold, color: muted });
+  page.drawText(safeText(doc.id, 200), { x: CX, y: 657, size: 7.6, font: mono, color: text });
 
   // Selo "AUTENTICIDADE VERIFICÁVEL" removido - colidia com o titulo do
   // documento e era redundante com o Código de Autenticidade logo acima e
@@ -1226,7 +1224,10 @@ export async function generateFinalPdfCertificate(documentId: string) {
   page.drawLine({ start: { x: CX, y: 646 }, end: { x: CR, y: 646 }, thickness: 0.8, color: panelBorder });
 
   const trustCardY = 602;
-  const trustCardW = 160;
+  // Três cartões ocupando exatamente a largura útil (antes o terceiro
+  // passava da margem direita).
+  const trustCardGap = 12;
+  const trustCardW = (CW - 2 * trustCardGap) / 3;
   const drawTrustCard = (x: number, label: string, value: string, accent: any) => {
     page.drawRectangle({ x, y: trustCardY, width: trustCardW, height: 36, color: rgb(1, 1, 1), opacity: 0.22, borderWidth: 0.8, borderColor: panelBorder });
     page.drawRectangle({ x, y: trustCardY, width: 4, height: 36, color: accent });
@@ -1234,8 +1235,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
     page.drawText(value, { x: x + 12, y: trustCardY + 10, size: 7.7, font: bold, color: navy });
   };
   drawTrustCard(CX, 'Código de autenticidade', verificationCode, gold);
-  drawTrustCard(CX + 177, 'Conclusão', formatBrasiliaDateTime(doc.completedAt || new Date(), false).replace(/\s*\(.+$/, ''), green);
-  drawTrustCard(CX + 354, 'Proteção', 'Integridade SHA-256', navy);
+  drawTrustCard(CX + trustCardW + trustCardGap, 'Conclusão', formatBrasiliaDateTime(doc.completedAt || new Date(), false).replace(/\s*\(.+$/, ''), green);
+  drawTrustCard(CX + 2 * (trustCardW + trustCardGap), 'Proteção', 'Integridade SHA-256', navy);
 
   let y = 586;
   const padX = CX + 14;
@@ -1310,7 +1311,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
   drawFieldBlock(padX, documentCursor, documentHalfWidth, 'Escritório responsável', officeText, { font: bold, size: 8.5 });
   drawFieldBlock(documentCol2X, documentCursor, documentHalfWidth, 'Data de criação', formatBrasiliaDateTime(doc.createdAt), { size: 7.2, lineHeight: 9.2 });
   documentCursor -= documentFirstRowH;
-  drawFieldBlock(padX, documentCursor, documentHalfWidth, 'Tipo de documento', doc.documentType || 'Não informado', { font: bold, size: 8.2 });
+  drawFieldBlock(padX, documentCursor, documentHalfWidth, 'Tipo de documento', ({ PROCURACAO: 'Procuração', CONTRATO: 'Contrato', DECLARACAO: 'Declaração', DOCUMENTO: 'Documento', OUTRO: 'Outro' } as Record<string, string>)[String(doc.documentType || '').toUpperCase()] || String(doc.documentType || 'Não informado').replace(/_/g, ' '), { font: bold, size: 8.2 });
   drawFieldBlock(documentCol2X, documentCursor, documentHalfWidth, 'Data de conclusão', formatBrasiliaDateTime(doc.completedAt || new Date()), { font: bold, size: 7.2, lineHeight: 9.2, color: green });
 
   y = docPanelY - 6;
@@ -1406,8 +1407,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
     };
 
     drawTwoColumns(
-      { label: 'Nome completo', value: signer.name, options: { font: bold, size: 9 } },
-      { label: 'CPF completo', value: formatFullCpf(signer.cpf), options: { font: bold, size: 9 } },
+      { label: 'Nome', value: signer.name, options: { font: bold, size: 9 } },
+      { label: 'CPF', value: formatFullCpf(signer.cpf), options: { font: bold, size: 9 } },
       rowHeight(nameLines.length, cpfLines.length, 9)
     );
     if (qualificationText) {
@@ -1418,7 +1419,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       cursor -= qualificationHeight;
     }
     drawTwoColumns(
-      { label: 'Telefone completo', value: formatFullPhone(signer.phone), options: { size: 8.5 } },
+      { label: 'Telefone', value: formatFullPhone(signer.phone), options: { size: 8.5 } },
       { label: 'Data e hora da assinatura', value: formatBrasiliaDateTime(signer.signedAt), options: { font: bold, size: 8 } },
       rowHeight(phoneLines.length, dateLines.length, 8.5)
     );
@@ -1428,9 +1429,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
       rowHeight(ipLines.length, roleLines.length, 8)
     );
 
-    cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Dispositivo e navegador completos', parseUserAgentFriendly(signer.userAgent), { size: 7.5, lineHeight: 9, font: bold, color: navy });
+    cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Dispositivo e navegador', parseUserAgentFriendly(signer.userAgent), { size: 7.5, lineHeight: 9, font: bold, color: navy });
     const locationTop = cursor;
-    cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Geolocalização completa do dispositivo', locationText, { size: 7.5, lineHeight: 9, color: hasLocation ? linkBlue : muted });
+    cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Geolocalização do dispositivo', locationText, { size: 7.5, lineHeight: 9, color: hasLocation ? linkBlue : muted });
 
     if (hasLocation) {
       // A linha inteira é clicável; o URL não é exibido no certificado.
@@ -1446,7 +1447,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       });
     }
 
-    cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Método de autenticação completo', authenticationText, { size: 7.5, lineHeight: 9 });
+    cursor -= drawFieldBlock(padX, cursor, innerWidth, 'Método de autenticação', authenticationText, { size: 7.5, lineHeight: 9 });
 
     // Assinatura gráfica
     if (signer.signatureImage && signer.signatureImage.startsWith('data:image/png;base64,')) {
