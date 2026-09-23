@@ -74,7 +74,7 @@ export async function POST(req: Request, { params }: { params: { token: string }
   let imageValidation: Promise<void> | undefined;
   for (let attempt = 1; attempt <= MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
     try {
-      let regenerateDocumentId: string | null = null;
+      const regenerateDocumentIds: string[] = [];
       const result = await prisma.$transaction(async (tx) => {
         const link = await tx.signer.findUnique({ where: { token: params.token }, select: { documentId: true } });
         if (!link) return { status: 404, body: { error: 'Link não encontrado.' } };
@@ -128,7 +128,30 @@ export async function POST(req: Request, { params }: { params: { token: string }
             eventType: 'PHOTO_REDO_COMPLETED', metadata: JSON.stringify({ field: imageField, requestId: correction.id }),
             description: 'Foto solicitada pelo escritório foi reenviada.', ipAddress, userAgent } });
           if (target.status === 'ASSINADO') await tx.document.update({ where: { id: document.id }, data: { signedFileId: null, signedHash: null } });
-          if (target.status === 'ASSINADO') regenerateDocumentId = document.id;
+          if (target.status === 'ASSINADO') regenerateDocumentIds.push(document.id);
+          // Num kit o cliente assina uma vez só e as fotos dessa sessão valem
+          // para todos os documentos do mesmo envio. Por isso a foto corrigida
+          // também substitui a antiga nos outros documentos do kit (mesma pessoa:
+          // mesmo papel, ordem e CPF), que ainda não foram aprovados - senão o
+          // escritório pedia a correção num documento, baixava outro do mesmo
+          // kit e continuava vendo a foto ruim.
+          if (correction && document.kitBatchId) {
+            const companions = await tx.document.findMany({
+              where: { officeId: document.officeId, kitBatchId: document.kitBatchId, clientId: document.clientId, id: { not: document.id },
+                status: 'CONCLUIDO', NOT: { reviewStatus: 'APROVADO' } },
+              include: { signers: { where: { role: target.role, signatureOrder: target.signatureOrder, cpf: target.cpf }, select: { id: true } } },
+            });
+            for (const companion of companions) {
+              const twin = companion.signers[0];
+              if (!twin) continue;
+              await tx.signer.update({ where: { id: twin.id }, data: { [imageField]: imageData } });
+              await tx.document.update({ where: { id: companion.id }, data: { signedFileId: null, signedHash: null } });
+              await tx.documentEvent.create({ data: { documentId: companion.id, signerId: twin.id, eventType: 'PHOTO_REDO_COMPLETED',
+                metadata: JSON.stringify({ field: imageField, sourceDocumentId: document.id }),
+                description: 'Foto corrigida no mesmo envio também aplicada a este documento.', ipAddress, userAgent } });
+              regenerateDocumentIds.push(companion.id);
+            }
+          }
         }
         if (eventType) {
           // Não acrescentar eventos em documentos aprovados do mesmo pacote.
@@ -146,9 +169,11 @@ export async function POST(req: Request, { params }: { params: { token: string }
       // na hora, em vez de esperar alguém clicar em "Baixar". Assim o PDF que o
       // escritório abre depois já é o corrigido. Se ainda faltar outra foto
       // pedida, a geração recusa e fica para quando a última chegar.
-      if (result.status === 200 && regenerateDocumentId) {
-        try { await generateFinalPdfCertificate(regenerateDocumentId); }
-        catch (regenError) { console.warn('Certificado não regenerado após correção:', regenError); }
+      if (result.status === 200) {
+        for (const documentId of regenerateDocumentIds) {
+          try { await generateFinalPdfCertificate(documentId); }
+          catch (regenError) { console.warn('Certificado não regenerado após correção:', documentId, regenError); }
+        }
       }
       return NextResponse.json(result.body, { status: result.status });
     } catch (error) {
