@@ -33,12 +33,20 @@ const genderizeNeutralWord = (value?: string, gender?: string) => {
  if (gender === 'MASCULINO') return raw.replace(/([oa])\(a\)/gi, '$1').replace(/\(a\)/gi, '');
  return raw;
 };
+// Telefone no formato (16) 99459-2063, igual ao usado no resto do certificado.
+const phone = (value = '') => {
+ let d = value.replace(/\D/g,'');
+ if ((d.length === 12 || d.length === 13) && d.startsWith('55')) d = d.slice(2);
+ if (d.length === 11) return d.replace(/^(\d{2})(\d{5})(\d{4})$/, '($1) $2-$3');
+ if (d.length === 10) return d.replace(/^(\d{2})(\d{4})(\d{4})$/, '($1) $2-$3');
+ return value;
+};
 export function fullQualification(person: QualifiedParticipant): string {
  const q = person.qualification || {};
  const address = [q.address, [q.city,q.state].filter(Boolean).join('/'), q.cep ? `CEP ${q.cep}` : ''].filter(Boolean).join(', ');
  // Nacionalidade e estado civil concordam com o gênero cadastrado (o cadastro
  // guarda "Brasileira" como padrão e "Solteiro(a)" na forma neutra).
- return [person.name, genderizeNationality(q.nationality, q.gender), genderizeNeutralWord(q.maritalStatus, q.gender), q.profession, q.rg ? `RG nº ${q.rg}${q.issuingOrgan ? ' '+q.issuingOrgan : ''}` : '', person.cpf ? `CPF nº ${cpf(person.cpf)}` : '', q.birthDate ? `nascimento: ${q.birthDate.slice(0,10).split('-').reverse().join('/')}` : '', address ? `residência: ${address}` : '', person.email ? `e-mail: ${person.email}` : '', person.phone ? `telefone: ${person.phone}` : ''].filter(Boolean).join(', ');
+ return [person.name, genderizeNationality(q.nationality, q.gender), genderizeNeutralWord(q.maritalStatus, q.gender), q.profession, q.rg ? `RG nº ${q.rg}${q.issuingOrgan ? ' '+q.issuingOrgan : ''}` : '', person.cpf ? `CPF nº ${cpf(person.cpf)}` : '', q.birthDate ? `nascimento: ${q.birthDate.slice(0,10).split('-').reverse().join('/')}` : '', address ? `residência: ${address}` : '', person.email ? `e-mail: ${person.email}` : '', person.phone ? `telefone: ${phone(person.phone)}` : ''].filter(Boolean).join(', ');
 }
 export function participantVariables(people: QualifiedParticipant[]): Record<string,string> {
  const values: Record<string,string> = {}; let part = 0, witness = 0;
