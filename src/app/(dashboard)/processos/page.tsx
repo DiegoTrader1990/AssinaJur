@@ -27,6 +27,8 @@ import {
   Check,
   Plus,
   Move,
+  CalendarClock,
+  Copy,
 } from "lucide-react";
 
 type Activity = {
@@ -118,6 +120,28 @@ const blankForm = {
   documentIds: [] as string[],
 };
 
+// Número do processo sempre no padrão do CNJ (NNNNNNN-DD.AAAA.J.TR.OOOO)
+// quando tiver os 20 dígitos; qualquer outro formato é mostrado como está.
+function formatProcessNumber(value?: string | null) {
+  const raw = String(value || "").trim();
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length !== 20) return raw;
+  return `${digits.slice(0, 7)}-${digits.slice(7, 9)}.${digits.slice(9, 13)}.${digits.slice(13, 14)}.${digits.slice(14, 16)}.${digits.slice(16)}`;
+}
+
+// Situação do prazo em texto: "vencido há 10 dias", "vence hoje", "em 3 dias".
+function deadlineInfo(dueDate?: string | null, status?: string) {
+  if (!dueDate) return null;
+  const due = new Date(dueDate);
+  const days = Math.round((new Date(due).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000);
+  const date = due.toLocaleDateString("pt-BR");
+  if (status === "CONCLUIDO") return { date, text: "", tone: "muted" as const };
+  if (days < 0) return { date, text: `vencido há ${-days} dia${-days > 1 ? "s" : ""}`, tone: "overdue" as const };
+  if (days === 0) return { date, text: "vence hoje", tone: "soon" as const };
+  if (days <= 7) return { date, text: `em ${days} dia${days > 1 ? "s" : ""}`, tone: "soon" as const };
+  return { date, text: "", tone: "normal" as const };
+}
+
 export default function ProcessosPage() {
   const searchParams = useSearchParams();
   const openedFromDocuments = useRef(false);
@@ -130,6 +154,7 @@ export default function ProcessosPage() {
   const [editing, setEditing] = useState(false);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [kpiFilter, setKpiFilter] = useState<"ALL" | "ANDAMENTO" | "PROTOCOLAR" | "VENCIDOS" | "ATIVOS">("ALL");
   const [form, setForm] = useState(blankForm);
   const [saving, setSaving] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
@@ -193,21 +218,35 @@ export default function ProcessosPage() {
     }));
     setModal(true);
   }, [searchParams]);
-  const visible = useMemo(
-    () =>
-      processes.filter(
-        (p) =>
-          (statusFilter === "ALL" || p.status === statusFilter) &&
-          `${p.title} ${p.client.name} ${p.processNumber || ""}`
-            .toLocaleLowerCase("pt-BR")
-            .includes(query.toLocaleLowerCase("pt-BR")),
-      ),
-    [processes, statusFilter, query],
-  );
   const overdue = (p: Process) =>
     !!p.dueDate &&
     p.status !== "CONCLUIDO" &&
     new Date(p.dueDate).getTime() < new Date().setHours(0, 0, 0, 0);
+  // Ordem pela urgência: prazos vencidos e mais próximos primeiro, depois os
+  // sem prazo, e os concluídos por último.
+  const visible = useMemo(
+    () =>
+      processes
+        .filter(
+          (p) =>
+            (statusFilter === "ALL" || p.status === statusFilter) &&
+            (kpiFilter === "ALL" ||
+              (kpiFilter === "ANDAMENTO" && !["CONCLUIDO", "EM_TRIAGEM"].includes(p.status)) ||
+              (kpiFilter === "PROTOCOLAR" && p.status === "PRONTO_PARA_PROTOCOLAR") ||
+              (kpiFilter === "VENCIDOS" && overdue(p)) ||
+              (kpiFilter === "ATIVOS" && p.status !== "CONCLUIDO")) &&
+            `${p.title} ${p.client.name} ${p.processNumber || ""} ${formatProcessNumber(p.processNumber)}`
+              .toLocaleLowerCase("pt-BR")
+              .includes(query.toLocaleLowerCase("pt-BR")),
+        )
+        .sort((a, b) => {
+          const rank = (p: Process) => (p.status === "CONCLUIDO" ? 2 : p.dueDate ? 0 : 1);
+          if (rank(a) !== rank(b)) return rank(a) - rank(b);
+          return (a.dueDate ? new Date(a.dueDate).getTime() : 0) - (b.dueDate ? new Date(b.dueDate).getTime() : 0);
+        }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [processes, statusFilter, query, kpiFilter],
+  );
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -556,7 +595,12 @@ export default function ProcessosPage() {
         </div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-white border rounded-2xl p-4">
+        <button
+          type="button"
+          onClick={() => setKpiFilter(kpiFilter === "ANDAMENTO" ? "ALL" : "ANDAMENTO")}
+          title="Clique para filtrar a lista"
+          className={`text-left bg-white border rounded-2xl p-4 transition hover:border-blue-300 ${kpiFilter === "ANDAMENTO" ? "ring-2 ring-blue-300 border-blue-300 bg-blue-50/60" : ""}`}
+        >
           <p className="text-[10px] uppercase font-bold text-slate-400">
             Em andamento
           </p>
@@ -567,8 +611,13 @@ export default function ProcessosPage() {
               ).length
             }
           </p>
-        </div>
-        <div className="bg-white border rounded-2xl p-4">
+        </button>
+        <button
+          type="button"
+          onClick={() => setKpiFilter(kpiFilter === "PROTOCOLAR" ? "ALL" : "PROTOCOLAR")}
+          title="Clique para filtrar a lista"
+          className={`text-left bg-white border rounded-2xl p-4 transition hover:border-blue-300 ${kpiFilter === "PROTOCOLAR" ? "ring-2 ring-blue-300 border-blue-300 bg-blue-50/60" : ""}`}
+        >
           <p className="text-[10px] uppercase font-bold text-slate-400">
             Para protocolar
           </p>
@@ -578,23 +627,33 @@ export default function ProcessosPage() {
                 .length
             }
           </p>
-        </div>
-        <div className="bg-white border rounded-2xl p-4">
+        </button>
+        <button
+          type="button"
+          onClick={() => setKpiFilter(kpiFilter === "VENCIDOS" ? "ALL" : "VENCIDOS")}
+          title="Clique para filtrar a lista"
+          className={`text-left bg-white border rounded-2xl p-4 transition hover:border-blue-300 ${kpiFilter === "VENCIDOS" ? "ring-2 ring-blue-300 border-blue-300 bg-blue-50/60" : ""}`}
+        >
           <p className="text-[10px] uppercase font-bold text-slate-400">
             Prazos vencidos
           </p>
           <p className="text-2xl font-black text-rose-600">
             {processes.filter(overdue).length}
           </p>
-        </div>
-        <div className="bg-white border rounded-2xl p-4">
+        </button>
+        <button
+          type="button"
+          onClick={() => setKpiFilter(kpiFilter === "ATIVOS" ? "ALL" : "ATIVOS")}
+          title="Clique para filtrar a lista"
+          className={`text-left bg-white border rounded-2xl p-4 transition hover:border-blue-300 ${kpiFilter === "ATIVOS" ? "ring-2 ring-blue-300 border-blue-300 bg-blue-50/60" : ""}`}
+        >
           <p className="text-[10px] uppercase font-bold text-slate-400">
             Dossiês ativos
           </p>
           <p className="text-2xl font-black text-blue-600">
             {processes.filter((p) => p.status !== "CONCLUIDO").length}
           </p>
-        </div>
+        </button>
       </div>
       {/* WINDOWS EXPLORER BARRA SUPERIOR DE CONTROLES DO ESCRITÓRIO */}
       <div className="bg-[#071B3A] text-white border border-slate-700 rounded-2xl p-3.5 flex flex-col md:flex-row gap-3 items-center justify-between shadow-md">
@@ -712,12 +771,21 @@ export default function ProcessosPage() {
                   <User className="w-3.5 h-3.5 text-slate-400" />
                   {p.client.name}
                 </p>
+                {(() => {
+                  const info = deadlineInfo(p.dueDate, p.status);
+                  return (
+                    <p className={`mt-2 inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-extrabold ${!info ? "bg-slate-50 text-slate-400" : info.tone === "overdue" ? "bg-rose-50 text-rose-700" : info.tone === "soon" ? "bg-amber-50 text-amber-800" : "bg-slate-50 text-slate-600"}`}>
+                      <CalendarClock className="w-3.5 h-3.5" />
+                      {info ? `Prazo ${info.date}${info.text ? ` · ${info.text}` : ""}` : "Sem prazo definido"}
+                    </p>
+                  );
+                })()}
               </div>
 
               {/* Rodapé da Pasta do Windows */}
               <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
                 <span className="truncate font-mono">
-                  {p.processNumber || p.protocolNumber || "Sem número"}
+                  {formatProcessNumber(p.processNumber) || p.protocolNumber || "Sem número"}
                 </span>
                 <span className="text-blue-700 font-extrabold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
                   Abrir Pasta 📁
@@ -737,6 +805,7 @@ export default function ProcessosPage() {
                   <th className="py-3 px-4">Nome da Pasta / Processo</th>
                   <th className="py-3 px-4">Cliente</th>
                   <th className="py-3 px-4">Etapa</th>
+                  <th className="py-3 px-4">Próximo prazo</th>
                   <th className="py-3 px-4">Número / Protocolo</th>
                   <th className="py-3 px-4">Arquivos</th>
                   <th className="py-3 px-4 text-right">Ação</th>
@@ -766,8 +835,15 @@ export default function ProcessosPage() {
                         {statusLabel(p.status)}
                       </span>
                     </td>
+                    <td className="py-3 px-4">
+                      {(() => {
+                        const info = deadlineInfo(p.dueDate, p.status);
+                        if (!info) return <span className="text-slate-400">—</span>;
+                        return <span className={`font-bold ${info.tone === "overdue" ? "text-rose-700" : info.tone === "soon" ? "text-amber-700" : "text-slate-600"}`}>{info.date}{info.text ? <span className="block text-[10px]">{info.text}</span> : null}</span>;
+                      })()}
+                    </td>
                     <td className="py-3 px-4 font-mono text-slate-500">
-                      {p.processNumber || p.protocolNumber || "—"}
+                      {formatProcessNumber(p.processNumber) || p.protocolNumber || "—"}
                     </td>
                     <td className="py-3 px-4 font-bold text-slate-600">
                       {p.documents.length + p.attachments.length} arquivos
@@ -1037,15 +1113,24 @@ export default function ProcessosPage() {
                   >
                     <b>Próximo prazo</b>
                     <br />
-                    {selected.dueDate
-                      ? new Date(selected.dueDate).toLocaleDateString("pt-BR")
-                      : "Não definido"}
+                    {(() => {
+                      const info = deadlineInfo(selected.dueDate, selected.status);
+                      return info ? <>{info.date}{info.text ? <span className="block text-[10px] font-bold">{info.text}</span> : null}</> : "Não definido";
+                    })()}
                   </div>
                 </div>
                 <div className="text-sm border rounded-2xl p-4">
                   {selected.processNumber && (
-                    <p>
-                      <b>Processo:</b> {selected.processNumber}
+                    <p className="flex items-center gap-2">
+                      <b>Processo:</b> <span className="font-mono">{formatProcessNumber(selected.processNumber)}</span>
+                      <button
+                        type="button"
+                        onClick={() => navigator.clipboard.writeText(formatProcessNumber(selected.processNumber))}
+                        title="Copiar número do processo"
+                        className="p-1 rounded-md text-slate-400 hover:text-blue-700 hover:bg-blue-50"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
                     </p>
                   )}
                   {selected.protocolNumber && (
