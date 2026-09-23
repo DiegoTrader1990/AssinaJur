@@ -36,7 +36,7 @@ export async function POST(req: Request) {
   try {
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
-    const { clientId, title, documentType, contentHtml, customVariables, signers } = await req.json();
+    const { clientId, title, documentType, contentHtml, customVariables, signers, representation } = await req.json();
     const [client, office, activeLawyers] = await Promise.all([
       prisma.client.findFirst({ where: { id: clientId, officeId: user.officeId } }),
       prisma.office.findUnique({ where: { id: user.officeId } }),
@@ -101,7 +101,8 @@ export async function POST(req: Request) {
     // Concorda com a CLIENTE (quem é representada), não com o representante.
     const representadoWord = client.gender === 'FEMININO' ? 'representada' : client.gender === 'MASCULINO' ? 'representado' : 'representado(a)';
     const variables = {
-      representante_legal: client.legalRepresentative || '', representante_cpf: formatCpfCnpj(client.representativeCpf) || '', representante_rg: client.representativeRg || '', representante_telefone: formatPhone(client.representativePhone) || '',
+      representante_legal: client.legalRepresentative || '',
+      assinatura_representacao: representation && client.legalRepresentative ? `${String(client.legalRepresentative).trim()} – ${client.representativeRole || 'Representante legal'} de ${client.name}` : '', representante_cpf: formatCpfCnpj(client.representativeCpf) || '', representante_rg: client.representativeRg || '', representante_telefone: formatPhone(client.representativePhone) || '',
       representante_qualificacao: representativeQualificationParts.join(', '),
       cliente_representacao: client.legalRepresentative ? `neste ato ${representadoWord} por ${client.legalRepresentative}, ${representativeQualificationParts.join(', ')}` : '',
       cliente_nome: client.name, cliente_cpf: formatCpfCnpj(client.cpfCnpj), cliente_rg: client.rg || '', cliente_nacionalidade: genderizeNationality(client.nationality, client.gender) || 'Brasileiro(a)',

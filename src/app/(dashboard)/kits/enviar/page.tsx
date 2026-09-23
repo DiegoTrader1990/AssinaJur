@@ -116,6 +116,10 @@ export default function DispatchKitPage() {
   // fluxo de assinatura a rogo/testemunhas - mesma lógica do envio de PDF avulso.
   const [signers, setSigners] = useState<SignerInput[]>([]);
   const [isIlliterate, setIsIlliterate] = useState(false);
+  // Cliente incapaz (curatela, tutela, menor) com representante legal: quem
+  // assina é o representante, EM NOME do cliente - não é assinatura a rogo.
+  // A rogo só serve a quem é capaz e não consegue assinar (analfabeto, cego).
+  const [representationMode, setRepresentationMode] = useState(false);
   const [rogoName, setRogoName] = useState('');
   const [rogoCpf, setRogoCpf] = useState('');
   const [rogoRg, setRogoRg] = useState('');
@@ -225,33 +229,48 @@ export default function DispatchKitPage() {
 
   const selectedKit = kits.find((k) => k.id === selectedKitId);
   const selectedClient = clients.find((c) => c.id === selectedClientId);
-  const stampPeople = editorParticipants([{ name: selectedClient?.name || 'Cliente', cpf: selectedClient?.cpfCnpj, role: 'CLIENTE' }, ...signers], isIlliterate, rogoName);
+  const stampPeople = representationMode && selectedClient?.legalRepresentative
+    ? editorParticipants([{ name: `${selectedClient.legalRepresentative} · representando ${selectedClient.name}`, cpf: selectedClient.representativeCpf || '', role: 'REPRESENTANTE_LEGAL' }, ...signers], false, '')
+    : editorParticipants([{ name: selectedClient?.name || 'Cliente', cpf: selectedClient?.cpfCnpj, role: 'CLIENTE' }, ...signers], isIlliterate, rogoName);
+
+  const fillRogoFromRepresentative = (client: Client) => {
+    setRogoName(client.legalRepresentative || '');
+    setRogoCpf(maskCpfCnpj(client.representativeCpf || ''));
+    setRogoRg(client.representativeRg || '');
+    setRogoPhone(maskPhone(client.representativePhone || ''));
+    setRogoRelationship(client.representativeRole || 'Representante cadastrado');
+    setRogoBirthDate(client.representativeBirthDate || '');
+    setRogoSameAddress(Boolean(client.representativeSameAddress));
+    setRogoAddress(client.representativeSameAddress ? '' : (client.representativeAddress || ''));
+  };
+
+  // Troca explícita da forma de assinatura de um cliente com representante.
+  const chooseSignatureForm = (form: 'REPRESENTACAO' | 'ROGO') => {
+    const client = clients.find((c) => c.id === selectedClientId);
+    if (form === 'REPRESENTACAO') {
+      setRepresentationMode(true);
+      setIsIlliterate(false);
+      setRogoName(''); setRogoCpf(''); setRogoRg(''); setRogoBirthDate(''); setRogoAddress(''); setRogoSameAddress(false); setRogoPhone(''); setRogoEmail('');
+    } else {
+      setRepresentationMode(false);
+      setIsIlliterate(true);
+      setEnforceSignatureOrder(true);
+      if (client) fillRogoFromRepresentative(client);
+    }
+  };
 
   const handleSelectClient = (clientId: string) => {
     resetReviewForSelection();
     setSelectedClientId(clientId);
     const client = clients.find((c) => c.id === clientId);
-    // Um representante já cadastrado é a indicação natural para assinatura a rogo.
-    // O usuário continua podendo desmarcar o fluxo ou editar os dados antes do envio.
-    if (client?.legalRepresentative) {
-      setIsIlliterate(true);
-      setEnforceSignatureOrder(true);
-      setRogoName(client.legalRepresentative);
-      setRogoCpf(maskCpfCnpj(client.representativeCpf || ''));
-      setRogoRg(client.representativeRg || '');
-      setRogoPhone(maskPhone(client.representativePhone || ''));
-      setRogoRelationship(client.representativeRole || 'Representante cadastrado');
-      // O cadastro do representante já guarda nascimento e endereço próprios
-      // (adicionados ao cadastro do cliente) - puxamos direto daqui em vez de
-      // deixar em branco, mas o advogado ainda pode ajustar antes de gerar.
-      setRogoBirthDate(client.representativeBirthDate || '');
-      setRogoSameAddress(Boolean(client.representativeSameAddress));
-      setRogoAddress(client.representativeSameAddress ? '' : (client.representativeAddress || ''));
-    } else {
-      setIsIlliterate(false);
-      setRogoName(''); setRogoCpf(''); setRogoRg(''); setRogoBirthDate(''); setRogoAddress(''); setRogoSameAddress(false); setRogoPhone(''); setRogoEmail('');
-      setRogoRelationship('Acompanhante / Familiar');
-    }
+    // Cliente com representante legal cadastrado (curador, tutor, pais):
+    // o padrão é REPRESENTAÇÃO - o representante assina em nome do cliente.
+    // Antes o sistema ligava a assinatura a rogo aqui, o que é juridicamente
+    // errado para incapaz (a rogo não supre incapacidade civil).
+    setIsIlliterate(false);
+    setRogoName(''); setRogoCpf(''); setRogoRg(''); setRogoBirthDate(''); setRogoAddress(''); setRogoSameAddress(false); setRogoPhone(''); setRogoEmail('');
+    setRogoRelationship('Acompanhante / Familiar');
+    setRepresentationMode(Boolean(client?.legalRepresentative));
     setSigners([]);
   };
 
@@ -269,16 +288,8 @@ export default function DispatchKitPage() {
     appliedInitialClientRef.current = true;
     const client = clients.find((c) => c.id === selectedClientId);
     if (client?.legalRepresentative) {
-      setIsIlliterate(true);
-      setEnforceSignatureOrder(true);
-      setRogoName(client.legalRepresentative);
-      setRogoCpf(maskCpfCnpj(client.representativeCpf || ''));
-      setRogoRg(client.representativeRg || '');
-      setRogoPhone(maskPhone(client.representativePhone || ''));
-      setRogoRelationship(client.representativeRole || 'Representante cadastrado');
-      setRogoBirthDate(client.representativeBirthDate || '');
-      setRogoSameAddress(Boolean(client.representativeSameAddress));
-      setRogoAddress(client.representativeSameAddress ? '' : (client.representativeAddress || ''));
+      setRepresentationMode(true);
+      setIsIlliterate(false);
     }
   }, [clients, selectedClientId]);
 
@@ -527,7 +538,7 @@ export default function DispatchKitPage() {
     setLoadingReviewPdf(true);
     setReviewPdfUrl(null);
     try {
-      const response = await fetch('/api/kits/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: selectedClientId, title: item.template.title, documentType: item.template.documentType, contentHtml: customContents[item.template.id] || item.template.contentHtml, customVariables: variables, signers }) });
+      const response = await fetch('/api/kits/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: selectedClientId, title: item.template.title, documentType: item.template.documentType, contentHtml: customContents[item.template.id] || item.template.contentHtml, customVariables: variables, signers, representation: representationMode }) });
       if (!response.ok) throw new Error();
       const placements = JSON.parse(decodeURIComponent(response.headers.get('X-Signature-Placements') || '%5B%5D'));
       setDetectedStamps(placements);
@@ -576,7 +587,8 @@ export default function DispatchKitPage() {
           customContents,
           stampOverrides,
           signers,
-          isIlliterate,
+          representation: representationMode,
+          isIlliterate: representationMode ? false : isIlliterate,
           rogoName: isIlliterate ? rogoName : null,
           rogoCpf: isIlliterate ? rogoCpf : null,
           rogoRg: isIlliterate ? rogoRg : null,
@@ -892,7 +904,27 @@ export default function DispatchKitPage() {
               );
             })}
 
-            <div className="p-5 bg-gradient-to-r from-blue-50/80 via-white to-blue-50/40 rounded-2xl border border-blue-200 space-y-3">
+            {selectedClient?.legalRepresentative && (
+              <div className="p-5 rounded-2xl border border-violet-200 bg-violet-50/50 space-y-3">
+                <p className="font-extrabold text-xs text-[#071B3A]">Como este cliente assina?</p>
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input type="radio" name="signature-form" checked={representationMode} onChange={() => chooseSignatureForm('REPRESENTACAO')} className="mt-0.5" />
+                  <span className="text-xs text-slate-700"><strong className="text-[#071B3A]">Representante legal assina em nome do cliente</strong> ({selectedClient.representativeRole || 'representante'}: {selectedClient.legalRepresentative}). Para interditado, curatelado, tutelado ou menor. O cliente não assina, não tira foto e aparece como parte representada.</span>
+                </label>
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input type="radio" name="signature-form" checked={!representationMode && isIlliterate} onChange={() => chooseSignatureForm('ROGO')} className="mt-0.5" />
+                  <span className="text-xs text-slate-700"><strong className="text-[#071B3A]">Assinatura a rogo</strong>. Só para cliente <strong>capaz</strong> que não consegue assinar (analfabeto, cego, impossibilitado físico).</span>
+                </label>
+                {!representationMode && isIlliterate && (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900">Atenção: a assinatura a rogo não supre incapacidade civil. Se o cliente é interditado ou menor, use "Representante legal".</p>
+                )}
+                {representationMode && !String(selectedClient.representativeCpf || '').replace(/\D/g, '') && (
+                  <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-800">Cadastre o CPF do representante legal no cadastro do cliente antes de enviar.</p>
+                )}
+              </div>
+            )}
+
+            {!representationMode && <div className="p-5 bg-gradient-to-r from-blue-50/80 via-white to-blue-50/40 rounded-2xl border border-blue-200 space-y-3">
               <label className="flex items-center gap-2.5 cursor-pointer">
                 <input type="checkbox" checked={isIlliterate} onChange={(e) => handleRogoToggle(e.target.checked)}
                   className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
@@ -1032,7 +1064,7 @@ export default function DispatchKitPage() {
                   </div>
                 </div>
               )}
-            </div>
+            </div>}
 
             <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 cursor-pointer">
               <input type="checkbox" checked={enforceSignatureOrder} disabled={isIlliterate}

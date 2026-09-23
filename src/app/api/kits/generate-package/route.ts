@@ -92,7 +92,8 @@ export async function POST(req: Request) {
       clientId, kitId, customVariables, customContents,
       stampOverrides,
       signers: extraSignersInput,
-      isIlliterate,
+      representation,
+      isIlliterate: isIlliterateInput,
       rogoName,
       rogoCpf,
       rogoRg,
@@ -114,6 +115,10 @@ export async function POST(req: Request) {
     }
 
     const extraSigners = Array.isArray(extraSignersInput) ? extraSignersInput : [];
+    // Representação legal (curatela, tutela, poder familiar) e assinatura a
+    // rogo são excludentes: na representação o cliente não assina.
+    const isRepresentation = Boolean(representation);
+    const isIlliterate = isRepresentation ? false : isIlliterateInput;
     if (extraSigners.some((signer: any) => !signer?.name || !hasValidCpfCnpjCheckDigits(String(signer?.cpf || '')))) {
       return NextResponse.json({ error: 'Todos os signatários adicionais precisam ter nome e CPF/CNPJ válido.' }, { status: 400 });
     }
@@ -149,6 +154,26 @@ export async function POST(req: Request) {
       }
     }
 
+    if (isRepresentation) {
+      if (!client.legalRepresentative || !hasValidCpfCnpjCheckDigits(String(client.representativeCpf || ''))) {
+        return NextResponse.json({ error: 'Para assinar por representante legal, cadastre no cliente o nome e o CPF válido do representante.' }, { status: 400 });
+      }
+      if (String(client.representativeCpf).replace(/\D/g, '') === String(client.cpfCnpj || '').replace(/\D/g, '')) {
+        return NextResponse.json({ error: 'O representante legal deve ser uma pessoa diferente do cliente.' }, { status: 400 });
+      }
+    }
+
+    // Na representação, o signatário é o representante; o cliente é parte
+    // representada (não assina, não faz selfie nem foto).
+    const representativeSignerInput = {
+      qualification: { roleLabel: `Representante legal${client.representativeRole ? ` (${client.representativeRole})` : ''}` },
+      name: String(client.legalRepresentative || '').trim(),
+      cpf: String(client.representativeCpf || ''),
+      email: '',
+      phone: client.representativePhone || '',
+      role: 'REPRESENTANTE_LEGAL',
+      signatureOrder: 1,
+    };
     const clientSignerInput = {
       qualification: qualificationFromClient(client),
       name: client.name,
@@ -170,7 +195,7 @@ export async function POST(req: Request) {
           ...rogoWitnesses.map((signer: any, index: number) => ({ ...signer, role: `TESTEMUNHA_${index + 1}`, signingMode: witnessSigningMode === 'SAME_DEVICE' ? 'SAME_DEVICE' : 'INDIVIDUAL', signatureOrder: index + 3 })),
           ...rogoAdditionalSigners.map((signer: any, index: number) => ({ ...signer, signatureOrder: index + 3 + rogoWitnesses.length })),
         ]
-      : [clientSignerInput, ...extraSigners.map((signer: any, index: number) => ({ ...signer, signatureOrder: index + 2 }))];
+      : [isRepresentation ? representativeSignerInput : clientSignerInput, ...extraSigners.map((signer: any, index: number) => ({ ...signer, signatureOrder: index + 2 }))];
     let participantGroups;
     try {
       for (const person of orderedSignerInputs) {
@@ -338,6 +363,9 @@ export async function POST(req: Request) {
       cliente_portador: portadorWord,
       cliente_residente_domiciliado: residenteDomiciliadoWord,
       representante_legal: client.legalRepresentative || '',
+      // Linha de assinatura na representação: quem assina é o representante,
+      // em nome do cliente ("ANA MARIA DA SILVA – Curador(a) de DIAMANTINO...").
+      assinatura_representacao: isRepresentation ? `${String(client.legalRepresentative || '').trim()} – ${client.representativeRole || 'Representante legal'} de ${client.name}` : '',
       representante_cpf: formatCpfCnpj(client.representativeCpf) || '',
       representante_rg: client.representativeRg || '',
       representante_telefone: formatPhone(client.representativePhone) || '',
@@ -537,6 +565,11 @@ export async function POST(req: Request) {
         },
       });
 
+      if (isRepresentation) {
+        await prisma.documentEvent.create({ data: { documentId: doc.id, userId: user.id, eventType: 'LEGAL_REPRESENTATION_CONFIGURED',
+          metadata: JSON.stringify({ representative: client.legalRepresentative, representativeCpf: String(client.representativeCpf || '').replace(/\D/g, ''), role: client.representativeRole || null }),
+          description: `${client.name} é parte representada; assina ${client.legalRepresentative}${client.representativeRole ? ` (${client.representativeRole})` : ''} como representante legal.` } });
+      }
       await prisma.documentEvent.create({ data: { documentId: doc.id, userId: user.id, eventType: PARTICIPANT_DETAILS_EVENT, metadata: JSON.stringify(orderedSignerInputs.filter((p: any) => p.qualification).map((p: any) => ({ order: p.signatureOrder, qualification: p.qualification }))), description: 'Qualificação dos participantes registrada para este envio.' } });
       await prisma.documentEvent.create({ data: { documentId: doc.id, userId: user.id, eventType: PARTICIPANT_GROUPS_EVENT, metadata: JSON.stringify(participantGroups), description: 'Partes e respectivos assinantes a rogo configurados.' } });
       if (enforceSignatureOrder || isIlliterate) {

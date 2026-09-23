@@ -249,6 +249,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [office, setOffice] = useState<OfficeInfo | null>(null);
   const [kit, setKit] = useState<KitInfo | null>(null);
   const isRogadoConsent = Boolean(document?.isIlliterate);
+  // Representante legal (curador, tutor, pais) assina EM NOME do cliente
+  // incapaz - a declaração precisa dizer isso com todas as letras.
+  const isRepresentativeSigner = signer?.role === 'REPRESENTANTE_LEGAL';
   const isRogoSigner = signer?.role === 'ASSINANTE_A_ROGO';
   // Marca de quem enviou o documento. Prefere o nome fantasia (é como o
   // escritório se apresenta ao cliente) e cai no nome oficial; "AssinaJur" só
@@ -1303,7 +1306,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         confirmCpf: cpf || signer?.cpf,
         signatureType: isRogadoConsent ? 'CONSENTIMENTO_A_ROGO' : signatureMode,
         signatureImage: isRogadoConsent ? null : signatureImage,
-        signedConsentText: kit ? 'Declaro que li e concordo com todos os documentos apresentados e reconheço esta manifestação como minha assinatura eletrônica.' : `Declaro que li e concordo com os termos do documento ${document?.title || 'documento'}.`,
+        signedConsentText: isRepresentativeSigner
+          ? `Declaro que li e concordo com ${kit ? 'todos os documentos apresentados' : `os termos do documento ${document?.title || 'documento'}`} e que assino na qualidade de representante legal, em nome da parte representada.`
+          : kit ? 'Declaro que li e concordo com todos os documentos apresentados e reconheço esta manifestação como minha assinatura eletrônica.' : `Declaro que li e concordo com os termos do documento ${document?.title || 'documento'}.`,
         selfieCenterImage: clientCenter,
         selfieLeftImage: clientLeft,
         selfieRightImage: clientRight,
@@ -2008,6 +2013,10 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 {isRogadoConsent ? (
                   <>
                     Declaro que assino a rogo pelo cliente <strong>{signer?.name}</strong> no documento <strong>{document?.title}</strong>, autorizando expressamente a vinculação do Selo Digital com fotos de presença de ambos.
+                  </>
+                ) : isRepresentativeSigner ? (
+                  <>
+                    Declaro que li e concordo com {kit ? 'todos os documentos apresentados' : <>os termos do documento <strong>{document?.title}</strong></>} e que assino <strong>na qualidade de representante legal, em nome da parte representada</strong>, autorizando a captura de presença e a emissão do Selo Digital.
                   </>
                 ) : (
                   <>

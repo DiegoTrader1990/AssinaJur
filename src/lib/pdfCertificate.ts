@@ -1,4 +1,4 @@
-import { qualificationDetails, fullQualification } from './participant-qualification';
+import { qualificationDetails, fullQualification, qualificationFromClient } from './participant-qualification';
 import { configuredGroups } from './participant-groups';
 import { decodeStamps, stampPageGeometry, stampParticipants, type SignerStamp } from './signer-stamps';
 import { PDFDocument, PDFPage, rgb, StandardFonts, LineCapStyle, PDFName, PDFString, degrees, pushGraphicsState, popGraphicsState, concatTransformationMatrix } from 'pdf-lib';
@@ -274,6 +274,9 @@ function signerRoleLabel(role?: string | null, isIlliterate?: boolean) {
   if (r === 'ASSINANTE_A_ROGO') {
     return 'Assinante a Rogo (Acompanhante Indicado)';
   }
+  if (r === 'REPRESENTANTE_LEGAL') {
+    return 'Representante legal';
+  }
   if (r === 'TESTEMUNHA' || r === 'TESTEMUNHA_1') {
     return '1ª Testemunha Instrumentária';
   }
@@ -338,7 +341,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10).split('-').reverse().join('/') : raw;
   };
   const rogoQualificationText = (person: typeof doc.signers[number]) => {
-    if (person.role !== 'ASSINANTE_A_ROGO') return '';
+    if (person.role !== 'ASSINANTE_A_ROGO' && person.role !== 'REPRESENTANTE_LEGAL') return '';
     const c = doc.client;
     const clientSigner = doc.signers.find((s) => s.role === 'CLIENTE');
     const clientQ = clientSigner ? qualificationFor(clientSigner) : undefined;
@@ -346,7 +349,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const clientAddress = [clientQ?.address || c?.address, [clientQ?.city || c?.city, clientQ?.state || c?.state].filter(Boolean).join('/'), cep ? `CEP ${cep}` : ''].filter(Boolean).join(', ');
     const isRepresentative = Boolean(c?.legalRepresentative) && (
       (onlyDigits(c?.representativeCpf) !== '' && onlyDigits(c?.representativeCpf) === onlyDigits(person.cpf)) || sameName(c?.legalRepresentative, person.name));
-    const relation = isRepresentative ? c?.representativeRole : doc.rogoRelationship;
+    const relation = person.role === 'REPRESENTANTE_LEGAL'
+      ? `${c?.representativeRole || 'Representante legal'} de ${c?.name || 'cliente'}`
+      : isRepresentative ? c?.representativeRole : doc.rogoRelationship;
     const rg = isRepresentative ? c?.representativeRg : doc.rogoRg;
     const birth = isRepresentative ? c?.representativeBirthDate : doc.rogoBirthDate;
     const sameAddress = isRepresentative ? c?.representativeSameAddress : doc.rogoSameAddress;
@@ -485,6 +490,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     if (partner && partner.status !== 'ASSINADO') return;
     const stampLines = [roleFor(person).toUpperCase(), person.name,
       `CPF: ${formatFullCpf(person.cpf)}`,
+      ...(person.role === 'REPRESENTANTE_LEGAL' && doc.client ? [`EM NOME DE: ${doc.client.name}`] : []),
       ...(partner ? [`A ROGO: ${partner.name}`, `CPF A ROGO: ${formatFullCpf(partner.cpf)}`] : []),
       person.signedAt ? formatBrasiliaDateTime(person.signedAt, false).replace(/\s*\(.+$/, '') : 'Horário não registrado',
       `Código: ${verificationCode}`];
@@ -569,6 +575,11 @@ export async function generateFinalPdfCertificate(documentId: string) {
           : '';
         signerSummary = `${documentParties.length} PARTES${witnessSuffix}`;
         cpfLines = ['IDENTIFICAÇÃO DE CADA PARTE NO CERTIFICADO ANEXO'];
+      } else if (doc.signers.some((item) => item.role === 'REPRESENTANTE_LEGAL') && doc.signers.length === 1) {
+        // Representação legal: quem assina é o representante, em nome do cliente.
+        const representative = doc.signers[0];
+        signerSummary = `${safeText(representative.name, 40)} • REPRESENTANTE LEGAL DE ${safeText(doc.client?.name || '', 40)}`;
+        cpfLines = [`CPF: ${formatFullCpf(representative.cpf || '')}`];
       } else {
         signerSummary = doc.signers.length > 2
           ? `${doc.signers.length} PARTICIPANTES COM EVIDÊNCIAS INDIVIDUAIS`
@@ -917,7 +928,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
   // ── 2. CERTIFICADO COMPACTO DE 1 PÁGINA (APENAS PARA DOCUMENTOS SIMPLES DE 1 ÚNICO SIGNATÁRIO) ──
   const hasAnyDocumentPhotos = doc.signers.some((s) => s.documentFrontImage || s.documentBackImage);
-  const compactCertificate = doc.signers.length === 1 && !doc.isIlliterate && !hasAnyDocumentPhotos;
+  const compactCertificate = doc.signers.length === 1 && !doc.isIlliterate && !hasAnyDocumentPhotos && !doc.signers.some((s) => s.role === 'REPRESENTANTE_LEGAL');
   if (compactCertificate) {
     const certificatePage = pdfDoc.addPage([PAGE_W, PAGE_H]);
     const signer = doc.signers[0];
@@ -1354,7 +1365,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const userAgentLines = fieldLines(signer.userAgent || 'Não informado', innerWidth, { size: 7.2 });
     const locationLines = fieldLines(locationText, innerWidth, { size: 7.8 });
     const authenticationLines = fieldLines(authenticationText, innerWidth, { size: 7.8 });
-    const qualificationText = qualificationFor(signer) ? fullQualification({ ...signer, qualification: qualificationFor(signer) }) : rogoQualificationText(signer);
+    const qualificationText = signer.role !== 'REPRESENTANTE_LEGAL' && qualificationFor(signer) ? fullQualification({ ...signer, qualification: qualificationFor(signer) }) : rogoQualificationText(signer);
     // Qualificação em destaque: fonte maior, entrelinha mais aberta e um
     // painel claro com friso dourado, logo abaixo do nome/CPF.
     const QUAL_SIZE = 8.8, QUAL_LINE = 12, QUAL_PAD = 8;
@@ -1467,6 +1478,28 @@ export async function generateFinalPdfCertificate(documentId: string) {
     // na Seção 3 - separada dos dados para que todos os signatários fiquem
     // com seus dados agrupados primeiro (ver comentário no início do loop).
     y = pY - 6;
+  }
+
+  // PARTE REPRESENTADA (representação legal): o titular incapaz é parte, mas
+  // não signatário - não há selfie, foto, geolocalização nem assinatura dele.
+  const representativeSigner = doc.signers.find((s) => s.role === 'REPRESENTANTE_LEGAL');
+  if (representativeSigner && doc.client) {
+    const c = doc.client;
+    const representedWidth = CW - 28;
+    const representedText = fullQualification({ name: c.name, cpf: c.cpfCnpj, phone: c.phone, role: 'CLIENTE', signatureOrder: 0, qualification: qualificationFromClient(c) });
+    const participationText = `Representado(a) neste ato por ${representativeSigner.name}${c.representativeRole ? ` (${c.representativeRole})` : ''}, que assina em seu nome. Não há coleta de selfie, foto de documento, geolocalização nem assinatura da parte representada, que não manifesta vontade neste ato.`;
+    const representedHeight = 34 + 30 + (11 + fieldLines(representedText, representedWidth, { size: 8.4 }).length * 10.5 + 6) + (11 + fieldLines(participationText, representedWidth, { size: 7.8 }).length * 9.8 + 6) + 8;
+    ensureSpace(representedHeight + 6);
+    page.drawLine({ start: { x: CX, y }, end: { x: CR, y }, thickness: 1.3, color: gold });
+    page.drawText('2. PARTE REPRESENTADA — NÃO SIGNATÁRIA', { x: padX, y: y - 14, size: 8, font: bold, color: navy });
+    page.drawLine({ start: { x: CX, y: y - 20 }, end: { x: CR, y: y - 20 }, thickness: 0.5, color: panelBorder });
+    let representedCursor = y - 34;
+    drawFieldBlock(padX, representedCursor, 226, 'Nome', c.name, { font: bold, size: 9 });
+    drawFieldBlock(padX + 260, representedCursor, 226, 'CPF', formatFullCpf(c.cpfCnpj), { font: bold, size: 9 });
+    representedCursor -= 30;
+    representedCursor -= drawFieldBlock(padX, representedCursor, representedWidth, 'Qualificação completa', representedText, { size: 8.4, lineHeight: 10.5, color: navy });
+    representedCursor -= drawFieldBlock(padX, representedCursor, representedWidth, 'Forma de participação', participationText, { size: 7.8, lineHeight: 9.8 });
+    y = representedCursor - 6;
   }
 
   // ── Acabamento das evidências fotográficas (selfie e documento) ──

@@ -346,7 +346,8 @@ function cssFontFamily(style: string): string | undefined {
 // assinatura e reconstruímos somente seus dados com a cliente desta emissão.
 function applyDynamicSignatureFooter(paragraphs: RichParagraph[], variables: VariableValues): RichParagraph[] {
   if (Number(variables.partes_quantidade || 1) > 1) return paragraphs;
-  const clientName = String(variables.cliente_nome || '').trim();
+  // Na representação legal, a linha de assinatura é do representante.
+  const clientName = String(variables.assinatura_representacao || variables.cliente_nome || '').trim();
   const city = String(variables.cidade || '').trim();
   const date = String(variables.data_atual || '').trim();
   if (!clientName && !(city && date)) return paragraphs;

@@ -282,7 +282,7 @@ export default function DocumentsPage() {
     if (person.role !== 'ASSINANTE_A_ROGO' || getPendingRedoField(person)) return person.token;
     try { const group = configuredGroups(doc, doc.signers).find(g => g.rogoOrder === person.signatureOrder); return doc.signers.find(p => p.signatureOrder === group?.partyOrder)?.token || ''; } catch { return ''; }
   };
-  const signerRoleLabel = (role: string) => ({ CLIENTE: 'Cliente', ASSINANTE_A_ROGO: 'Assinante a rogo', TESTEMUNHA_1: '1ª testemunha', TESTEMUNHA_2: '2ª testemunha', TESTEMUNHA: 'Testemunha' }[role] || role.replace(/_/g, ' '));
+  const signerRoleLabel = (role: string) => ({ CLIENTE: 'Cliente', ASSINANTE_A_ROGO: 'Assinante a rogo', REPRESENTANTE_LEGAL: 'Representante legal', TESTEMUNHA_1: '1ª testemunha', TESTEMUNHA_2: '2ª testemunha', TESTEMUNHA: 'Testemunha' }[role] || role.replace(/_/g, ' '));
 
   const REDOABLE_FIELD_LABELS: Record<string, string> = {
     documentFrontImage: 'frente do documento',
