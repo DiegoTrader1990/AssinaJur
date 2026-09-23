@@ -503,8 +503,8 @@ export default function DispatchKitPage() {
       const rogoRgCpfPhrase = rogoRg && rogoCpf
         ? `portador(a) do RG nº ${rogoRg} e inscrito(a) no CPF sob o nº ${formatCpfCnpj(rogoCpf)}`
         : rogoRg ? `portador(a) do RG nº ${rogoRg}` : rogoCpf ? `inscrito(a) no CPF sob o nº ${formatCpfCnpj(rogoCpf)}` : '';
-      const rogoAddressPhrase = rogoSameAddress
-        ? `ambos residentes e domiciliados em ${reviewClientData.cliente_endereco || '—'}`
+      const rogoAddressPhrase = rogoSameAddress && reviewClientData.cliente_endereco
+        ? `ambos residentes e domiciliados em ${reviewClientData.cliente_endereco}`
         : rogoAddress ? `residente e domiciliado(a) em ${rogoAddress}` : '';
       const dataForSubstitution: Record<string, string> = {
         ...variables,

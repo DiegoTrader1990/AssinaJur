@@ -330,7 +330,9 @@ export async function generateFinalPdfCertificate(documentId: string) {
   }
   const participantDetails = qualificationDetails(doc);
   const qualificationFor = (person: typeof doc.signers[number]) => participantDetails.find(p => p.order === person.signatureOrder)?.qualification;
-  const roleFor = (person: typeof doc.signers[number]) => qualificationFor(person)?.roleLabel || signerRoleLabel(person.role);
+  // "Representante legal (Representante legal)" quando o papel cadastrado repete o rótulo.
+  const collapseRepeatedRole = (label: string) => label.replace(/^(.+?)\s*\(\s*(.+?)\s*\)$/, (full, a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase() ? a.trim() : full);
+  const roleFor = (person: typeof doc.signers[number]) => collapseRepeatedRole(qualificationFor(person)?.roleLabel || signerRoleLabel(person.role));
   // Qualificação do assinante a rogo, montada com os mesmos dados usados no
   // corpo do documento: representante legal cadastrado no cliente (curador,
   // mãe etc.) ou os dados do acompanhante a rogo informados no envio. Antes o
@@ -390,7 +392,21 @@ export async function generateFinalPdfCertificate(documentId: string) {
     'LIVENESS_CAPTURED', 'CONSENT_ACCEPTED', 'SIGNATURE_SUBMITTED', 'ROGO_CONSENT_RECORDED', 'DOCUMENT_COMPLETED',
     'IDENTITY_REUSED',
   ]);
-  const publicEvents = dedupePublicAuditEvents(doc.events.filter((event) => certificateEventTypes.has(event.eventType)));
+  // Quem teve a identidade verificada antes (fotos reaproveitadas) não fez
+  // prova de presença nesta sessão: esse marco não entra na trilha, e o
+  // registro da identidade mostra só a data real da verificação.
+  const reusedSignerIds = new Set(doc.events.filter((ev: any) => ev.eventType === 'IDENTITY_REUSED' && ev.signerId).map((ev: any) => ev.signerId as string));
+  const publicEvents = dedupePublicAuditEvents(doc.events
+    .filter((event) => certificateEventTypes.has(event.eventType))
+    .filter((event) => !(reusedSignerIds.has(event.signerId as string) && ['LIVENESS_CAPTURED', 'LIVENESS_STARTED', 'SELFIE_CENTER_VALIDATED', 'SELFIE_LEFT_VALIDATED', 'SELFIE_RIGHT_VALIDATED'].includes(event.eventType)))
+    .map((event) => {
+      if (event.eventType !== 'IDENTITY_REUSED') return event;
+      const signer = doc.signers.find((s) => s.id === event.signerId);
+      let verifiedAt: string | undefined;
+      try { verifiedAt = JSON.parse(event.metadata || '{}').verifiedAt; } catch { /* sem data */ }
+      const when = verifiedAt ? formatBrasiliaDateTime(verifiedAt, false).replace(/\s*\(.+$/, '') : '';
+      return { ...event, description: `Identidade de ${signer?.name || 'signatário'} (documento e selfie)${when ? ` verificada em ${when}` : ' verificada'}.` };
+    }));
 
   const originalBytes = await getFileBuffer(doc.officeId, doc.originalFile.storageKey);
   if (!originalBytes) {
@@ -643,7 +659,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       cpfLines.forEach((line, lineIndex) => {
         p.drawText(line, { x: contentX, y: yAfterName - 2 - lineIndex * 6.4, size: 5.25, font: bold, color: text });
       });
-      p.drawText('ASSINATURA ELETRÔNICA QUALIFICADA', { x: contentX, y: qualificationY, size: 5.0, font: bold, color: green });
+      p.drawText('ASSINATURA ELETRÔNICA', { x: contentX, y: qualificationY, size: 5.0, font: bold, color: green });
 
       // A rubrica opcional do signatário NÃO é mais desenhada por cima do selo de
       // evidências: antes ela era sobreposta diretamente no bloco de texto compacto
@@ -661,7 +677,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       // em relação à base do selo - antes isso abria um vão grande quando o
       // texto de cima era curto (1 signatário) e quase colava quando era
       // longo (assinatura a rogo, 2 CPFs). Agora sempre acompanha o texto.
-      p.drawText(doc.signers.length > 1 ? `${doc.signers.length} CPFs + SELFIES + GEOLOCALIZAÇÃO` : 'CPF + SELFIE + GEOLOCALIZAÇÃO', { x: contentX, y: qualificationY - 9, size: 5.1, font: regular, color: text });
+      p.drawText(`${doc.signers.length > 1 ? `${doc.signers.length} CPFs + SELFIES` : 'CPF + SELFIE'}${doc.signers.some((s) => s.geoLat != null) ? ' + GEOLOCALIZAÇÃO' : ''}`, { x: contentX, y: qualificationY - 9, size: 5.1, font: regular, color: text });
       p.drawText(formatBrasiliaDateTime(signedAt, false).replace(/\s*\(.+$/, ''), { x: contentX, y: qualificationY - 17, size: 5.1, font: regular, color: muted });
       p.drawText(`CÓD: ${verificationCode}`, { x: contentX, y: bottomLineY, size: 6.8, font: bold, color: navy });
       // Traco dourado colado logo abaixo do código, curto e um pouco mais
@@ -1503,7 +1519,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const representedHeight = 34 + 30 + (11 + fieldLines(representedText, representedWidth, { size: 8.4 }).length * 10.5 + 6) + (11 + fieldLines(participationText, representedWidth, { size: 7.8 }).length * 9.8 + 6) + 8;
     ensureSpace(representedHeight + 6);
     page.drawLine({ start: { x: CX, y }, end: { x: CR, y }, thickness: 1.3, color: gold });
-    page.drawText('2. PARTE REPRESENTADA — NÃO SIGNATÁRIA', { x: padX, y: y - 14, size: 8, font: bold, color: navy });
+    page.drawText('2.1 PARTE REPRESENTADA — NÃO SIGNATÁRIA', { x: padX, y: y - 14, size: 8, font: bold, color: navy });
     page.drawLine({ start: { x: CX, y: y - 20 }, end: { x: CR, y: y - 20 }, thickness: 0.5, color: panelBorder });
     let representedCursor = y - 34;
     drawFieldBlock(padX, representedCursor, 226, 'Nome', c.name, { font: bold, size: 9 });
@@ -1574,7 +1590,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       ensureSpace(36 + 34 + cardH + 20);
 
       page.drawLine({ start: { x: CX, y }, end: { x: CR, y }, thickness: 1.3, color: gold });
-      page.drawText(`3. PROVA DE PRESENÇA AO VIVO — ${roleFor(signer).toUpperCase()} (REGISTRO FACIAL HD)`, {
+      page.drawText(reusedIdentity(signer) ? `3. SELFIE DE IDENTIDADE — ${roleFor(signer).toUpperCase()}` : `3. PROVA DE PRESENÇA AO VIVO — ${roleFor(signer).toUpperCase()} (REGISTRO FACIAL HD)`, {
         x: padX, y: y - 14, size: 8, font: bold, color: navy,
       });
       page.drawLine({ start: { x: CX, y: y - 20 }, end: { x: CR, y: y - 20 }, thickness: 0.5, color: panelBorder });

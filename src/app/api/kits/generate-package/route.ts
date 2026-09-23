@@ -355,7 +355,7 @@ export async function POST(req: Request) {
     // extenso na sequência ficaria seco e redundante. Nesse caso encerramos a
     // qualificação do representante com "ambos residentes e domiciliados em
     // [endereço]" em vez de repetir o endereço completo pela segunda vez.
-    const representativeAddressPhrase = client.representativeSameAddress
+    const representativeAddressPhrase = client.representativeSameAddress && clienteEnderecoText !== '—'
       ? `ambos residentes e domiciliados em ${clienteEnderecoText}`
       : client.representativeAddress
         ? `residente e domiciliado(a) em ${client.representativeAddress}`
@@ -433,7 +433,7 @@ export async function POST(req: Request) {
             // Mesma lógica do representante legal: se o assinante a rogo mora no
             // mesmo endereço da cliente, evita repetir o endereço por extenso
             // (já apareceu na qualificação da cliente) e fecha com "ambos".
-            rogoSameAddress
+            rogoSameAddress && clienteEnderecoText !== '—'
               ? `ambos residentes e domiciliados em ${clienteEnderecoText}`
               : rogoAddress ? `residente e domiciliado(a) em ${rogoAddress}` : '',
           ].filter(Boolean).join(', ')
@@ -609,7 +609,7 @@ export async function POST(req: Request) {
           } });
           await prisma.documentEvent.create({ data: { documentId: doc.id, signerId: record.id, userId: user.id, eventType: 'IDENTITY_REUSED',
             metadata: JSON.stringify({ sourceDocumentId: previous.item.id, sourceCode: previous.item.verificationCode, verifiedAt: previous.signer.signedAt }),
-            description: `Identidade de ${record.name} verificada em ${previous.signer.signedAt ? new Date(previous.signer.signedAt).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'envio anterior'} (documento e selfie). O ato de assinatura desta versão é colhido novamente.` } });
+            description: `Identidade de ${record.name} verificada em ${previous.signer.signedAt ? new Date(previous.signer.signedAt).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'envio anterior'} (documento e selfie).` } });
         }
       }
 

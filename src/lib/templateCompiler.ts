@@ -367,7 +367,18 @@ function applyDynamicSignatureFooter(paragraphs: RichParagraph[], variables: Var
   const hasSignatureLine = paragraphs
     .slice(Math.max(0, roleIndex - 3), roleIndex)
     .some((paragraph) => /^_{5,}$/.test(paragraphText(paragraph)));
-  if (!/^ASSINATURA\s+DO\s+CLIENTE/i.test(roleText) && !hasSignatureLine) return paragraphs;
+  if (!/^ASSINATURA\s+DO\s+CLIENTE/i.test(roleText) && !hasSignatureLine) {
+    // Rodapé simples "Nome / Outorgante" sem linha: na representação legal,
+    // o nome do cliente dá lugar a "representante – papel de cliente".
+    const representation = String(variables.assinatura_representacao || '').trim();
+    const clientOnly = String(variables.cliente_nome || '').trim().toLowerCase();
+    const nameParagraph = paragraphs[roleIndex - 1];
+    if (!representation || !nameParagraph || paragraphText(nameParagraph).toLowerCase() !== clientOnly) return paragraphs;
+    return paragraphs.map((paragraph, index) => index !== roleIndex - 1 ? paragraph : {
+      ...paragraph,
+      runs: [{ ...paragraph.runs[0], text: representation }],
+    });
+  }
 
   const result = paragraphs.map((paragraph) => ({ ...paragraph, runs: paragraph.runs.map((run) => ({ ...run })) }));
   const signatureNameIndex = roleIndex - 1;

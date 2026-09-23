@@ -373,7 +373,10 @@ export async function POST(
       },
     });
 
-    await prisma.documentEvent.create({
+    // Identidade verificada antes (nova versão corrigida): não houve selfie
+    // nesta sessão, então não se registra prova de presença ao vivo.
+    const identityReused = await prisma.documentEvent.findFirst({ where: { signerId: signer.id, eventType: 'IDENTITY_REUSED' }, select: { id: true } });
+    if (!identityReused) await prisma.documentEvent.create({
       data: {
         documentId: signer.document.id,
         signerId: signer.id,
@@ -472,10 +475,10 @@ export async function POST(
 
         await prisma.document.update({ where: { id: companion.id }, data: { status: 'CONCLUIDO', completedAt: new Date(), reviewStatus: 'PENDENTE_REVISAO' } });
         await prisma.documentEvent.createMany({ data: [
-          {
+          ...(identityReused ? [] : [{
             documentId: companion.id, signerId: companionClient.id, eventType: 'LIVENESS_CAPTURED',
             description: `Prova de presença de ${sourceClient.name} vinculada a este documento na mesma sessão de assinatura.`, ipAddress: clientIp, userAgent,
-          },
+          }]),
           {
             documentId: companion.id, signerId: companionClient.id, eventType: 'SIGNATURE_SUBMITTED',
             description: `Assinatura eletrônica de ${sourceClient.name} registrada nesta sessão única de assinatura.`, ipAddress: clientIp, userAgent,

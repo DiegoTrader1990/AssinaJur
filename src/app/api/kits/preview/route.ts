@@ -79,7 +79,7 @@ export async function POST(req: Request) {
     // (guardava valores antigos, ex.: "Casa 2", sem relação com o endereço
     // atual) - também não entra aqui.
     const clienteEnderecoText = [client.address, [client.city, client.state].filter(Boolean).join('/'), client.cep ? `CEP ${client.cep}` : ''].filter(Boolean).join(', ') || '—';
-    const representativeAddressPhrase = (client as any).representativeSameAddress
+    const representativeAddressPhrase = (client as any).representativeSameAddress && clienteEnderecoText !== '—'
       ? `ambos residentes e domiciliados em ${clienteEnderecoText}`
       : (client as any).representativeAddress
         ? `residente e domiciliado(a) em ${(client as any).representativeAddress}`
