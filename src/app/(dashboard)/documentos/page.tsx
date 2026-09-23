@@ -1226,15 +1226,16 @@ export default function DocumentsPage() {
           const draftPackages = groupPackages(kanbanColumns.drafts);
           if (draftPackages.length) columns.push({ key: 'drafts', title: 'Não enviados / encerrados', hint: 'Prontos, cancelados, expirados', icon: <FileCheck2 className="w-3.5 h-3.5 text-slate-600" />, border: 'border-slate-200', text: 'text-slate-800', hintText: 'text-slate-500', items: draftPackages, empty: '' });
           return (
-            <div className="flex flex-col md:flex-row gap-4 items-start">
+            // Colunas sempre com a mesma largura: estreitar a coluna vazia fazia
+            // a tela "pular" de tamanho sempre que um envio mudava de coluna.
+            <div className={`grid grid-cols-1 ${columns.length === 4 ? 'md:grid-cols-2 xl:grid-cols-4' : 'md:grid-cols-3'} gap-4 items-start`}>
               {columns.map((column) => (
-                // Coluna vazia fica estreita; as que têm envios dividem o resto.
-                <div key={column.key} className={`bg-slate-50/70 p-3 rounded-2xl border border-slate-200 space-y-3 w-full ${column.items.length ? 'md:flex-1 md:min-w-0' : 'md:w-60 md:shrink-0'}`}>
+                <div key={column.key} className="bg-slate-50/70 p-3 rounded-2xl border border-slate-200 space-y-3 min-w-0">
                   <div className={`p-2.5 bg-white border ${column.border} rounded-xl flex items-center justify-between gap-2 shadow-2xs`}>
-                    <span className={`font-heading font-black text-xs ${column.text} flex items-center gap-1.5 uppercase`}>
+                    <span className={`font-heading font-black text-xs ${column.text} flex items-center gap-1.5 uppercase whitespace-nowrap`}>
                       {column.icon} {column.title} ({column.items.length})
                     </span>
-                    <span className={`text-[10px] ${column.hintText} font-bold text-right`}>{column.hint}</span>
+                    <span className={`hidden 2xl:inline text-[10px] ${column.hintText} font-bold text-right truncate`}>{column.hint}</span>
                   </div>
                   <div className="space-y-2.5 max-h-[70vh] overflow-y-auto pr-0.5">
                     {column.items.length === 0 ? (
