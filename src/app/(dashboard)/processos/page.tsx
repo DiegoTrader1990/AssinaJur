@@ -83,6 +83,8 @@ type Process = {
     title: string;
     status: string;
     signedFileId?: string;
+    // true = documento assinado do cliente ainda sem processo definido, só exibido aqui
+    fromClient?: boolean;
   }>;
   attachments: Array<{
     id: string;
@@ -561,34 +563,32 @@ export default function ProcessosPage() {
   );
   return (
     <div className="space-y-5">
-      <div className="rounded-3xl bg-gradient-to-r from-[#071B3A] to-[#0B3B78] text-white p-6 flex flex-col sm:flex-row gap-4 justify-between">
+      {/* Cabeçalho enxuto, no mesmo padrão de Documentos e Clientes. */}
+      <div className="flex flex-col sm:flex-row gap-3 sm:items-center justify-between">
         <div>
-          <p className="text-[10px] font-extrabold text-blue-200 uppercase tracking-widest">
-            Gestão do escritório
-          </p>
-          <h1 className="text-2xl font-black font-heading mt-1">
-            Processos e dossiês
+          <h1 className="font-heading text-xl font-black tracking-tight text-[#071B3A]">
+            Processos
           </h1>
-          <p className="text-sm text-blue-100 mt-2">
-            Controle operacional de prazos, etapas, protocolo e documentos de
-            cada cliente.
+          <p className="text-[11px] text-slate-500">
+            Prazos, etapas, protocolo e documentos de cada cliente.
           </p>
         </div>
         <div className="self-start sm:self-center flex flex-wrap gap-2">
           <button
             onClick={syncExistingProcessesToDrive}
             disabled={syncingDrive}
-            className="inline-flex items-center gap-2 border border-blue-200/50 bg-blue-950/20 text-white px-4 py-3 rounded-xl text-xs font-extrabold disabled:opacity-60"
+            title="Cria no Google Drive do escritório as pastas dos processos que ainda não têm pasta"
+            className="inline-flex items-center gap-2 border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 px-4 py-2.5 rounded-xl text-xs font-extrabold disabled:opacity-60"
           >
             <HardDrive className="w-4 h-4" />{" "}
-            {syncingDrive ? "Organizando..." : "Organizar Drive"}
+            {syncingDrive ? "Sincronizando..." : "Sincronizar pastas no Drive"}
           </button>
           <button
             onClick={() => {
               setForm(blankForm);
               setModal(true);
             }}
-            className="inline-flex items-center gap-2 bg-white text-[#071B3A] px-5 py-3 rounded-xl text-xs font-extrabold"
+            className="inline-flex items-center gap-2 bg-[#071B3A] hover:bg-[#12335e] text-white px-5 py-2.5 rounded-xl text-xs font-extrabold"
           >
             <FolderPlus className="w-4 h-4" /> Novo processo
           </button>
@@ -662,9 +662,7 @@ export default function ProcessosPage() {
           <div className="w-7 h-7 bg-amber-400/20 rounded-lg flex items-center justify-center">
             <Folder className="w-4 h-4 text-amber-400" />
           </div>
-          <span className="text-slate-400">Este Computador</span>
-          <span>/</span>
-          <span className="text-white font-bold">Processos e Dossiês</span>
+          <span className="text-white font-bold">Processos</span>
           <span className="text-slate-400">({visible.length})</span>
         </div>
 
@@ -1238,7 +1236,7 @@ export default function ProcessosPage() {
                                   {totalCount} arquivos
                                 </span>
                               </div>
-                              <h4 className="text-xs font-extrabold text-[#071B3A] mt-2 group-hover:text-blue-700 line-clamp-1">
+                              <h4 title={folderName} className="text-xs font-extrabold text-[#071B3A] mt-2 group-hover:text-blue-700 line-clamp-2 leading-snug">
                                 {folderName}
                               </h4>
                             </button>
@@ -1343,9 +1341,13 @@ export default function ProcessosPage() {
                                   <a href={`/api/documents/${d.id}/download`} download className="text-xs text-emerald-700 font-bold flex items-center gap-1">
                                     <Download className="w-3.5 h-3.5" /> PDF
                                   </a>
-                                  <button onClick={() => manageFile("unlinkDocument", d.id)} title="Remover" className="text-slate-400 hover:text-rose-600 p-1">
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                                  {d.fromClient ? (
+                                    <span title="Documento assinado do cliente. Aparece em todos os dossiês dele." className="text-[9px] font-bold text-slate-400">Do cliente</span>
+                                  ) : (
+                                    <button onClick={() => manageFile("unlinkDocument", d.id)} title="Remover" className="text-slate-400 hover:text-rose-600 p-1">
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             ))}
@@ -1395,9 +1397,13 @@ export default function ProcessosPage() {
                                 <a href={`/api/documents/${d.id}/download`} download className="text-emerald-700 font-bold flex items-center gap-1">
                                   <Download className="w-3.5 h-3.5" /> Baixar
                                 </a>
-                                <button onClick={() => manageFile("unlinkDocument", d.id)} className="text-slate-400 hover:text-rose-600 p-1">
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                                {d.fromClient ? (
+                                  <span title="Documento assinado do cliente. Aparece em todos os dossiês dele." className="text-[9px] font-bold text-slate-400">Do cliente</span>
+                                ) : (
+                                  <button onClick={() => manageFile("unlinkDocument", d.id)} className="text-slate-400 hover:text-rose-600 p-1">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                               </div>
                             </div>
                           ))}

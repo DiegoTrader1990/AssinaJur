@@ -58,7 +58,27 @@ export async function GET() {
     }).catch(() => {});
 
   const processes = await prisma.legalProcess.findMany({ where: { officeId: user.officeId }, include: processInclude, orderBy: [{ priority: 'desc' }, { lastActivityAt: 'desc' }] });
-  return NextResponse.json({ processes });
+  // Documentos assinados do cliente que não foram vinculados a nenhum processo
+  // (ex.: kit de procuração/contrato) aparecem na pasta "Procuração e
+  // Contratos Assinados" de todos os dossiês desse cliente - antes o dossiê
+  // ficava com "0 arquivos" mesmo com tudo assinado. Só exibição: o documento
+  // continua sem processo definido até alguém vinculá-lo.
+  const clientIds = Array.from(new Set(processes.map((process) => process.clientId)));
+  const clientSigned = clientIds.length
+    ? await prisma.document.findMany({
+        where: { officeId: user.officeId, clientId: { in: clientIds }, processId: null, status: 'CONCLUIDO' },
+        select: { id: true, title: true, status: true, signedFileId: true, completedAt: true, clientId: true },
+        orderBy: { createdAt: 'desc' },
+      })
+    : [];
+  const withClientDocuments = processes.map((process) => ({
+    ...process,
+    documents: [
+      ...process.documents,
+      ...clientSigned.filter((doc) => doc.clientId === process.clientId).map(({ clientId: _clientId, ...doc }) => ({ ...doc, fromClient: true })),
+    ],
+  }));
+  return NextResponse.json({ processes: withClientDocuments });
 }
 
 export async function POST(req: Request) {
