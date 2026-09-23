@@ -1477,8 +1477,11 @@ export async function generateFinalPdfCertificate(documentId: string) {
   // (52pt, abaixo) e um separador visual mais forte entre eles.
   if (presenceSigners.length > 0) {
     const presenceInnerWidth = CW - 28;
-    const boxW = 380;
-    const boxH = 210;
+    // Cartão da selfie maior (antes 380x210, foto até 167x173). Cresce 60pt:
+    // na página típica (dados do a rogo + selfie do cliente) ainda sobra
+    // folga antes do rodapé, então o cartão não é empurrado para a próxima.
+    const boxW = 440;
+    const boxH = 270;
     const cardH = boxH + 10;
 
     for (const signer of presenceSigners) {
@@ -1522,8 +1525,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
       page.drawRectangle({ x: photoX, y: imgFrameY, width: boxW, height: boxH, color: rgb(0.96, 0.97, 0.985), opacity: 0.82, borderColor: rgb(0.82, 0.86, 0.92), borderWidth: 0.8 });
       page.drawRectangle({ x: photoX, y: imgFrameY + boxH - 1.4, width: boxW, height: 1.4, color: gold });
 
-      const photoFrameMaxW = 167;
-      const photoFrameMaxH = 173;
+      const photoFrameMaxW = 215;
+      const photoFrameMaxH = 232;
       const photoSlotY = imgFrameY + 19;
       // A moldura é calculada do tamanho exato da foto já escalada dentro do
       // espaço disponível (até 167x173), então sempre encosta nas quatro
