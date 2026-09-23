@@ -1,4 +1,3 @@
-import { genderizeNationality, genderizeNeutralWord } from './kitTemplateNormalization';
 export const PARTICIPANT_DETAILS_EVENT = 'PARTICIPANT_DETAILS_CONFIGURED';
 export type ParticipantQualification = { roleLabel?: string; rg?: string; issuingOrgan?: string; birthDate?: string; nationality?: string; gender?: string; maritalStatus?: string; profession?: string; cep?: string; address?: string; city?: string; state?: string };
 export type QualifiedParticipant = { name: string; cpf?: string; email?: string | null; phone?: string | null; role: string; signatureOrder: number; qualification?: ParticipantQualification };
@@ -19,6 +18,21 @@ export function validateParticipantQualifications(people: QualifiedParticipant[]
 }
 const cpf = (value = '') => value.replace(/\D/g,'').replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
 const escapeHtml = (value: string) => value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// Mesma regra de kitTemplateNormalization (genderizeNationality /
+// genderizeNeutralWord), repetida aqui para este módulo continuar sem
+// dependências: "Brasileira" é o padrão do cadastro e "Solteiro(a)" a forma
+// neutra; com o gênero informado, saem na forma certa.
+const genderizeNationality = (value?: string, gender?: string) => {
+ const raw = String(value || '').trim();
+ if (raw !== 'Brasileiro' && raw !== 'Brasileira') return raw;
+ return gender === 'FEMININO' ? 'Brasileira' : gender === 'MASCULINO' ? 'Brasileiro' : raw;
+};
+const genderizeNeutralWord = (value?: string, gender?: string) => {
+ const raw = String(value || '');
+ if (gender === 'FEMININO') return raw.replace(/[oa]\(a\)/gi, 'a').replace(/\(a\)/gi, 'a');
+ if (gender === 'MASCULINO') return raw.replace(/([oa])\(a\)/gi, '$1').replace(/\(a\)/gi, '');
+ return raw;
+};
 export function fullQualification(person: QualifiedParticipant): string {
  const q = person.qualification || {};
  const address = [q.address, [q.city,q.state].filter(Boolean).join('/'), q.cep ? `CEP ${q.cep}` : ''].filter(Boolean).join(', ');
