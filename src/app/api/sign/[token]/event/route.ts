@@ -124,6 +124,15 @@ export async function POST(req: Request, { params }: { params: { token: string }
           }
           await tx.signer.update({ where: { id: target.id }, data: { [imageField]: imageData,
             status: ['PENDENTE', 'VISUALIZADO'].includes(target.status) ? 'EM_ANDAMENTO' : target.status } });
+          // Num kit, a mesma pessoa nos outros documentos do envio também passa a
+          // "em andamento" - senão o escritório abria outro documento do kit e via
+          // "Aguardando" mesmo com as fotos já salvas.
+          if (!correction && document.kitBatchId) {
+            await tx.signer.updateMany({ where: { id: { not: target.id }, role: target.role, cpf: target.cpf, signatureOrder: target.signatureOrder,
+              status: { in: ['PENDENTE', 'VISUALIZADO'] },
+              document: { officeId: document.officeId, kitBatchId: document.kitBatchId, clientId: document.clientId, status: { notIn: ['CANCELADO', 'EXPIRADO', 'CONCLUIDO'] } } },
+              data: { status: 'EM_ANDAMENTO' } });
+          }
           if (correction) await tx.documentEvent.create({ data: { documentId: document.id, signerId: target.id,
             eventType: 'PHOTO_REDO_COMPLETED', metadata: JSON.stringify({ field: imageField, requestId: correction.id }),
             description: 'Foto solicitada pelo escritório foi reenviada.', ipAddress, userAgent } });

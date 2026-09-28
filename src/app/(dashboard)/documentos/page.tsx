@@ -344,7 +344,23 @@ export default function DocumentsPage() {
     if (signer.documentFrontImage) return 'parou no verso do documento';
     return 'ainda não iniciou a captura';
   };
-  const signerProgress = (signer: Signer) => {
+  // Num kit, as fotos ficam salvas no documento do link; os outros documentos
+  // do mesmo envio mostram o progresso da mesma pessoa (mesmo papel, ordem e CPF).
+  const withKitProgress = (signer: Signer): Signer => {
+    const doc = documents.find((item) => item.signers.some((s) => s.id === signer.id)) || selectedDoc;
+    if (!doc?.kitBatchId || signer.status === 'ASSINADO') return signer;
+    const rank = (s: Signer) => (s.status === 'ASSINADO' ? 100 : 0) + (s.selfieCenterImage ? 8 : 0) + (s.documentBackImage ? 4 : 0) + (s.documentFrontImage ? 2 : 0) + (s.status === 'EM_ANDAMENTO' ? 1 : 0) + (s.status === 'VISUALIZADO' ? 0.5 : 0);
+    const twins = documents
+      .filter((item) => item.kitBatchId === doc.kitBatchId && item.client?.id === doc.client?.id && !['CANCELADO', 'EXPIRADO'].includes(item.status))
+      .flatMap((item) => item.signers)
+      .filter((s) => s.role === signer.role && s.signatureOrder === signer.signatureOrder && s.cpf.replace(/\D/g, '') === signer.cpf.replace(/\D/g, ''));
+    const best = twins.reduce((top, s) => (rank(s) > rank(top) ? s : top), signer);
+    if (best === signer) return signer;
+    return { ...signer, status: best.status === 'ASSINADO' ? 'EM_ANDAMENTO' : best.status, documentFrontImage: best.documentFrontImage, documentBackImage: best.documentBackImage, selfieCenterImage: best.selfieCenterImage,
+      events: [...(signer.events || []), ...(best.events || []).filter((ev) => ev.eventType === 'LIVENESS_STARTED')] };
+  };
+  const signerProgress = (rawSigner: Signer) => {
+    const signer = withKitProgress(rawSigner);
     // Pedido de refazer pendente tem prioridade visual sobre qualquer outro
     // status - inclusive sobre "Assinou", já que a assinatura em si continua
     // válida, mas o escritório está esperando uma foto nova específica.
