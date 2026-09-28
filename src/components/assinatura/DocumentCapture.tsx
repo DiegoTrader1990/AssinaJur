@@ -338,10 +338,10 @@ export default function DocumentCapture({
     );
   }, [emit, side, stopCamera]);
 
-  const DOCUMENT_CAPTURE_COUNTDOWN_SECS = 5;
+  const DOCUMENT_CAPTURE_COUNTDOWN_SECS = 3;
 
   // Apertar "Tirar foto" não fotografa na hora - dispara uma contagem
-  // regressiva de 5s (mesmo comportamento da câmera de selfie), dando tempo
+  // regressiva de 3s (mesmo comportamento da câmera de selfie), dando tempo
   // da pessoa reposicionar o documento na moldura depois de já ter apertado.
   const handleShutterPress = useCallback(() => {
     if (countdownTimeoutRef.current) return;
@@ -573,7 +573,7 @@ export default function DocumentCapture({
 
               {/* Botão de disparo estilo câmera, dentro do próprio quadro
                   (mesmo padrão da câmera de selfie). Ao apertar, dispara a
-                  contagem regressiva de 5s antes de fotografar. */}
+                  contagem regressiva de 3s antes de fotografar. */}
               <div className="absolute inset-x-0 bottom-0 z-10 flex items-center justify-center bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-8 pb-4">
                 <button
                   type="button"
@@ -595,7 +595,7 @@ export default function DocumentCapture({
 
         {phase === 'LIVE' && (
           <p className="w-full max-w-sm px-2 pt-2 text-center text-[11px] font-semibold text-slate-600">
-            Toque no botão e fique com o documento parado - a foto é tirada automaticamente após a contagem de 5 segundos.
+            Toque no botão e fique com o documento parado - a foto é tirada automaticamente após a contagem de 3 segundos.
           </p>
         )}
 

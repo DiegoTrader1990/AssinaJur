@@ -855,7 +855,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       setFrameState('GREEN');
       // A captura NÃO é mais automática ao ficar centralizado - só serve de
       // indicação visual (moldura verde). A foto só é tirada quando a pessoa
-      // aperta o botão de disparo, que então dispara a contagem de 5s. Isso
+      // aperta o botão de disparo, que então dispara a contagem de 3s. Isso
       // evita que a foto seja tirada "sem querer" antes da pessoa estar
       // pronta, e deixa o fluxo previsível para clientes idosos.
       setSelfieInstruction('Perfeito! Toque no botão verde para tirar a foto.');
@@ -1070,9 +1070,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   };
 
   // Apertar o botão de disparo NÃO tira a foto na hora - ele ativa uma
-  // contagem regressiva de 5 segundos (mesmo comportamento de antes), dando
+  // contagem regressiva de 3 segundos (mesmo comportamento de antes), dando
   // tempo da pessoa se posicionar depois de já ter apertado o botão.
-  const MANUAL_CAPTURE_COUNTDOWN_SECS = 5;
+  const MANUAL_CAPTURE_COUNTDOWN_SECS = 3;
   const handleManualCapture = () => {
     if (isCapturingRef.current || manualCountdownActiveRef.current) return;
     manualCountdownActiveRef.current = true;
@@ -1632,7 +1632,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
 
                 {/* Botão de disparo estilo câmera, sempre visível dentro do próprio
                     quadro (sem precisar rolar a tela). Ao apertar, dispara uma
-                    contagem regressiva de 5s antes de tirar a foto - dá tempo da
+                    contagem regressiva de 3s antes de tirar a foto - dá tempo da
                     pessoa se posicionar (importante para clientes idosos). */}
                 <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-8 pb-4">
                   <button
@@ -1654,7 +1654,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </div>
 
               <p className="text-center text-[11px] text-slate-600 font-semibold leading-relaxed">
-                {selfieInstruction}<br />Toque no botão e fique parado(a): a foto é tirada após a contagem de 5 segundos.
+                {selfieInstruction}<br />Toque no botão e fique parado(a): a foto é tirada após a contagem de 3 segundos.
               </p>
             </div>
 
@@ -1848,7 +1848,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 )}
                 {/* Botão de disparo estilo câmera, sempre visível dentro do próprio
                     quadro (sem precisar rolar a tela). Ao apertar, dispara uma
-                    contagem regressiva de 5s antes de tirar a foto. */}
+                    contagem regressiva de 3s antes de tirar a foto. */}
                 <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-8 pb-4">
                   <button
                     type="button"
@@ -1869,7 +1869,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               </div>
 
               <p className="text-center text-[11px] text-slate-600 font-semibold leading-relaxed">
-                {selfieInstruction}<br />Toque no botão e fique parado(a): a foto é tirada após a contagem de 5 segundos.
+                {selfieInstruction}<br />Toque no botão e fique parado(a): a foto é tirada após a contagem de 3 segundos.
               </p>
             </div>
 
