@@ -111,6 +111,11 @@ export async function POST(
       const labels: Record<string, string> = { documentFrontImage: 'frente do documento', documentBackImage: 'verso do documento', selfieCenterImage: 'selfie' };
       return NextResponse.json({ error: `O escritório pediu uma nova foto (${labels[redoPending.field] || 'foto'}). Atualize a página para refazer essa etapa.`, redoField: redoPending.field }, { status: 409 });
     }
+    // As fotos são gravadas etapa a etapa no servidor. Se não estão lá, o
+    // escritório reiniciou a captura do zero com a página ainda aberta.
+    if (!signer.documentFrontImage || !signer.documentBackImage || !signer.selfieCenterImage) {
+      return NextResponse.json({ error: 'O escritório reiniciou sua assinatura. Atualize a página para começar novamente.' }, { status: 409 });
+    }
 
     // Evidências obrigatórias para qualquer papel, inclusive acompanhantes legados.
     for (const [person, label] of [[body, 'participante'], [rogo, 'assinante a rogo'], [witness1, 'primeira testemunha'], [witness2, 'segunda testemunha']] as const) {

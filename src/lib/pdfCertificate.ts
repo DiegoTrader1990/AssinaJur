@@ -10,7 +10,7 @@ import { getFileBuffer, saveFile } from './storage';
 import { calculateHash } from './pdfHash';
 import { formatBrasiliaDateTime } from './dateUtils';
 import sharp from 'sharp';
-import { dedupePublicAuditEvents } from './publicAuditTrail';
+import { dedupePublicAuditEvents, dropResetAttempts } from './publicAuditTrail';
 import { pendingPhotoCorrection } from './photo-review';
 
 // CPF e Telefone completos (SEM MASCARAMENTO no certificado oficial de evidências)
@@ -396,7 +396,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
   // prova de presença nesta sessão: esse marco não entra na trilha, e o
   // registro da identidade mostra só a data real da verificação.
   const reusedSignerIds = new Set(doc.events.filter((ev: any) => ev.eventType === 'IDENTITY_REUSED' && ev.signerId).map((ev: any) => ev.signerId as string));
-  const publicEvents = dedupePublicAuditEvents(doc.events
+  const publicEvents = dedupePublicAuditEvents(dropResetAttempts(doc.events)
     .filter((event) => certificateEventTypes.has(event.eventType))
     .filter((event) => !(reusedSignerIds.has(event.signerId as string) && ['LIVENESS_CAPTURED', 'LIVENESS_STARTED', 'SELFIE_CENTER_VALIDATED', 'SELFIE_LEFT_VALIDATED', 'SELFIE_RIGHT_VALIDATED'].includes(event.eventType)))
     .map((event) => {

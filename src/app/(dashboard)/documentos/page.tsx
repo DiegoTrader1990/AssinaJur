@@ -544,6 +544,26 @@ export default function DocumentsPage() {
   const handleRedoAllPhotos = async (doc: DocumentItem, signer: Signer) => {
     const fields = (['documentFrontImage', 'documentBackImage', 'selfieCenterImage'] as const).filter((field) => signer[field]);
     if (!fields.length) return;
+    // Assinatura ainda não concluída: recomeça do zero (link volta ao início).
+    if (signer.status !== 'ASSINADO') {
+      if (!window.confirm(`Recomeçar a assinatura de ${signer.name} do zero? As fotos enviadas serão apagadas e o link dele(a) volta para o início. Esta tentativa não aparecerá no certificado.`)) return;
+      const key = `${signer.id}:all`;
+      setRedoingPhotoIds((current) => new Set(current).add(key));
+      try {
+        const res = await fetch(`/api/documents/${doc.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'restart-capture', signerId: signer.id }) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Não foi possível recomeçar a assinatura.');
+        const freshDocs = await fetchDocuments();
+        const freshDoc = freshDocs?.find((item) => item.id === selectedDoc?.id);
+        if (freshDoc) setSelectedDoc(freshDoc);
+      } catch (err: any) {
+        alert(err.message);
+      } finally {
+        setRedoingPhotoIds((current) => { const next = new Set(current); next.delete(key); return next; });
+      }
+      return;
+    }
     if (!window.confirm(`Pedir para ${signer.name} refazer todas as fotos (${fields.map((f) => REDOABLE_FIELD_LABELS[f]).join(', ')})? O link dele(a) retomará na primeira foto.`)) return;
     const reason = window.prompt('Motivo (opcional, fica registrado na trilha de auditoria):') || '';
     const key = `${signer.id}:all`;
@@ -1548,10 +1568,10 @@ export default function DocumentsPage() {
                                   </button>
                                 </div>
                               ))}
-                              {[ps.documentFrontImage, ps.documentBackImage, ps.selfieCenterImage].filter(Boolean).length > 1 && (
+                              {[ps.documentFrontImage, ps.documentBackImage, ps.selfieCenterImage].filter(Boolean).length > (ps.status === 'ASSINADO' ? 1 : 0) && (
                                 <button type="button" onClick={() => handleRedoAllPhotos(src.doc, ps)} disabled={redoingPhotoIds.has(`${ps.id}:all`)}
                                   className="self-end inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-extrabold text-amber-800 hover:bg-amber-100 disabled:opacity-50">
-                                  {redoingPhotoIds.has(`${ps.id}:all`) ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />} Refazer todas as fotos
+                                  {redoingPhotoIds.has(`${ps.id}:all`) ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />} {ps.status === 'ASSINADO' ? 'Refazer todas as fotos' : 'Recomeçar do zero'}
                                 </button>
                               )}
                             </div>

@@ -17,3 +17,21 @@ export function dedupePublicAuditEvents<T extends PublicAuditEvent>(events: T[])
     return true;
   });
 }
+
+
+// "Refazer do zero": a tentativa anterior à reinicialização (SIGNATURE_RESET)
+// não produziu assinatura e não entra na trilha pública - continua guardada
+// no histórico interno. Reinício de uma pessoa (metadata.signerId) só oculta
+// os eventos dela; reinício do documento inteiro oculta todos os anteriores.
+export function dropResetAttempts<T extends PublicAuditEvent & { createdAt: Date | string; metadata?: string | null }>(events: T[]): T[] {
+  const resets = events.filter((event) => event.eventType === 'SIGNATURE_RESET').map((event) => {
+    let signerId: string | null = null;
+    try { signerId = JSON.parse(event.metadata || '{}').signerId || null; } catch { signerId = null; }
+    return { at: new Date(event.createdAt).getTime(), signerId };
+  });
+  if (!resets.length) return events;
+  return events.filter((event) => {
+    const at = new Date(event.createdAt).getTime();
+    return !resets.some((reset) => at < reset.at && (!reset.signerId || reset.signerId === event.signerId));
+  });
+}

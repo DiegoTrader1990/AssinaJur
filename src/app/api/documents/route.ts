@@ -115,10 +115,10 @@ export async function GET(req: Request) {
             // atendido, no lugar da última etapa concluída (que pode estar
             // desatualizada depois de um campo anterior ser limpo pelo pedido).
             events: {
-              where: { eventType: { in: ['LIVENESS_STARTED', 'PHOTO_REDO_REQUESTED', 'PHOTO_VALIDATION_REJECTED'] } },
+              where: { eventType: { in: ['LIVENESS_STARTED', 'PHOTO_REDO_REQUESTED', 'PHOTO_VALIDATION_REJECTED', 'SIGNATURE_RESET'] } },
               select: { id: true, eventType: true, metadata: true },
               orderBy: { createdAt: 'desc' },
-              take: 5,
+              take: 8,
             },
           },
         },
@@ -143,6 +143,12 @@ export async function GET(req: Request) {
       signers: doc.signers.map((signer) => {
         const light: Record<string, unknown> = { ...signer };
         for (const field of IMAGE_FIELDS) if (field in light) light[field] = light[field] ? 'capturada' : null;
+        // Só os eventos da tentativa atual (depois do último "refazer do zero").
+        const events = (signer as { events?: Array<{ eventType: string }> }).events;
+        if (Array.isArray(events)) {
+          const resetIndex = events.findIndex((event) => event.eventType === 'SIGNATURE_RESET');
+          light.events = resetIndex >= 0 ? events.slice(0, resetIndex) : events;
+        }
         return light;
       }),
     }));

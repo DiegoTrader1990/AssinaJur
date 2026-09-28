@@ -3,7 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { AuthUser } from './auth';
 import { pendingPhotoCorrection } from './photo-review';
 
-export const reviewActions = new Set(['approve-document', 'approve-package', 'unapprove-document', 'unapprove-package', 'redo-document', 'redo-package', 'redo-photo', 'restart-document', 'restart-package']);
+export const reviewActions = new Set(['approve-document', 'approve-package', 'unapprove-document', 'unapprove-package', 'redo-document', 'redo-package', 'redo-photo', 'restart-capture', 'restart-document', 'restart-package']);
 export const canCorrectDocuments = (role: string) => ['OFFICE_ADMIN', 'LAWYER', 'STAFF'].includes(role);
 export const isApprovedDocument = (doc: { status: string; reviewStatus: string }) => doc.status === 'CONCLUIDO' && doc.reviewStatus === 'APROVADO';
 export class DocumentReviewError extends Error {
@@ -86,6 +86,35 @@ export async function reviewDocument(db: PrismaClient, user: AuthUser, id: strin
         description: `Nova foto (${field}) solicitada por ${user.name}.${reason ? ` Motivo: ${reason}` : ''}` } });
       await tx.auditLog.create({ data: { officeId: user.officeId, userId: user.id, eventType: 'PHOTO_REDO_REQUESTED', description: `Correção de ${field} solicitada no documento ${id} por ${user.name}.${reason ? ` Motivo: ${reason}` : ''}` } });
       return { success: true };
+    }
+    if (action === 'restart-capture') {
+      // Refazer do zero uma assinatura AINDA NÃO concluída: apaga as fotos da
+      // pessoa em todos os documentos do envio e o link recomeça do início.
+      // A tentativa anterior fica só no histórico interno (SIGNATURE_RESET);
+      // a trilha pública do certificado mostra apenas a nova tentativa.
+      if (isApprovedDocument(source) || ['CANCELADO', 'EXPIRADO', 'CONCLUIDO'].includes(source.status)) throw new DocumentReviewError('Documento concluído: use "Refazer" na revisão para reabrir a assinatura.');
+      const person = source.signers.find((s) => s.id === body.signerId);
+      if (!person) throw new DocumentReviewError('Participante não encontrado.', 404);
+      if (person.status === 'ASSINADO') throw new DocumentReviewError('Esta pessoa já concluiu a assinatura. Peça para refazer fotos específicas.');
+      const same = (s: { role: string; signatureOrder: number; cpf: string }) => s.role === person.role && s.signatureOrder === person.signatureOrder && s.cpf.replace(/\D/g, '') === person.cpf.replace(/\D/g, '');
+      const docs = source.kitBatchId
+        ? await tx.document.findMany({ where: { officeId: user.officeId, clientId: source.clientId, kitBatchId: source.kitBatchId, status: { notIn: ['CANCELADO', 'EXPIRADO', 'CONCLUIDO'] } }, include: { signers: true } })
+        : [source];
+      let count = 0;
+      for (const doc of docs) {
+        const twin = doc.signers.find(same);
+        if (!twin || twin.status === 'ASSINADO') continue;
+        await tx.signer.update({ where: { id: twin.id }, data: {
+          status: 'PENDENTE', documentFrontImage: null, documentBackImage: null, selfieCenterImage: null, selfieLeftImage: null, selfieRightImage: null,
+          geoLat: null, geoLng: null, geoAccuracy: null, geoCity: null, geoState: null, ipAddress: null, userAgent: null,
+        } });
+        await tx.documentEvent.create({ data: { documentId: doc.id, signerId: twin.id, userId: user.id, eventType: 'SIGNATURE_RESET',
+          metadata: JSON.stringify({ scope: 'CAPTURE', signerId: twin.id }),
+          description: `Captura de ${twin.name} reiniciada do zero por ${user.name} antes da conclusão.${reason ? ` Motivo: ${reason}` : ''}` } });
+        count += 1;
+      }
+      await tx.auditLog.create({ data: { officeId: user.officeId, userId: user.id, eventType: 'SIGNATURE_RESET', description: `Captura de ${person.name} reiniciada do zero em ${count} documento(s) por ${user.name}.${reason ? ` Motivo: ${reason}` : ''}` } });
+      return { success: true, resetCount: count };
     }
     if (targets.some((doc) => doc.status !== 'CONCLUIDO')) throw new DocumentReviewError('Todos os documentos selecionados precisam estar concluídos.');
     const approve = action.startsWith('approve-');
