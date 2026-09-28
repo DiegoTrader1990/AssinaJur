@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { generateFinalPdfCertificate } from '@/lib/pdfCertificate';
 import { queueSignatureCompletionMessages } from '@/lib/whatsapp/signatureCompletion';
 import { getSignatureOrderBlock, signatureOrderError } from '@/lib/signatureOrder';
-import { isIndividualRetry } from '@/lib/photo-review';
+import { isIndividualRetry, pendingPhotoCorrection } from '@/lib/photo-review';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -102,6 +102,14 @@ export async function POST(
         { error: 'O CPF informado não corresponde ao CPF cadastrado para esta assinatura.' },
         { status: 400 }
       );
+    }
+
+    // O escritório pediu uma foto nova enquanto a página estava aberta: a
+    // página ainda guarda a foto antiga e não pode reenviá-la na conclusão.
+    const redoPending = await pendingPhotoCorrection(prisma, signer);
+    if (redoPending) {
+      const labels: Record<string, string> = { documentFrontImage: 'frente do documento', documentBackImage: 'verso do documento', selfieCenterImage: 'selfie' };
+      return NextResponse.json({ error: `O escritório pediu uma nova foto (${labels[redoPending.field] || 'foto'}). Atualize a página para refazer essa etapa.`, redoField: redoPending.field }, { status: 409 });
     }
 
     // Evidências obrigatórias para qualquer papel, inclusive acompanhantes legados.

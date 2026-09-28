@@ -235,24 +235,26 @@ export default function DocumentsPage() {
   useEffect(() => {
     if (!selectedDoc) { setDossierPhotos({}); return; }
     let cancelled = false;
-    fetch(`/api/documents/${selectedDoc.id}`, { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((data) => {
-        if (cancelled || !data?.document?.signers) return;
+    const sourceIds = Array.from(new Set([selectedDoc.id, ...selectedDoc.signers.map((s) => photoSourceFor(selectedDoc, s).doc.id)]));
+    Promise.all(sourceIds.map((docId) => fetch(`/api/documents/${docId}`, { cache: 'no-store' }).then((res) => res.json()).catch(() => null)))
+      .then((results) => {
+        if (cancelled) return;
         const photos: typeof dossierPhotos = {};
-        for (const signer of data.document.signers) {
-          const entry: Partial<Record<'documentFrontImage' | 'documentBackImage' | 'selfieCenterImage', string>> = {};
-          for (const field of ['documentFrontImage', 'documentBackImage', 'selfieCenterImage'] as const) {
-            if (typeof signer[field] === 'string' && signer[field].startsWith('data:image')) entry[field] = signer[field];
+        for (const data of results) {
+          for (const signer of data?.document?.signers || []) {
+            const entry: Partial<Record<'documentFrontImage' | 'documentBackImage' | 'selfieCenterImage', string>> = {};
+            for (const field of ['documentFrontImage', 'documentBackImage', 'selfieCenterImage'] as const) {
+              if (typeof signer[field] === 'string' && signer[field].startsWith('data:image')) entry[field] = signer[field];
+            }
+            if (Object.keys(entry).length || !photos[signer.id]) photos[signer.id] = entry;
           }
-          photos[signer.id] = entry;
         }
         setDossierPhotos(photos);
       })
       .catch(() => {});
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDoc?.id, selectedDoc?.updatedAt]);
+  }, [selectedDoc?.id, selectedDoc?.updatedAt, selectedDoc?.signers.map((s) => `${s.status}${s.documentFrontImage ? 1 : 0}${s.documentBackImage ? 1 : 0}${s.selfieCenterImage ? 1 : 0}`).join(','), documents.filter((d) => selectedDoc?.kitBatchId && d.kitBatchId === selectedDoc.kitBatchId).map((d) => d.signers.map((x) => `${x.status}${x.documentFrontImage ? 1 : 0}${x.documentBackImage ? 1 : 0}${x.selfieCenterImage ? 1 : 0}`).join('.')).join(',')]);
 
   const fetchTags = async () => {
     try {
@@ -359,6 +361,21 @@ export default function DocumentsPage() {
     return { ...signer, status: best.status === 'ASSINADO' ? 'EM_ANDAMENTO' : best.status, documentFrontImage: best.documentFrontImage, documentBackImage: best.documentBackImage, selfieCenterImage: best.selfieCenterImage,
       events: [...(signer.events || []), ...(best.events || []).filter((ev) => ev.eventType === 'LIVENESS_STARTED')] };
   };
+  // Num kit as fotos ficam no documento do link: para mostrar e pedir para
+  // refazer uma foto a partir de qualquer documento do envio, usa-se o
+  // documento/participante que de fato guarda as fotos.
+  const twinKey = (s: Signer) => `${s.role}|${s.signatureOrder}|${s.cpf.replace(/\D/g, '')}`;
+  const photoSourceFor = (doc: DocumentItem, s: Signer): { doc: DocumentItem; signer: Signer } => {
+    const has = (x: Signer) => Boolean(x.documentFrontImage || x.documentBackImage || x.selfieCenterImage);
+    if (has(s) || !doc.kitBatchId) return { doc, signer: s };
+    for (const item of documents) {
+      if (item.id === doc.id || item.kitBatchId !== doc.kitBatchId || item.client?.id !== doc.client?.id || ['CANCELADO', 'EXPIRADO'].includes(item.status)) continue;
+      const twin = item.signers.find((x) => twinKey(x) === twinKey(s) && has(x));
+      if (twin) return { doc: item, signer: twin };
+    }
+    return { doc, signer: s };
+  };
+
   // Etapas da pessoa no link, visíveis no dossiê (atualiza a cada 15s).
   const signerSteps = (rawSigner: Signer) => {
     const signer = withKitProgress(rawSigner);
@@ -504,6 +521,31 @@ export default function DocumentsPage() {
   // que uma foto ficou ruim (borrada, mal enquadrada), mas o resto está
   // correto. Se a assinatura já estiver concluída, ela continua valendo; só
   // a foto é substituída e o certificado é regenerado com a foto nova.
+  // Refazer todas as fotos já enviadas por um participante (assinatura ainda
+  // em andamento ou concluída): o link retoma do começo da captura.
+  const handleRedoAllPhotos = async (doc: DocumentItem, signer: Signer) => {
+    const fields = (['documentFrontImage', 'documentBackImage', 'selfieCenterImage'] as const).filter((field) => signer[field]);
+    if (!fields.length) return;
+    if (!window.confirm(`Pedir para ${signer.name} refazer todas as fotos (${fields.map((f) => REDOABLE_FIELD_LABELS[f]).join(', ')})? O link dele(a) retomará na primeira foto.`)) return;
+    const reason = window.prompt('Motivo (opcional, fica registrado na trilha de auditoria):') || '';
+    const key = `${signer.id}:all`;
+    setRedoingPhotoIds((current) => new Set(current).add(key));
+    try {
+      for (const field of fields) {
+        const res = await fetch(`/api/documents/${doc.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'redo-photo', signerId: signer.id, field, reason }) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Não foi possível solicitar as novas fotos.');
+      }
+      const freshDocs = await fetchDocuments();
+      const freshDoc = freshDocs?.find((item) => item.id === selectedDoc?.id);
+      if (freshDoc) setSelectedDoc(freshDoc);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setRedoingPhotoIds((current) => { const next = new Set(current); next.delete(key); return next; });
+    }
+  };
   const handleRequestPhotoRedo = async (doc: DocumentItem, signer: Signer, field: 'documentFrontImage' | 'documentBackImage' | 'selfieCenterImage') => {
     const fieldLabel = REDOABLE_FIELD_LABELS[field];
     if (!window.confirm(`Pedir para ${signer.name} refazer a foto de ${fieldLabel}? A foto atual será removida e o link de assinatura dele(a) retomará direto nessa etapa.${signer.status === 'ASSINADO' ? ' As demais etapas serão mantidas.' : ''}`)) return;
@@ -523,7 +565,7 @@ export default function DocumentsPage() {
       // sem fechar o modal, para o escritório poder pedir mais de uma foto
       // seguida se precisar.
       const freshDocs = await fetchDocuments();
-      const freshDoc = freshDocs?.find((item) => item.id === doc.id);
+      const freshDoc = freshDocs?.find((item) => item.id === (selectedDoc?.id || doc.id));
       if (freshDoc) setSelectedDoc(freshDoc);
     } catch (err: any) {
       alert(err.message);
@@ -1460,36 +1502,42 @@ export default function DocumentsPage() {
                               para refazer, envie o link individual DELE (botão "Copiar
                               link"/"Enviar" acima) para a pessoa retomar direto na foto
                               pedida, sem precisar do celular do titular de novo. */}
-                          {canCorrect && !(selectedDoc.status === 'CONCLUIDO' && selectedDoc.reviewStatus === 'APROVADO') && !['CANCELADO', 'EXPIRADO'].includes(selectedDoc.status) && (s.documentFrontImage || s.documentBackImage || s.selfieCenterImage) && (
+                          {(() => { const src = photoSourceFor(selectedDoc, s); const ps = src.signer; return canCorrect && !(src.doc.status === 'CONCLUIDO' && src.doc.reviewStatus === 'APROVADO') && !['CANCELADO', 'EXPIRADO'].includes(src.doc.status) && (ps.documentFrontImage || ps.documentBackImage || ps.selfieCenterImage) && (
                             <div className="mt-2 flex flex-wrap gap-2">
                               {([
                                 ['documentFrontImage', 'Frente'],
                                 ['documentBackImage', 'Verso'],
                                 ['selfieCenterImage', 'Selfie'],
-                              ] as const).map(([field, label]) => s[field] && (
+                              ] as const).map(([field, label]) => ps[field] && (
                                 <div key={field} className="flex flex-col items-center gap-1 w-[76px]">
                                   {/* Miniatura: clique para ver grande e decidir se precisa refazer. */}
-                                  {dossierPhotos[s.id]?.[field] ? (
-                                    <button type="button" onClick={() => setPhotoPreview({ src: dossierPhotos[s.id]![field]!, label: `${label} - ${s.name}` })} title={`Ver ${REDOABLE_FIELD_LABELS[field]}`} className="block w-[76px] h-[56px] rounded-lg overflow-hidden border border-slate-200 bg-slate-100 hover:ring-2 hover:ring-blue-300">
+                                  {dossierPhotos[ps.id]?.[field] ? (
+                                    <button type="button" onClick={() => setPhotoPreview({ src: dossierPhotos[ps.id]![field]!, label: `${label} - ${s.name}` })} title={`Ver ${REDOABLE_FIELD_LABELS[field]}`} className="block w-[76px] h-[56px] rounded-lg overflow-hidden border border-slate-200 bg-slate-100 hover:ring-2 hover:ring-blue-300">
                                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                                      <img src={dossierPhotos[s.id]![field]!} alt={label} className="w-full h-full object-cover" />
+                                      <img src={dossierPhotos[ps.id]![field]!} alt={label} className="w-full h-full object-cover" />
                                     </button>
                                   ) : (
                                     <div className="w-[76px] h-[56px] rounded-lg border border-dashed border-slate-200 bg-slate-50 grid place-items-center text-[9px] text-slate-400">{label}</div>
                                   )}
                                   <button
                                     type="button"
-                                    onClick={() => handleRequestPhotoRedo(selectedDoc, s, field)}
-                                    disabled={redoingPhotoIds.has(`${s.id}:${field}`)}
+                                    onClick={() => handleRequestPhotoRedo(src.doc, ps, field)}
+                                    disabled={redoingPhotoIds.has(`${ps.id}:${field}`)}
                                     title={`Pedir para refazer a foto: ${REDOABLE_FIELD_LABELS[field]}`}
                                     className="w-full inline-flex items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-bold text-slate-600 hover:border-amber-300 hover:text-amber-700 disabled:opacity-50"
                                   >
-                                    {redoingPhotoIds.has(`${s.id}:${field}`) ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RotateCcw className="w-2.5 h-2.5" />} Refazer {label}
+                                    {redoingPhotoIds.has(`${ps.id}:${field}`) ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RotateCcw className="w-2.5 h-2.5" />} Refazer {label}
                                   </button>
                                 </div>
                               ))}
+                              {[ps.documentFrontImage, ps.documentBackImage, ps.selfieCenterImage].filter(Boolean).length > 1 && (
+                                <button type="button" onClick={() => handleRedoAllPhotos(src.doc, ps)} disabled={redoingPhotoIds.has(`${ps.id}:all`)}
+                                  className="self-end inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-extrabold text-amber-800 hover:bg-amber-100 disabled:opacity-50">
+                                  {redoingPhotoIds.has(`${ps.id}:all`) ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />} Refazer todas as fotos
+                                </button>
+                              )}
                             </div>
-                          )}
+                          ); })()}
                         </div>
                         {/* Mesmo já ASSINADO, mantém o botão de copiar link/WhatsApp
                             disponível - é como o escritório envia o link individual
