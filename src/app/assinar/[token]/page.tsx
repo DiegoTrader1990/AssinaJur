@@ -707,6 +707,18 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       // terminar o resto do fluxo - por isso segue para o verso normalmente.
       if (signer?.redoPendingField === 'documentFrontImage') {
         if (signer.status === 'ASSINADO') {
+          // Mais de uma foto pedida: segue para a próxima que ficou faltando.
+          if (!documentBackImage) {
+            setSigner((prev) => (prev ? { ...prev, redoPendingField: 'documentBackImage' } : prev));
+            setDocumentSide('VERSO');
+            return;
+          }
+          if (!selfieImages.center) {
+            setSigner((prev) => (prev ? { ...prev, redoPendingField: 'selfieCenterImage' } : prev));
+            setStep('SELFIE');
+            setActivePerson('CLIENT');
+            return;
+          }
           setStep('SUCCESS');
           return;
         }
@@ -735,6 +747,12 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       await saveProgress('documentBackImage', result.dataUrl);
       if (signer?.redoPendingField === 'documentBackImage') {
         if (signer.status === 'ASSINADO') {
+          if (!selfieImages.center) {
+            setSigner((prev) => (prev ? { ...prev, redoPendingField: 'selfieCenterImage' } : prev));
+            setStep('SELFIE');
+            setActivePerson('CLIENT');
+            return;
+          }
           setStep('SUCCESS');
           return;
         }
