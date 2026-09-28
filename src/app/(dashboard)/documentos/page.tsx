@@ -359,6 +359,29 @@ export default function DocumentsPage() {
     return { ...signer, status: best.status === 'ASSINADO' ? 'EM_ANDAMENTO' : best.status, documentFrontImage: best.documentFrontImage, documentBackImage: best.documentBackImage, selfieCenterImage: best.selfieCenterImage,
       events: [...(signer.events || []), ...(best.events || []).filter((ev) => ev.eventType === 'LIVENESS_STARTED')] };
   };
+  // Etapas da pessoa no link, visíveis no dossiê (atualiza a cada 15s).
+  const signerSteps = (rawSigner: Signer) => {
+    const signer = withKitProgress(rawSigner);
+    if (!['VISUALIZADO', 'EM_ANDAMENTO'].includes(signer.status) || getPendingRedoField(signer)) return null;
+    const steps: Array<[string, boolean]> = [
+      ['Link aberto', true],
+      ['RG frente', Boolean(signer.documentFrontImage)],
+      ['RG verso', Boolean(signer.documentBackImage)],
+      ['Selfie', Boolean(signer.selfieCenterImage)],
+      ['Assinatura', false],
+    ];
+    const current = steps.findIndex(([, done]) => !done);
+    const selfieOpened = !signer.selfieCenterImage && signer.events?.some((e) => e.eventType === 'LIVENESS_STARTED');
+    return (
+      <span className="flex w-full flex-wrap items-center gap-1 pt-1">
+        {steps.map(([label, done], index) => (
+          <span key={label} className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-bold ${done ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : index === current ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white text-slate-400'}`}>
+            {done ? <CheckCircle2 className="w-3 h-3" /> : index === current ? <Clock className="w-3 h-3" /> : null}{label}{index === current ? (label === 'Selfie' && selfieOpened ? ' (câmera aberta)' : ' (agora)') : ''}
+          </span>
+        ))}
+      </span>
+    );
+  };
   const signerProgress = (rawSigner: Signer) => {
     const signer = withKitProgress(rawSigner);
     // Pedido de refazer pendente tem prioridade visual sobre qualquer outro
@@ -1428,7 +1451,7 @@ export default function DocumentsPage() {
                   {selectedDoc.signers.map((s) => (
                     <div key={s.id} className={`p-3 rounded-xl border text-xs ${getPendingRedoField(s) ? 'bg-amber-50/40 border-amber-200' : s.status === 'ASSINADO' ? 'bg-emerald-50/40 border-emerald-200' : s.status === 'EM_ANDAMENTO' ? 'bg-amber-50/40 border-amber-200' : s.status === 'VISUALIZADO' ? 'bg-blue-50/40 border-blue-200' : 'bg-slate-50 border-slate-200/80'}`}>
                       <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0"><div className="font-extrabold text-slate-900 truncate">{s.name}</div><div className="mt-1 flex flex-wrap gap-1.5 items-center"><span className="text-slate-500 text-[10px]">{signerRoleLabel(s.role)}</span>{signerProgress(s)}{s.signingMode === 'SAME_DEVICE' && <span className="text-[10px] font-bold text-violet-700">Mesmo celular</span>}</div>{(s.status === 'EM_ANDAMENTO' || getPendingRedoField(s)) && <div className="text-amber-700 text-[10px] font-bold mt-0.5 capitalize">{signerProgressDetail(s)}</div>}<div className="text-slate-400 font-mono text-[10px] mt-1">CPF: {maskCpfCnpj(s.cpf)}</div>
+                        <div className="min-w-0"><div className="font-extrabold text-slate-900 truncate">{s.name}</div><div className="mt-1 flex flex-wrap gap-1.5 items-center"><span className="text-slate-500 text-[10px]">{signerRoleLabel(s.role)}</span>{signerProgress(s)}{signerSteps(s)}{s.signingMode === 'SAME_DEVICE' && <span className="text-[10px] font-bold text-violet-700">Mesmo celular</span>}</div>{(s.status === 'EM_ANDAMENTO' || getPendingRedoField(s)) && <div className="text-amber-700 text-[10px] font-bold mt-0.5 capitalize">{signerProgressDetail(s)}</div>}<div className="text-slate-400 font-mono text-[10px] mt-1">CPF: {maskCpfCnpj(s.cpf)}</div>
                           {/* "Pedir para refazer" por foto - disponível para qualquer
                               signatário (Cliente Titular, Assinante a Rogo, testemunhas)
                               que já tenha essa foto capturada. Cada signatário sempre tem
