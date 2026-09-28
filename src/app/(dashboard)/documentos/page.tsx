@@ -280,7 +280,25 @@ export default function DocumentsPage() {
     );
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };
-  const participantLinkToken = (doc: DocumentItem, person: Signer) => {
+  // Num kit, o link enviado é o do documento principal do envio (o primeiro
+  // gerado, onde as fotos ficam salvas). Copiar o link a partir de outro
+  // documento do kit abria a mesma pessoa em outro documento, sem o progresso,
+  // e a assinatura recomeçava do início.
+  const kitLinkDocument = (doc: DocumentItem, selectedPerson: Signer): DocumentItem => {
+    const same = (x: Signer) => x.role === selectedPerson.role && x.signatureOrder === selectedPerson.signatureOrder && x.cpf.replace(/\D/g, '') === selectedPerson.cpf.replace(/\D/g, '');
+    const hasPhotos = (x?: Signer) => Boolean(x && (x.documentFrontImage || x.documentBackImage || x.selfieCenterImage));
+    // Já assinou ou já tem fotos neste documento: o link certo é o dele mesmo.
+    if (!doc.kitBatchId || selectedPerson.status === 'ASSINADO' || hasPhotos(selectedPerson)) return doc;
+    const open = documents.filter((item) => item.kitBatchId === doc.kitBatchId && item.client?.id === doc.client?.id && !['CANCELADO', 'EXPIRADO'].includes(item.status)
+      && item.signers.some((x) => same(x) && x.status !== 'ASSINADO'));
+    if (!open.length) return doc;
+    const withPhotos = open.find((item) => hasPhotos(item.signers.find(same)));
+    return withPhotos || open.reduce((first, item) => (new Date(item.createdAt).getTime() < new Date(first.createdAt).getTime() ? item : first));
+  };
+  const participantLinkToken = (selected: DocumentItem, selectedPerson: Signer) => {
+    const doc = kitLinkDocument(selected, selectedPerson);
+    const sameParticipant = (x: Signer) => x.role === selectedPerson.role && x.signatureOrder === selectedPerson.signatureOrder && x.cpf.replace(/\D/g, '') === selectedPerson.cpf.replace(/\D/g, '');
+    const person = doc.signers.find(sameParticipant) || selectedPerson;
     if (person.role !== 'ASSINANTE_A_ROGO' || getPendingRedoField(person)) return person.token;
     try { const group = configuredGroups(doc, doc.signers).find(g => g.rogoOrder === person.signatureOrder); return doc.signers.find(p => p.signatureOrder === group?.partyOrder)?.token || ''; } catch { return ''; }
   };
