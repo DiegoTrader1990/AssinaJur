@@ -139,7 +139,7 @@ export default function DispatchKitPage() {
   const [rogoRelationship, setRogoRelationship] = useState('Acompanhante / Familiar');
   const [rogoPhone, setRogoPhone] = useState('');
   const [rogoEmail, setRogoEmail] = useState('');
-  const [photoPolicy, setPhotoPolicy] = useState<'COM_FOTOS' | 'SEM_FOTOS'>('COM_FOTOS');
+  const [photoPolicy, setPhotoPolicy] = useState<'COM_FOTOS' | 'SEM_FOTOS'>(searchParams.get('fotos') === 'sem' ? 'SEM_FOTOS' : 'COM_FOTOS');
   const [enforceSignatureOrder, setEnforceSignatureOrder] = useState(false);
   const [witnessSigningMode, setWitnessSigningMode] = useState<'INDIVIDUAL' | 'SAME_DEVICE'>('INDIVIDUAL');
 

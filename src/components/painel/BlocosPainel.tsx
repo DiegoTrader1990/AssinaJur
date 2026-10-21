@@ -210,6 +210,8 @@ export function FluxoRapido({
   }, [todosAbertos]);
   const [arquivos, setArquivos] = useState<{ id: string; nome: string }[]>([]);
   const [kitId, setKitId] = useState('');
+  // Kit sem fotos de identificação (a escolha final é confirmada na tela Enviar Kit).
+  const [semFotos, setSemFotos] = useState(false);
   const [listaKitAberta, setListaKitAberta] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [erroEnvio, setErroEnvio] = useState('');
@@ -361,6 +363,7 @@ export function FluxoRapido({
     if (modo === 'KIT') {
       const p = new URLSearchParams({ kitId });
       if (clienteId) p.set('clientId', clienteId);
+      if (semFotos) p.set('fotos', 'sem');
       router.push(`/kits/enviar?${p.toString()}`);
       return;
     }
@@ -934,6 +937,15 @@ export function FluxoRapido({
               ainda é clicável de propósito: em vez de não fazer nada, leva o
               advogado ao passo que falta (ver `seguir`).
             */}
+            {modo === 'KIT' && (
+              <label className="flex w-full cursor-pointer items-start gap-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-left">
+                <input type="checkbox" checked={semFotos} onChange={(e) => setSemFotos(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 accent-[#D4AF37]" />
+                <span className="text-[11px] font-bold leading-tight text-white">
+                  Sem fotos de identificação
+                  <span className="block text-[10px] font-medium text-slate-300">só CPF, leitura e consentimento</span>
+                </span>
+              </label>
+            )}
             <button
               type="button"
               onClick={seguir}
