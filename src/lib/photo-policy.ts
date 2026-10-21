@@ -31,5 +31,9 @@ export function validatePhotoFreeConsent(person: any, rogado = false): boolean {
   if (!person || typeof person.signedConsentText !== 'string' || person.signedConsentText.trim().length < 15 || person.signedConsentText.length > 10000) return false;
   if (rogado) return person.signatureType === 'CONSENTIMENTO_A_ROGO';
   if (!['DESENHADA', 'DIGITADA', 'SELO_DIGITAL'].includes(person.signatureType)) return false;
-  return person.signatureType !== 'DESENHADA' || (typeof person.signatureImage === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(person.signatureImage) && person.signatureImage.length > 100 && person.signatureImage.length < 2000000);
+  // A tela de assinatura manda "DESENHADA" como padrão mesmo quando a pessoa só
+  // conclui pelo Selo Digital (sem rubrica) - igual ao fluxo com fotos. Rubrica
+  // ausente é aceita; se vier, precisa ser uma imagem PNG válida.
+  if (person.signatureImage == null || person.signatureImage === '') return true;
+  return typeof person.signatureImage === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(person.signatureImage) && person.signatureImage.length > 100 && person.signatureImage.length < 2000000;
 }

@@ -96,7 +96,7 @@ test('modo com fotos recusa foto inválida antes de gravar', async () => {
   const f = fixture({ mode: 'COM_FOTOS', photos: true }); assert.equal((await f.submit({ selfieCenterImage: 'bad' })).status, 400); assert.equal(f.writes(), 0);
 });
 for (const [options, extra, status] of [
-  [{}, { signedConsentText: '' }, 400], [{}, { signatureType: 'DESENHADA', signatureImage: null }, 400],
+  [{}, { signedConsentText: '' }, 400], [{}, { signatureType: 'DESENHADA', signatureImage: 'data:image/png;base64,@@invalida' }, 400], [{}, { signatureType: 'ASSINATURA_FALSA' }, 400],
   [{}, { signatureType: 'inventada' }, 400], [{}, { confirmCpf: '999' }, 400],
   [{ blocked: true }, {}, 409], [{ approved: true }, {}, 409], [{ expired: true }, {}, 400], [{ cancelled: true }, {}, 400],
   [{ rogo: true }, { rogo: null }, 400], [{ malformed: true }, {}, 503],
