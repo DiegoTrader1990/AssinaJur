@@ -1,3 +1,4 @@
+import { photoPolicyFromEvents } from '@/lib/photo-policy';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { formatFullCpf, formatFullPhone } from '@/lib/pdfCertificate';
@@ -72,6 +73,7 @@ export async function GET(
 
     return NextResponse.json({
       valid: true,
+      photoPolicy: photoPolicyFromEvents(document.events),
       verificationCode: document.verificationCode,
       status: document.status,
       documentTitle: document.title,

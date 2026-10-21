@@ -22,7 +22,7 @@ export default function ParticipantOptions({ name, role, rogo, signingMode, allo
   {allowRogo && !role.startsWith('TESTEMUNHA') && <>
    <label className="flex gap-2 text-sm"><input type="checkbox" checked={Boolean(rogo)} onChange={e => onRogo(e.target.checked ? { name: '', cpf: '', birthDate: '', address: '' } : undefined)} />Esta parte terá um assinante a rogo</label>
    {rogo && <div className="rounded border bg-blue-50 p-3 space-y-2">
-    <p className="text-xs">Acompanhante de {name || 'esta parte'}. Ambos realizarão as fotos e a participação no mesmo aparelho.</p>
+    <p className="text-xs">Acompanhante de {name || 'esta parte'}. Ambos participarão no mesmo aparelho, seguindo a identificação escolhida para o envio.</p>
     {([['name', 'Nome completo', 'text'], ['cpf', 'CPF', 'text'], ['birthDate', 'Nascimento', 'date'], ['address', 'Endereço completo', 'text'], ['relationship', 'Vínculo com a parte (opcional)', 'text']] as const).map(([key, label, type]) => <label key={key} className="block text-xs">{label}<input className="block w-full border rounded p-2" type={type} required={key !== 'relationship'} value={rogo[key] || ''} onChange={e => onRogo({ ...rogo, [key]: e.target.value })} /></label>)}
    </div>}
   </>}

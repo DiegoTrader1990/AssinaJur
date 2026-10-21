@@ -20,6 +20,7 @@ function load(file, dependencies = {}, env = {}) {
     require(id) {
       if (id === '@/lib/attorney-qualification' || id === './attorney-qualification') return load('src/lib/attorney-qualification.ts');
       if (id === '@/lib/participant-qualification') return load('src/lib/participant-qualification.ts');
+      if (id === '@/lib/photo-policy') return load('src/lib/photo-policy.ts');
       if (id === '@/lib/participant-groups') return load('src/lib/participant-groups.ts');
       if (id === '@/lib/signer-stamps') return load('src/lib/signer-stamps.ts');
       if (id === 'next/server') return { NextResponse: Response };

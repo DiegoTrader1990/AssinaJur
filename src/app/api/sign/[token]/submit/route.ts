@@ -1,3 +1,4 @@
+import { loadPhotoPolicy, withoutPhotos, validatePhotoFreeConsent } from '@/lib/photo-policy';
 import { validateEvidenceImage } from '@/lib/evidence-image';
 import { loadParticipantGroups } from '@/lib/participant-groups';
 import { NextResponse } from 'next/server';
@@ -16,7 +17,7 @@ export async function POST(
 ) {
   try {
     const body = await req.json();
-    const {
+    let {
       confirmCpf,
       signatureType,
       signatureImage,
@@ -93,6 +94,18 @@ export async function POST(
       return NextResponse.json({ error: signatureOrderError(blocker), orderEnforced: true, waitingFor: blocker.name }, { status: 409 });
     }
 
+    const photoPolicy = await loadPhotoPolicy(prisma, signer.document.id);
+    const photosRequired = photoPolicy !== 'SEM_FOTOS';
+    if (!photosRequired) {
+      if (!validatePhotoFreeConsent(body, Boolean(pair)) || [rogo, witness1, witness2].some(p => p && !validatePhotoFreeConsent(p))) {
+        return NextResponse.json({ error: 'Confirme o consentimento e conclua a assinatura de cada participante.' }, { status: 400 });
+      }
+      // A política do servidor prevalece; dados de câmera não pertencem a este envio.
+      selfieCenterImage = selfieLeftImage = selfieRightImage = documentFrontImage = documentBackImage = null;
+      if (rogo) rogo = withoutPhotos(rogo);
+      if (witness1) witness1 = withoutPhotos(witness1);
+      if (witness2) witness2 = withoutPhotos(witness2);
+    }
     // 1. Validação do CPF do Cliente Titular
     const cleanConfirmCpf = (confirmCpf || '').replace(/\D/g, '');
     const cleanSignerCpf = (signer.cpf || '').replace(/\D/g, '');
@@ -113,13 +126,13 @@ export async function POST(
     }
     // As fotos são gravadas etapa a etapa no servidor. Se não estão lá, o
     // escritório reiniciou a captura do zero com a página ainda aberta.
-    if (!signer.documentFrontImage || !signer.documentBackImage || !signer.selfieCenterImage) {
+    if (photosRequired && (!signer.documentFrontImage || !signer.documentBackImage || !signer.selfieCenterImage)) {
       return NextResponse.json({ error: 'O escritório reiniciou sua assinatura. Atualize a página para começar novamente.' }, { status: 409 });
     }
 
     // Evidências obrigatórias para qualquer papel, inclusive acompanhantes legados.
     for (const [person, label] of [[body, 'participante'], [rogo, 'assinante a rogo'], [witness1, 'primeira testemunha'], [witness2, 'segunda testemunha']] as const) {
-      if (!person) continue;
+      if (!person || !photosRequired) continue;
       if (['documentFrontImage', 'documentBackImage', 'selfieCenterImage'].some(field => typeof person[field] !== 'string' || !person[field].trim())) {
         return NextResponse.json({ error: `Conclua as três fotos do ${label}: identidade frente, verso e selfie segurando o documento.` }, { status: 400 });
       }
@@ -129,7 +142,7 @@ export async function POST(
     }
 
     // 2. Validação da Prova de Presença (Selfie segurando o documento)
-    if (!selfieCenterImage) {
+    if (photosRequired && !selfieCenterImage) {
       return NextResponse.json(
         { error: 'É necessário enviar a foto segurando o documento de identificação antes de assinar.' },
         { status: 400 }
@@ -140,7 +153,7 @@ export async function POST(
 
     // 3. Se for fluxo a rogo e dados do acompanhante foram enviados no mesmo link, validar dados do Acompanhante
     if (isRogadoConsent && rogo) {
-      if (!rogo.selfieCenterImage) {
+      if (photosRequired && !rogo.selfieCenterImage) {
         return NextResponse.json(
           { error: 'O Assinante a Rogo também deve enviar a foto segurando o documento no mesmo aparelho.' },
           { status: 400 }
@@ -160,7 +173,7 @@ export async function POST(
     }
     if (isRogadoConsent && !rogo) return NextResponse.json({ error: 'Conclua a participação do assinante a rogo neste aparelho.' }, { status: 400 });
     for (const witness of [witness1, witness2]) {
-      if (witness && !witness.selfieCenterImage) return NextResponse.json({ error: 'Conclua a foto da testemunha antes de enviar.' }, { status: 400 });
+      if (photosRequired && witness && !witness.selfieCenterImage) return NextResponse.json({ error: 'Conclua a foto da testemunha antes de enviar.' }, { status: 400 });
     }
 
     const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '127.0.0.1';
@@ -235,7 +248,7 @@ export async function POST(
     }
 
     // 5b. Se dados da 1ª Testemunha foram enviados no mesmo link, registrar assinatura
-    if (witness1 && witness1.name && witness1.cpf && witness1.selfieCenterImage) {
+    if (witness1 && witness1.name && witness1.cpf && (!photosRequired || witness1.selfieCenterImage)) {
       // O papel gravado na criação do documento é "TESTEMUNHA_1" (ver
       // api/documents/route.ts e api/kits/generate-package/route.ts, que
       // renomeiam para TESTEMUNHA_${index + 1}). Esta busca procurava só
@@ -295,7 +308,7 @@ export async function POST(
     }
 
     // 5c. Se dados da 2ª Testemunha foram enviados no mesmo link, registrar assinatura
-    if (witness2 && witness2.name && witness2.cpf && witness2.selfieCenterImage) {
+    if (witness2 && witness2.name && witness2.cpf && (!photosRequired || witness2.selfieCenterImage)) {
       let witness2Signer = signer.document.signers.find((s) => s.role === 'TESTEMUNHA_2');
       if (!witness2Signer) {
         witness2Signer = await prisma.signer.create({
@@ -389,7 +402,7 @@ export async function POST(
     // Identidade verificada antes (nova versão corrigida): não houve selfie
     // nesta sessão, então não se registra prova de presença ao vivo.
     const identityReused = await prisma.documentEvent.findFirst({ where: { signerId: signer.id, eventType: 'IDENTITY_REUSED' }, select: { id: true } });
-    if (!identityReused) await prisma.documentEvent.create({
+    if (photosRequired && !identityReused) await prisma.documentEvent.create({
       data: {
         documentId: signer.document.id,
         signerId: signer.id,
@@ -459,6 +472,8 @@ export async function POST(
         // Copia cada participante pela função, ordem e CPF. Isso funciona para
         // cliente, representante a rogo e testemunhas, independentemente de quem
         // tenha sido o último a concluir o fluxo.
+        // Documento do kit com outra modalidade (não deve ocorrer): fica para assinatura própria, sem interromper esta conclusão.
+        if (await loadPhotoPolicy(prisma, companion.id) !== photoPolicy) continue;
         for (const source of sourceParticipants) {
           const target = companion.signers.find((item) =>
             item.signatureOrder === source.signatureOrder
@@ -488,7 +503,7 @@ export async function POST(
 
         await prisma.document.update({ where: { id: companion.id }, data: { status: 'CONCLUIDO', completedAt: new Date(), reviewStatus: 'PENDENTE_REVISAO' } });
         await prisma.documentEvent.createMany({ data: [
-          ...(identityReused ? [] : [{
+          ...(!photosRequired || identityReused ? [] : [{
             documentId: companion.id, signerId: companionClient.id, eventType: 'LIVENESS_CAPTURED',
             description: `Prova de presença de ${sourceClient.name} vinculada a este documento na mesma sessão de assinatura.`, ipAddress: clientIp, userAgent,
           }]),
@@ -498,7 +513,7 @@ export async function POST(
           },
           {
             documentId: companion.id, signerId: companionClient.id, eventType: 'DOCUMENT_COMPLETED',
-            description: 'Documento concluído, com evidências de identidade, presença e consentimento preservadas no certificado individual.', ipAddress: clientIp, userAgent,
+            description: photosRequired ? 'Documento concluído, com as evidências coletadas preservadas no certificado individual.' : 'Documento concluído com consentimento e assinatura; coleta de fotos dispensada pelo escritório.', ipAddress: clientIp, userAgent,
           },
         ] });
         completedCompanionIds.push(companion.id);

@@ -1,3 +1,4 @@
+import { loadPhotoPolicy } from '@/lib/photo-policy';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
@@ -50,7 +51,7 @@ export async function GET(
     if (!document) {
       return NextResponse.json({ error: 'Documento não encontrado.' }, { status: 404 });
     }
-    return NextResponse.json({ document });
+    return NextResponse.json({ document: { ...document, photoPolicy: await loadPhotoPolicy(prisma, document.id) } });
   } catch (error: any) {
     console.error('Erro ao buscar documento:', error);
     return NextResponse.json({ error: 'Erro ao carregar detalhes do documento.' }, { status: 500 });
@@ -122,6 +123,7 @@ export async function POST(
       let synchronized = 0;
       for (const companion of companions) {
         if (await isIndividualRetry(prisma, companion.id)) continue;
+        if (await loadPhotoPolicy(prisma, companion.id) !== await loadPhotoPolicy(prisma, document.id)) continue;
         const sameParticipants = companion.signers.length === sourceSigners.length && sourceSigners.every((source) => companion.signers.some((target) => target.signatureOrder === source.signatureOrder && target.role === source.role && target.cpf.replace(/\D/g, '') === source.cpf.replace(/\D/g, '')));
         if (!sameParticipants) continue;
         for (const source of sourceSigners) {

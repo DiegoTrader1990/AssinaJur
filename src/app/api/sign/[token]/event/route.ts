@@ -1,3 +1,4 @@
+import { loadPhotoPolicy } from '@/lib/photo-policy';
 import { validateEvidenceImage, InvalidEvidenceImageError } from '@/lib/evidence-image';
 import { loadParticipantGroups } from '@/lib/participant-groups';
 import { NextResponse } from 'next/server';
@@ -81,6 +82,7 @@ export async function POST(req: Request, { params }: { params: { token: string }
         await tx.$queryRaw`SELECT id FROM "Document" WHERE id = ${link.documentId} FOR UPDATE`;
         const signer = await tx.signer.findUniqueOrThrow({ where: { token: params.token }, include: { document: true } });
         const document = signer.document;
+        if (await loadPhotoPolicy(tx, document.id) === 'SEM_FOTOS' && (imageField || Boolean(eventType && !['DOCUMENT_VIEWED', 'CONSENT_ACCEPTED'].includes(eventType)))) return { status: 400, body: { error: 'Este envio não utiliza coleta de fotos.' } };
         if (document.status === 'CONCLUIDO' && document.reviewStatus === 'APROVADO') {
           return imageField ? { status: 409, body: { error: 'O documento aprovado não pode ser alterado.' } } : { status: 200, body: { success: true } };
         }

@@ -1,0 +1,171 @@
+TAP version 13
+# Erro na submissão de assinatura: SyntaxError: Unexpected token 'i', "invalid" is not valid JSON
+#     at JSON.parse (<anonymous>)
+#     at eval (eval at load (C:\\Users\\diego\\OneDrive\\Área de Trabalho\\Rodrigues  $ Soares - Advocacia\\AssinaJur\\scripts\\photo-policy.test.cjs:9:3), <anonymous>:25:29)
+#     at Array.map (<anonymous>)
+#     at photoPolicyFromEvents (eval at load (C:\\Users\\diego\\OneDrive\\Área de Trabalho\\Rodrigues  $ Soares - Advocacia\\AssinaJur\\scripts\\photo-policy.test.cjs:9:3), <anonymous>:24:30)
+#     at loadPhotoPolicy (eval at load (C:\\Users\\diego\\OneDrive\\Área de Trabalho\\Rodrigues  $ Soares - Advocacia\\AssinaJur\\scripts\\photo-policy.test.cjs:9:3), <anonymous>:35:12)
+#     at async POST.prisma_1.prisma.$transaction.isolationLevel (eval at load (C:\\Users\\diego\\OneDrive\\Área de Trabalho\\Rodrigues  $ Soares - Advocacia\\AssinaJur\\scripts\\photo-policy.test.cjs:9:3), <anonymous>:78:33)
+#     at async Object.POST (eval at load (C:\\Users\\diego\\OneDrive\\Área de Trabalho\\Rodrigues  $ Soares - Advocacia\\AssinaJur\\scripts\\photo-policy.test.cjs:9:3), <anonymous>:26:24)
+#     at async TestContext.<anonymous> (C:\\Users\\diego\\OneDrive\\Área de Trabalho\\Rodrigues  $ Soares - Advocacia\\AssinaJur\\scripts\\photo-policy.test.cjs:104:45)
+#     at async Test.run (node:internal/test_runner/test:1054:7)
+#     at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+# Subtest: política legada exige fotos e valores desconhecidos não dispensam identificação
+ok 1 - política legada exige fotos e valores desconhecidos não dispensam identificação
+  ---
+  duration_ms: 1.5388
+  type: 'test'
+  ...
+# Subtest: assinatura sem fotos conclui com evidências verdadeiras: {}
+ok 2 - assinatura sem fotos conclui com evidências verdadeiras: {}
+  ---
+  duration_ms: 109.6751
+  type: 'test'
+  ...
+# Subtest: assinatura sem fotos conclui com evidências verdadeiras: {"role":"PARTE"}
+ok 3 - assinatura sem fotos conclui com evidências verdadeiras: {"role":"PARTE"}
+  ---
+  duration_ms: 57.9815
+  type: 'test'
+  ...
+# Subtest: assinatura sem fotos conclui com evidências verdadeiras: {"role":"TESTEMUNHA_1"}
+ok 4 - assinatura sem fotos conclui com evidências verdadeiras: {"role":"TESTEMUNHA_1"}
+  ---
+  duration_ms: 48.1453
+  type: 'test'
+  ...
+# Subtest: assinatura sem fotos conclui com evidências verdadeiras: {"role":"REPRESENTANTE_LEGAL"}
+ok 5 - assinatura sem fotos conclui com evidências verdadeiras: {"role":"REPRESENTANTE_LEGAL"}
+  ---
+  duration_ms: 35.8833
+  type: 'test'
+  ...
+# Subtest: assinatura sem fotos conclui com evidências verdadeiras: {"rogo":true}
+ok 6 - assinatura sem fotos conclui com evidências verdadeiras: {"rogo":true}
+  ---
+  duration_ms: 27.5331
+  type: 'test'
+  ...
+# Subtest: assinatura sem fotos conclui com evidências verdadeiras: {"witness":true}
+ok 7 - assinatura sem fotos conclui com evidências verdadeiras: {"witness":true}
+  ---
+  duration_ms: 30.8261
+  type: 'test'
+  ...
+# Subtest: assinatura sem fotos conclui com evidências verdadeiras: {"kit":true}
+ok 8 - assinatura sem fotos conclui com evidências verdadeiras: {"kit":true}
+  ---
+  duration_ms: 29.1425
+  type: 'test'
+  ...
+# Subtest: assinatura sem fotos conclui com evidências verdadeiras: {"rogo":true,"kit":true}
+ok 9 - assinatura sem fotos conclui com evidências verdadeiras: {"rogo":true,"kit":true}
+  ---
+  duration_ms: 30.1362
+  type: 'test'
+  ...
+# Subtest: modo com fotos e legado resistem a bypass: null
+ok 10 - modo com fotos e legado resistem a bypass: null
+  ---
+  duration_ms: 51.3973
+  type: 'test'
+  ...
+# Subtest: modo com fotos e legado resistem a bypass: COM_FOTOS
+ok 11 - modo com fotos e legado resistem a bypass: COM_FOTOS
+  ---
+  duration_ms: 31.2408
+  type: 'test'
+  ...
+# Subtest: modo com fotos continua concluindo quando as fotos são válidas
+ok 12 - modo com fotos continua concluindo quando as fotos são válidas
+  ---
+  duration_ms: 32.7199
+  type: 'test'
+  ...
+# Subtest: modo com fotos recusa foto inválida antes de gravar
+ok 13 - modo com fotos recusa foto inválida antes de gravar
+  ---
+  duration_ms: 24.799
+  type: 'test'
+  ...
+# Subtest: proteções preservadas [{},{"signedConsentText":""}]
+ok 14 - proteções preservadas [{},{"signedConsentText":""}]
+  ---
+  duration_ms: 24.2807
+  type: 'test'
+  ...
+# Subtest: proteções preservadas [{},{"signatureType":"DESENHADA","signatureImage":null}]
+ok 15 - proteções preservadas [{},{"signatureType":"DESENHADA","signatureImage":null}]
+  ---
+  duration_ms: 20.3183
+  type: 'test'
+  ...
+# Subtest: proteções preservadas [{},{"signatureType":"inventada"}]
+ok 16 - proteções preservadas [{},{"signatureType":"inventada"}]
+  ---
+  duration_ms: 25.2235
+  type: 'test'
+  ...
+# Subtest: proteções preservadas [{},{"confirmCpf":"999"}]
+ok 17 - proteções preservadas [{},{"confirmCpf":"999"}]
+  ---
+  duration_ms: 24.026
+  type: 'test'
+  ...
+# Subtest: proteções preservadas [{"blocked":true},{}]
+ok 18 - proteções preservadas [{"blocked":true},{}]
+  ---
+  duration_ms: 28.301
+  type: 'test'
+  ...
+# Subtest: proteções preservadas [{"approved":true},{}]
+ok 19 - proteções preservadas [{"approved":true},{}]
+  ---
+  duration_ms: 25.3235
+  type: 'test'
+  ...
+# Subtest: proteções preservadas [{"expired":true},{}]
+ok 20 - proteções preservadas [{"expired":true},{}]
+  ---
+  duration_ms: 18.4309
+  type: 'test'
+  ...
+# Subtest: proteções preservadas [{"cancelled":true},{}]
+ok 21 - proteções preservadas [{"cancelled":true},{}]
+  ---
+  duration_ms: 18.0229
+  type: 'test'
+  ...
+# Subtest: proteções preservadas [{"rogo":true},{"rogo":null}]
+ok 22 - proteções preservadas [{"rogo":true},{"rogo":null}]
+  ---
+  duration_ms: 22.2746
+  type: 'test'
+  ...
+# Subtest: proteções preservadas [{"malformed":true},{}]
+ok 23 - proteções preservadas [{"malformed":true},{}]
+  ---
+  duration_ms: 19.7601
+  type: 'test'
+  ...
+# Subtest: sem fotos descarta imagens enviadas pelo navegador
+ok 24 - sem fotos descarta imagens enviadas pelo navegador
+  ---
+  duration_ms: 22.494
+  type: 'test'
+  ...
+# Subtest: endpoint de eventos não aceita fotos nem falsa prova de presença em envio sem fotos
+ok 25 - endpoint de eventos não aceita fotos nem falsa prova de presença em envio sem fotos
+  ---
+  duration_ms: 33.7131
+  type: 'test'
+  ...
+1..25
+# tests 25
+# suites 0
+# pass 25
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1165.9053

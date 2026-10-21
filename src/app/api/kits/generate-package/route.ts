@@ -1,3 +1,4 @@
+import { parsePhotoPolicy, photoPolicyEvent } from '@/lib/photo-policy';
 import { ensureJointAttorneyQualification, attorneyLabel, validateAttorneyRoster, validateAttorneyQualification } from '@/lib/attorney-qualification';
 import { qualificationFromClient, validateParticipantQualifications, participantVariables, PARTICIPANT_DETAILS_EVENT } from '@/lib/participant-qualification';
 import { expandRogoParticipants, PARTICIPANT_GROUPS_EVENT } from '@/lib/participant-groups';
@@ -88,6 +89,8 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
+    let photoPolicy;
+    try { photoPolicy = parsePhotoPolicy(body.photoPolicy); } catch { return NextResponse.json({ error: 'Modalidade de identificação inválida.' }, { status: 400 }); }
     const {
       clientId, kitId, customVariables, customContents,
       stampOverrides,
@@ -549,6 +552,7 @@ export async function POST(req: Request) {
           signaturePosition: finalSignaturePosition,
           originalFileId: compiledResult.storageRecord.id,
           originalHash: compiledResult.hash,
+          events: { create: photoPolicyEvent(photoPolicy, user.id) },
           status: 'ENVIADO',
           createdById: user.id,
           isIlliterate: !!isIlliterate,
@@ -576,7 +580,7 @@ export async function POST(req: Request) {
             signatureOrder: signerInput.signatureOrder || i + 1,
             signingMode: signerInput.signingMode || (signerInput.role === 'ASSINANTE_A_ROGO' ? 'SAME_DEVICE' : 'INDIVIDUAL'),
             status: 'PENDENTE',
-            authMethod: signerInput.authMethod || 'EMAIL_OTP_CPF',
+            authMethod: photoPolicy === 'SEM_FOTOS' ? 'LINK_CPF_CONSENTIMENTO' : signerInput.authMethod || 'EMAIL_OTP_CPF',
           },
         });
         signerRecords.push(createdSigner);
@@ -598,7 +602,7 @@ export async function POST(req: Request) {
           description: `Nova versão corrigida emitida${retifyReason ? `. Motivo: ${retifyReason}` : ''}. Este documento permanece guardado sem alteração.` } });
         // Fotos de identidade reaproveitadas de quem já as fez na v1 (mesmo CPF).
         // Só identidade: geolocalização, horário e assinatura da v2 são novos.
-        for (const record of signerRecords) {
+        for (const record of photoPolicy === 'SEM_FOTOS' ? [] : signerRecords) {
           const digits = record.cpf.replace(/\D/g, '');
           const previous = retifySources.flatMap((item) => item.signers.map((signer) => ({ signer, item })))
             .find(({ signer }) => signer.cpf.replace(/\D/g, '') === digits && signer.status === 'ASSINADO' && signer.selfieCenterImage && signer.documentFrontImage && signer.documentBackImage);

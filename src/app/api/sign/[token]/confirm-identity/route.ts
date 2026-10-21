@@ -56,7 +56,7 @@ export async function POST(
         documentId: signer.document.id,
         signerId: signer.id,
         eventType: 'IDENTITY_CONFIRMED',
-        description: `CPF confirmado pelo signatário ${signer.name}. Liberada a etapa de prova de presença.`,
+        description: `CPF confirmado pelo signatário ${signer.name}.`,
         ipAddress: clientIp,
         userAgent,
       },

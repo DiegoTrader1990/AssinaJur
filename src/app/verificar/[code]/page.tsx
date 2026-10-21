@@ -24,6 +24,7 @@ import { formatBrasiliaDateTime } from '@/lib/dateUtils';
 import { maskCpfCnpj, maskPhone } from '@/lib/formatters';
 
 interface VerificationResult {
+  photoPolicy?: 'COM_FOTOS' | 'SEM_FOTOS';
   valid: boolean;
   verificationCode: string;
   status: string;
@@ -149,6 +150,7 @@ export default function VerificationResultPage({ params }: { params: { code: str
                 <CheckCircle2 className="w-4 h-4" /> Documento Autêntico e Concluído
               </span>
               <h1 className="font-heading text-2xl font-extrabold text-[#071B3A] tracking-tight">{data.documentTitle}</h1>
+            {data.photoPolicy === 'SEM_FOTOS' && <p className="mt-3 rounded-xl bg-blue-50 p-3 text-xs text-blue-900">Assinatura sem coleta de fotos de documento e selfie, conforme escolha do escritório. Consulte abaixo os registros deste envio.</p>}
               <p className="text-xs text-slate-500 font-mono mt-1">Código de Autenticidade: {data.verificationCode}</p>
             </div>
           </div>
@@ -168,6 +170,7 @@ export default function VerificationResultPage({ params }: { params: { code: str
                 <Clock className="w-4 h-4" /> Documento em Processo de Assinatura
               </span>
               <h1 className="font-heading text-2xl font-extrabold text-[#071B3A] tracking-tight">{data.documentTitle}</h1>
+            {data.photoPolicy === 'SEM_FOTOS' && <p className="mt-3 rounded-xl bg-blue-50 p-3 text-xs text-blue-900">Assinatura sem coleta de fotos de documento e selfie, conforme escolha do escritório. Consulte abaixo os registros deste envio.</p>}
               <p className="text-xs text-slate-500 font-mono mt-1">Código de Autenticidade: {data.verificationCode}</p>
             </div>
           </div>
@@ -184,6 +187,7 @@ export default function VerificationResultPage({ params }: { params: { code: str
                 <XCircle className="w-4 h-4" /> Documento Cancelado pelo Escritório
               </span>
               <h1 className="font-heading text-2xl font-extrabold text-[#071B3A] tracking-tight">{data.documentTitle}</h1>
+            {data.photoPolicy === 'SEM_FOTOS' && <p className="mt-3 rounded-xl bg-blue-50 p-3 text-xs text-blue-900">Assinatura sem coleta de fotos de documento e selfie, conforme escolha do escritório. Consulte abaixo os registros deste envio.</p>}
               <p className="text-xs text-slate-500 font-mono mt-1">Código: {data.verificationCode}</p>
             </div>
           </div>
@@ -193,6 +197,7 @@ export default function VerificationResultPage({ params }: { params: { code: str
         return (
           <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-md text-center space-y-4">
             <h1 className="font-heading text-xl font-extrabold text-[#071B3A]">{data.documentTitle}</h1>
+            {data.photoPolicy === 'SEM_FOTOS' && <p className="mt-3 rounded-xl bg-blue-50 p-3 text-xs text-blue-900">Assinatura sem coleta de fotos de documento e selfie, conforme escolha do escritório. Consulte abaixo os registros deste envio.</p>}
             <p className="text-xs text-slate-500 font-mono">Código: {data.verificationCode}</p>
           </div>
         );

@@ -1,3 +1,4 @@
+import { loadPhotoPolicy } from '@/lib/photo-policy';
 import { loadParticipantGroups } from '@/lib/participant-groups';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
@@ -53,6 +54,7 @@ export async function GET(
     }
 
     const { document } = signer;
+    const photoPolicy = await loadPhotoPolicy(prisma, document.id);
 
     // Progresso já salvo do Assinante a Rogo (quando o documento é "a rogo" e
     // o companheiro é capturado no MESMO link/dispositivo do titular) - o
@@ -205,6 +207,7 @@ export async function GET(
         id: document.id,
         title: document.title,
         documentType: document.documentType,
+        photoPolicy,
         customMessage: document.customMessage,
         status: document.status,
         originalHash: document.originalHash,

@@ -1,3 +1,4 @@
+import { loadPhotoPolicy, photoPolicyEvent } from './photo-policy';
 import { randomUUID } from 'crypto';
 import type { PrismaClient } from '@prisma/client';
 import type { AuthUser } from './auth';
@@ -61,6 +62,7 @@ export async function reviewDocument(db: PrismaClient, user: AuthUser, id: strin
           events: { create: { userId: user.id, eventType: 'DOCUMENT_RESTARTED', metadata: requestId,
             description: `Novo envio criado a partir do documento aprovado ${doc.id}, que permanece intacto.${reason ? ` Motivo: ${reason}` : ''}` } },
         } });
+        await tx.documentEvent.create({ data: { documentId: copy.id, ...photoPolicyEvent(await loadPhotoPolicy(tx, doc.id), user.id) } });
         const groupsConfig = await tx.documentEvent.findFirst({ where: { documentId: doc.id, eventType: 'PARTICIPANT_GROUPS_CONFIGURED' }, orderBy: { createdAt: 'asc' } });
         if (groupsConfig) await tx.documentEvent.create({ data: { documentId: copy.id, userId: user.id, eventType: groupsConfig.eventType, metadata: groupsConfig.metadata, description: 'Vínculos entre partes e acompanhantes mantidos no novo envio.' } });
         const detailsConfig = await tx.documentEvent.findFirst({ where: { documentId: doc.id, eventType: 'PARTICIPANT_DETAILS_CONFIGURED' }, orderBy: { createdAt: 'asc' } });
@@ -74,6 +76,7 @@ export async function reviewDocument(db: PrismaClient, user: AuthUser, id: strin
       return { success: true, newDocumentId: newIds[0], newDocumentIds: newIds, createdCount: newIds.length };
     }
     if (action === 'redo-photo') {
+      if (await loadPhotoPolicy(tx, source.id) === 'SEM_FOTOS') throw new DocumentReviewError('Este envio foi configurado sem coleta de fotos.', 400);
       if (isApprovedDocument(source) || ['CANCELADO', 'EXPIRADO'].includes(source.status)) throw new DocumentReviewError('Este documento não permite refazer etapas. Se estiver aprovado, crie um novo envio completo.');
       const field = String(body.field);
       if (!['documentFrontImage', 'documentBackImage', 'selfieCenterImage'].includes(field)) throw new DocumentReviewError('Etapa inválida.', 400);

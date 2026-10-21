@@ -87,6 +87,7 @@ interface OfficeInfo {
 }
 
 interface DocumentInfo {
+  photoPolicy?: 'COM_FOTOS' | 'SEM_FOTOS';
   id: string;
   title: string;
   documentType: string;
@@ -246,6 +247,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
   const [step, setStep] = useState<'IDENTIFY' | 'DOCUMENT' | 'SELFIE' | 'ROGO_TRANSITION' | 'ROGO_DOCUMENT' | 'ROGO_SELFIE' | 'SIGN' | 'NEXT_PARTICIPANT' | 'WAITING_ORDER' | 'SUCCESS'>('IDENTIFY');
   const [signer, setSigner] = useState<SignerInfo | null>(null);
   const [document, setDocument] = useState<DocumentInfo | null>(null);
+  const photosRequired = document?.photoPolicy !== 'SEM_FOTOS';
   const [office, setOffice] = useState<OfficeInfo | null>(null);
   const [kit, setKit] = useState<KitInfo | null>(null);
   const isRogadoConsent = Boolean(document?.isIlliterate);
@@ -643,7 +645,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
       // prioridade sobre a retomada normal - manda direto para a etapa da
       // foto pedida, ignorando o restante do fluxo (que já está feito e não
       // deve ser refeito).
-      if (signer?.redoPendingField === 'selfieCenterImage') {
+      if (!photosRequired) {
+        setStep(isRogadoConsent ? 'ROGO_TRANSITION' : 'SIGN');
+      } else if (signer?.redoPendingField === 'selfieCenterImage') {
         setStep('SELFIE');
         setActivePerson('CLIENT');
       } else if (signer?.redoPendingField === 'documentBackImage') {
@@ -1282,21 +1286,21 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
     const rogoLeft = rogoSelfieImages.left || rogoSelfieImagesRef.current.left;
     const rogoRight = rogoSelfieImages.right || rogoSelfieImagesRef.current.right;
 
-    if (!documentFrontImage || !documentBackImage) {
+    if (photosRequired && (!documentFrontImage || !documentBackImage)) {
       setError('Fotografe a frente e o verso da identidade antes de assinar.');
       setDocumentSide(!documentFrontImage ? 'FRENTE' : 'VERSO'); setStep('DOCUMENT'); return;
     }
-    if (!clientCenter) {
+    if (photosRequired && !clientCenter) {
       setError('É necessário concluir a prova de presença do cliente (selfie) antes de assinar.');
       return;
     }
 
     if (isRogadoConsent) {
-      if (!rogoDocumentFrontImage || !rogoDocumentBackImage) {
+      if (photosRequired && (!rogoDocumentFrontImage || !rogoDocumentBackImage)) {
         setError('Fotografe a frente e o verso da identidade do assinante a rogo.');
         setRogoDocumentSide(!rogoDocumentFrontImage ? 'FRENTE' : 'VERSO'); setStep('ROGO_DOCUMENT'); return;
       }
-      if (!rogoCenter) {
+      if (photosRequired && !rogoCenter) {
         setError('O Assinante a Rogo também deve concluir a prova de presença com a selfie no mesmo aparelho.');
         return;
       }
@@ -1486,6 +1490,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
           </div>
         )}
 
+        {!photosRequired && !['SUCCESS', 'NEXT_PARTICIPANT'].includes(step) && <p className="rounded-xl bg-blue-50 border border-blue-100 p-3 text-xs text-blue-900">O escritório escolheu assinatura sem fotos para este envio. Confira os documentos e confirme seu consentimento para assinar.</p>}
         {/* ETAPA 1: Identificação de CPF do Cliente */}
         {step === 'IDENTIFY' && (
           <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-2xl space-y-4">
@@ -1494,7 +1499,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 <Scale className="w-3 h-3" /> {document?.documentType || 'DOCUMENTO JURÍDICO'}
               </span>
               <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                Olá, <strong className="text-[#071B3A]">{signer?.name}</strong>! {isRepresentativeSigner ? 'Confira seu CPF abaixo e toque em confirmar para acessar o documento.' : 'Confirme seu CPF abaixo para acessar o documento e iniciar a prova de presença ao vivo.'}
+                Olá, <strong className="text-[#071B3A]">{signer?.name}</strong>! {isRepresentativeSigner || !photosRequired ? 'Confira seu CPF abaixo e toque em confirmar para acessar o documento.' : 'Confirme seu CPF abaixo para acessar o documento e iniciar a prova de presença ao vivo.'}
               </p>
             </div>
 
@@ -1729,7 +1734,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 Passe o celular para o Assinante a Rogo
               </h2>
               <p className="text-xs text-slate-600 font-medium leading-relaxed">
-                O cliente <strong>{signer?.name}</strong> registrou a ciência com sucesso. Agora, o acompanhante <strong>{rogoName || 'Assinante a Rogo'}</strong> deve confirmar os dados, tirar as fotos de presença e assinar no mesmo aparelho.
+                O cliente <strong>{signer?.name}</strong> registrou a ciência com sucesso. Agora, o acompanhante <strong>{rogoName || 'Assinante a Rogo'}</strong> {photosRequired ? 'deve confirmar os dados, tirar as fotos de presença e assinar no mesmo aparelho.' : 'deve confirmar os dados e assinar no mesmo aparelho. Este envio dispensa fotos.'}
               </p>
             </div>
 
@@ -1767,7 +1772,9 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                 setError('');
                 // Retoma da etapa certa do Assinante a Rogo se ele já tinha
                 // capturado algo numa sessão anterior interrompida.
-                if (!rogoDocumentFrontImage) {
+                if (!photosRequired) {
+                  setStep('SIGN');
+                } else if (!rogoDocumentFrontImage) {
                   setRogoDocumentSide('FRENTE'); setStep('ROGO_DOCUMENT');
                 } else if (!rogoDocumentBackImage) {
                   setRogoDocumentSide('VERSO'); setStep('ROGO_DOCUMENT');
@@ -1786,7 +1793,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               }}
               className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm font-heading"
             >
-              Iniciar Fotos do Assinante a Rogo <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+              {photosRequired ? 'Iniciar Fotos do Assinante a Rogo' : 'Continuar para assinatura a rogo'} <ArrowRight className="w-4 h-4 stroke-[2.5]" />
             </button>
           </div>
         )}
@@ -1969,7 +1976,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
                   {isRogadoConsent ? `CPF Cliente: ${signer?.cpf ? formatFullCpf(signer.cpf) : ''} | CPF A Rogo: ${rogoCpf ? formatFullCpf(rogoCpf) : ''}` : `CPF: ${signer?.cpf ? formatFullCpf(signer.cpf) : ''}`}
                 </p>
                 <p className="text-[10px] text-emerald-700 font-extrabold uppercase">
-                  {isRogadoConsent ? '✓ SELFIES DE PRESENÇA (CLIENTE + ACOMPANHANTE) VINCULADAS' : '✓ PROVA DE PRESENÇA + GEOLOCALIZAÇÃO VINCULADOS'}
+                  {!photosRequired ? '✓ CPF CONFIRMADO · ASSINATURA SEM FOTOS' : isRogadoConsent ? '✓ SELFIES DE PRESENÇA (CLIENTE + ACOMPANHANTE) VINCULADAS' : '✓ PROVA DE PRESENÇA + GEOLOCALIZAÇÃO VINCULADOS'}
                 </p>
               </div>
             </div>
@@ -2030,15 +2037,15 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
               <span className="leading-relaxed text-sm font-semibold text-[#071B3A]">
                 {isRogadoConsent ? (
                   <>
-                    Declaro que assino a rogo pelo cliente <strong>{signer?.name}</strong> no documento <strong>{document?.title}</strong>, autorizando expressamente a vinculação do Selo Digital com fotos de presença de ambos.
+                    Declaro que assino a rogo pelo cliente <strong>{signer?.name}</strong> no documento <strong>{document?.title}</strong>, autorizando expressamente a vinculação do Selo Digital{photosRequired ? ' com fotos de presença de ambos' : ''}.
                   </>
                 ) : isRepresentativeSigner ? (
                   <>
-                    Declaro que li e concordo com {kit ? 'todos os documentos apresentados' : <>os termos do documento <strong>{document?.title}</strong></>} e que assino <strong>na qualidade de representante legal, em nome da parte representada</strong>, autorizando a captura de presença e a emissão do Selo Digital.
+                    Declaro que li e concordo com {kit ? 'todos os documentos apresentados' : <>os termos do documento <strong>{document?.title}</strong></>} e que assino <strong>na qualidade de representante legal, em nome da parte representada</strong>, autorizando {photosRequired ? 'a captura de presença e ' : ''}a emissão do Selo Digital.
                   </>
                 ) : (
                   <>
-                    {kit ? <>Declaro que li e concordo com todos os documentos apresentados, autorizando a captura de presença e a emissão dos selos e certificados individuais.</> : <>Declaro que li e concordo com os termos do documento <strong>{document?.title}</strong>, autorizando a captura de presença e emissão do Selo Digital.</>}
+                    {kit ? <>Declaro que li e concordo com todos os documentos apresentados, autorizando {photosRequired ? 'a captura de presença e ' : ''}a emissão dos selos e certificados individuais.</> : <>Declaro que li e concordo com os termos do documento <strong>{document?.title}</strong>, autorizando {photosRequired ? 'a captura de presença e ' : ''}a emissão do Selo Digital.</>}
                   </>
                 )}
               </span>
@@ -2103,7 +2110,7 @@ export default function MobileSignaturePage({ params }: { params: { token: strin
         {step === 'NEXT_PARTICIPANT' && nextParticipant && (
           <div className="bg-white p-8 rounded-3xl border border-blue-200 shadow-2xl text-center space-y-6">
             <div className="w-16 h-16 bg-blue-50 border border-blue-200 text-blue-600 rounded-full flex items-center justify-center mx-auto shadow-xs"><Users className="w-9 h-9" /></div>
-            <div className="space-y-2"><span className="px-3.5 py-1 rounded-full bg-blue-50 text-blue-700 font-extrabold text-xs border border-blue-200 uppercase tracking-wider font-heading">Próxima etapa obrigatória</span><h2 className="font-heading text-xl font-extrabold text-[#071B3A]">Passe o celular para {nextParticipant.name}</h2><p className="text-sm text-slate-600 font-medium leading-relaxed">A etapa anterior foi registrada, mas o documento ainda não foi concluído. Essa pessoa deverá confirmar o próprio CPF, fotografar o documento de identificação, fazer a selfie de prova de presença e assinar.</p></div>
+            <div className="space-y-2"><span className="px-3.5 py-1 rounded-full bg-blue-50 text-blue-700 font-extrabold text-xs border border-blue-200 uppercase tracking-wider font-heading">Próxima etapa obrigatória</span><h2 className="font-heading text-xl font-extrabold text-[#071B3A]">Passe o celular para {nextParticipant.name}</h2><p className="text-sm text-slate-600 font-medium leading-relaxed">A etapa anterior foi registrada, mas o documento ainda não foi concluído. {photosRequired ? 'Essa pessoa deverá confirmar o próprio CPF, fotografar o documento de identificação, fazer a selfie de prova de presença e assinar.' : 'Essa pessoa deverá confirmar o próprio CPF e assinar.'}</p></div>
             <button type="button" onClick={() => window.location.assign(`/assinar/${nextParticipant.token}`)} className="w-full py-4 bg-[#071B3A] hover:bg-[#0B1D3D] text-white font-extrabold rounded-2xl shadow-lg text-sm font-heading">Iniciar etapa de {nextParticipant.name}</button>
           </div>
         )}

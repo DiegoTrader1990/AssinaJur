@@ -1,3 +1,4 @@
+import { photoPolicyFromEvents } from './photo-policy';
 import { qualificationDetails, fullQualification, qualificationFromClient } from './participant-qualification';
 import { configuredGroups } from './participant-groups';
 import { decodeStamps, stampPageGeometry, stampParticipants, type SignerStamp } from './signer-stamps';
@@ -245,6 +246,7 @@ const PUBLIC_EVENT_LABELS: Record<string, string> = {
   LIVENESS_STARTED: 'Prova de presença iniciada',
   SELFIE_CENTER_VALIDATED: 'Imagem frontal validada',
   IDENTITY_REUSED: 'Identidade verificada (documento e selfie)',
+  PHOTO_POLICY_CONFIGURED: 'Modalidade de identificação escolhida pelo escritório',
   SELFIE_LEFT_VALIDATED: 'Perfil esquerdo validado',
   SELFIE_RIGHT_VALIDATED: 'Perfil direito validado',
   LIVENESS_CAPTURED: 'Prova de presença concluída (registro facial)',
@@ -390,7 +392,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     'CAMERA_PERMITTED', 'LIVENESS_STARTED',
     'SELFIE_CENTER_VALIDATED', 'SELFIE_LEFT_VALIDATED', 'SELFIE_RIGHT_VALIDATED',
     'LIVENESS_CAPTURED', 'CONSENT_ACCEPTED', 'SIGNATURE_SUBMITTED', 'ROGO_CONSENT_RECORDED', 'DOCUMENT_COMPLETED',
-    'IDENTITY_REUSED',
+    'IDENTITY_REUSED', 'PHOTO_POLICY_CONFIGURED',
   ]);
   // Quem teve a identidade verificada antes (fotos reaproveitadas) não fez
   // prova de presença nesta sessão: esse marco não entra na trilha, e o
@@ -677,7 +679,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
       // em relação à base do selo - antes isso abria um vão grande quando o
       // texto de cima era curto (1 signatário) e quase colava quando era
       // longo (assinatura a rogo, 2 CPFs). Agora sempre acompanha o texto.
-      p.drawText(`${doc.signers.length > 1 ? `${doc.signers.length} CPFs + SELFIES` : 'CPF + SELFIE'}${doc.signers.some((s) => s.geoLat != null) ? ' + GEOLOCALIZAÇÃO' : ''}`, { x: contentX, y: qualificationY - 9, size: 5.1, font: regular, color: text });
+      p.drawText(`${doc.signers.some(s => s.selfieCenterImage) ? 'CPF + SELFIE' : 'CPF + CONSENTIMENTO'}${doc.signers.some((s) => s.geoLat != null) ? ' + GEOLOCALIZAÇÃO' : ''}`, { x: contentX, y: qualificationY - 9, size: 5.1, font: regular, color: text });
       p.drawText(formatBrasiliaDateTime(signedAt, false).replace(/\s*\(.+$/, ''), { x: contentX, y: qualificationY - 17, size: 5.1, font: regular, color: muted });
       p.drawText(`CÓD: ${verificationCode}`, { x: contentX, y: bottomLineY, size: 6.8, font: bold, color: navy });
       // Traco dourado colado logo abaixo do código, curto e um pouco mais
@@ -942,7 +944,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     sheetPage.drawText(verificationUrl, { x: footerTextX, y: footerY - 26, size: 8, font: bold, color: linkBlue });
     sheetPage.drawText(`Código: ${verificationCode}`, { x: footerTextX, y: footerY - 38, size: 7.6, font: mono, color: navy });
     wrapTextToWidth(
-      'Assinado eletronicamente nos termos da MP 2.200-2/2001 e da Lei 14.063/2020. As evidências individuais de cada participante (selfie, documento de identificação, geolocalização, IP e aparelho) constam do Certificado de Evidências Jurídicas anexo a este documento.',
+      'Assinado eletronicamente nos termos da MP 2.200-2/2001 e da Lei 14.063/2020. As evidências efetivamente coletadas de cada participante constam do Certificado de Evidências Jurídicas anexo a este documento.',
       regular,
       6.4,
       CR - footerTextX,
@@ -953,7 +955,8 @@ export async function generateFinalPdfCertificate(documentId: string) {
 
   // ── 2. CERTIFICADO COMPACTO DE 1 PÁGINA (APENAS PARA DOCUMENTOS SIMPLES DE 1 ÚNICO SIGNATÁRIO) ──
   const hasAnyDocumentPhotos = doc.signers.some((s) => s.documentFrontImage || s.documentBackImage);
-  const compactCertificate = doc.signers.length === 1 && !doc.isIlliterate && !hasAnyDocumentPhotos && !doc.signers.some((s) => s.role === 'REPRESENTANTE_LEGAL');
+  const photosRequired = photoPolicyFromEvents(doc.events) !== 'SEM_FOTOS';
+  const compactCertificate = photosRequired && doc.signers.length === 1 && !doc.isIlliterate && !hasAnyDocumentPhotos && !doc.signers.some((s) => s.role === 'REPRESENTANTE_LEGAL');
   if (compactCertificate) {
     const certificatePage = pdfDoc.addPage([PAGE_W, PAGE_H]);
     const signer = doc.signers[0];
@@ -1378,7 +1381,7 @@ export async function generateFinalPdfCertificate(documentId: string) {
     const reusedForAuth = reusedIdentity(signer);
     const authenticationText = reusedForAuth
       ? `CPF + confirmação pelo link individual. Identidade (documento e selfie) verificada em ${reusedForAuth.verifiedAt ? formatBrasiliaDateTime(reusedForAuth.verifiedAt, false).replace(/\s*\(.+$/, '') : 'envio anterior'}`
-      : 'CPF + Prova de presença ao vivo (selfie) + Geolocalização do dispositivo';
+      : photosRequired ? `CPF + consentimento${hasPhotos ? ' + selfie' : ''}${signer.geoLat != null ? ' + geolocalização' : ''}` : 'Link individual + CPF + consentimento. Fotos de documento e selfie dispensadas pelo escritório.';
     const innerWidth = CW - 28;
     const halfWidth = 226;
     const gapWidth = 34;

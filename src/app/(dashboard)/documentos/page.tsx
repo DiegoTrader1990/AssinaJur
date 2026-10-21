@@ -1,4 +1,5 @@
 'use client';
+import { photoPolicyFromEvents } from '@/lib/photo-policy';
 import { configuredGroups } from '@/lib/participant-groups';
 
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
@@ -83,6 +84,7 @@ interface Tag {
 }
 
 interface DocumentItem {
+  photoPolicy?: 'COM_FOTOS' | 'SEM_FOTOS';
   isIlliterate?: boolean;
   events?: Array<{ eventType: string; metadata?: string | null }>;
   id: string;
@@ -398,7 +400,8 @@ export default function DocumentsPage() {
   const signerSteps = (rawSigner: Signer) => {
     const signer = withKitProgress(rawSigner);
     if (!['VISUALIZADO', 'EM_ANDAMENTO'].includes(signer.status) || getPendingRedoField(signer)) return null;
-    const steps: Array<[string, boolean]> = [
+    const semFotos = selectedDoc ? (selectedDoc.photoPolicy || photoPolicyFromEvents(selectedDoc.events || [])) === 'SEM_FOTOS' : false;
+    const steps: Array<[string, boolean]> = semFotos ? [['Link aberto', true], ['Assinatura', false]] : [
       ['Link aberto', true],
       ['RG frente', Boolean(signer.documentFrontImage)],
       ['RG verso', Boolean(signer.documentBackImage)],
@@ -1434,6 +1437,7 @@ export default function DocumentsPage() {
                   {selectedPackageDocuments.length > 1 ? 'PACOTE DE ASSINATURA' : selectedDoc.documentType || 'DOCUMENTO'}
                 </span>
                 <h2 className="font-heading text-lg font-black text-[#071B3A] mt-1">{selectedPackageDocuments.length > 1 ? `${selectedPackageDocuments.length} documentos de ${selectedDoc.client?.name || 'cliente'}` : selectedDoc.title}</h2>
+                <p className="mt-2 text-xs font-semibold text-blue-800">{(selectedDoc.photoPolicy || photoPolicyFromEvents(selectedDoc.events || [])) === 'SEM_FOTOS' ? 'Identificação sem fotos · dispensa escolhida pelo escritório' : 'Identificação com fotos de documento e selfie'}</p>
               </div>
               <button onClick={() => setSelectedDoc(null)} className="text-slate-400 hover:text-slate-600 text-lg font-bold">
                 ✕

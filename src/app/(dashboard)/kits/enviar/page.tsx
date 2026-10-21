@@ -139,6 +139,7 @@ export default function DispatchKitPage() {
   const [rogoRelationship, setRogoRelationship] = useState('Acompanhante / Familiar');
   const [rogoPhone, setRogoPhone] = useState('');
   const [rogoEmail, setRogoEmail] = useState('');
+  const [photoPolicy, setPhotoPolicy] = useState<'COM_FOTOS' | 'SEM_FOTOS'>('COM_FOTOS');
   const [enforceSignatureOrder, setEnforceSignatureOrder] = useState(false);
   const [witnessSigningMode, setWitnessSigningMode] = useState<'INDIVIDUAL' | 'SAME_DEVICE'>('INDIVIDUAL');
 
@@ -609,6 +610,7 @@ export default function DispatchKitPage() {
           rogoRelationship: isIlliterate ? rogoRelationship : null,
           rogoPhone: isIlliterate ? rogoPhone : null,
           rogoEmail: isIlliterate ? rogoEmail : null,
+          photoPolicy,
           enforceSignatureOrder,
           witnessSigningMode,
         }),
@@ -1107,6 +1109,21 @@ export default function DispatchKitPage() {
           </div>
         )}
 
+        {selectedClientId && selectedKitId && (
+          <fieldset className="rounded-2xl border border-slate-200 bg-slate-50 p-5 space-y-3">
+            <legend className="px-2 text-sm font-bold text-[#071B3A]">Identificação na assinatura</legend>
+            <p className="text-xs text-slate-600">Escolha para todos os participantes deste envio, incluindo testemunhas e assinantes a rogo.</p>
+            <label className="flex items-start gap-3 rounded-xl border bg-white p-4 cursor-pointer">
+              <input type="radio" name="photoPolicy" value="COM_FOTOS" checked={photoPolicy === 'COM_FOTOS'} onChange={() => setPhotoPolicy('COM_FOTOS')} className="mt-1" />
+              <span className="text-sm"><strong>Com fotos de identificação</strong><span className="block mt-1 text-xs text-slate-600">Solicita frente e verso do documento e selfie. Padrão do sistema.</span></span>
+            </label>
+            <label className="flex items-start gap-3 rounded-xl border bg-white p-4 cursor-pointer">
+              <input type="radio" name="photoPolicy" value="SEM_FOTOS" checked={photoPolicy === 'SEM_FOTOS'} onChange={() => setPhotoPolicy('SEM_FOTOS')} className="mt-1" />
+              <span className="text-sm"><strong>Sem fotos de identificação</strong><span className="block mt-1 text-xs text-slate-600">Confirmação do CPF, leitura, consentimento e assinatura, sem abrir a câmera.</span></span>
+            </label>
+            {photoPolicy === 'SEM_FOTOS' && <p className="text-xs text-amber-900 bg-amber-50 rounded-lg p-3">Este envio terá menos evidências de identificação. A dispensa ficará registrada no certificado e não poderá ser alterada pelo cliente. Fotos de envios anteriores não serão reaproveitadas.</p>}
+          </fieldset>
+        )}
         {/* Revisar e Editar Minutas */}
         {selectedClientId && selectedKitId && (
           <div className="pt-4 border-t border-slate-100">
