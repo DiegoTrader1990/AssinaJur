@@ -59,7 +59,7 @@ function ensureClientRepresentativeQualification(contentHtml: string, documentTy
   if (!hasRepresentative || (!isPowerOfAttorney && !isContract && !isDeclaration) || /{{\s*cliente_representacao\s*}}/i.test(contentHtml)) return contentHtml;
   const label = isPowerOfAttorney ? 'OUTORGANTE' : isContract ? 'CONTRATANTE' : '';
   let included = false;
-  return contentHtml.replace(/<(p|div)([^>]*)>((?:(?!<\/?(?:p|div)\b)[\s\S])*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
+  const result = contentHtml.replace(/<(p|div)([^>]*)>((?:(?!<\/?(?:p|div)\b)[\s\S])*?)<\/\1>/gi, (block, tag, attributes, innerHtml) => {
     const visibleText = String(innerHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
     const matchesClientQualification = label ? new RegExp(`^${label}\\s*:`, 'i').test(visibleText) : /{{\s*cliente_nome\s*}}/i.test(innerHtml);
     if (included || !matchesClientQualification) return block;
@@ -74,8 +74,29 @@ function ensureClientRepresentativeQualification(contentHtml: string, documentTy
     const inner = String(innerHtml);
     const trailingTags = inner.match(/((?:<\/[^>]+>\s*)*)$/)?.[1] || '';
     const body = trailingTags ? inner.slice(0, inner.length - trailingTags.length) : inner;
+    // "..., doravante denominada CONTRATANTE": a representação entra antes do
+    // "doravante", logo depois da qualificação da própria cliente.
+    const doravante = body.search(/,?\s*doravante\s/i);
+    if (doravante > 0) return `<${tag}${attributes}>${body.slice(0, doravante)}, {{cliente_representacao}}${body.slice(doravante)}${trailingTags}</${tag}>`;
     return `<${tag}${attributes}>${body.replace(/\s*\.\s*$/, '')}, {{cliente_representacao}}.${trailingTags}</${tag}>`;
   });
+  // Modelos colados do Word às vezes trazem a qualificação solta em <span>s
+  // dentro de um <h1>, sem <p>/<div> próprio - aí o trecho acima não acha o
+  // parágrafo e a representação sumia (contrato saía sem "neste ato
+  // representado por..."). Nesse caso entra logo após o endereço da cliente,
+  // na primeira qualificação depois do rótulo.
+  if (!included) {
+    const labelIndex = label ? contentHtml.search(new RegExp(`${label}\\s*:`, 'i')) : contentHtml.search(/{{\s*cliente_nome\s*}}/i);
+    if (labelIndex >= 0) {
+      const tail = contentHtml.slice(labelIndex);
+      const address = tail.match(/{{\s*cliente_endereco\s*}}/i);
+      if (address && address.index !== undefined) {
+        const at = labelIndex + address.index + address[0].length;
+        return contentHtml.slice(0, at) + ', {{cliente_representacao}}' + contentHtml.slice(at);
+      }
+    }
+  }
+  return result;
 }
 
 export async function POST(req: Request) {
